@@ -455,7 +455,7 @@ class ExamController extends Controller
                 }
             ])
                 ->when($search, function ($q) use ($search) {
-                    $q->whereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                    $q->whereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
                 })
                 ->whereHas('student', function ($q) use ($sessionYear) {
                     $q->where('session_year_id', $sessionYear->id);
@@ -594,7 +594,7 @@ class ExamController extends Controller
                         ->orwhere('obtained_marks', 'LIKE', "%$search%")
                         ->orwhere('percentage', 'LIKE', "%$search%")
                         ->orWhereHas('user', function ($q) use ($search) {
-                            $q->whereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                            $q->whereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
                         });
                 })->where('exam_id', $request->exam_id)->Owner();
             });
