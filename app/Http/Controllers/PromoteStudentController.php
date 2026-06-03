@@ -151,7 +151,7 @@ class PromoteStudentController extends Controller {
                 $query->when($search, function ($query) use ($search) {
                 $query->where('id', 'LIKE', "%$search%")
                 ->orWhereHas('user',function($q) use($search){
-                    $q->whereRaw("concat(users.first_name,' ',users.last_name) LIKE '%" . $search . "%'");
+                    $q->whereRaw("concat(users.first_name,' ',users.last_name) LIKE ?", ["%{$search}%"]);
                 });
             });
             });
@@ -190,7 +190,7 @@ class PromoteStudentController extends Controller {
             $q->when($search, function ($query) use ($search) {
                 $query->where('id', 'LIKE', "%$search%")
                 ->orWhereHas('user',function($q) use($search){
-                    $q->whereRaw("concat(users.first_name,' ',users.last_name) LIKE '%" . $search . "%'");
+                    $q->whereRaw("concat(users.first_name,' ',users.last_name) LIKE ?", ["%{$search}%"]);
                 });
             });
         });

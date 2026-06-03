@@ -203,13 +203,13 @@ class RouteVehicleController extends Controller
                 $q->orWhereHas('driver', function ($d) use ($search) {
                     $d->where('first_name', 'LIKE', "%$search%")
                         ->orWhere('last_name', 'LIKE', "%$search%")
-                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
                 });
 
                 $q->orWhereHas('helper', function ($h) use ($search) {
                     $h->where('first_name', 'LIKE', "%$search%")
                         ->orWhere('last_name', 'LIKE', "%$search%")
-                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
                 });
             });
         }
@@ -809,7 +809,7 @@ class RouteVehicleController extends Controller
                 $q->orWhereHas('creator', function ($d) use ($search) {
                     $d->where('first_name', 'LIKE', "%$search%")
                         ->orWhere('last_name', 'LIKE', "%$search%")
-                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'")
+                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"])
                         ->orWhereHas('roles', function ($r) use ($search) {
                             $r->where('name', 'LIKE', "%{$search}%");
                         });
