@@ -1090,84 +1090,6 @@ Route::get('school-settings/{id}/refund-cancellation', [SchoolSettingsController
 // Payment Gateway Apps Status 
 Route::get('payment/status', [PaymentController::class, 'status'])->name('payment.status');
 
-
-
-Route::get('clear', static function () {
-    Artisan::call('view:clear');
-    Artisan::call('route:clear');
-    Artisan::call('config:clear');
-    Artisan::call('cache:clear');
-    Artisan::call('optimize:clear');
-    return redirect()->back();
-});
-
-Route::get('storage-link', static function () {
-    try {
-        Artisan::call('storage:link');
-        echo "storage link created";
-    } catch (Exception) {
-        echo "Storage Link already exists";
-    }
-    return redirect()->back();
-});
-
-
-Route::get('migrate', static function () {
-    Artisan::call('migrate');
-    //    return redirect()->back();
-    echo "Done";
-    return false;
-});
-
-Route::get('migrate-school', static function () {
-    Artisan::call('migrate:school');
-    //    return redirect()->back();
-    echo "Done";
-    return false;
-});
-
-Route::get('seeder-school', static function () {
-    Artisan::call('db:seed:school');
-    echo "Done";
-    return false;
-});
-
-Route::get('start-websocket', static function () {
-    Artisan::call('websocket:init');
-    return redirect()->back();
-    return false;
-});
-
-Route::get('migrate-rollback', static function () {
-    Artisan::call('migrate:rollback');
-    echo "Done";
-    return false;
-});
-Route::get('installation-seeder', static function () {
-    Artisan::call('db:seed --class=InstallationSeeder');
-    echo "Done";
-    return false;
-});
-
-Route::get('dummy-seeder', static function () {
-    Artisan::call('db:seed --class=DummyDataSeeder');
-    // Artisan::call('db:seed');
-    return redirect()->back();
-    return false;
-});
-
-Route::get('dummy-sample-seeder', static function () {
-    Artisan::call('db:seed --class=DummySampleDataSeeder');
-    echo "Done";
-    return false;
-});
-
-Route::get('AddSuperAdminSeeder-seeder', static function () {
-    Artisan::call('db:seed --class=AddSuperAdminSeeder');
-    echo "Done";
-    return false;
-});
-
 Route::get('/js/lang', function () {
     $labels = Cache::remember('lang.js', 3600, function () {
         $lang = app()->getLocale();
@@ -1180,40 +1102,5 @@ Route::get('/js/lang', function () {
         200,
         ['Content-Type' => 'application/javascript; charset=utf-8']
     );
-});
-
-Route::get('test-code', static function () {
-
-});
-
-// Route::get('cache-flush', [Controller::class, 'cacheFlush']);
-
-Route::get('cache-flush', static function () {
-    \Illuminate\Support\Facades\Cache::flush();
-    Session::put('landing_locale', null);
-    Session::save();
-    return redirect()->back();
-});
-
-
-Route::get('demo-tokens', static function () {
-    echo "<pre>";
-
-    $guardian = User::where('email', 'guardian@gmail.com')->first();
-    if (!empty($guardian)) {
-        echo "Demo Guardian Token<br>";
-        echo Cache::rememberForever('demoGuardianToken', static function () use ($guardian) {
-            return $guardian->createToken($guardian->first_name)->plainTextToken;
-        });
-    }
-
-
-    $student = User::where('email', 'student@gmail.com')->first();
-    if (!empty($student)) {
-        echo "<br><br>Demo Student Token<br>";
-        echo Cache::rememberForever('demoStudentToken', static function () use ($student) {
-            return $student->createToken($student->first_name)->plainTextToken;
-        });
-    }
 });
 
