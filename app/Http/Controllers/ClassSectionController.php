@@ -120,7 +120,7 @@ class ClassSectionController extends Controller {
                 })->orWhereHas('medium', function ($q) use ($search) {
                     $q->where('name', 'LIKE', "%$search%");
                 })->orWhereHas('class_teachers.teacher', function ($q) use ($search) {
-                    $q->whereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                    $q->whereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
                 })->orWhereHas('subject_teachers.subject', function ($q) use ($search) {
                     $q->where('name', 'LIKE', "%$search%");
                 });

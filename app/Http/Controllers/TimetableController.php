@@ -394,7 +394,7 @@ class TimetableController extends Controller
         if (!empty($request->search)) {
             $search = $request->search;
             $sql->where(function ($query) use ($search) {
-                $query->where('id', 'LIKE', "%$search%")->orwhereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                $query->where('id', 'LIKE', "%$search%")->orwhereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
             });
         }
 

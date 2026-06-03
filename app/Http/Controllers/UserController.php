@@ -43,7 +43,7 @@ class UserController extends Controller
         });
         if ($search) {
             $sql->where(function ($query) use ($search) {
-                $query->whereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                $query->whereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
             });
         }
 

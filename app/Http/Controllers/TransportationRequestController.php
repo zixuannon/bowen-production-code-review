@@ -85,7 +85,7 @@ class TransportationRequestController extends Controller
                     $d->where('first_name', 'LIKE', "%$search%")
                         ->orWhere('last_name', 'LIKE', "%$search%")
                         ->orWhere('email', 'LIKE', "%$search%")
-                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE '%" . $search . "%'");
+                        ->orWhereRaw("concat(first_name,' ',last_name) LIKE ?", ["%{$search}%"]);
                 });
                 $q->orWhereHas('pickupPoint', function ($d) use ($search) {
                     $d->where('name', 'LIKE', "%$search%");
