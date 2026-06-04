@@ -326,12 +326,27 @@ class UserService {
         $systemSettings = $cache->getSystemSettings();
 
         $templateContent = $schoolSettings['email-template-parent'] ?? '';
+
+        // Generate password reset token for guardian (NOT for child/student)
+        $guardianUser = $guardian instanceof \Illuminate\Database\Eloquent\Model
+            ? $guardian
+            : $this->user->guardian()->where('email', $guardian->email)->first();
+        $schoolCode = ($guardianUser && $guardianUser->school) ? $guardianUser->school->code : Auth::user()->school->code;
+        $parentResetUrl = '';
+        if ($guardianUser) {
+            $token = Password::createToken($guardianUser);
+            $parentResetUrl = url('/password/reset/' . $token)
+                . '?email=' . urlencode($guardianUser->email)
+                . '&school_code=' . $schoolCode;
+        }
+
         // Define the placeholders and their replacements
         $placeholders = [
             '{parent_name}' => $guardian->full_name,
-            '{code}' => Auth::user()->school->code,
+            '{code}' => $schoolCode,
             '{email}' => $guardian->email,
-            '{password}' => $guardian->mobile,
+            '{password}' => "请点击以下链接设置您的登录密码（链接 60 分钟内有效）：\n{$parentResetUrl}",
+            '{reset_link}' => $parentResetUrl,
             '{school_name}' => $schoolSettings['school_name'],
 
             '{child_name}' => $child->full_name,
