@@ -1190,6 +1190,7 @@ class SchoolController extends Controller
 
     public function createDemoSchool()
     {
+        ResponseService::noAnyPermissionThenSendJson(['schools-create']);
         try {
             DB::beginTransaction();
 
