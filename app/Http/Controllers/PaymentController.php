@@ -18,7 +18,11 @@ class PaymentController extends Controller
      */
     public function status(Request $request)
     {
-        Log::info('Payment Status Callback:', $request->all());
+        Log::info('Payment Status Callback received.', [
+            'school_id' => $request->query('school_id'),
+            'reference' => $request->query('reference'),
+            'status' => $request->query('status'),
+        ]);
 
         // Get school code from request
         $schoolId = $request->query('school_id');
@@ -79,7 +83,10 @@ class PaymentController extends Controller
             ])->get("https://api.paystack.co/transaction/verify/{$reference}");
 
             $data = $response->json();
-            Log::info('Paystack verification response:', $data);
+            Log::info('Paystack verification completed.', [
+                'reference' => $reference,
+                'verification_status' => $data['data']['status'] ?? 'unknown',
+            ]);
 
             if ($response->successful() && isset($data['data']['status']) && $data['data']['status'] === 'success') {
                 // Update payment transaction
@@ -97,9 +104,9 @@ class PaymentController extends Controller
                     'transaction' => $data['data']
                 ]);
             } else {
-                Log::error('Paystack payment verification failed:', [
+                Log::error('Paystack payment verification failed.', [
                     'reference' => $reference,
-                    'response' => $data
+                    'error_message' => $data['message'] ?? 'Unknown error',
                 ]);
 
                 // Update payment transaction status to failed

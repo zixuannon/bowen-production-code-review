@@ -108,7 +108,7 @@ class LoginController extends Controller
             ) {
                 \Log::info('User authenticated successfully.', [
                     'user_id' => Auth::guard('web')->id(),
-                    'email' => $request->email,
+                    'email_hash' => hash('sha256', strtolower($request->email)),
                 ]);
 
                 // Optionally, log in the user explicitly
@@ -165,7 +165,7 @@ class LoginController extends Controller
 
                 // return redirect()->intended('/dashboard');
             } else {
-                \Log::error('Login attempt failed in school database. Email: ' . $request->email);
+                \Log::error('Login attempt failed in school database.', ['email_hash' => hash('sha256', strtolower($request->email))]);
             }
         } else {
             // Attempt login on the main connection
@@ -218,7 +218,7 @@ class LoginController extends Controller
                 session(['db_connection_name' => 'mysql']);
                 return redirect()->intended('/home');
             } else {
-                \Log::error('Login attempt failed in main database. Email: ' . $request->email);
+                \Log::error('Login attempt failed in main database.', ['email_hash' => hash('sha256', strtolower($request->email))]);
             }
         }
 
@@ -262,7 +262,7 @@ class LoginController extends Controller
             });
 
             // Log the email sent for debugging purposes
-            \Log::info('2FA code sent to: ' . $data['email']);
+            \Log::info('2FA code sent.', ['email_hash' => hash('sha256', strtolower($data['email']))]);
             $status = 1;
             return $status;
         } catch (\Throwable $th) {

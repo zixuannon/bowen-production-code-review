@@ -2036,13 +2036,19 @@ class ApiController extends Controller
 
     public function paymentStatus(Request $request)
     {
-        Log::info('Payment Status Callback:', $request->all());
-        ResponseService::successResponse("Payment Status Callback.", $request->all());
+        Log::info('Payment Status Callback received.', [
+            'school_id' => $request->query('school_id'),
+            'reference' => $request->query('reference'),
+            'status' => $request->query('status'),
+        ]);
+        ResponseService::successResponse("Payment Status Callback received.");
     }
 
     public function flutterwaveFeesWebhook(Request $request)
     {
-        Log::info('Flutterwave Fees Webhook:', $request->all());
+        Log::info('Flutterwave Fees Webhook received.', [
+            'has_payload' => !empty($request->all()),
+        ]);
         ResponseService::successResponse("Flutterwave Fees Webhook received.");
     }
 

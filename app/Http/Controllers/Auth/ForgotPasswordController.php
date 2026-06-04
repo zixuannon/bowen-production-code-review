@@ -27,7 +27,7 @@ class ForgotPasswordController extends Controller
 
     public function sendResetLinkEmail(Request $request)
     {
-        Log::info('******',[$request->all()]);
+        Log::info('Password reset link requested', ['email_hash' => hash('sha256', strtolower($request->email ?? ''))]);
         $request->validate([
             'email' => 'required|email'
         ]);
