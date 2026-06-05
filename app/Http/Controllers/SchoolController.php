@@ -306,20 +306,24 @@ class SchoolController extends Controller
         // Switch to school database so the token is stored in the school's
         // password_resets table (not the main database). Otherwise,
         // ResetPasswordController (which reads from school db) won't find it.
+        // Order matters: Config::set before any DB call so reconnect picks up
+        // the correct database name.
         $previousConnection = DB::getDefaultConnection();
         $schoolModel = School::where('code', $school_code)->first();
         $switched = $schoolModel && $schoolModel->database_name;
         if ($switched) {
-            DB::setDefaultConnection('school');
             Config::set('database.connections.school.database', $schoolModel->database_name);
             DB::purge('school');
-            DB::connection('school')->reconnect();
+            DB::reconnect('school');
             DB::setDefaultConnection('school');
         }
 
         try {
+            // Clear password broker cache so its token repository uses the new
+            // connection instead of a stale one cached by the queue worker.
+            app('auth.password')->forgetDrivers();
             // Generate password reset token and reset link (instead of sending plain mobile as password)
-            $token = Password::createToken($user);
+            $token = Password::broker()->createToken($user);
             $resetUrl = url('/password/reset/' . $token)
                 . '?email=' . urlencode($user->email)
                 . '&school_code=' . $school_code;
@@ -329,6 +333,9 @@ class SchoolController extends Controller
                 DB::setDefaultConnection($previousConnection);
                 DB::purge('school');
             }
+            // Clear again so the next password operation doesn't use the
+            // stale school-connection broker.
+            app('auth.password')->forgetDrivers();
         }
 
         // Define the placeholders and their replacements
