@@ -319,11 +319,17 @@ class SchoolController extends Controller
         }
 
         try {
-            // Clear password broker cache so its token repository uses the new
-            // connection instead of a stale one cached by the queue worker.
-            app('auth.password')->forgetDrivers();
-            // Generate password reset token and reset link (instead of sending plain mobile as password)
-            $token = Password::broker()->createToken($user);
+            // Manually write reset token into the school's password_resets table
+            // instead of using Password broker (which caches connections and breaks
+            // in long-running queue workers).
+            $token = Str::random(64);
+            DB::connection('school')->table('password_resets')
+                ->where('email', $user->email)->delete();
+            DB::connection('school')->table('password_resets')->insert([
+                'email'      => $user->email,
+                'token'      => Hash::make($token),
+                'created_at' => now(),
+            ]);
             $resetUrl = url('/password/reset/' . $token)
                 . '?email=' . urlencode($user->email)
                 . '&school_code=' . $school_code;
@@ -333,9 +339,6 @@ class SchoolController extends Controller
                 DB::setDefaultConnection($previousConnection);
                 DB::purge('school');
             }
-            // Clear again so the next password operation doesn't use the
-            // stale school-connection broker.
-            app('auth.password')->forgetDrivers();
         }
 
         // Define the placeholders and their replacements
