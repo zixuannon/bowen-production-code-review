@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Stripe\Review;
 use Symfony\Component\HttpFoundation\IpUtils;
@@ -301,12 +302,20 @@ class SchoolController extends Controller
     private function replacePlaceholders($request, $user, $settings, $school_code)
     {
         $templateContent = $settings['email_template_school_registration'] ?? '';
+
+        // Generate password reset token and reset link (instead of sending plain mobile as password)
+        $token = Password::createToken($user);
+        $resetUrl = url('/password/reset/' . $token)
+            . '?email=' . urlencode($user->email)
+            . '&school_code=' . $school_code;
+
         // Define the placeholders and their replacements
         $placeholders = [
             '{school_admin_name}' => $user->full_name,
             '{code}' => $school_code,
             '{email}' => $user->email,
-            '{password}' => $user->mobile,
+            '{password}' => "请点击以下链接设置您的登录密码（链接 60 分钟内有效）：\n{$resetUrl}",
+            '{reset_link}' => $resetUrl,
             '{school_name}' => $request->school_name,
 
             '{super_admin_name}' => $settings['super_admin_name'] ?? 'Super Admin',

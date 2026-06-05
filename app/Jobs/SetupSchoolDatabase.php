@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use Throwable;
 
 final class SetupSchoolDatabase implements ShouldQueue
@@ -136,12 +137,19 @@ final class SetupSchoolDatabase implements ShouldQueue
     private function replacePlaceholders($school, $user, $settings, $schoolCode): string
     {
         $templateContent = $settings['email_template_school_registration'] ?? '';
+
+        // Generate password reset token and reset link (instead of sending plain mobile as password)
+        $token = Password::createToken($user);
+        $resetUrl = url('/password/reset/' . $token)
+            . '?email=' . urlencode($user->email)
+            . '&school_code=' . $schoolCode;
         
         $placeholders = [
             '{school_admin_name}' => $user->full_name,
             '{code}' => $schoolCode,
             '{email}' => $user->email,
-            '{password}' => $user->mobile,
+            '{password}' => "请点击以下链接设置您的登录密码（链接 60 分钟内有效）：\n{$resetUrl}",
+            '{reset_link}' => $resetUrl,
             '{school_name}' => $school->name ?? '',
             '{super_admin_name}' => $settings['super_admin_name'] ?? 'Super Admin',
             '{support_email}' => $settings['mail_username'] ?? '',
