@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\DingTalkBinding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -16,11 +17,20 @@ class DingTalkLoginController extends Controller
 
     /**
      * Step 1: 生成 state，保存到 session，跳转钉钉授权页。
+     *
+     * 可选 query: ?school_code=XXX，用于知道用户从哪个学校入口进入。
      */
     public function login(Request $request)
     {
         $state = Str::random(32);
         session(['dingtalk_oauth_state' => $state]);
+
+        // 如果 URL 携带 school_code，存入 session 以便 callback 使用
+        if ($schoolCode = $request->query('school_code')) {
+            session(['dingtalk_school_code' => $schoolCode]);
+        } else {
+            session()->forget('dingtalk_school_code');
+        }
 
         $query = http_build_query([
             'redirect_uri'  => config('services.dingtalk.redirect_uri'),
@@ -101,12 +111,25 @@ class DingTalkLoginController extends Controller
             $unionId = $userData['unionId'] ?? null;
             $nick    = $userData['nick'] ?? null;
 
-            $lines = [
-                'DingTalk user info fetch OK.',
-                'openId:  ' . ($openId ? 'YES' : 'NO'),
-                'unionId: ' . ($unionId ? 'YES' : 'NO'),
-                'nick:    ' . ($nick ? 'YES (' . mb_strlen($nick) . ' chars)' : 'NO'),
-            ];
+            // 4. 检查主库中是否已有绑定
+            $binding = DingTalkBinding::where('dingtalk_open_id', $openId)->first();
+            $schoolCodeInSession = session('dingtalk_school_code');
+
+            if ($binding) {
+                $lines = [
+                    'DingTalk binding found.',
+                    'school_id: ' . ($binding->school_id ? 'YES' : 'NO'),
+                    'user_id:   ' . ($binding->user_id ? 'YES' : 'NO'),
+                ];
+            } else {
+                $lines = [
+                    'DingTalk binding not found.',
+                    'school_code in session: ' . ($schoolCodeInSession ? 'YES' : 'NO'),
+                    'openId:  ' . ($openId ? 'YES' : 'NO'),
+                    'unionId: ' . ($unionId ? 'YES' : 'NO'),
+                    'nick:    ' . ($nick ? 'YES (' . mb_strlen($nick) . ' chars)' : 'NO'),
+                ];
+            }
 
             return response(implode("\n", $lines));
 
