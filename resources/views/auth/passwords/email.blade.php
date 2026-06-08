@@ -93,13 +93,13 @@
                             @csrf
 
                             <div class="form-group">
-                                <label>{{ __('school_code') }}</label>
-                                <input id="school_code" type="school_code" class="form-control form-control-lg" name="school_code" value="{{ old('school_code') }}" autocomplete="school_code" autofocus placeholder="{{ __('school_code') }}">
+                                <label for="school_code">{{ __('school_code') }}</label>
+                                <input id="school_code" type="text" class="form-control form-control-lg" name="school_code" value="{{ old('school_code') }}" autocomplete="off" autofocus placeholder="{{ __('school_code') }}">
                             </div>
 
                             <div class="form-group">
 
-                                <label>{{ __('email') }}</label>
+                                <label for="email">{{ __('email') }}</label>
                                 <input id="email" type="email" class="form-control form-control-lg" name="email" value="{{ old('email') }}" required autocomplete="email" autofocus placeholder="{{ __('email') }}">
                             </div>
                             <div class="mt-3">

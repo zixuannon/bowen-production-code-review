@@ -96,7 +96,7 @@
                                 <div class="form-group">
                                     <label for="two_factor_secret">{{ __('enter_the_verification_code') }}</label>
                                     <input id="two_factor_secret" type="text" class="form-control rounded-lg form-control-lg"
-                                        name="two_factor_secret" value="" autocomplete="two_factor_secret"
+                                        name="two_factor_secret" value="" autocomplete="one-time-code"
                                         autofocus placeholder="{{ __('enter_the_verification_code') }}">
                                 </div>
                                 <div class="mt-3">

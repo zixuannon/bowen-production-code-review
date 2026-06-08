@@ -97,22 +97,22 @@
                             <input type="hidden" name="token" value="{{ $token }}">
 
                             <div class="form-group">
-                                <label>{{ __('school_code') }}</label>
+                                <label for="school_code">{{ __('school_code') }}</label>
                                 <input id="school_code" type="text" class="form-control form-control-lg" name="school_code" value="{{ request('school_code') ?? old('school_code') }}" autocomplete="off" readonly placeholder="{{ __('school_code') }}">
                             </div>
 
                             <div class="form-group">
-                                <label>{{ __('email') }}</label>
+                                <label for="email">{{ __('email') }}</label>
                                 <input id="email" type="text" class="form-control form-control-lg" name="email"
                                        value="{{ $email ?? request('email') ?? old('email') }}" required autocomplete="off"
                                        placeholder="Email / Admission No." readonly>
                             </div>
                             <div class="form-group">
-                                <label>{{ __('password') }}</label>
+                                <label for="password">{{ __('password') }}</label>
 
                                 <div class="input-group">
                                     <input id="password" type="password" class="form-control form-control-lg"
-                                           name="password" required autocomplete="current-password"
+                                           name="password" required autocomplete="new-password"
                                            placeholder="{{ __('password') }}">
                                     <div class="input-group-append">
                                             <span class="input-group-text">
@@ -122,7 +122,7 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>{{ __('confirm_password') }}</label>
+                                <label for="password-confirm">{{ __('confirm_password') }}</label>
                                 {{-- <input type="password" name="password" required class="form-control form-control-lg" placeholder="{{__('password')}}"> --}}
 
                                 <div class="input-group">
