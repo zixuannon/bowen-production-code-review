@@ -47,14 +47,8 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-2">
-                                    <label for="amount">{{ __('Amount') }} <span class="text-danger">*</span></label>
-                                    <input name="amount" id="amount" type="number" min="0" step="0.01" placeholder="{{ __('Amount') }}"
-                                        class="form-control" required />
-                                </div>
-
-                                <div class="form-group col-sm-12 col-md-2">
-                                    <label for="transaction_currency">{{ __('Currency') }}</label>
-                                    <select name="transaction_currency" id="transaction_currency" class="form-control">
+                                    <label for="transaction_currency">{{ __('Currency') }} <span class="text-danger">*</span></label>
+                                    <select name="transaction_currency" id="transaction_currency" class="form-control" required>
                                         <option value="MMK" selected>MMK</option>
                                         <option value="USD">USD</option>
                                         <option value="CNY">CNY</option>
@@ -62,15 +56,21 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-2">
-                                    <label for="original_amount">{{ __('Original Amount') }}</label>
+                                    <label for="original_amount">{{ __('Original Amount') }} <span class="text-danger">*</span></label>
                                     <input name="original_amount" id="original_amount" type="number" min="0" step="0.01"
-                                        placeholder="{{ __('Original Amount') }}" class="form-control" />
+                                        placeholder="{{ __('Original Amount') }}" class="form-control" required />
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-2">
-                                    <label for="exchange_rate_snapshot">{{ __('Exchange Rate') }}</label>
+                                    <label for="exchange_rate_snapshot">{{ __('Exchange Rate') }} <span class="text-danger">*</span></label>
                                     <input name="exchange_rate_snapshot" id="exchange_rate_snapshot" type="number" min="0" step="0.0001"
-                                        value="1" placeholder="{{ __('Rate to MMK') }}" class="form-control" />
+                                        value="1" placeholder="{{ __('Rate to MMK') }}" class="form-control" required />
+                                </div>
+
+                                <div class="form-group col-sm-12 col-md-2">
+                                    <label for="amount">{{ __('MMK Equivalent Amount') }} (MMK) <span class="text-danger">*</span></label>
+                                    <input name="amount" id="amount" type="number" min="0" step="0.01" placeholder="{{ __('MMK Equivalent') }}"
+                                        class="form-control" required readonly />
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-3">
@@ -93,7 +93,7 @@
                             </div>
                             <div class="alert alert-info py-1 px-3 mb-3" style="font-size:0.85rem;">
                                 <i class="fa fa-info-circle mr-1"></i>
-                                Amount will be saved as MMK equivalent. Original currency and exchange rate are also saved.
+                                MMK Equivalent Amount is auto-calculated. Exchange rate can be overridden manually.
                             </div>
                             <input class="btn btn-theme float-right ml-3" id="create-btn" type="submit" value={{ __('submit') }}>
                             <input class="btn btn-secondary float-right" type="reset" value={{ __('reset') }}>
@@ -150,7 +150,7 @@
                                         data-footer-formatter="totalFormatter">{{ __('date') }}</th>
                                     <th scope="col" data-field="amount" data-sortable="false"
                                         data-formatter="amountFormatter" data-footer-formatter="totalAmountFormatter">
-                                        {{ __('Amount') }}
+                                        {{ __('Amount') }} ({{ __('MMK') }})
                                     </th>
                                     <th scope="col" data-field="operate" data-events="expenseEvents" data-escape="false">
                                         {{ __('action') }}
@@ -198,15 +198,9 @@
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-2">
-                                        <label for="edit_amount">{{ __('Amount') }} <span
+                                        <label for="edit_currency">{{ __('Currency') }} <span
                                                 class="text-danger">*</span></label>
-                                        <input name="amount" id="edit_amount" type="number" min="0" step="0.01" placeholder="{{ __('Amount') }}"
-                                            class="form-control" required />
-                                    </div>
-
-                                    <div class="form-group col-sm-12 col-md-2">
-                                        <label for="edit_currency">{{ __('Currency') }}</label>
-                                        <select name="transaction_currency" id="edit_currency" class="form-control">
+                                        <select name="transaction_currency" id="edit_currency" class="form-control" required>
                                             <option value="MMK">MMK</option>
                                             <option value="USD">USD</option>
                                             <option value="CNY">CNY</option>
@@ -214,15 +208,25 @@
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-2">
-                                        <label for="edit_original_amount">{{ __('Original Amount') }}</label>
+                                        <label for="edit_original_amount">{{ __('Original Amount') }} <span
+                                                class="text-danger">*</span></label>
                                         <input name="original_amount" id="edit_original_amount" type="number" min="0" step="0.01"
-                                            placeholder="{{ __('Original Amount') }}" class="form-control" />
+                                            placeholder="{{ __('Original Amount') }}" class="form-control" required />
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-2">
-                                        <label for="edit_exchange_rate">{{ __('Exchange Rate') }}</label>
+                                        <label for="edit_exchange_rate">{{ __('Exchange Rate') }} <span
+                                                class="text-danger">*</span></label>
                                         <input name="exchange_rate_snapshot" id="edit_exchange_rate" type="number" min="0" step="0.0001"
-                                            placeholder="{{ __('Rate to MMK') }}" class="form-control" />
+                                            placeholder="{{ __('Rate to MMK') }}" class="form-control" required />
+                                    </div>
+
+                                    <div class="form-group col-sm-12 col-md-2">
+                                        <label for="edit_amount">{{ __('MMK Equivalent Amount') }} (MMK) <span
+                                                class="text-danger">*</span></label>
+                                        <input name="amount" id="edit_amount" type="number" min="0" step="0.01"
+                                            placeholder="{{ __('MMK Equivalent') }}"
+                                            class="form-control" required readonly />
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-3">
@@ -270,78 +274,100 @@
             var currency = $(this).val();
             if (currency === 'MMK') {
                 $('#exchange_rate_snapshot').val(1).prop('readonly', true);
-                $('#original_amount').val($('#amount').val() || '');
-                recalcAmountFromOriginal();
             } else if (currency === 'USD') {
                 $('#exchange_rate_snapshot').val(USD_RATE).prop('readonly', false);
-                if ($('#original_amount').val() === '' || $('#original_amount').val() === '0') {
-                    var amount = parseFloat($('#amount').val()) || 0;
-                    if (amount > 0) {
-                        $('#original_amount').val((amount / USD_RATE).toFixed(2));
-                    }
-                }
-                recalcAmountFromOriginal();
             } else if (currency === 'CNY') {
                 $('#exchange_rate_snapshot').val(CNY_RATE).prop('readonly', false);
-                if ($('#original_amount').val() === '' || $('#original_amount').val() === '0') {
-                    var amount = parseFloat($('#amount').val()) || 0;
-                    if (amount > 0) {
-                        $('#original_amount').val((amount / CNY_RATE).toFixed(2));
-                    }
-                }
-                recalcAmountFromOriginal();
             }
-        });
-
-        // 创建表单：original_amount 或 exchange_rate 变化时重算 amount
-        $('#original_amount, #exchange_rate_snapshot').on('input', function () {
             recalcAmountFromOriginal();
         });
 
-        // 创建表单：amount 变化时重设 original_amount（MMK 时）
-        $('#amount').on('input', function () {
-            var currency = $('#transaction_currency').val();
-            if (currency === 'MMK') {
-                $('#original_amount').val($(this).val());
-            } else if ($('#original_amount').val() === '' || $('#original_amount').val() === '0') {
-                // 有汇率时反推 original_amount
-                var rate = parseFloat($('#exchange_rate_snapshot').val()) || 1;
-                var amount = parseFloat($(this).val()) || 0;
-                if (amount > 0 && rate > 0) {
-                    $('#original_amount').val((amount / rate).toFixed(2));
-                }
-            }
+        // 创建表单：original_amount 或 exchange_rate 变化时重算 MMK amount
+        $('#original_amount, #exchange_rate_snapshot').on('input', function () {
+            recalcAmountFromOriginal();
         });
 
         function recalcAmountFromOriginal() {
             var currency = $('#transaction_currency').val();
             var originalAmount = parseFloat($('#original_amount').val()) || 0;
             var rate = parseFloat($('#exchange_rate_snapshot').val()) || 1;
-            if (currency !== 'MMK' && originalAmount > 0 && rate > 0) {
-                $('#amount').val((originalAmount * rate).toFixed(2));
+
+            if (currency === 'MMK') {
+                // MMK：amount = original_amount
+                $('#amount').val(originalAmount > 0 ? originalAmount.toFixed(2) : '');
+            } else {
+                // USD / CNY：amount = original_amount * rate
+                if (originalAmount > 0 && rate > 0) {
+                    $('#amount').val((originalAmount * rate).toFixed(2));
+                } else {
+                    $('#amount').val('');
+                }
             }
         }
 
-        // 编辑 modal：打开时填充多币种字段
+        // 列表金额格式化器：三行显示
+        function amountFormatter(value, row) {
+            if (!value && value !== 0) return '-';
+
+            var currency = row.transaction_currency || 'MMK';
+            var originalAmount = row.original_amount;
+            var rate = row.exchange_rate_snapshot;
+            var mmkAmount = row.amount_mmk || value;
+
+            var mmkFormatted = Number(mmkAmount).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0}) + ' K';
+
+            if (!originalAmount && !rate) {
+                // 旧数据 fallback
+                return '<div class="text-muted" style="font-size:0.8rem;">' + mmkFormatted + '<br><span class="text-secondary">MMK (legacy)</span></div>';
+            }
+
+            var rateDisplay = rate ? Number(rate).toFixed(2) : '1.00';
+            return mmkFormatted + '<br><span class="text-secondary" style="font-size:0.78rem;">' +
+                Number(originalAmount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currency + ' @ ' + rateDisplay +
+                '</span>';
+        }
+
+        // 编辑 modal：打开时填充多币种字段（含旧数据 fallback）
         $(document).on('shown.bs.modal', '#editModal', function (event) {
             var button = $(event.relatedTarget);
             var row = button.closest('tr');
-            var data = row.data() || {};
             var rowIndex = row.index();
             var table = $('#table_list').bootstrapTable('getData');
-            if (table[rowIndex]) {
-                data = table[rowIndex];
-            }
+            var data = table[rowIndex] || row.data() || {};
 
             var currency = data.transaction_currency || 'MMK';
+            // fallback：旧数据没有 transaction_currency，默认为 MMK
+            if (!data.transaction_currency) currency = 'MMK';
+
+            // fallback：原币金额
+            var originalAmt = data.original_amount;
+            if (!originalAmt && originalAmt !== 0) {
+                // 旧数据 fallback：原币 = amount
+                originalAmt = data.amount;
+            }
+
+            // fallback：汇率
+            var rateVal = data.exchange_rate_snapshot;
+            if (!rateVal && rateVal !== 0) {
+                rateVal = (currency === 'USD') ? USD_RATE : (currency === 'CNY') ? CNY_RATE : 1;
+            }
+
             $('#edit_currency').val(currency).trigger('change.select2');
+            $('#edit_exchange_rate').val(rateVal);
 
             if (currency === 'MMK') {
-                $('#edit_exchange_rate').val(1).prop('readonly', true);
-                $('#edit_original_amount').val(data.amount || data.original_amount || '');
+                $('#edit_exchange_rate').prop('readonly', true);
+                $('#edit_original_amount').val(originalAmt > 0 ? originalAmt : '');
+                $('#edit_amount').val(originalAmt > 0 ? Number(originalAmt).toFixed(2) : '');
             } else {
-                $('#edit_exchange_rate').val(data.exchange_rate_snapshot || (currency === 'USD' ? USD_RATE : CNY_RATE)).prop('readonly', false);
-                $('#edit_original_amount').val(data.original_amount || data.amount || '');
+                $('#edit_exchange_rate').prop('readonly', false);
+                $('#edit_original_amount').val(originalAmt > 0 ? Number(originalAmt).toFixed(2) : '');
+                // MMK equivalent = original * rate
+                if (originalAmt > 0 && rateVal > 0) {
+                    $('#edit_amount').val((originalAmt * rateVal).toFixed(2));
+                } else {
+                    $('#edit_amount').val('');
+                }
             }
         });
 
@@ -350,54 +376,34 @@
             var currency = $(this).val();
             if (currency === 'MMK') {
                 $('#edit_exchange_rate').val(1).prop('readonly', true);
-                $('#edit_amount').val($('#edit_original_amount').val() || '');
             } else {
                 $('#edit_exchange_rate').val(currency === 'USD' ? USD_RATE : CNY_RATE).prop('readonly', false);
             }
+            recalcEditAmount();
         });
 
-        // 编辑 modal：original_amount 或 exchange_rate 变化时重算 amount
+        // 编辑 modal：original_amount 或 exchange_rate 变化时重算 MMK amount
         $(document).on('input', '#edit_original_amount, #edit_exchange_rate', function () {
+            recalcEditAmount();
+        });
+
+        function recalcEditAmount() {
             var currency = $('#edit_currency').val();
-            if (currency !== 'MMK') {
-                var original = parseFloat($('#edit_original_amount').val()) || 0;
-                var rate = parseFloat($('#edit_exchange_rate').val()) || 1;
+            var original = parseFloat($('#edit_original_amount').val()) || 0;
+            var rate = parseFloat($('#edit_exchange_rate').val()) || 1;
+
+            if (currency === 'MMK') {
+                $('#edit_amount').val(original > 0 ? original.toFixed(2) : '');
+            } else {
                 if (original > 0 && rate > 0) {
                     $('#edit_amount').val((original * rate).toFixed(2));
+                } else {
+                    $('#edit_amount').val('');
                 }
             }
-        });
+        }
 
-        // ========== /多货币前端逻辑 ==========
-
-        // 提交前：确保 original_amount 有值
-        $('#create-form').on('submit', function () {
-            var currency = $('#transaction_currency').val();
-            var amount = parseFloat($('#amount').val()) || 0;
-            if (currency === 'MMK') {
-                $('#original_amount').val(amount);
-            } else {
-                var rate = parseFloat($('#exchange_rate_snapshot').val()) || 1;
-                var original = parseFloat($('#original_amount').val()) || 0;
-                if (original <= 0 && amount > 0 && rate > 0) {
-                    $('#original_amount').val((amount / rate).toFixed(2));
-                }
-            }
-        });
-
-        $('.edit-form').on('submit', function () {
-            var currency = $('#edit_currency').val();
-            var amount = parseFloat($('#edit_amount').val()) || 0;
-            if (currency === 'MMK') {
-                $('#edit_original_amount').val(amount);
-            } else {
-                var rate = parseFloat($('#edit_exchange_rate').val()) || 1;
-                var original = parseFloat($('#edit_original_amount').val()) || 0;
-                if (original <= 0 && amount > 0 && rate > 0) {
-                    $('#edit_original_amount').val((amount / rate).toFixed(2));
-                }
-            }
-        }); 
+        // ========== /多货币前端逻辑 ========== 
 
         function setDatepickerLimits(sessionYearId) {
             // Find the selected session year object
