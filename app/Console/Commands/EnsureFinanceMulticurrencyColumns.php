@@ -73,7 +73,7 @@ class EnsureFinanceMulticurrencyColumns extends Command
     private function resolveSchoolList(?string $schoolCode): array
     {
         try {
-            $query = DB::connection('mysql')->table('schools')->select(['id', 'code', 'db_name']);
+            $query = DB::connection('mysql')->table('schools')->select(['id', 'name', 'code', 'database_name']);
 
             if ($schoolCode) {
                 $query->where('code', $schoolCode);
@@ -96,8 +96,20 @@ class EnsureFinanceMulticurrencyColumns extends Command
     private function processSchool(object $school): array
     {
         $schoolCode = $school->code;
-        $database   = $school->db_name;
+        $database   = $school->database_name ?? '';
         $warnings   = [];
+
+        if (empty($database)) {
+            $msg = "database_name 为空";
+            $this->warn("[{$schoolCode}] database_name 为空，跳过。");
+            return [
+                'school_code'      => $schoolCode,
+                'database'         => '(空)',
+                'fees_paid_status' => 'SKIPPED',
+                'expense_status'   => 'SKIPPED',
+                'warnings'         => $msg,
+            ];
+        }
 
         // 测试数据库连接
         try {
