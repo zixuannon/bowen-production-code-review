@@ -1325,12 +1325,13 @@ class FeesController extends Controller
                 ResponseService::errorResponse("Compulsory Fees already Paid");
             }
 
-            // ========== 多货币处理：默认使用 MMK ==========
-            // 第一版不做家长实际付款币种，统一按 MMK 处理
-            $transactionCurrency = 'MMK';
-            $exchangeRate = 1;
+            // ========== 多货币处理 ==========
+            // 支持 MMK / USD / CNY 付款
+            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
+            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
+            $originalAmount = (float)($request->original_amount ?? 0);
             
-            // 获取付款金额（MMK）
+            // 获取付款金额（MMK 等值）
             if ($request->installment_mode) {
                 // 分期模式
                 if (!empty($request->installment_fees)) {
@@ -1348,9 +1349,20 @@ class FeesController extends Controller
                 }
             }
             
-            // amount_mmk 与 amount 相同（都是 MMK）
-            $amountMmk = $amount;
-            $originalAmount = $amount; // 用于记录
+            // 计算 MMK 等值金额
+            if ($transactionCurrency === 'MMK') {
+                // MMK 付款：amount 和 amount_mmk 相同
+                $amountMmk = $amount;
+                $originalAmount = $amount;
+                $exchangeRate = 1;
+            } else {
+                // USD / CNY 付款：amount 是 MMK 等值，originalAmount 是原币金额
+                $amountMmk = $amount;
+                if ($originalAmount <= 0) {
+                    // 如果前端没传 original_amount，用 amount 和汇率反推
+                    $originalAmount = $amount / $exchangeRate;
+                }
+            }
             // =============================================
 
             if (empty($feesPaid)) {
@@ -1361,21 +1373,19 @@ class FeesController extends Controller
                     'fees_id' => $request->fees_id,
                     'student_id' => $request->student_id,
                     'amount' => $amount,
-                    // 多货币字段：统一使用 MMK 默认值
-                    'transaction_currency' => 'MMK',
-                    'original_amount' => $amount,
-                    'exchange_rate_snapshot' => 1,
-                    'amount_mmk' => $amount,
+                    'transaction_currency' => $transactionCurrency,
+                    'original_amount' => $originalAmount,
+                    'exchange_rate_snapshot' => $exchangeRate,
+                    'amount_mmk' => $amountMmk,
                 ]);
             } else {
                 $feesPaidResult = $this->feesPaid->update($feesPaid->id, [
                     'amount' => $amount + $feesPaid->amount,
                     'is_fully_paid' => ($amount + $feesPaid->amount) >= $fees->total_compulsory_fees,
-                    // 多货币字段：统一使用 MMK 默认值
-                    'transaction_currency' => 'MMK',
-                    'original_amount' => $amount,
-                    'exchange_rate_snapshot' => 1,
-                    'amount_mmk' => $amount,
+                    'transaction_currency' => $transactionCurrency,
+                    'original_amount' => $originalAmount,
+                    'exchange_rate_snapshot' => $exchangeRate,
+                    'amount_mmk' => $amountMmk,
                 ]);
             }
 
@@ -1515,6 +1525,18 @@ class FeesController extends Controller
         try {
             DB::beginTransaction();
 
+            // ========== 多货币处理 ==========
+            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
+            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
+            $originalAmount = (float)($request->original_amount ?? $request->total_amount);
+            $totalAmountMmk = (float)$request->total_amount;
+            
+            if ($transactionCurrency === 'MMK') {
+                $originalAmount = $totalAmountMmk;
+                $exchangeRate = 1;
+            }
+            // =================================
+
             // First Store in Fees Paid table to get Fees Paid ID
             $feesPaid = $this->feesPaid->builder()->where([
                 'fees_id' => $request->fees_id,
@@ -1529,11 +1551,19 @@ class FeesController extends Controller
                     'is_used_installment' => 0,
                     'fees_id' => $request->fees_id,
                     'student_id' => $request->student_id,
-                    'amount' => $request->total_amount,
+                    'amount' => $totalAmountMmk,
+                    'transaction_currency' => $transactionCurrency,
+                    'original_amount' => $originalAmount,
+                    'exchange_rate_snapshot' => $exchangeRate,
+                    'amount_mmk' => $totalAmountMmk,
                 ]);
             } else {
                 $feesPaidResult = $this->feesPaid->update($feesPaid->id, [
-                    'amount' => $request->total_amount + $feesPaid->amount
+                    'amount' => $totalAmountMmk + $feesPaid->amount,
+                    'transaction_currency' => $transactionCurrency,
+                    'original_amount' => $originalAmount,
+                    'exchange_rate_snapshot' => $exchangeRate,
+                    'amount_mmk' => $totalAmountMmk,
                 ]);
             }
 

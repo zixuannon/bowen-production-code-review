@@ -69,23 +69,48 @@ class ExpenseController extends Controller
                         return $query->where('session_year_id', $request->session_year_id)->whereNull('vehicle_id')->whereNull('staff_id');
                     })
             ],
-            'amount' => 'required|numeric|min:0'
+            'amount' => 'required|numeric|min:0',
+            'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
+            'original_amount' => 'nullable|numeric|min:0',
+            'exchange_rate_snapshot' => 'nullable|numeric|min:0',
         ], [
             'ref_no.unique' => 'Reference number already exists for the selected session year.'
         ]);
         try {
             DB::beginTransaction();
             $schoolSettings = $this->cache->getSchoolSettings();
+            
+            // ========== 多货币处理 ==========
+            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
+            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
+            $originalAmount = (float)($request->original_amount ?? $request->amount);
+            $amount = (float)$request->amount; // amount 保存 MMK 等值
+            
+            if ($transactionCurrency === 'MMK') {
+                $originalAmount = $amount;
+                $exchangeRate = 1;
+            } else {
+                if ($originalAmount <= 0) {
+                    $originalAmount = $amount / $exchangeRate;
+                }
+            }
+            $amountMmk = $amount;
+            // =================================
+            
             $data = [
                 'category_id' => $request->category_id,
                 'title' => $request->title,
                 'ref_no' => $request->ref_no,
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'date' => $request->date
                     ? Carbon::createFromFormat($schoolSettings['date_format'], $request->date)->format('Y-m-d')
                     : null,
                 'description' => $request->description,
                 'session_year_id' => $request->session_year_id,
+                'transaction_currency' => $transactionCurrency,
+                'original_amount' => $originalAmount,
+                'exchange_rate_snapshot' => $exchangeRate,
+                'amount_mmk' => $amountMmk,
             ];
 
             $expense = $this->expense->create($data);
@@ -202,23 +227,48 @@ class ExpenseController extends Controller
                             ->whereNull('staff_id');
                     }),
             ],
-            'amount' => 'required|numeric|min:0'
+            'amount' => 'required|numeric|min:0',
+            'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
+            'original_amount' => 'nullable|numeric|min:0',
+            'exchange_rate_snapshot' => 'nullable|numeric|min:0',
         ], [
             'ref_no.unique' => 'Reference number already exists for the selected session year.'
         ]);
         try {
             DB::beginTransaction();
             $schoolSettings = $this->cache->getSchoolSettings();
+            
+            // ========== 多货币处理 ==========
+            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
+            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
+            $originalAmount = (float)($request->original_amount ?? $request->amount);
+            $amount = (float)$request->amount; // amount 保存 MMK 等值
+            
+            if ($transactionCurrency === 'MMK') {
+                $originalAmount = $amount;
+                $exchangeRate = 1;
+            } else {
+                if ($originalAmount <= 0) {
+                    $originalAmount = $amount / $exchangeRate;
+                }
+            }
+            $amountMmk = $amount;
+            // =================================
+            
             $data = [
                 'category_id' => $request->category_id,
                 'title' => $request->title,
                 'ref_no' => $request->ref_no,
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'date' => $request->date
                     ? Carbon::createFromFormat($schoolSettings['date_format'], $request->date)->format('Y-m-d')
                     : null,
                 'description' => $request->description,
                 'session_year_id' => $request->session_year_id,
+                'transaction_currency' => $transactionCurrency,
+                'original_amount' => $originalAmount,
+                'exchange_rate_snapshot' => $exchangeRate,
+                'amount_mmk' => $amountMmk,
             ];
             $this->expense->update($id, $data);
             DB::commit();
