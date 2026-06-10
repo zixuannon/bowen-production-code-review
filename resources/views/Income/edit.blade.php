@@ -88,10 +88,10 @@
                                 </div>
                                 <div class="compulsory-fees-types">
                                     <div data-repeater-list="compulsory_fees_type" class="row col-12">
-                                        <div class="row col-12 mb-3" data-repeater-item>
+                                        <div class="row col-12 mb-3 compulsory-fee-row" data-repeater-item>
                                             <input type="hidden" name="id" class="fees_class_type_id" />
-                                            <div class="form-group col-md-12 col-lg-4">
-                                                <select name="fees_type_id" id="fees_type_id" class="form-control fees_type"
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <select name="fees_type_id" class="form-control fees_type"
                                                     aria-label="Fees Type" required>
                                                     <option value="" hidden="">{{ __('Select Fees Type')}}</option>
                                                     @foreach ($feesTypeData as $feesType)
@@ -100,13 +100,39 @@
                                                 </select>
                                             </div>
 
-                                            <div class="form-group col-md-12 col-lg-3">
-                                                {!! Form::text('amount', null, ['class' => 'form-control amount', 'placeholder' => __('enter') . ' ' . __('fees') . ' ' . __('amount'), 'id' => 'amount', 'required' => true, 'min' => 0, "data-convert" => "number"]) !!}
+                                            {{-- Fee Currency --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Currency') }}</label>
+                                                <select name="fee_currency" class="form-control fee_currency" aria-label="Currency">
+                                                    <option value="MMK" selected>MMK</option>
+                                                    <option value="CNY">CNY</option>
+                                                    <option value="USD">USD</option>
+                                                </select>
                                             </div>
 
-                                            <div class="col-md-12 col-lg-1">
+                                            {{-- Fee Original Amount --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Original Amount') }}</label>
+                                                {!! Form::number('fee_original_amount', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'min' => 0, 'step' => '0.01', 'data-convert' => 'number']) !!}
+                                            </div>
+
+                                            {{-- Fee Exchange Rate --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Rate to MMK') }}</label>
+                                                {!! Form::number('fee_exchange_rate_snapshot', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'min' => 0.0001, 'step' => '0.0001', 'readonly']) !!}
+                                            </div>
+
+                                            {{-- Equivalent MMK (calculated display) + Hidden amount fields --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('MMK Amount') }}</label>
+                                                <input type="text" class="form-control equivalent_mmk" placeholder="0.00" readonly>
+                                                <input type="hidden" name="fee_amount_mmk" class="fee_amount_mmk_hidden" value="0">
+                                                <input type="hidden" name="amount" class="amount" value="0" min="0">
+                                            </div>
+
+                                            <div class="col-md-12 col-lg-1 d-flex align-items-end">
                                                 <button type="button"
-                                                    class="btn btn-inverse-danger btn-icon remove-fees-type"
+                                                    class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
                                                     data-repeater-delete>
                                                     <i class="fa fa-times"></i>
                                                 </button>
@@ -306,7 +332,11 @@
                 {
                     "id": "{{$type->id}}",
                     "fees_type_id": "{{$type->fees_type_id}}",
-                    "amount": "{{$type->amount}}"
+                    "amount": "{{$type->amount ?? 0}}",
+                    "fee_currency": "{{$type->fee_currency ?? 'MMK'}}",
+                    "fee_original_amount": "{{$type->fee_original_amount ?? $type->amount ?? 0}}",
+                    "fee_exchange_rate_snapshot": "{{$type->fee_exchange_rate_snapshot ?? 1}}",
+                    "fee_amount_mmk": "{{$type->fee_amount_mmk ?? $type->amount ?? 0}}"
                 }{{ $index < count($fees->compulsory_fees) - 1 ? ',' : '' }}
             @endforeach
         ],
@@ -336,12 +366,80 @@
     }
     </script>
 
+    @php
+        $editUsdRate = getDefaultExchangeRate('USD');
+        $editCnyRate = getDefaultExchangeRate('CNY');
+    @endphp
     <script>
+        // === Multi-Currency Logic (Compulsory Fees) ===
+        (function() {
+            var defaultExchangeRates = {
+                'MMK': 1,
+                'CNY': {{ $editCnyRate }},
+                'USD': {{ $editUsdRate }}
+            };
+
+            // Calculate equivalent MMK for a given row
+            function calcRowMMK($row) {
+                var originalAmount = parseFloat($row.find('.fee_original_amount').val()) || 0;
+                var exchangeRate = parseFloat($row.find('.fee_exchange_rate_snapshot').val()) || 1;
+                var mmkValue = (originalAmount * exchangeRate).toFixed(2);
+
+                $row.find('.equivalent_mmk').val(mmkValue);
+                $row.find('.fee_amount_mmk_hidden').val(mmkValue);
+                $row.find('.amount').val(mmkValue);
+            }
+
+            // Initialize all rows after setList populates
+            window.initCompulsoryFeeRows = function() {
+                $('.compulsory-fee-row').each(function() {
+                    var $row = $(this);
+                    var currency = $row.find('.fee_currency').val() || 'MMK';
+                    if (currency === 'MMK') {
+                        $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                    } else {
+                        $row.find('.fee_exchange_rate_snapshot').prop('readonly', false);
+                    }
+                    calcRowMMK($row);
+                });
+            };
+
+            // Currency change
+            $(document).on('change', '.compulsory-fee-row .fee_currency', function() {
+                var $row = $(this).closest('.compulsory-fee-row');
+                var currency = $(this).val();
+
+                if (currency === 'MMK') {
+                    $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                } else {
+                    $row.find('.fee_exchange_rate_snapshot').val(defaultExchangeRates[currency] || 1).prop('readonly', false);
+                }
+                calcRowMMK($row);
+            });
+
+            // Original amount change
+            $(document).on('input', '.compulsory-fee-row .fee_original_amount', function() {
+                calcRowMMK($(this).closest('.compulsory-fee-row'));
+            });
+
+            // Exchange rate change
+            $(document).on('input', '.compulsory-fee-row .fee_exchange_rate_snapshot', function() {
+                calcRowMMK($(this).closest('.compulsory-fee-row'));
+            });
+        })();
+        // === End Multi-Currency Logic ===
+
         $(document).ready(function () {
             var feesData = JSON.parse(document.getElementById('fees-data').textContent);
 
             if (typeof compulsoryFeesTypeRepeater !== 'undefined') {
                 compulsoryFeesTypeRepeater.setList(feesData.compulsory_fees);
+                // Initialize multi-currency calculations after setList populates DOM
+                setTimeout(function() {
+                    if (typeof initCompulsoryFeeRows === 'function') {
+                        initCompulsoryFeeRows();
+                    }
+                }, 50);
             }
 
             if (typeof optionalFeesTypeRepeater !== 'undefined') {
@@ -362,9 +460,10 @@
                     return false;
                 });
 
-                $('.installment-name, .installment-amount, .installment-due-date,.installment-due-charges,.fees_type,.amount,#due_date,#due_charges_percentage,#due_charges_amount').attr('readonly', true);
+                $('.installment-name, .installment-amount, .installment-due-date,.installment-due-charges,.fees_type,.amount,#due_date,#due_charges_percentage,#due_charges_amount,.fee_currency,.fee_original_amount,.fee_exchange_rate_snapshot,.equivalent_mmk').attr('readonly', true);
 
                 $('.fees_type option:not(:selected)').attr('disabled', true);
+                $('.fee_currency option:not(:selected)').attr('disabled', true);
 
                 $('.remove-fees-type,.remove-installment-fee').bind('click', function () {
                     return false;
