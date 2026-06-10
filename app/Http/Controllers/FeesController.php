@@ -1768,6 +1768,12 @@ class FeesController extends Controller
                     $tempRow['payment_method'] = $row->optional_fees[0]->mode;
                 }
 
+                // 多币种字段提升到顶层 — bootstrap-table formatter 只接收顶层字段
+                $tempRow['transaction_currency'] = $row->fees_paid->transaction_currency ?? 'MMK';
+                $tempRow['original_amount'] = $row->fees_paid->original_amount ?? ($row->optional_fees[0]->amount ?? 0);
+                $tempRow['exchange_rate_snapshot'] = $row->fees_paid->exchange_rate_snapshot ?? 1;
+                $tempRow['amount_mmk'] = $row->fees_paid->amount_mmk ?? ($row->optional_fees[0]->amount ?? 0);
+
                 $rows[] = $tempRow;
             }
             $bulkData['rows'] = $rows;

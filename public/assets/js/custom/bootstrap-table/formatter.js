@@ -919,14 +919,18 @@ function optionalFeesPaidListAmountFormatter(value, row) {
     var amountMmk = parseFloat(value) || 0;
     var html = formatMoneyJS(amountMmk);
 
-    // 读取整笔付款的多币种信息
-    var currency = '';
+    // 读取整笔付款的多币种信息（优先顶层字段，fallback 嵌套 fees_paid）
+    var currency = row.transaction_currency || '';
     var orig = 0;
     var rate = 1;
-    if (row.fees_paid && row.fees_paid.transaction_currency) {
+
+    if (!currency && row.fees_paid && row.fees_paid.transaction_currency) {
         currency = row.fees_paid.transaction_currency;
-        orig = parseFloat(row.fees_paid.original_amount) || amountMmk;
-        rate = parseFloat(row.fees_paid.exchange_rate_snapshot) || 1;
+    }
+
+    if (currency) {
+        orig = parseFloat(row.original_amount) || parseFloat(row.fees_paid ? row.fees_paid.original_amount : null) || amountMmk;
+        rate = parseFloat(row.exchange_rate_snapshot) || parseFloat(row.fees_paid ? row.fees_paid.exchange_rate_snapshot : null) || 1;
     }
 
     // 只有 USD/CNY 才显示第二行原币信息
