@@ -574,9 +574,29 @@ function feesTypeFormatter(value, row) {
     let html = "<ol>";
     if (row.fees_class_type?.length) {
         $.each(row.fees_class_type, function (key, value) {
-            html += "<li>" + value.fees_type_name + " - " + value.amount;
+            // MMK 等值金额：优先 fee_amount_mmk，fallback amount
+            var mmkAmount = (value.fee_amount_mmk && parseFloat(value.fee_amount_mmk) !== 0)
+                ? parseFloat(value.fee_amount_mmk)
+                : parseFloat(value.amount || 0);
+
+            html += "<li>" + value.fees_type_name + " - " + formatMoneyJS(mmkAmount);
+
             if (value.optional) {
                 html += "<small class='ml-1 badge badge-danger rounded-pill p-1'>" + window.trans["optional"] + "</small>";
+            } else {
+                // 仅对 compulsory fees 显示多币种信息
+                var currency = value.fee_currency || 'MMK';
+                if (currency !== 'MMK' && currency) {
+                    var originalAmount = (value.fee_original_amount && parseFloat(value.fee_original_amount) !== 0)
+                        ? parseFloat(value.fee_original_amount)
+                        : parseFloat(value.amount || 0);
+                    var exchangeRate = value.fee_exchange_rate_snapshot || 1;
+                    var formattedOriginal = originalAmount.toFixed(2) + ' ' + currency;
+                    html += "<br><small class='text-muted'>"
+                        + formattedOriginal
+                        + " @ " + parseFloat(exchangeRate).toFixed(2)
+                        + "</small>";
+                }
             }
             html += "</li>";
         });
