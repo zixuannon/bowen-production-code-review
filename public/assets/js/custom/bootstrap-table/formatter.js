@@ -890,7 +890,28 @@ function feesCurrencyAmountFormatter(value, row) {
 }
 
 function feesPaidAmountFormatter(value, row) {
-    return formatMoneyJS(value);
+    // 主金额优先使用 amount_mmk（MMK等值），避免历史数据 amount 不一致
+    var amountMmk = parseFloat(value) || 0;
+    if (row.fees_paid && row.fees_paid.amount_mmk) {
+        var mmk = parseFloat(row.fees_paid.amount_mmk);
+        if (mmk > 0) {
+            amountMmk = mmk;
+        }
+    }
+
+    var html = formatMoneyJS(amountMmk);
+
+    // 如果付款币种是 USD/CNY，显示原币信息
+    var currency = (row.fees_paid && row.fees_paid.transaction_currency)
+        ? row.fees_paid.transaction_currency : '';
+    if (currency === 'USD' || currency === 'CNY') {
+        var orig = parseFloat(row.fees_paid.original_amount) || parseFloat(value) || 0;
+        var rate = parseFloat(row.fees_paid.exchange_rate_snapshot) || 1;
+        html += '<br><small class="text-muted">' +
+            orig.toFixed(2) + ' ' + currency + ' @ ' + rate.toFixed(2) + '</small>';
+    }
+
+    return html;
 }
 
 function manageFeesAmountFormatter(value, row) {
