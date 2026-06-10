@@ -436,11 +436,71 @@
         $(document).ready(function () {
             var feesData = JSON.parse(document.getElementById('fees-data').textContent);
 
-            if (typeof compulsoryFeesTypeRepeater !== 'undefined') {
-                compulsoryFeesTypeRepeater.setList(feesData.compulsory_fees);
+            // === 稳健获取 compulsoryFeesTypeRepeater 实例 ===
+            // 优先用全局 const（custom.js 定义），其次 window 属性，最后自行初始化
+            var compRepeater = null;
+            function getCompRepeater() {
+                // 尝试1：全局 const（custom.js 顶层声明）
+                try {
+                    if (typeof compulsoryFeesTypeRepeater !== 'undefined' &&
+                        compulsoryFeesTypeRepeater !== null &&
+                        typeof compulsoryFeesTypeRepeater.setList === 'function') {
+                        return compulsoryFeesTypeRepeater;
+                    }
+                } catch (e) {}
+                // 尝试2：window 属性
+                try {
+                    if (window.compulsoryFeesTypeRepeater &&
+                        typeof window.compulsoryFeesTypeRepeater.setList === 'function') {
+                        return window.compulsoryFeesTypeRepeater;
+                    }
+                } catch (e) {}
+                // 尝试3：fallback - 自行初始化 repeater
+                var $container = $('.compulsory-fees-types');
+                if ($container.length === 0) return null;
+                var instance = $container.repeater({
+                    isFirstItemUndeletable: true,
+                    initEmpty: true,
+                    show: function () {
+                        $(this).slideDown();
+                        $(this).find('.fees_type').rules("add", {
+                            "noDuplicateValues": {
+                                parentClass: "fees-class-types",
+                                class: "fees_type",
+                                value: $(this).find('.fees_type').find("option:selected").text()
+                            }
+                        });
+                        $(this).find('input[data-convert="number"]').removeAttr('type').attr('type', "number");
+                        $(this).find('.optional_no').prop('checked', true);
+                    },
+                    hide: function (deleteElement) {
+                        var feesClassTypeID = $(this).find('.fees_class_type_id').val();
+                        if (feesClassTypeID) {
+                            var delUrl = baseUrl + '/fees/class-type/' + feesClassTypeID;
+                            if (typeof showDeletePopupModal === 'function') {
+                                showDeletePopupModal(delUrl, {
+                                    successCallBack: function () { $(this).slideUp(deleteElement); }
+                                });
+                            } else {
+                                $(this).slideUp(deleteElement);
+                            }
+                        } else {
+                            $(this).slideUp(deleteElement);
+                        }
+                    }
+                });
+                // 挂到 window 上供其他脚本复用
+                window.compulsoryFeesTypeRepeater = instance;
+                return instance;
+            }
+
+            compRepeater = getCompRepeater();
+
+            if (compRepeater && typeof compRepeater.setList === 'function') {
+                compRepeater.setList(feesData.compulsory_fees);
                 // 轮询初始化多币种字段（setList 异步渲染 DOM，需要等待）
                 var retryCount = 0;
-                var maxRetries = 10;
+                var maxRetries = 15;
                 var retryInterval = setInterval(function() {
                     retryCount++;
                     var rows = $('.compulsory-fee-row');
@@ -453,23 +513,26 @@
                         clearInterval(retryInterval);
                     }
                 }, 100);
+            } else {
+                console.error('[EditFees] 无法初始化 compulsory repeater，compulsory rows 将不显示');
             }
 
             // 监听 "Add New Data" 按钮新增行：也初始化多币种字段
-            $('.compulsory-fees-types [data-repeater-create]').on('click', function() {
+            $(document).on('click', '.compulsory-fees-types [data-repeater-create]', function() {
                 setTimeout(function() {
                     var $newRows = $('.compulsory-fee-row');
                     if ($newRows.length > 0) {
-                        // 只初始化最后一行（新添加的）
-                        var $lastRow = $newRows.last();
-                        if ($lastRow.find('.fee_currency').length > 0 && 
-                            $lastRow.find('.equivalent_mmk').val() === '') {
-                            var $row = $lastRow;
-                            var currency = $row.find('.fee_currency').val() || 'MMK';
-                            if (currency === 'MMK') {
-                                $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                        // 初始化所有未初始化的行
+                        $newRows.each(function() {
+                            var $row = $(this);
+                            if ($row.find('.fee_currency').length > 0 &&
+                                $row.find('.equivalent_mmk').val() === '') {
+                                var currency = $row.find('.fee_currency').val() || 'MMK';
+                                if (currency === 'MMK') {
+                                    $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                                }
                             }
-                        }
+                        });
                     }
                 }, 150);
             });
