@@ -38,6 +38,25 @@
                                 <input id="payment-date" type="text" name="date" class="datepicker-popup paid-date form-control" placeholder="{{ __('date') }}" autocomplete="off" required>
                             </div>
 
+                            <div class="form-group">
+                                <label for="transaction-currency">{{ __('Currency') }} / {{ __('货币') }}</label>
+                                <select id="transaction-currency" name="transaction_currency" class="form-control">
+                                    <option value="MMK" selected>MMK</option>
+                                    <option value="USD">USD</option>
+                                    <option value="CNY">CNY</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="original-amount">{{ __('Original Amount') }} / {{ __('原币金额') }}</label>
+                                <input type="number" id="original-amount" name="original_amount" class="form-control" step="0.01" min="0" placeholder="{{ __('Original Amount') }}">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="exchange-rate">{{ __('Exchange Rate') }} / {{ __('汇率') }}</label>
+                                <input type="number" id="exchange-rate" name="exchange_rate_snapshot" class="form-control" step="0.0001" min="0" value="1" readonly>
+                            </div>
+
                             <hr>
                             <div class="form-group col-sm-12 col-md-12">
                                 <div class="compulsory-fees-content">
@@ -291,6 +310,9 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="alert alert-info mt-3">
+                                    <i class="fa fa-info-circle"></i> {{ __('Payment is saved as MMK equivalent. Original currency and exchange rate are also saved.') }}
+                                </div>
                                 <input class="btn btn-theme float-right" type="submit" value={{ __('pay') }} />
                             @endif
                             
@@ -323,6 +345,82 @@
         @if($student->fees_paid)
         $('.pay-in-installment').trigger('click').attr("disabled", true);
         @endif
+
+        // === Multi-Currency Logic ===
+        @php
+            $usdDefaultRate = getDefaultExchangeRate('USD');
+            $cnyDefaultRate = getDefaultExchangeRate('CNY');
+        @endphp
+
+        (function() {
+            var $currency = $('#transaction-currency');
+            var $originalAmount = $('#original-amount');
+            var $exchangeRate = $('#exchange-rate');
+            var $enterAmount = $('#enter_amount');
+            var $totalAmount = $('#total-amount');
+
+            var defaultUsdRate = {{ $usdDefaultRate }};
+            var defaultCnyRate = {{ $cnyDefaultRate }};
+
+            // Init: copy enter_amount (MMK) to original_amount
+            function initMultiCurrency() {
+                if (!$enterAmount.length) return;
+                var val = parseFloat($enterAmount.val()) || 0;
+                if (val > 0 && ($originalAmount.val() === '' || $originalAmount.val() === '0')) {
+                    $originalAmount.val(val.toFixed(2));
+                }
+            }
+
+            // Calculate MMK equivalent: original_amount * exchange_rate
+            function calcMMKFromOriginal() {
+                if ($currency.val() === 'MMK') return;
+                var original = parseFloat($originalAmount.val()) || 0;
+                var rate = parseFloat($exchangeRate.val()) || 0;
+                var mmk = (original * rate).toFixed(2);
+                if ($enterAmount.length) $enterAmount.val(mmk);
+                if ($totalAmount.length) $totalAmount.val(mmk);
+            }
+
+            // In MMK mode: sync original_amount = enter_amount
+            function syncOriginalFromEnter() {
+                if ($currency.val() !== 'MMK') return;
+                if (!$enterAmount.length) return;
+                var val = parseFloat($enterAmount.val()) || 0;
+                $originalAmount.val(val.toFixed(2));
+            }
+
+            // Currency switch
+            $currency.on('change', function() {
+                var cur = $(this).val();
+                if (cur === 'MMK') {
+                    $exchangeRate.val('1').prop('readonly', true);
+                    syncOriginalFromEnter();
+                } else {
+                    $exchangeRate.prop('readonly', false);
+                    if (cur === 'USD') $exchangeRate.val(defaultUsdRate);
+                    if (cur === 'CNY') $exchangeRate.val(defaultCnyRate);
+                    calcMMKFromOriginal();
+                }
+            });
+
+            // original_amount change -> recalc enter_amount
+            $originalAmount.on('input', function() {
+                calcMMKFromOriginal();
+            });
+
+            // exchange_rate change -> recalc enter_amount
+            $exchangeRate.on('input', function() {
+                calcMMKFromOriginal();
+            });
+
+            // enter_amount change (user edits MMK directly) -> sync original
+            $enterAmount.on('input', function() {
+                syncOriginalFromEnter();
+            });
+
+            initMultiCurrency();
+        })();
+        // === End Multi-Currency Logic ===
 
         function successFunction() {
             window.location.href = "{{route('fees.paid.index')}}";
