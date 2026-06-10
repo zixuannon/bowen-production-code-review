@@ -26,13 +26,15 @@
                             <input type="hidden" name="installment_mode" id="installment-mode" value="0"/>
                             <input type="hidden" name="total_amount" id="total-amount" value="{{$fees->total_compulsory_fees}}"/>
                             <input type="hidden" id="total_compulsory_fees" name="total_compulsory_fees" value="{{$fees->total_compulsory_fees}}">
-                            <input type="hidden" id="remaining_amount" value="{{$fees->remaining_amount}}">
+                            @php
+                                $total_compulsory_fees = $fees->total_compulsory_fees;
+                                $alreadyPaid = $student->fees_paid ? $student->fees_paid->compulsory_fee_sum_amount : 0;
+                                $remainingWithDues = $total_compulsory_fees - $alreadyPaid + ($due_charges ?? 0);
+                            @endphp
+                            <input type="hidden" id="remaining_amount" value="{{ $remainingWithDues }}">
                             <input type="hidden" id="total_installment_amount" value="0">
                             <input type="hidden" name="due_charges_amount" value="{{ $due_charges ?? 0 }}">
                             <h4>{{$student->full_name.':-'.$student->student->class_section->full_name}}</h4><br>
-                            @php
-                                $total_compulsory_fees = $fees->total_compulsory_fees;
-                            @endphp
                             <div class="form-group">
                                 <label for="payment-date">{{ __('date') }} <span class="text-danger">*</span></label>
                                 <input id="payment-date" type="text" name="date" class="datepicker-popup paid-date form-control" placeholder="{{ __('date') }}" autocomplete="off" required>
@@ -48,8 +50,10 @@
                             </div>
 
                             <div class="form-group">
-                                <label for="original-amount">{{ __('Original Amount') }} / {{ __('原币金额') }}</label>
-                                <input type="number" id="original-amount" name="original_amount" class="form-control" step="0.01" min="0" placeholder="{{ __('Original Amount') }}">
+                                <label for="original-amount">{{ __('Original Payment Amount') }} / {{ __('本次原币付款金额') }}</label>
+                                <input type="number" id="original-amount" name="original_amount" class="form-control" step="0.01" min="0" placeholder="{{ __('Original Payment Amount') }}">
+                                <small id="max-original-hint" class="form-text text-muted" style="display:none;"></small>
+                                <small id="exceeds-warning" class="form-text text-danger" style="display:none;">{{ __('MMK equivalent exceeds remaining payable amount.') }}</small>
                             </div>
 
                             <div class="form-group">
@@ -168,7 +172,7 @@
                                             <td class="text-left"></td>
                                             <td colspan="2" class="text-left"><label>{{__("enter_amount")}}</label></td>
                                             <td class="justify-content-end row">
-                                                <input type="number" id="advance" name="advance" aria-label="" class="form-control enter_amount col-6 text-right " min="0" max="{{$fees->remaining_amount}}" value="{{$fees->remaining_amount}}" {{!$oneInstallmentPaid ? "disabled" : ""}} placeholder="{{ __('enter_amount') }}"/>
+                                                <input type="number" id="advance" name="advance" aria-label="" class="form-control enter_amount col-6 text-right " min="0" max="{{ $remainingWithDues }}" value="{{ $remainingWithDues }}" {{!$oneInstallmentPaid ? "disabled" : ""}} placeholder="{{ __('enter_amount') }}"/>
                                             </td>
                                         </tr>
 
@@ -186,7 +190,21 @@
                                         <tr>
                                             <td class="text-left"></td>
                                             <th colspan="2" class="text-left"><label>{{__("Total Amount")}}</label></th>
-                                            <th class="text-right"><span id="total_amount_text">{{ format_money($fees->total_compulsory_fees + $due_charges) }}</span></th>
+                                            <th class="text-right"><span id="total_amount_text">{{ format_money($total_compulsory_fees + $due_charges) }}</span></th>
+                                        </tr>
+
+                                        @if ($alreadyPaid > 0)
+                                        <tr>
+                                            <td class="text-left"></td>
+                                            <th colspan="2" class="text-left"><label>{{__("Already Paid")}}</label></th>
+                                            <th class="text-right"><span id="already_paid_text">{{ format_money($alreadyPaid) }}</span></th>
+                                        </tr>
+                                        @endif
+
+                                        <tr>
+                                            <td class="text-left"></td>
+                                            <th colspan="2" class="text-left"><label class="text-info">{{__("Remaining Amount")}}</label></th>
+                                            <th class="text-right"><span id="remaining_amount_text" class="text-info font-weight-bold">{{ format_money($remainingWithDues) }}</span></th>
                                         </tr>
 
                                         @if ($student->fees_paid)
@@ -220,24 +238,21 @@
                                         @if (!$isFullyPaid && $installment_status == 0)
                                         <tr class="without_installment_enter_amount">
                                             <td class="text-left"></td>
-                                            <th colspan="2" class="text-left"><label>{{__("enter_amount")}} <span class="text-danger">*</span></label></th>
-                                            <td class="text-right"><span id="total_amount_text">
-                                                @if ($student->fees_paid)
-                                                    <div class="input-group">
-                                                        <div class="input-group-prepend">
-                                                            <span class="input-group-text">{{ $currencySymbol }}</span>
-                                                        </div>
-                                                        <input type="number" name="enter_amount" min="1" class="form-control" max="{{ ($total_compulsory_fees - $student->fees_paid->compulsory_fee_sum_amount + $due_charges) }}" id="enter_amount" value="{{ ($total_compulsory_fees - $student->fees_paid->compulsory_fee_sum_amount + $due_charges) }}" placeholder="{{ __('enter_amount') }}">
+                                            <th colspan="2" class="text-left"><label>{{__("MMK Equivalent Payment")}} / {{__("本次折合缅币金额")}} <span class="text-danger">*</span></label></th>
+                                            <td class="text-right">
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <span class="input-group-text">{{ $currencySymbol }}</span>
                                                     </div>
-                                                @else
-                                                    <div class="input-group">
-                                                        <div class="input-group-prepend">
-                                                            <span class="input-group-text">{{ $currencySymbol }}</span>
-                                                        </div>
-                                                        <input type="number" name="enter_amount" min="1" class="form-control" max="{{ $total_compulsory_fees + $due_charges }}" id="enter_amount" value="{{ $total_compulsory_fees + $due_charges }}" placeholder="{{ __('enter_amount') }}">
-                                                    </div>
-                                                @endif
-                                                
+                                                    <input type="number" name="enter_amount" min="1" class="form-control" max="{{ $remainingWithDues }}" id="enter_amount" value="{{ $remainingWithDues }}" placeholder="{{ __('enter_amount') }}">
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr class="without_installment_enter_amount">
+                                            <td colspan="4">
+                                                <small class="form-text text-muted">
+                                                    <i class="fa fa-info-circle"></i> {{ __('Enter Amount is the MMK equivalent of this payment and cannot exceed the remaining payable amount.') }}
+                                                </small>
                                             </td>
                                         </tr>
                                         @endif
@@ -357,36 +372,103 @@
             var $originalAmount = $('#original-amount');
             var $exchangeRate = $('#exchange-rate');
             var $enterAmount = $('#enter_amount');
-            var $totalAmount = $('#total-amount');
+            var $maxHint = $('#max-original-hint');
+            var $exceedsWarning = $('#exceeds-warning');
 
             var defaultUsdRate = {{ $usdDefaultRate }};
             var defaultCnyRate = {{ $cnyDefaultRate }};
 
-            // Init: copy enter_amount (MMK) to original_amount
-            function initMultiCurrency() {
+            // Read max allowed enter_amount from input's max attribute
+            function getMaxEnterAmount() {
+                if (!$enterAmount.length) return 0;
+                var max = parseFloat($enterAmount.attr('max'));
+                return isNaN(max) ? 0 : max;
+            }
+
+            // Sync original_amount from enter_amount (works for ALL currencies)
+            // MMK:   original = enter
+            // USD/CNY: original = enter / rate
+            function syncOriginalFromEnter() {
                 if (!$enterAmount.length) return;
                 var val = parseFloat($enterAmount.val()) || 0;
-                if (val > 0 && ($originalAmount.val() === '' || $originalAmount.val() === '0')) {
+                if ($currency.val() === 'MMK') {
                     $originalAmount.val(val.toFixed(2));
+                } else {
+                    var rate = parseFloat($exchangeRate.val()) || 1;
+                    if (rate > 0) {
+                        $originalAmount.val((val / rate).toFixed(2));
+                    }
+                    updateMaxHint();
+                    checkExceeds();
+                }
+            }
+
+            // Show/hide max original amount hint (USD/CNY modes only)
+            function updateMaxHint() {
+                var cur = $currency.val();
+                if (cur === 'MMK') {
+                    $maxHint.hide();
+                    return;
+                }
+                var rate = parseFloat($exchangeRate.val()) || 0;
+                var maxEnter = getMaxEnterAmount();
+                if (rate <= 0 || maxEnter <= 0) {
+                    $maxHint.hide();
+                    return;
+                }
+                var maxOriginal = (maxEnter / rate).toFixed(4);
+                $maxHint.text('Maximum allowed: ' + maxOriginal + ' ' + cur + ' based on remaining amount ' + maxEnter.toFixed(0) + ' K').show();
+            }
+
+            // Show/hide exceeds warning when MMK equivalent > max payable
+            function checkExceeds() {
+                if ($currency.val() === 'MMK') {
+                    $exceedsWarning.hide();
+                    return;
+                }
+                var original = parseFloat($originalAmount.val()) || 0;
+                var rate = parseFloat($exchangeRate.val()) || 0;
+                var maxEnter = getMaxEnterAmount();
+                if (maxEnter > 0 && (original * rate) > maxEnter) {
+                    $exceedsWarning.show();
+                } else {
+                    $exceedsWarning.hide();
                 }
             }
 
             // Calculate MMK equivalent: original_amount * exchange_rate
+            // Caps at remaining amount; if capped, also roll back original_amount
             function calcMMKFromOriginal() {
                 if ($currency.val() === 'MMK') return;
                 var original = parseFloat($originalAmount.val()) || 0;
                 var rate = parseFloat($exchangeRate.val()) || 0;
-                var mmk = (original * rate).toFixed(2);
-                if ($enterAmount.length) $enterAmount.val(mmk);
-                if ($totalAmount.length) $totalAmount.val(mmk);
+                if (rate <= 0) return;
+                var mmk = original * rate;
+                var maxEnter = getMaxEnterAmount();
+                if (maxEnter > 0 && mmk > maxEnter) {
+                    mmk = maxEnter;
+                    $originalAmount.val((maxEnter / rate).toFixed(2));
+                }
+                if ($enterAmount.length) $enterAmount.val(mmk.toFixed(2));
+                updateMaxHint();
+                checkExceeds();
             }
 
-            // In MMK mode: sync original_amount = enter_amount
-            function syncOriginalFromEnter() {
-                if ($currency.val() !== 'MMK') return;
-                if (!$enterAmount.length) return;
-                var val = parseFloat($enterAmount.val()) || 0;
-                $originalAmount.val(val.toFixed(2));
+            // Auto-fill original_amount to max payable (for USD/CNY default)
+            function setOriginalToMax() {
+                var rate = parseFloat($exchangeRate.val()) || 1;
+                var maxEnter = getMaxEnterAmount();
+                if (rate <= 0 || maxEnter <= 0) return;
+                $originalAmount.val((maxEnter / rate).toFixed(2));
+            }
+
+            // Init exchange rate for non-MMK currency
+            function initExchangeRate() {
+                var cur = $currency.val();
+                if (cur === 'USD') $exchangeRate.val(defaultUsdRate);
+                else if (cur === 'CNY') $exchangeRate.val(defaultCnyRate);
+                else $exchangeRate.val('1');
+                $exchangeRate.prop('readonly', cur === 'MMK');
             }
 
             // Currency switch
@@ -394,23 +476,26 @@
                 var cur = $(this).val();
                 if (cur === 'MMK') {
                     $exchangeRate.val('1').prop('readonly', true);
+                    $maxHint.hide();
+                    $exceedsWarning.hide();
                     syncOriginalFromEnter();
                 } else {
                     $exchangeRate.prop('readonly', false);
                     if (cur === 'USD') $exchangeRate.val(defaultUsdRate);
                     if (cur === 'CNY') $exchangeRate.val(defaultCnyRate);
+                    setOriginalToMax();
                     calcMMKFromOriginal();
                 }
             });
 
-            // original_amount change -> recalc enter_amount
+            // original_amount change -> recalc enter_amount + check limits
             $originalAmount.on('input', function() {
-                calcMMKFromOriginal();
+                if ($currency.val() !== 'MMK') calcMMKFromOriginal();
             });
 
-            // exchange_rate change -> recalc enter_amount
+            // exchange_rate change -> recalc enter_amount (keep current original)
             $exchangeRate.on('input', function() {
-                calcMMKFromOriginal();
+                if ($currency.val() !== 'MMK') calcMMKFromOriginal();
             });
 
             // enter_amount change (user edits MMK directly) -> sync original
@@ -418,7 +503,9 @@
                 syncOriginalFromEnter();
             });
 
-            initMultiCurrency();
+            // Init: set exchange rate and sync original_amount
+            initExchangeRate();
+            if ($enterAmount.length) syncOriginalFromEnter();
         })();
         // === End Multi-Currency Logic ===
 
