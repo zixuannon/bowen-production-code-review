@@ -248,8 +248,8 @@
                                 </div>
                                 <div class="optional-fees-types">
                                     <div data-repeater-list="optional_fees_type" class="row col-12">
-                                        <div class="row col-12 mb-3" data-repeater-item>
-                                            <div class="form-group col-md-12 col-lg-4">
+                                        <div class="row col-12 mb-3 optional-fee-row" data-repeater-item>
+                                            <div class="form-group col-md-12 col-lg-3">
                                                 <select name="optional_fees_type[][fees_type_id]" class="form-control fees_type"
                                                     aria-label="Fees Type" required>
                                                     <option value="">{{ __('Select Fees Type')}}</option>
@@ -259,13 +259,39 @@
                                                 </select>
                                             </div>
 
-                                            <div class="form-group col-md-12 col-lg-3">
-                                                {!! Form::number('optional_fees_type[][amount]', null, ['class' => 'form-control amount', 'placeholder' => __('enter') . ' ' . __('fees') . ' ' . __('amount'), 'required' => true, 'min' => 0, "data-convert" => "number"]) !!}
+                                            {{-- Fee Currency --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Currency') }}</label>
+                                                <select name="optional_fees_type[][fee_currency]" class="form-control fee_currency" aria-label="Currency">
+                                                    <option value="MMK" selected>MMK</option>
+                                                    <option value="CNY">CNY</option>
+                                                    <option value="USD">USD</option>
+                                                </select>
                                             </div>
 
-                                            <div class="col-md-12 col-lg-1">
+                                            {{-- Fee Original Amount --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Original Amount') }}</label>
+                                                {!! Form::text('optional_fees_type[][fee_original_amount]', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
+                                            </div>
+
+                                            {{-- Fee Exchange Rate --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Rate to MMK') }}</label>
+                                                {!! Form::text('optional_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*', 'readonly']) !!}
+                                            </div>
+
+                                            {{-- Equivalent MMK (calculated) + Hidden amount fields --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('MMK Amount') }}</label>
+                                                <input type="text" class="form-control equivalent_mmk" placeholder="0.00" readonly>
+                                                <input type="hidden" name="optional_fees_type[][fee_amount_mmk]" class="fee_amount_mmk_hidden" value="0">
+                                                <input type="hidden" name="optional_fees_type[][amount]" class="amount" value="0">
+                                            </div>
+
+                                            <div class="col-md-12 col-lg-1 d-flex align-items-end">
                                                 <button type="button"
-                                                    class="btn btn-inverse-danger btn-icon remove-fees-type"
+                                                    class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
                                                     data-repeater-delete>
                                                     <i class="fa fa-times"></i>
                                                 </button>
@@ -412,6 +438,54 @@
             updateDueChargesAmount();
         });
 
+        // === Optional Fees Multi-Currency ===
+        // 计算 Optional Fee 的 MMK 等值
+        function calculateOptionalMMK($row) {
+            var currency = $row.find('.fee_currency').val();
+            var originalAmount = parseFloat($row.find('.fee_original_amount').val()) || 0;
+            var exchangeRate = parseFloat($row.find('.fee_exchange_rate_snapshot').val()) || 1;
+            var equivalentMmk = originalAmount * exchangeRate;
+
+            // 更新显示和 hidden 字段
+            $row.find('.equivalent_mmk').val(equivalentMmk.toFixed(2));
+            $row.find('.fee_amount_mmk_hidden').val(equivalentMmk.toFixed(2));
+            $row.find('.amount').val(equivalentMmk.toFixed(2));
+
+            return equivalentMmk;
+        }
+
+        // Optional Fee 币种切换
+        $(document).on('change', '.optional-fee-row .fee_currency', function() {
+            var $row = $(this).closest('.optional-fee-row');
+            var currency = $(this).val();
+
+            if (currency === 'MMK') {
+                $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+            } else {
+                $row.find('.fee_exchange_rate_snapshot').val(defaultExchangeRates[currency]).prop('readonly', false);
+            }
+
+            calculateOptionalMMK($row);
+            updateTotalAmount();
+            updateDueChargesAmount();
+        });
+
+        // Optional Fee 原币金额输入
+        $(document).on('input', '.optional-fee-row .fee_original_amount', function() {
+            var $row = $(this).closest('.optional-fee-row');
+            calculateOptionalMMK($row);
+            updateTotalAmount();
+            updateDueChargesAmount();
+        });
+
+        // Optional Fee 汇率输入
+        $(document).on('input', '.optional-fee-row .fee_exchange_rate_snapshot', function() {
+            var $row = $(this).closest('.optional-fee-row');
+            calculateOptionalMMK($row);
+            updateTotalAmount();
+            updateDueChargesAmount();
+        });
+
         // Due Charges Percentage 变化事件
         $(document).on('input', '#due_charges_percentage', function() {
             updateDueChargesAmount();
@@ -427,10 +501,10 @@
                 totalAmount += equivalentMmk;
             });
 
-            // 加上 optional fees
-            $('.optional-fees-types .amount').each(function () {
-                let amount = parseFloat($(this).val()) || 0;
-                totalAmount += amount;
+            // 加上 optional fees（使用 calculated MMK equivalent）
+            $('.optional-fees-types .optional-fee-row').each(function () {
+                let equivalentMmk = parseFloat($(this).find('.equivalent_mmk').val()) || 0;
+                totalAmount += equivalentMmk;
             });
 
             return totalAmount;
@@ -455,9 +529,16 @@
 
         // Handle installment amount calculations
         $(document).ready(function () {
-            // 初始化第一行
+            // 初始化 compulsory fee 第一行
             $('.compulsory-fee-row').each(function() {
                 calculateEquivalentMMK($(this));
+            });
+
+            // 初始化 optional fee 第一行（默认 MMK，rate=1）
+            $('.optional-fee-row').each(function() {
+                var $row = $(this);
+                $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                calculateOptionalMMK($row);
             });
 
             // 初始化 Due Charges Amount

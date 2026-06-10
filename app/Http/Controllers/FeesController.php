@@ -201,11 +201,34 @@ class FeesController extends Controller
 
                 if (!empty($request->optional_fees_type)) {
                     foreach ($request->optional_fees_type as $data) {
+                        // 多货币处理：前端 amount 字段提交的是 Equivalent MMK
+                        $feeCurrency = $data['fee_currency'] ?? 'MMK';
+                        $originalAmount = (float) ($data['fee_original_amount'] ?? $data['amount'] ?? 0);
+                        $exchangeRate = (float) ($data['fee_exchange_rate_snapshot'] ?? 1);
+
+                        if ($feeCurrency === 'MMK') {
+                            $exchangeRate = 1;
+                        }
+
+                        // amount 字段保存 Equivalent MMK（前端已计算好）
+                        $amountMmk = (float) ($data['fee_amount_mmk'] ?? $data['amount'] ?? 0);
+
+                        // 如果前端提交了 fee_amount_mmk，强制使用它；否则重新计算
+                        if (isset($data['fee_amount_mmk']) && $data['fee_amount_mmk'] !== '') {
+                            $amountMmk = (float) $data['fee_amount_mmk'];
+                        } else {
+                            $amountMmk = $originalAmount * $exchangeRate;
+                        }
+
                         $feeClassType[] = array(
                             "fees_id" => $fees->id,
                             "class_id" => $class_id,
                             "fees_type_id" => $data['fees_type_id'],
-                            "amount" => $data['amount'],
+                            "amount" => round($amountMmk, 2),  // amount 保存 MMK 金额
+                            "fee_currency" => $feeCurrency,
+                            "fee_original_amount" => $originalAmount,
+                            "fee_exchange_rate_snapshot" => $exchangeRate,
+                            "fee_amount_mmk" => round($amountMmk, 2),
                             "optional" => 1,
                         );
                     }
@@ -504,11 +527,34 @@ class FeesController extends Controller
             }
 
             foreach ((array) $request->optional_fees_type as $data) {
+                // 多货币处理：前端 amount 字段提交的是 Equivalent MMK
+                $feeCurrency = $data['fee_currency'] ?? 'MMK';
+                $originalAmount = (float) ($data['fee_original_amount'] ?? $data['amount'] ?? 0);
+                $exchangeRate = (float) ($data['fee_exchange_rate_snapshot'] ?? 1);
+
+                if ($feeCurrency === 'MMK') {
+                    $exchangeRate = 1;
+                }
+
+                // amount 字段保存 Equivalent MMK（前端已计算好）
+                $amountMmk = (float) ($data['fee_amount_mmk'] ?? $data['amount'] ?? 0);
+
+                // 如果前端提交了 fee_amount_mmk，强制使用它；否则重新计算
+                if (isset($data['fee_amount_mmk']) && $data['fee_amount_mmk'] !== '') {
+                    $amountMmk = (float) $data['fee_amount_mmk'];
+                } else {
+                    $amountMmk = $originalAmount * $exchangeRate;
+                }
+
                 $feeClassTypeRows[] = array(
                     "class_id" => $fees->class_id,
                     "fees_id" => $fees->id,
                     "fees_type_id" => $data['fees_type_id'],
-                    "amount" => $normalizeAmount($data['amount']),
+                    "amount" => $normalizeAmount($amountMmk),  // amount 保存 MMK 金额
+                    "fee_currency" => $feeCurrency,
+                    "fee_original_amount" => $originalAmount,
+                    "fee_exchange_rate_snapshot" => $exchangeRate,
+                    "fee_amount_mmk" => round($amountMmk, 2),
                     "optional" => 1,
                     "school_id" => $schoolId,
                     "created_at" => $now,

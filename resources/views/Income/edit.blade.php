@@ -278,9 +278,9 @@
                                 </div>
                                 <div class="optional-fees-types">
                                     <div data-repeater-list="optional_fees_type" class="row col-12">
-                                        <div class="row col-12 mb-3" data-repeater-item>
+                                        <div class="row col-12 mb-3 optional-fee-row" data-repeater-item>
                                             <input type="hidden" name="id" class="fees_class_type_id" />
-                                            <div class="form-group col-md-12 col-lg-4">
+                                            <div class="form-group col-md-12 col-lg-2">
                                                 <select name="fees_type_id" id="fees_type_id" class="form-control fees_type"
                                                     aria-label="Fees Type" required>
                                                     <option value="" hidden="">{{ __('Select Fees Type')}}</option>
@@ -290,13 +290,39 @@
                                                 </select>
                                             </div>
 
-                                            <div class="form-group col-md-12 col-lg-3">
-                                                {!! Form::text('amount', null, ['class' => 'form-control amount', 'placeholder' => __('enter') . ' ' . __('fees') . ' ' . __('amount'), 'id' => 'amount', 'required' => true, 'min' => 0, "data-convert" => "number"]) !!}
+                                            {{-- Fee Currency --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Currency') }}</label>
+                                                <select name="fee_currency" class="form-control fee_currency" aria-label="Currency">
+                                                    <option value="MMK" selected>MMK</option>
+                                                    <option value="CNY">CNY</option>
+                                                    <option value="USD">USD</option>
+                                                </select>
                                             </div>
 
-                                            <div class="col-md-12 col-lg-1">
+                                            {{-- Fee Original Amount --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Original Amount') }}</label>
+                                                {!! Form::text('fee_original_amount', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
+                                            </div>
+
+                                            {{-- Fee Exchange Rate --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Rate to MMK') }}</label>
+                                                {!! Form::text('fee_exchange_rate_snapshot', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
+                                            </div>
+
+                                            {{-- Equivalent MMK (calculated display) + Hidden amount fields --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('MMK Amount') }}</label>
+                                                <input type="text" class="form-control equivalent_mmk" placeholder="0.00" readonly>
+                                                <input type="hidden" name="fee_amount_mmk" class="fee_amount_mmk_hidden" value="0">
+                                                <input type="hidden" name="amount" class="amount" value="0" min="0">
+                                            </div>
+
+                                            <div class="col-md-12 col-lg-2 d-flex align-items-end">
                                                 <button type="button"
-                                                    class="btn btn-inverse-danger btn-icon remove-fees-type"
+                                                    class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
                                                     data-repeater-delete>
                                                     <i class="fa fa-times"></i>
                                                 </button>
@@ -345,7 +371,11 @@
                 {
                     "id": "{{$type->id}}",
                     "fees_type_id": "{{$type->fees_type_id}}",
-                    "amount": "{{$type->amount}}"
+                    "amount": "{{$type->amount ?? 0}}",
+                    "fee_currency": "{{$type->fee_currency ?? 'MMK'}}",
+                    "fee_original_amount": "{{$type->fee_original_amount ?? $type->amount ?? 0}}",
+                    "fee_exchange_rate_snapshot": "{{$type->fee_exchange_rate_snapshot ?? 1}}",
+                    "fee_amount_mmk": "{{$type->fee_amount_mmk ?? $type->amount ?? 0}}"
                 }{{ $index < count($fees->optional_fees) - 1 ? ',' : '' }}
             @endforeach
         ],
@@ -430,6 +460,61 @@
             $(document).on('input', '.compulsory-fee-row .fee_exchange_rate_snapshot', function() {
                 calcRowMMK($(this).closest('.compulsory-fee-row'));
             });
+
+            // === Optional Fees Multi-Currency ===
+            // Calculate equivalent MMK for an optional fee row
+            function calcOptionalRowMMK($row) {
+                var originalAmount = parseFloat($row.find('.fee_original_amount').val()) || 0;
+                var exchangeRate = parseFloat($row.find('.fee_exchange_rate_snapshot').val()) || 1;
+                var mmkValue = (originalAmount * exchangeRate).toFixed(2);
+
+                $row.find('.equivalent_mmk').val(mmkValue);
+                $row.find('.fee_amount_mmk_hidden').val(mmkValue);
+                $row.find('.amount').val(mmkValue);
+            }
+
+            // Initialize a single optional row's currency/rate logic
+            function initSingleOptionalRow($row) {
+                var currency = $row.find('.fee_currency').val() || 'MMK';
+                if (currency === 'MMK') {
+                    $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                } else {
+                    $row.find('.fee_exchange_rate_snapshot').prop('readonly', false);
+                }
+                calcOptionalRowMMK($row);
+            }
+
+            // Initialize all optional rows after setList populates the DOM
+            window.initOptionalFeeRows = function() {
+                $('.optional-fee-row').each(function() {
+                    initSingleOptionalRow($(this));
+                });
+            };
+
+            // Optional currency change
+            $(document).on('change', '.optional-fee-row .fee_currency', function() {
+                var $row = $(this).closest('.optional-fee-row');
+                var currency = $(this).val();
+                var rates = getDefaultRates();
+
+                if (currency === 'MMK') {
+                    $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                } else {
+                    $row.find('.fee_exchange_rate_snapshot').val(rates[currency] || 1).prop('readonly', false);
+                }
+                calcOptionalRowMMK($row);
+            });
+
+            // Optional original amount change
+            $(document).on('input', '.optional-fee-row .fee_original_amount', function() {
+                calcOptionalRowMMK($(this).closest('.optional-fee-row'));
+            });
+
+            // Optional exchange rate change
+            $(document).on('input', '.optional-fee-row .fee_exchange_rate_snapshot', function() {
+                calcOptionalRowMMK($(this).closest('.optional-fee-row'));
+            });
+            // === End Optional Multi-Currency ===
         })();
         // === End Multi-Currency Logic ===
 
@@ -537,8 +622,42 @@
                 }, 150);
             });
 
+            // 监听 optional "Add New Data" 按钮新增行：也初始化多币种字段
+            $(document).on('click', '.optional-fees-types [data-repeater-create]', function() {
+                setTimeout(function() {
+                    var $newRows = $('.optional-fee-row');
+                    if ($newRows.length > 0) {
+                        $newRows.each(function() {
+                            var $row = $(this);
+                            if ($row.find('.fee_currency').length > 0 &&
+                                $row.find('.equivalent_mmk').val() === '') {
+                                var currency = $row.find('.fee_currency').val() || 'MMK';
+                                if (currency === 'MMK') {
+                                    $row.find('.fee_exchange_rate_snapshot').val(1).prop('readonly', true);
+                                }
+                            }
+                        });
+                    }
+                }, 150);
+            });
+
             if (typeof optionalFeesTypeRepeater !== 'undefined') {
                 optionalFeesTypeRepeater.setList(feesData.optional_fees);
+                // 轮询初始化 optional 多币种字段（setList 异步渲染 DOM）
+                var optRetryCount = 0;
+                var optMaxRetries = 15;
+                var optRetryInterval = setInterval(function() {
+                    optRetryCount++;
+                    var rows = $('.optional-fee-row');
+                    if (rows.length > 0 && rows.first().find('.fee_currency').length > 0) {
+                        clearInterval(optRetryInterval);
+                        if (typeof initOptionalFeeRows === 'function') {
+                            initOptionalFeeRows();
+                        }
+                    } else if (optRetryCount >= optMaxRetries) {
+                        clearInterval(optRetryInterval);
+                    }
+                }, 100);
             }
 
             if (typeof feesInstallmentRepeater !== 'undefined') {
