@@ -62,63 +62,77 @@
                                 <div class="compulsory-fees-types">
                                     <div data-repeater-list="compulsory_fees_type" class="row col-12">
                                         <div class="row col-12 mb-3 compulsory-fee-row" data-repeater-item>
-                                            <div class="form-group col-md-12 col-lg-3">
-                                                <select name="compulsory_fees_type[][fees_type_id]" class="form-control fees_type"
-                                                    aria-label="Fees Type" required>
-                                                    <option value="">{{ __('Select Fees Type')}}</option>
-                                                    @foreach ($feesTypeData as $feesType)
-                                                        <option value="{{ $feesType->id }}">{{ $feesType->name }}</option>
-                                                    @endforeach
-                                                </select>
+                                            {{-- Row 1: Primary fee fields --}}
+                                            <div class="col-12 mb-2">
+                                                <div class="row">
+                                                    {{-- Fee Item --}}
+                                                    <div class="form-group col-md-12 col-lg-4">
+                                                        <label class="small text-muted">收费项目 <span class="text-danger">*</span></label>
+                                                        <select name="compulsory_fees_type[][fees_type_id]" class="form-control fees_type"
+                                                            aria-label="Fees Type" required>
+                                                            <option value="">选择收费项目</option>
+                                                            @foreach ($feesTypeData as $feesType)
+                                                                <option value="{{ $feesType->id }}">{{ $feesType->name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+
+                                                    {{-- Currency --}}
+                                                    <div class="form-group col-md-12 col-lg-2">
+                                                        <label class="small text-muted">币种</label>
+                                                        <select name="compulsory_fees_type[][fee_currency]" class="form-control fee_currency" aria-label="Currency">
+                                                            <option value="MMK" selected>MMK</option>
+                                                            <option value="CNY">CNY</option>
+                                                            <option value="USD">USD</option>
+                                                        </select>
+                                                    </div>
+
+                                                    {{-- Original Amount --}}
+                                                    <div class="form-group col-md-12 col-lg-2">
+                                                        <label class="small text-muted">原币金额</label>
+                                                        {!! Form::number('compulsory_fees_type[][fee_original_amount]', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'min' => 0, 'step' => '0.01', "data-convert" => "number"]) !!}
+                                                    </div>
+
+                                                    {{-- MMK Amount --}}
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted">折合缅币</label>
+                                                        <input type="number" class="form-control equivalent_mmk" placeholder="0.00" readonly>
+                                                        <input type="hidden" name="compulsory_fees_type[][fee_amount_mmk]" class="fee_amount_mmk_hidden" value="0">
+                                                        <input type="hidden" name="compulsory_fees_type[][amount]" class="compulsory_amount_hidden" value="0">
+                                                    </div>
+
+                                                    {{-- Delete --}}
+                                                    <div class="col-md-12 col-lg-1 d-flex align-items-end justify-content-end">
+                                                        <button type="button"
+                                                            class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
+                                                            data-repeater-delete>
+                                                            <i class="fa fa-times"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            {{-- Finance Category --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Finance Category') }}</label>
-                                                <select name="compulsory_fees_type[][finance_category_id]" class="form-control finance_category_select">
-                                                    <option value="">{{ __('Select Category') }}</option>
-                                                    @foreach ($financeCategories as $id => $name)
-                                                        <option value="{{ $id }}">{{ $name }}</option>
-                                                    @endforeach
-                                                </select>
-                                            </div>
+                                            {{-- Row 2: Auxiliary fields --}}
+                                            <div class="col-12">
+                                                <div class="row">
+                                                    {{-- Report Category --}}
+                                                    <div class="form-group col-md-12 col-lg-4">
+                                                        <label class="small text-muted">报表分类</label>
+                                                        <select name="compulsory_fees_type[][finance_category_id]" class="form-control finance_category_select">
+                                                            <option value="">选择报表分类</option>
+                                                            @foreach ($financeCategories as $id => $name)
+                                                                <option value="{{ $id }}">{{ $name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                        <small class="form-text text-muted">用于内部财务报表，不影响收据上的收费项目名称。</small>
+                                                    </div>
 
-                                            {{-- Fee Currency --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Currency') }}</label>
-                                                <select name="compulsory_fees_type[][fee_currency]" class="form-control fee_currency" aria-label="Currency">
-                                                    <option value="MMK" selected>MMK</option>
-                                                    <option value="CNY">CNY</option>
-                                                    <option value="USD">USD</option>
-                                                </select>
-                                            </div>
-
-                                            {{-- Fee Original Amount --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Original Amount') }}</label>
-                                                {!! Form::number('compulsory_fees_type[][fee_original_amount]', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'min' => 0, 'step' => '0.01', "data-convert" => "number"]) !!}
-                                            </div>
-
-                                            {{-- Fee Exchange Rate --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Rate to MMK') }}</label>
-                                                {!! Form::number('compulsory_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'min' => 0.0001, 'step' => '0.0001', 'readonly']) !!}
-                                            </div>
-
-                                            {{-- Equivalent MMK (calculated) + Hidden amount for backend --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('MMK Amount') }}</label>
-                                                <input type="number" class="form-control equivalent_mmk" placeholder="0.00" readonly>
-                                                <input type="hidden" name="compulsory_fees_type[][fee_amount_mmk]" class="fee_amount_mmk_hidden" value="0">
-                                                <input type="hidden" name="compulsory_fees_type[][amount]" class="compulsory_amount_hidden" value="0">
-                                            </div>
-
-                                            <div class="col-md-12 col-lg-1 d-flex align-items-end">
-                                                <button type="button"
-                                                    class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
-                                                    data-repeater-delete>
-                                                    <i class="fa fa-times"></i>
-                                                </button>
+                                                    {{-- Exchange Rate --}}
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted">缅币汇率</label>
+                                                        {!! Form::number('compulsory_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'min' => 0.0001, 'step' => '0.0001', 'readonly']) !!}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -260,52 +274,77 @@
                                 <div class="optional-fees-types">
                                     <div data-repeater-list="optional_fees_type" class="row col-12">
                                         <div class="row col-12 mb-3 optional-fee-row" data-repeater-item>
-                                            <div class="form-group col-md-12 col-lg-3">
-                                                <select name="optional_fees_type[][fees_type_id]" class="form-control fees_type"
-                                                    aria-label="Fees Type" required>
-                                                    <option value="">{{ __('Select Fees Type')}}</option>
-                                                    @foreach ($feesTypeData as $feesType)
-                                                        <option value="{{ $feesType->id }}">{{ $feesType->name }}</option>
-                                                    @endforeach
-                                                </select>
+                                            {{-- Row 1: Primary fee fields --}}
+                                            <div class="col-12 mb-2">
+                                                <div class="row">
+                                                    {{-- Fee Item --}}
+                                                    <div class="form-group col-md-12 col-lg-4">
+                                                        <label class="small text-muted">收费项目 <span class="text-danger">*</span></label>
+                                                        <select name="optional_fees_type[][fees_type_id]" class="form-control fees_type"
+                                                            aria-label="Fees Type" required>
+                                                            <option value="">选择收费项目</option>
+                                                            @foreach ($feesTypeData as $feesType)
+                                                                <option value="{{ $feesType->id }}">{{ $feesType->name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+
+                                                    {{-- Currency --}}
+                                                    <div class="form-group col-md-12 col-lg-2">
+                                                        <label class="small text-muted">币种</label>
+                                                        <select name="optional_fees_type[][fee_currency]" class="form-control fee_currency" aria-label="Currency">
+                                                            <option value="MMK" selected>MMK</option>
+                                                            <option value="CNY">CNY</option>
+                                                            <option value="USD">USD</option>
+                                                        </select>
+                                                    </div>
+
+                                                    {{-- Original Amount --}}
+                                                    <div class="form-group col-md-12 col-lg-2">
+                                                        <label class="small text-muted">原币金额</label>
+                                                        {!! Form::text('optional_fees_type[][fee_original_amount]', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
+                                                    </div>
+
+                                                    {{-- MMK Amount --}}
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted">折合缅币</label>
+                                                        <input type="text" class="form-control equivalent_mmk" placeholder="0.00" readonly>
+                                                        <input type="hidden" name="optional_fees_type[][fee_amount_mmk]" class="fee_amount_mmk_hidden" value="0">
+                                                        <input type="hidden" name="optional_fees_type[][amount]" class="amount" value="0">
+                                                    </div>
+
+                                                    {{-- Delete --}}
+                                                    <div class="col-md-12 col-lg-1 d-flex align-items-end justify-content-end">
+                                                        <button type="button"
+                                                            class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
+                                                            data-repeater-delete>
+                                                            <i class="fa fa-times"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            {{-- Fee Currency --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Currency') }}</label>
-                                                <select name="optional_fees_type[][fee_currency]" class="form-control fee_currency" aria-label="Currency">
-                                                    <option value="MMK" selected>MMK</option>
-                                                    <option value="CNY">CNY</option>
-                                                    <option value="USD">USD</option>
-                                                </select>
-                                            </div>
+                                            {{-- Row 2: Auxiliary fields --}}
+                                            <div class="col-12">
+                                                <div class="row">
+                                                    {{-- Report Category --}}
+                                                    <div class="form-group col-md-12 col-lg-4">
+                                                        <label class="small text-muted">报表分类</label>
+                                                        <select name="optional_fees_type[][finance_category_id]" class="form-control finance_category_select">
+                                                            <option value="">选择报表分类</option>
+                                                            @foreach ($financeCategories as $id => $name)
+                                                                <option value="{{ $id }}">{{ $name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                        <small class="form-text text-muted">用于内部财务报表，不影响收据上的收费项目名称。</small>
+                                                    </div>
 
-                                            {{-- Fee Original Amount --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Original Amount') }}</label>
-                                                {!! Form::text('optional_fees_type[][fee_original_amount]', null, ['class' => 'form-control fee_original_amount', 'placeholder' => '0.00', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
-                                            </div>
-
-                                            {{-- Fee Exchange Rate --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('Rate to MMK') }}</label>
-                                                {!! Form::text('optional_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*', 'readonly']) !!}
-                                            </div>
-
-                                            {{-- Equivalent MMK (calculated) + Hidden amount fields --}}
-                                            <div class="form-group col-md-12 col-lg-2">
-                                                <label class="small text-muted">{{ __('MMK Amount') }}</label>
-                                                <input type="text" class="form-control equivalent_mmk" placeholder="0.00" readonly>
-                                                <input type="hidden" name="optional_fees_type[][fee_amount_mmk]" class="fee_amount_mmk_hidden" value="0">
-                                                <input type="hidden" name="optional_fees_type[][amount]" class="amount" value="0">
-                                            </div>
-
-                                            <div class="col-md-12 col-lg-1 d-flex align-items-end">
-                                                <button type="button"
-                                                    class="btn btn-inverse-danger btn-icon remove-fees-type mb-3"
-                                                    data-repeater-delete>
-                                                    <i class="fa fa-times"></i>
-                                                </button>
+                                                    {{-- Exchange Rate --}}
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted">缅币汇率</label>
+                                                        {!! Form::text('optional_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*', 'readonly']) !!}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
