@@ -28,13 +28,18 @@
                         <form class="pt-3" id="create-form" action="{{ route('expense.store') }}" method="POST"
                             novalidate="novalidate" enctype="multipart/form-data">
                             <div class="row">
-                                <div class="form-group col-sm-12 col-md-5">
+                                <div class="form-group col-sm-12 col-md-3">
                                     <label>{{ __('select') }} {{ __('category') }} <span
                                             class="text-danger">*</span></label>
                                     {!! Form::select('category_id', $expenseCategory, null, ['required', 'class' => 'form-control', 'placeholder' => __('select') . ' ' . __('category')]) !!}
                                 </div>
 
-                                <div class="form-group col-sm-12 col-md-5">
+                                <div class="form-group col-sm-12 col-md-3">
+                                    <label>{{ __('Finance Category') }}</label>
+                                    {!! Form::select('finance_category_id', $financeCategories, null, ['class' => 'form-control', 'placeholder' => __('Select Finance Category')]) !!}
+                                </div>
+
+                                <div class="form-group col-sm-12 col-md-4">
                                     <label for="title">{{ __('title') }} <span class="text-danger">*</span></label>
                                     <input name="title" id="title" type="text" placeholder="{{ __('title') }}"
                                         class="form-control" required />
@@ -144,6 +149,9 @@
                                     <th scope="col" data-field="title" data-sortable="false">{{ __('title') }}</th>
                                     <th scope="col" data-field="category.name" data-sortable="false">{{ __('category') }}
                                     </th>
+                                    <th scope="col" data-field="finance_category_name" data-sortable="false"
+                                        data-formatter="financeCategoryFormatter">{{ __('Finance Category') }}
+                                    </th>
                                     <th scope="col" data-field="description" data-sortable="false">{{ __('description') }}
                                     </th>
                                     <th scope="col" data-field="date" data-sortable="false"
@@ -179,13 +187,18 @@
                                 <input type="hidden" name="id" id="edit_id" value="" />
                                 <div class="row">
 
-                                    <div class="form-group col-sm-12 col-md-5">
+                                    <div class="form-group col-sm-12 col-md-3">
                                         <label>{{ __('select') }} {{ __('category') }} <span
                                                 class="text-danger">*</span></label>
                                         {!! Form::select('category_id', $expenseCategory, null, ['required', 'class' => 'form-control', 'placeholder' => __('select') . ' ' . __('category'), 'id' => 'edit_category_id']) !!}
                                     </div>
 
-                                    <div class="form-group col-sm-12 col-md-5">
+                                    <div class="form-group col-sm-12 col-md-3">
+                                        <label>{{ __('Finance Category') }}</label>
+                                        {!! Form::select('finance_category_id', $financeCategories, null, ['class' => 'form-control', 'placeholder' => __('Select Finance Category'), 'id' => 'edit_finance_category_id']) !!}
+                                    </div>
+
+                                    <div class="form-group col-sm-12 col-md-4">
                                         <label for="edit_title">{{ __('title') }} <span class="text-danger">*</span></label>
                                         <input name="title" id="edit_title" type="text" placeholder="{{ __('title') }}"
                                             class="form-control" required />
@@ -305,6 +318,14 @@
             }
         }
 
+        // Finance Category formatter: show Uncategorized for null
+        function financeCategoryFormatter(value, row) {
+            if (!value) {
+                return '<span class="text-muted">Uncategorized</span>';
+            }
+            return value;
+        }
+
         // 列表金额格式化器：三行显示
         function amountFormatter(value, row) {
             if (!value && value !== 0) return '-';
@@ -334,6 +355,9 @@
             var rowIndex = row.index();
             var table = $('#table_list').bootstrapTable('getData');
             var data = table[rowIndex] || row.data() || {};
+
+            // Set finance category
+            $('#edit_finance_category_id').val(data.finance_category_id || '').trigger('change');
 
             var currency = data.transaction_currency || 'MMK';
             // fallback：旧数据没有 transaction_currency，默认为 MMK

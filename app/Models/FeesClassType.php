@@ -15,6 +15,8 @@ class FeesClassType extends Model {
         'class_id',
         'fees_id',
         'fees_class_id',
+        'fees_type_id',
+        'finance_category_id',
         'amount',
         'optional',
         'school_id',
@@ -55,6 +57,11 @@ class FeesClassType extends Model {
 
     public function optional_fees_paid() {
         return $this->hasMany(OptionalFee::class, 'fees_class_id')->withTrashed();
+    }
+
+    public function finance_category()
+    {
+        return $this->belongsTo(FinanceCategory::class, 'finance_category_id');
     }
 
     public function getFeesTypeNameAttribute() {

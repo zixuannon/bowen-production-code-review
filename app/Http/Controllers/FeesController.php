@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FeesAdvance;
 use App\Models\FeesClassType;
+use App\Models\FinanceCategory;
 use App\Repositories\ClassSchool\ClassSchoolInterface;
 use App\Repositories\ClassSection\ClassSectionInterface;
 use App\Repositories\CompulsoryFee\CompulsoryFeeInterface;
@@ -94,7 +95,12 @@ class FeesController extends Controller
         $defaultSessionYear = $this->cache->getDefaultSessionYear();
         $mediums = $this->medium->builder()->pluck('name', 'id');
         $systemSettings = $this->cache->getSystemSettings();
-        return view('Income.index', compact('classes', 'feesTypeData', 'sessionYear', 'defaultSessionYear', 'mediums', 'systemSettings'));
+        $financeCategories = FinanceCategory::where('type', 'income')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->pluck('name', 'id')
+            ->toArray();
+        return view('Income.index', compact('classes', 'feesTypeData', 'sessionYear', 'defaultSessionYear', 'mediums', 'systemSettings', 'financeCategories'));
     }
 
     public function store(Request $request)
@@ -190,6 +196,7 @@ class FeesController extends Controller
                         "fees_id" => $fees->id,
                         "class_id" => $class_id,
                         "fees_type_id" => $data['fees_type_id'],
+                        "finance_category_id" => !empty($data['finance_category_id']) ? $data['finance_category_id'] : null,
                         "amount" => round($amountMmk, 2),  // amount 保存 MMK 金额
                         "fee_currency" => $feeCurrency,
                         "fee_original_amount" => $originalAmount,
@@ -224,6 +231,7 @@ class FeesController extends Controller
                             "fees_id" => $fees->id,
                             "class_id" => $class_id,
                             "fees_type_id" => $data['fees_type_id'],
+                            "finance_category_id" => !empty($data['finance_category_id']) ? $data['finance_category_id'] : null,
                             "amount" => round($amountMmk, 2),  // amount 保存 MMK 金额
                             "fee_currency" => $feeCurrency,
                             "fee_original_amount" => $originalAmount,
@@ -235,7 +243,7 @@ class FeesController extends Controller
                 }
 
                 if (count($feeClassType) > 0) {
-                    $this->feesClassType->upsert($feeClassType, ['class_id', 'fees_type_id'], ['amount', 'optional', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']);
+                    $this->feesClassType->upsert($feeClassType, ['class_id', 'fees_type_id'], ['amount', 'optional', 'finance_category_id', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']);
                 }
 
                 if ($request->include_fee_installments && count($request->fees_installments)) {
@@ -369,7 +377,13 @@ class FeesController extends Controller
         // 注意：有些费用是基于 Class 级别的，不一定直接关联特定学生，因此此处补齐空值或逻辑判断。
         $student = null;
         
-        return view('Income.edit', compact('classes', 'feesTypeData', 'fees', 'student'));
+        $financeCategories = FinanceCategory::where('type', 'income')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->pluck('name', 'id')
+            ->toArray();
+        
+        return view('Income.edit', compact('classes', 'feesTypeData', 'fees', 'student', 'financeCategories'));
     }
 
     public function update(Request $request, $id)
@@ -514,6 +528,7 @@ class FeesController extends Controller
                     "class_id" => $fees->class_id,
                     "fees_id" => $fees->id,
                     "fees_type_id" => $data['fees_type_id'],
+                    "finance_category_id" => !empty($data['finance_category_id']) ? $data['finance_category_id'] : null,
                     "amount" => $normalizeAmount($amountMmk),  // amount 保存 MMK 金额
                     "fee_currency" => $feeCurrency,
                     "fee_original_amount" => $originalAmount,
@@ -550,6 +565,7 @@ class FeesController extends Controller
                     "class_id" => $fees->class_id,
                     "fees_id" => $fees->id,
                     "fees_type_id" => $data['fees_type_id'],
+                    "finance_category_id" => !empty($data['finance_category_id']) ? $data['finance_category_id'] : null,
                     "amount" => $normalizeAmount($amountMmk),  // amount 保存 MMK 金额
                     "fee_currency" => $feeCurrency,
                     "fee_original_amount" => $originalAmount,
@@ -571,7 +587,7 @@ class FeesController extends Controller
                 DB::table('fees_class_types')->upsert(
                     $feeClassTypeRows,
                     ['class_id', 'fees_id', 'fees_type_id', 'school_id'],
-                    ['amount', 'optional', 'updated_at', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']
+                    ['amount', 'optional', 'finance_category_id', 'updated_at', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']
                 );
             }
 

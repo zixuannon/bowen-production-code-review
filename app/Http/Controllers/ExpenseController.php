@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FinanceCategory;
 use App\Repositories\Expense\ExpenseInterface;
 use App\Repositories\ExpenseCategory\ExpenseCategoryInterface;
 use App\Repositories\SessionYear\SessionYearInterface;
@@ -44,9 +45,15 @@ class ExpenseController extends Controller
         $sessionYearFullData = $this->sessionYear->builder()->get();
         $current_session_year = app(CachingService::class)->getDefaultSessionYear();
 
+        $financeCategories = FinanceCategory::where('type', 'expense')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->pluck('name', 'id')
+            ->toArray();
+
         $months = sessionYearWiseMonth();
 
-        return view('expense.index', compact('expenseCategory', 'sessionYear', 'current_session_year', 'months', 'sessionYearFullData'));
+        return view('expense.index', compact('expenseCategory', 'financeCategories', 'sessionYear', 'current_session_year', 'months', 'sessionYearFullData'));
     }
 
 
@@ -99,6 +106,7 @@ class ExpenseController extends Controller
             
             $data = [
                 'category_id' => $request->category_id,
+                'finance_category_id' => $request->finance_category_id ?: null,
                 'title' => $request->title,
                 'ref_no' => $request->ref_no,
                 'amount' => $amount,
@@ -151,10 +159,12 @@ class ExpenseController extends Controller
         //         });
         //     });
 
-        $sql = $this->expense->builder()->with('category')->whereNull('vehicle_id')->where(function ($query) use ($search) {
+        $sql = $this->expense->builder()->with('category', 'finance_category')->whereNull('vehicle_id')->where(function ($query) use ($search) {
             $query->when($search, function ($query) use ($search) {
                 $query->where(function ($query) use ($search) {
                     $query->where('title', 'LIKE', "%$search%")->orWhere('ref_no', 'LIKE', "%$search%")->orWhere('amount', 'LIKE', "%$search%")->orWhere('date', 'LIKE', "%$search%")->orWhere('description', 'LIKE', "%$search%")->orWhereHas('category', function ($q) use ($search) {
+                        $q->Where('name', 'LIKE', "%$search%");
+                    })->orWhereHas('finance_category', function ($q) use ($search) {
                         $q->Where('name', 'LIKE', "%$search%");
                     });
                 });
@@ -203,6 +213,7 @@ class ExpenseController extends Controller
             if ($row->staff_id) {
                 $tempRow['category.name'] = 'Salary';
             }
+            $tempRow['finance_category_name'] = $row->finance_category->name ?? null;
             $tempRow['operate'] = $operate;
             $rows[] = $tempRow;
         }
@@ -257,6 +268,7 @@ class ExpenseController extends Controller
             
             $data = [
                 'category_id' => $request->category_id,
+                'finance_category_id' => $request->finance_category_id ?: null,
                 'title' => $request->title,
                 'ref_no' => $request->ref_no,
                 'amount' => $amount,

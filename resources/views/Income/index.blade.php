@@ -72,6 +72,17 @@
                                                 </select>
                                             </div>
 
+                                            {{-- Finance Category --}}
+                                            <div class="form-group col-md-12 col-lg-2">
+                                                <label class="small text-muted">{{ __('Finance Category') }}</label>
+                                                <select name="compulsory_fees_type[][finance_category_id]" class="form-control finance_category_select">
+                                                    <option value="">{{ __('Select Category') }}</option>
+                                                    @foreach ($financeCategories as $id => $name)
+                                                        <option value="{{ $id }}">{{ $name }}</option>
+                                                    @endforeach
+                                                </select>
+                                            </div>
+
                                             {{-- Fee Currency --}}
                                             <div class="form-group col-md-12 col-lg-2">
                                                 <label class="small text-muted">{{ __('Currency') }}</label>
