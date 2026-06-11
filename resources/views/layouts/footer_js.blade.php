@@ -257,6 +257,11 @@
         $(document).ready(function() {
             var targetNode = document.querySelector('thead');
 
+            // Page without thead (e.g. Pay Optional form) — skip observer
+            if (!targetNode) {
+                return;
+            }
+
             // Apply initial styles
             $('th[data-field="operate"]').addClass('action-column');
 
