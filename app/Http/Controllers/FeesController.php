@@ -1703,7 +1703,8 @@ class FeesController extends Controller
                             ->with([
                                 'fees_class_type' => function ($query) {
                                     $query->where(['optional' => 1]);
-                                }
+                                },
+                                'fees_paid'
                             ]);
                     },
                     'fees_paid' => function ($q) use ($request) {
@@ -1768,11 +1769,13 @@ class FeesController extends Controller
                     $tempRow['payment_method'] = $row->optional_fees[0]->mode;
                 }
 
-                // 多币种字段提升到顶层 — bootstrap-table formatter 只接收顶层字段
-                $tempRow['transaction_currency'] = $row->fees_paid->transaction_currency ?? 'MMK';
-                $tempRow['original_amount'] = $row->fees_paid->original_amount ?? ($row->optional_fees[0]->amount ?? 0);
-                $tempRow['exchange_rate_snapshot'] = $row->fees_paid->exchange_rate_snapshot ?? 1;
-                $tempRow['amount_mmk'] = $row->fees_paid->amount_mmk ?? ($row->optional_fees[0]->amount ?? 0);
+                // 多币种 & 日期 — 从 optional_fees[0]->fees_paid_id 获取正确的付款记录
+                $correctFeesPaid = (count($row->optional_fees) > 0) ? $row->optional_fees[0]->fees_paid : null;
+                $tempRow['transaction_currency'] = $correctFeesPaid->transaction_currency ?? 'MMK';
+                $tempRow['original_amount'] = $correctFeesPaid->original_amount ?? ($row->optional_fees[0]->amount ?? 0);
+                $tempRow['exchange_rate_snapshot'] = $correctFeesPaid->exchange_rate_snapshot ?? 1;
+                $tempRow['amount_mmk'] = $correctFeesPaid->amount_mmk ?? ($row->optional_fees[0]->amount ?? 0);
+                $tempRow['payment_date'] = $row->optional_fees[0]->date ?? ($correctFeesPaid->date ?? '');
 
                 $rows[] = $tempRow;
             }

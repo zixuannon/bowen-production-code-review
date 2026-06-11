@@ -72,7 +72,7 @@
                                     <th scope="col" data-field="full_name" data-sortable="false" data-formatter="NotificationUserNameFormatter"> {{ __('Student Name') }}</th>
                                     <th scope="col" data-field="optional_fees_amount" data-sortable="false" data-align="center" data-formatter="optionalFeesPaidListAmountFormatter">{{ __('Optional Fees') }}</th>
                                     <th scope="col" data-field="payment_method" data-sortable="false" data-align="center"> {{ __('Payment Method') }}</th>
-                                    <th scope="col" data-field="fees_paid.date"  data-sortable="false" data-align="center">{{ __('Date') }}</th>
+                                    <th scope="col" data-field="payment_date"  data-sortable="false" data-align="center">{{ __('Date') }}</th>
                                 </tr>
                             </thead>
                         </table>
