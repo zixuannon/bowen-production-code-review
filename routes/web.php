@@ -819,7 +819,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         // Finance Category
         Route::get('finance-category/list', [FinanceCategoryController::class, 'list'])->name('finance-category.list');
-        Route::resource('finance-category', FinanceCategoryController::class)->except(['show']);
+        Route::resource('finance-category', FinanceCategoryController::class)->except(['show', 'edit']);
         // Payroll
         Route::get('payroll/slip/{id?}', [PayrollController::class, 'slip'])->name('payroll.slip');
         Route::get('payroll/slips', [PayrollController::class, 'slip_index'])->name('payroll.slip.index');

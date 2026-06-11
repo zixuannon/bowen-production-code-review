@@ -2524,3 +2524,16 @@ window.assignElectiveSubjectEvents = {
     }
 };
 
+window.financeCategoryEvents = {
+    'click .edit-data': function (e, value, row) {
+        $('#edit_id').val(row.id);
+        $('#edit_type').val(row.type);
+        $('#edit_category_code').val(row.category_code);
+        $('#edit_name').val(row.name);
+        $('#edit_local_name').val(row.local_name || '');
+        $('#edit_sort_order').val(row.sort_order || 0);
+        $('#edit_is_active').val(row.is_active ? '1' : '0');
+        $('#edit_description').val(row.description || '');
+    }
+};
+

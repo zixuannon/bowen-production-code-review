@@ -113,7 +113,7 @@ class FinanceCategoryController extends Controller
                 'name'          => $request->name,
                 'local_name'    => $request->local_name,
                 'description'   => $request->description,
-                'is_active'     => $request->has('is_active') ? 1 : 0,
+                'is_active'     => 1,  // New categories are always created active by default
                 'sort_order'    => $request->sort_order ?? 0,
                 'created_by'    => Auth::id(),
             ]);
@@ -151,7 +151,7 @@ class FinanceCategoryController extends Controller
                 'name'          => $request->name,
                 'local_name'    => $request->local_name,
                 'description'   => $request->description,
-                'is_active'     => $request->has('is_active') ? 1 : 0,
+                'is_active'     => $request->boolean('is_active') ? 1 : 0,
                 'sort_order'    => $request->sort_order ?? 0,
                 'updated_by'    => Auth::id(),
             ]);
