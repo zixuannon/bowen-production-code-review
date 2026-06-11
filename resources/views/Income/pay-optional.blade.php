@@ -47,7 +47,7 @@
                                                     <label style="cursor: pointer;" for="optional-{{ $optionalFee->id }}">{{$optionalFee->fees_type_name}}</label>
                                                 </td>
                                                 <td style="cursor: default;" class="text-right">
-                                                    {{$optionalFee->amount}}
+                                                    {{ number_format($optionalFee->amount) }} K
                                                     {!! Form::hidden('fees_class_type['.$key.'][amount]', $optionalFee->amount) !!}
                                                 </td>
                                             </tr>
@@ -84,11 +84,17 @@
                                     <div class="row mt-2">
                                         <div class="form-group col-md-6">
                                             <label class="small text-muted">{{ __('Original Payment Amount') }}</label>
-                                            <input type="text" id="original_amount_display" class="form-control" placeholder="0.00" readonly>
+                                            <div class="input-group">
+                                                <input type="text" id="original_amount_display" class="form-control" placeholder="0.00" readonly>
+                                                <div class="input-group-text" id="original_amount_currency_suffix">MMK</div>
+                                            </div>
                                         </div>
                                         <div class="form-group col-md-6">
                                             <label class="small text-muted">{{ __('MMK Equivalent') }}</label>
-                                            <input type="text" id="amount_mmk_display" class="form-control" placeholder="0.00" readonly>
+                                            <div class="input-group">
+                                                <input type="text" id="amount_mmk_display" class="form-control" placeholder="0.00" readonly>
+                                                <div class="input-group-text">K</div>
+                                            </div>
                                         </div>
                                     </div>
                                     {{-- Hidden fields for form submission --}}
@@ -153,6 +159,10 @@
 
         var totalAmount = 0;
 
+        function formatAmountK(value) {
+            return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' K';
+        }
+
         // 更新多币种字段显示
         function updateMultiCurrencyFields() {
             if (totalAmount <= 0) {
@@ -169,6 +179,7 @@
             // 更新显示字段
             $('#original_amount_display').val(originalAmount);
             $('#amount_mmk_display').val(totalAmount.toFixed(2));
+            $('#original_amount_currency_suffix').text(currency);
 
             // 更新 hidden 字段
             $('#hidden_transaction_currency').val(currency);
@@ -200,12 +211,12 @@
             totalAmount += $(this).is(':checked') ? $(this).data("amount") : -$(this).data("amount");
             if (totalAmount > 0) {
                 $('#pay-button').removeAttr('disabled');
-                $('#optional-total-amount-to-pay').show().find('#optional-total-amount').html(totalAmount);
+                $('#optional-total-amount-to-pay').show().find('#optional-total-amount').html(formatAmountK(totalAmount));
                 $('#optional-total-amount-to-pay').show().find('#form-total-optional-amount').val(totalAmount);
                 updateMultiCurrencyFields();
             } else {
                 $('#pay-button').attr('disabled', true);
-                $('#optional-total-amount-to-pay').hide().find('#optional-total-amount').html(totalAmount);
+                $('#optional-total-amount-to-pay').hide().find('#optional-total-amount').html(formatAmountK(totalAmount));
                 $('#optional-total-amount-to-pay').hide().find('#form-total-optional-amount').val(totalAmount);
                 $('#multi-currency-section').hide();
             }
