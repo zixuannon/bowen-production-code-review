@@ -21,6 +21,7 @@ use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FaqController;
 use App\Http\Controllers\FinanceCategoryController;
+use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\FeesController;
 use App\Http\Controllers\FeesTypeController;
 use App\Http\Controllers\FormFieldsController;
@@ -829,6 +830,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         // Outstanding Fees
         Route::get('outstanding-fees', [OutstandingFeesController::class, 'index'])->name('outstanding-fees.index');
+
+        // Finance Report
+        Route::get('finance-report', [FinanceReportController::class, 'index'])->name('finance-report.index');
 
         // Payroll
         Route::get('payroll/slip/{id?}', [PayrollController::class, 'slip'])->name('payroll.slip');
