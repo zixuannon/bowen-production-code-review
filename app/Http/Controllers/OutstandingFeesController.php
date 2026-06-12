@@ -222,12 +222,15 @@ class OutstandingFeesController extends Controller
         }
 
         // ---- Step 5: Batch query optional paid (for export reference only) ----
+        // optional_fees has no session_year_id column; filter via fees_class_type → fees_id → fee.session_year_id
         $allOptionalPaid = collect();
-        if (!empty($studentUserIds)) {
+        if (!empty($allFeeIds) && !empty($studentUserIds)) {
             $allOptionalPaid = OptionalFee::where('school_id', $schoolId)
-                ->where('session_year_id', $filterSessionYearId)
                 ->whereIn('student_id', $studentUserIds)
                 ->where('status', 'Success')
+                ->whereHas('fees_class_type', function ($q) use ($allFeeIds) {
+                    $q->whereIn('fees_id', $allFeeIds);
+                })
                 ->get();
         }
 
