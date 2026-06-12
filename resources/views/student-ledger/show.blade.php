@@ -42,6 +42,12 @@
                                 {{ $student->guardian->full_name ?? 'N/A' }}
                             </div>
                         </div>
+                        <div class="row">
+                            <div class="col-md-3 col-sm-6 mb-2">
+                                <strong>{{ __('Contact') }}:</strong>
+                                {{ $student->guardian->mobile ?? $student->user->mobile ?? 'N/A' }}
+                            </div>
+                        </div>
                         <div class="mt-2">
                             <a href="{{ route('student-ledger.index') }}" class="btn btn-sm btn-secondary">
                                 &larr; {{ __('Back to Search') }}
