@@ -27,7 +27,8 @@ class StudentLedgerController extends Controller
                     $q->where('admission_no', 'like', "%{$search}%")
                       ->orWhereHas('user', function ($uq) use ($search) {
                           $uq->where('first_name', 'like', "%{$search}%")
-                             ->orWhere('last_name', 'like', "%{$search}%");
+                             ->orWhere('last_name', 'like', "%{$search}%")
+                             ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$search}%"]);
                       });
                 })
                 ->limit(50)
