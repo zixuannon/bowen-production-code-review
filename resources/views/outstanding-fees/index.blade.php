@@ -8,8 +8,14 @@
     <div class="content-wrapper">
         <div class="page-header">
             <h3 class="page-title">
-                {{ __('Outstanding Fees') }}
+                {{ __('Student Finance') }}
             </h3>
+        </div>
+
+        {{-- Sub-navigation tabs --}}
+        <div class="mb-3">
+            <a href="{{ route('outstanding-fees.index') }}" class="btn btn-primary">{{ __('Outstanding Fees') }}</a>
+            <a href="{{ route('student-ledger.index') }}" class="btn btn-outline-primary">{{ __('Student Ledger') }}</a>
         </div>
 
         <div class="row">

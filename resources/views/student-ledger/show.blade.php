@@ -7,13 +7,19 @@
 @section('content')
     <div class="content-wrapper">
         <div class="page-header">
-            <h3 class="page-title">{{ __('Student Ledger') }}</h3>
+            <h3 class="page-title">{{ __('Student Finance') }}</h3>
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
                     <li class="breadcrumb-item"><a href="{{ route('student-ledger.index') }}">{{ __('Student Ledger') }}</a></li>
                     <li class="breadcrumb-item active" aria-current="page">{{ $student->user->full_name ?? 'Student' }}</li>
                 </ol>
             </nav>
+        </div>
+
+        {{-- Sub-navigation tabs --}}
+        <div class="mb-3">
+            <a href="{{ route('outstanding-fees.index') }}" class="btn btn-outline-primary">{{ __('Outstanding Fees') }}</a>
+            <a href="{{ route('student-ledger.index') }}" class="btn btn-primary">{{ __('Student Ledger') }}</a>
         </div>
 
         {{-- Student Info Card --}}
