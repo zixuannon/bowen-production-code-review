@@ -57,6 +57,11 @@ class FinanceReportController extends Controller
 
         $compulsoryRows = $compulsoryQuery->get(['compulsory_fees.amount', 'compulsory_fees.id', 'fees_paids.fees_id']);
 
+        // Attach category name to each compulsory row (one row = one payment, one category)
+        $compulsoryRows->each(function ($row) use ($feeIdCategoryMap) {
+            $row->_category = $feeIdCategoryMap[$row->fees_id] ?? __('Compulsory Fees');
+        });
+
         // ---- 3. Optional Income (status=Success) ----
         $optionalQuery = OptionalFee::where('optional_fees.status', 'Success')
             ->where('optional_fees.school_id', $schoolId)
@@ -65,16 +70,21 @@ class FinanceReportController extends Controller
         $optionalRows = $optionalQuery->get(['optional_fees.amount', 'optional_fees.id', 'optional_fees.fees_class_id']);
 
         // Resolve optional category names in one batch
-        $feesClassIds = $optionalRows->pluck('fees_class_id')->unique()->filter()->toArray();
-        $optionalCategoryNames = [];
+        $feesClassIds = $optionalRows->pluck('fees_class_id')->unique()->filter()->values()->toArray();
+        $optionalCategoryMap = [];
         if (!empty($feesClassIds)) {
             $fctRecords = FeesClassType::whereIn('id', $feesClassIds)
                 ->with('finance_category')
                 ->get();
             foreach ($fctRecords as $fct) {
-                $optionalCategoryNames[$fct->id] = $fct->finance_category->name ?? __('Uncategorized');
+                $optionalCategoryMap[$fct->id] = $fct->finance_category->name ?? __('Uncategorized');
             }
         }
+
+        // Attach category name to each optional row
+        $optionalRows->each(function ($row) use ($optionalCategoryMap) {
+            $row->_category = $optionalCategoryMap[$row->fees_class_id] ?? __('Uncategorized');
+        });
 
         // ---- 4. Expenses ----
         $expenseQuery = Expense::where('school_id', $schoolId)
@@ -83,22 +93,57 @@ class FinanceReportController extends Controller
         $expenseRows = $expenseQuery->get(['id', 'amount', 'amount_mmk', 'finance_category_id']);
 
         // Resolve expense category names in one batch
-        $expenseCatIds = $expenseRows->pluck('finance_category_id')->unique()->filter()->toArray();
-        $expenseCategoryNames = [];
+        $expenseCatIds = $expenseRows->pluck('finance_category_id')->unique()->filter()->values()->toArray();
+        $expenseCategoryMap = [];
         if (!empty($expenseCatIds)) {
             $fcRecords = FinanceCategory::whereIn('id', $expenseCatIds)->get();
             foreach ($fcRecords as $fc) {
-                $expenseCategoryNames[$fc->id] = $fc->name;
+                $expenseCategoryMap[$fc->id] = $fc->name;
             }
         }
 
-        // ---- 5. Aggregate into category table rows ----
+        // Attach category name and MMK amount to each expense row
+        $expenseRows->each(function ($row) use ($expenseCategoryMap) {
+            $row->_category = $row->finance_category_id
+                ? ($expenseCategoryMap[$row->finance_category_id] ?? __('Uncategorized'))
+                : __('Uncategorized');
+            $row->_mmk_amount = ($row->amount_mmk > 0) ? $row->amount_mmk : $row->amount;
+        });
+
+        // ---- 5. Apply filters to raw rows BEFORE computing summary totals ----
+        $filteredCompulsory = $compulsoryRows;
+        $filteredOptional   = $optionalRows;
+        $filteredExpense    = $expenseRows;
+
+        if ($typeFilter === 'income') {
+            $filteredExpense = collect();
+        } elseif ($typeFilter === 'expense') {
+            $filteredCompulsory = collect();
+            $filteredOptional   = collect();
+        }
+
+        if ($categoryFilter) {
+            $filteredCompulsory = $filteredCompulsory->filter(fn($r) => $r->_category === $categoryFilter);
+            $filteredOptional   = $filteredOptional->filter(fn($r) => $r->_category === $categoryFilter);
+            $filteredExpense    = $filteredExpense->filter(fn($r) => $r->_category === $categoryFilter);
+        }
+
+        // ---- 6. Summary totals from FILTERED rows (P2-2: cards follow filters) ----
+        $totalCompulsoryIncome = $filteredCompulsory->sum('amount');
+        $totalOptionalIncome   = $filteredOptional->sum('amount');
+        $totalIncome           = $totalCompulsoryIncome + $totalOptionalIncome;
+
+        $totalExpense = $filteredExpense->sum(fn($r) => $r->_mmk_amount ?? 0);
+
+        $netIncome = $totalIncome - $totalExpense;
+
+        // ---- 7. Aggregate into category table rows from FILTERED rows ----
         $categoryRows = collect();
 
         // Compulsory by category
         $compulsoryByCat = [];
-        foreach ($compulsoryRows as $row) {
-            $catName = $feeIdCategoryMap[$row->fees_id] ?? __('Compulsory Fees');
+        foreach ($filteredCompulsory as $row) {
+            $catName = $row->_category;
             if (!isset($compulsoryByCat[$catName])) {
                 $compulsoryByCat[$catName] = ['amount' => 0, 'count' => 0];
             }
@@ -117,8 +162,8 @@ class FinanceReportController extends Controller
 
         // Optional by category
         $optionalByCat = [];
-        foreach ($optionalRows as $row) {
-            $catName = $optionalCategoryNames[$row->fees_class_id] ?? __('Uncategorized');
+        foreach ($filteredOptional as $row) {
+            $catName = $row->_category;
             if (!isset($optionalByCat[$catName])) {
                 $optionalByCat[$catName] = ['amount' => 0, 'count' => 0];
             }
@@ -137,15 +182,12 @@ class FinanceReportController extends Controller
 
         // Expense by category
         $expenseByCat = [];
-        foreach ($expenseRows as $row) {
-            $catName = $row->finance_category_id
-                ? ($expenseCategoryNames[$row->finance_category_id] ?? __('Uncategorized'))
-                : __('Uncategorized');
+        foreach ($filteredExpense as $row) {
+            $catName = $row->_category;
             if (!isset($expenseByCat[$catName])) {
                 $expenseByCat[$catName] = ['amount' => 0, 'count' => 0];
             }
-            $mmkAmount = ($row->amount_mmk > 0) ? $row->amount_mmk : $row->amount;
-            $expenseByCat[$catName]['amount'] += $mmkAmount;
+            $expenseByCat[$catName]['amount'] += $row->_mmk_amount;
             $expenseByCat[$catName]['count']++;
         }
         foreach ($expenseByCat as $cat => $data) {
@@ -158,39 +200,18 @@ class FinanceReportController extends Controller
             ]);
         }
 
-        // Apply type filter
-        if ($typeFilter === 'income') {
-            $categoryRows = $categoryRows->where('type', 'Income');
-        } elseif ($typeFilter === 'expense') {
-            $categoryRows = $categoryRows->where('type', 'Expense');
-        }
-
-        // Apply category filter
-        if ($categoryFilter) {
-            $categoryRows = $categoryRows->where('category', $categoryFilter);
-        }
-
-        // ---- 6. Summary totals ----
-        $totalCompulsoryIncome = $compulsoryRows->sum('amount');
-        $totalOptionalIncome   = $optionalRows->sum('amount');
-        $totalIncome           = $totalCompulsoryIncome + $totalOptionalIncome;
-
-        $totalExpense = 0;
-        foreach ($expenseRows as $row) {
-            $totalExpense += ($row->amount_mmk > 0) ? $row->amount_mmk : $row->amount;
-        }
-
-        $netIncome = $totalIncome - $totalExpense;
-
-        // ---- 7. Current Outstanding (reference only) ----
+        // ---- 8. Current Outstanding (reference only, NOT affected by income/expense filters) ----
         $currentOutstanding = $this->computeOutstandingReference($schoolId);
 
-        // ---- 8. Calculate percentages ----
+        // ---- 9. Calculate percentages ----
         $grandTotal = $totalIncome + $totalExpense;
         $categoryRows = $categoryRows->map(function ($row) use ($grandTotal) {
             $row['percentage'] = $grandTotal > 0 ? round(($row['amount'] / $grandTotal) * 100, 1) : 0;
             return $row;
         });
+
+        // ---- 10. Detect if filters are active (for view indicator) ----
+        $hasFilter = ($typeFilter !== 'all') || ($categoryFilter !== null);
 
         return view('finance-report.index', compact(
             'categoryRows',
@@ -205,6 +226,7 @@ class FinanceReportController extends Controller
             'typeFilter',
             'categoryFilter',
             'financeCategories',
+            'hasFilter',
         ));
     }
 
@@ -215,6 +237,11 @@ class FinanceReportController extends Controller
      *   - If all fct share the same non-null finance_category_id → use that category name
      *   - If multiple different categories → "Compulsory Fees"
      *   - If finance_category_id is null → "Uncategorized"
+     *
+     * NOTE: If the test data does not have finance_category_id assigned
+     * on fees_class_types records, all compulsory income will display as
+     * "Uncategorized". This is a data configuration issue, not a code bug.
+     * Set finance_category_id on relevant fees_class_types to fix.
      */
     private function buildCompulsoryCategoryMap(): array
     {

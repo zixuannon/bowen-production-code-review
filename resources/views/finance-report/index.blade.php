@@ -18,7 +18,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h4 class="card-title">{{ __('Filters') }}</h4>
-                        <form method="GET" action="{{ route('finance-report.index') }}">
+                        <form id="finance-report-filter" method="GET" action="{{ route('finance-report.index') }}">
                             <div class="row">
                                 <div class="form-group col-md-2">
                                     <label>{{ __('Date From') }}</label>
@@ -57,6 +57,14 @@
                                 </div>
                             </div>
                         </form>
+                        @if ($hasFilter)
+                            <div class="mt-2">
+                                <span class="badge badge-info mr-1">{{ __('Filters active') }}</span>
+                                <small class="text-muted">
+                                    {{ __('Summary cards reflect current filters. Outstanding is always school-wide reference.') }}
+                                </small>
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -68,7 +76,12 @@
                 <div class="card">
                     <div class="card-body text-center">
                         <h2 class="text-primary">{{ number_format($totalIncome) }} MMK</h2>
-                        <small class="text-muted">{{ __('Total Income') }}</small>
+                        <small class="text-muted">
+                            {{ __('Total Income') }}
+                            @if ($typeFilter === 'expense')
+                                <span class="badge badge-light">{{ __('filtered') }}</span>
+                            @endif
+                        </small>
                     </div>
                 </div>
             </div>
@@ -76,7 +89,12 @@
                 <div class="card">
                     <div class="card-body text-center">
                         <h2 class="text-danger">{{ number_format($totalExpense) }} MMK</h2>
-                        <small class="text-muted">{{ __('Total Expense') }}</small>
+                        <small class="text-muted">
+                            {{ __('Total Expense') }}
+                            @if ($typeFilter === 'income')
+                                <span class="badge badge-light">{{ __('filtered') }}</span>
+                            @endif
+                        </small>
                     </div>
                 </div>
             </div>
@@ -86,7 +104,12 @@
                         <h2 class="{{ $netIncome >= 0 ? 'text-success' : 'text-danger' }}">
                             {{ number_format($netIncome) }} MMK
                         </h2>
-                        <small class="text-muted">{{ __('Net Income') }}</small>
+                        <small class="text-muted">
+                            {{ __('Net Income') }}
+                            @if ($hasFilter)
+                                <span class="badge badge-light">{{ __('filtered') }}</span>
+                            @endif
+                        </small>
                     </div>
                 </div>
             </div>
@@ -97,7 +120,12 @@
                 <div class="card">
                     <div class="card-body text-center">
                         <h4 class="text-info">{{ number_format($totalCompulsoryIncome) }} MMK</h4>
-                        <small class="text-muted">{{ __('Compulsory Income') }}</small>
+                        <small class="text-muted">
+                            {{ __('Compulsory Income') }}
+                            @if ($typeFilter === 'expense')
+                                <span class="badge badge-light">{{ __('filtered') }}</span>
+                            @endif
+                        </small>
                     </div>
                 </div>
             </div>
@@ -105,7 +133,12 @@
                 <div class="card">
                     <div class="card-body text-center">
                         <h4 class="text-info">{{ number_format($totalOptionalIncome) }} MMK</h4>
-                        <small class="text-muted">{{ __('Optional Income') }}</small>
+                        <small class="text-muted">
+                            {{ __('Optional Income') }}
+                            @if ($typeFilter === 'expense')
+                                <span class="badge badge-light">{{ __('filtered') }}</span>
+                            @endif
+                        </small>
                     </div>
                 </div>
             </div>
@@ -115,7 +148,20 @@
                         <h4 class="{{ $currentOutstanding > 0 ? 'text-warning' : 'text-success' }}">
                             {{ number_format($currentOutstanding) }} MMK
                         </h4>
-                        <small class="text-muted">{{ __('Current Outstanding') }} <span class="badge badge-secondary">{{ __('Reference') }}</span></small>
+                        <small class="text-muted">
+                            {{ __('Current Outstanding') }}
+                            <span class="badge badge-secondary">{{ __('Reference') }}</span>
+                            @if ($hasFilter)
+                                <span class="badge badge-light">{{ __('all students') }}</span>
+                            @endif
+                        </small>
+                        @if ($hasFilter)
+                            <div class="mt-1">
+                                <small class="text-muted font-italic">
+                                    {{ __('Outstanding is school-wide reference, not affected by filters.') }}
+                                </small>
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
