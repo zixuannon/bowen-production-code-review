@@ -56,6 +56,7 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StaffAttendanceController;
 use App\Http\Controllers\StreamController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\OutstandingFeesController;
 use App\Http\Controllers\StudentLedgerController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\SubscriptionBillPaymentController;
@@ -825,6 +826,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Student Ledger
         Route::get('student-ledger', [StudentLedgerController::class, 'index'])->name('student-ledger.index');
         Route::get('student-ledger/{userId}', [StudentLedgerController::class, 'show'])->name('student-ledger.show');
+
+        // Outstanding Fees
+        Route::get('outstanding-fees', [OutstandingFeesController::class, 'index'])->name('outstanding-fees.index');
 
         // Payroll
         Route::get('payroll/slip/{id?}', [PayrollController::class, 'slip'])->name('payroll.slip');
