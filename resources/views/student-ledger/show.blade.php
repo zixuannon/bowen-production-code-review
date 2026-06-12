@@ -45,7 +45,7 @@
                         <div class="row">
                             <div class="col-md-3 col-sm-6 mb-2">
                                 <strong>{{ __('Contact') }}:</strong>
-                                {{ $student->guardian->mobile ?? $student->user->mobile ?? 'N/A' }}
+                                {{ $student->guardian->mobile ?? $student->user->mobile ?? __('暂无联系方式') }}
                             </div>
                         </div>
                         <div class="mt-2">
@@ -115,7 +115,7 @@
                     <div class="card">
                         <div class="card-body bg-dark text-white rounded">
                             <h3 class="mb-0">
-                                {{ $lastPaymentDate ? date('d/m/Y', strtotime($lastPaymentDate)) : 'N/A' }}
+                                {{ $lastPaymentDate ? date('d/m/Y', strtotime($lastPaymentDate)) : __('暂无付款记录') }}
                             </h3>
                             <p class="mb-0">{{ __('Last Payment') }}</p>
                         </div>
@@ -149,7 +149,7 @@
                                                 @endphp
                                                 <tr>
                                                     <td>{{ $item->fees_type->name ?? 'N/A' }}</td>
-                                                    <td>{{ $item->finance_category->name ?? 'N/A' }}</td>
+                                                    <td>{{ $item->finance_category->name ?? __('未设置') }}</td>
                                                     <td>{{ $item->fee_currency ?? 'MMK' }}</td>
                                                     <td class="text-right">{{ number_format($item->fee_original_amount ?? $expectedMmk, 2) }}</td>
                                                     <td class="text-right">{{ $item->fee_exchange_rate_snapshot ?? '1.0' }}</td>
@@ -200,7 +200,7 @@
                                             @foreach ($optionalPaidRecords as $r)
                                                 <tr>
                                                     <td>{{ $r->fees_class_type->fees_type->name ?? 'Optional Fee' }}</td>
-                                                    <td>{{ $r->fees_class_type->finance_category->name ?? 'N/A' }}</td>
+                                                    <td>{{ $r->fees_class_type->finance_category->name ?? __('未设置') }}</td>
                                                     <td class="text-right">{{ number_format($r->amount, 2) }}</td>
                                                     <td>{{ $r->fees_paid->transaction_currency ?? 'MMK' }}</td>
                                                     <td class="text-right">{{ number_format($r->fees_paid->original_amount ?? $r->amount, 2) }}</td>
