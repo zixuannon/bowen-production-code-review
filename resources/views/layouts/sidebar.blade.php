@@ -613,62 +613,69 @@
                 <a class="nav-link" data-toggle="collapse" href="#fees-menu" aria-expanded="false"
                     aria-controls="fees-menu" data-access="@hasFeatureAccess('Fees Management')">
                     <i class="fa fa-dollar menu-icon"></i>
-                    <span class="menu-title">{{ __('Income') }}</span>
+                    <span class="menu-title">Finance / 财务管理</span>
                     <i class="menu-arrow"></i>
                 </a>
                 <div class="collapse" id="fees-menu">
                     <ul class="nav flex-column sub-menu">
-                        @can('fees-type-list')
-                            <li class="nav-item">
-                                <a href="{{ route('fees-type.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Fees Type') }}
-                                </a>
-                            </li>
-                        @endcan
-                        @can('fees-list')
-                            <li class="nav-item">
-                                <a href="{{ route('fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Manage Fee') }}</a>
-                            </li>
-                        @endcan
                         @can('fees-paid')
                             <li class="nav-item">
                                 <a href="{{ route('finance-dashboard.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Finance Dashboard') }}
+                                    Finance Dashboard
                                 </a>
                             </li>
                         @endcan
                         @can('fees-paid')
                             <li class="nav-item">
                                 <a href="{{ route('outstanding-fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Student Finance') }}
+                                    Student Finance
                                 </a>
                             </li>
                         @endcan
                         @can('fees-paid')
                             <li class="nav-item">
-                                <a href="{{ route('finance-report.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Finance Report') }}
+                                <a href="{{ route('student-ledger.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
+                                    Student Ledger
                                 </a>
                             </li>
                         @endcan
                         @can('fees-paid')
                             <li class="nav-item">
                                 <a href="{{ route('fees.paid.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Income Summary') }}
+                                    Fee Collection
                                 </a>
                             </li>
                         @endcan
                         @can('fees-paid')
                             <li class="nav-item">
                                 <a href="{{ route('fees.optional') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Optional Fee') }}</a>
+                                    Optional Fees</a>
+                            </li>
+                        @endcan
+                        @can('fees-paid')
+                            <li class="nav-item">
+                                <a href="{{ route('finance-report.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
+                                    Finance Report
+                                </a>
+                            </li>
+                        @endcan
+                        @can('fees-list')
+                            <li class="nav-item">
+                                <a href="{{ route('fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
+                                    Manage Fees</a>
+                            </li>
+                        @endcan
+                        @can('fees-type-list')
+                            <li class="nav-item">
+                                <a href="{{ route('fees-type.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
+                                    Fee Types
+                                </a>
                             </li>
                         @endcan
                         @can('fees-paid')
                             <li class="nav-item">
                                 <a href="{{ route('fees.transactions.log.index') }}" class="nav-link"
-                                    data-access="@hasFeatureAccess('Fees Management')"> {{ __('Fees Transaction Logs') }}
+                                    data-access="@hasFeatureAccess('Fees Management')">Transaction Logs
                                 </a>
                             </li>
                         @endcan
@@ -918,7 +925,7 @@
                 <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
                     aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">
                     <i class="fa fa-money menu-icon"></i>
-                    <span class="menu-title">{{ __('expense') }}</span>
+                    <span class="menu-title">Expenses / 支出管理</span>
                     <i class="menu-arrow"></i>
                 </a>
                 <div class="collapse" id="expense-menu">
@@ -937,7 +944,7 @@
                             <li class="nav-item">
                                 <a href="{{ route('expense-category.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}"
-                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('manage_category') }} </a>
+                                    data-access="@hasFeatureAccess('Expense Management')">Expense Categories </a>
                             </li>
                         @endcanany
 
@@ -945,7 +952,7 @@
                             <li class="nav-item">
                                 <a href="{{ route('expense.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('manage_expense') }}
+                                    Manage Expenses
                                 </a>
                             </li>
                         @endcanany
