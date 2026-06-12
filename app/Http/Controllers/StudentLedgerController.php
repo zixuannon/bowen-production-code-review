@@ -43,6 +43,10 @@ class StudentLedgerController extends Controller
      * NOTE: In this project, compulsory_fees.student_id and optional_fees.student_id
      * both store users.id (not students.id). The {userId} route parameter is
      * therefore the users.id value.
+     *
+     * Class resolution priority:
+     *   students.class_section_id -> class_sections.class_id   (primary)
+     *   students.class_id                                     (fallback)
      */
     public function show($userId)
     {
@@ -52,16 +56,25 @@ class StudentLedgerController extends Controller
         $student = Students::with(['user', 'class_section.class', 'class_section.section', 'guardian'])
             ->where('user_id', $userId)
             ->where('school_id', Auth::user()->school_id)
-            ->firstOrFail();
+            ->first();
+
+        if (!$student) {
+            abort(404);
+        }
+
+        // Resolve class_id via class_section (priority), fallback to direct class_id
+        $classId = $student->class_section->class_id ?? $student->class_id;
 
         $cache       = app(CachingService::class);
         $sessionYear = $cache->getDefaultSessionYear();
 
-        if (!$sessionYear) {
+        // Early return when missing session year or class_id
+        if (!$sessionYear || !$classId) {
             return view('student-ledger.show', [
                 'student'                   => $student,
-                'fee'                       => null,
-                'sessionYear'               => null,
+                'fees'                      => collect(),
+                'hasFeeStructure'           => false,
+                'sessionYear'               => $sessionYear,
                 'compulsoryExpected'        => collect(),
                 'totalCompulsoryExpected'   => 0,
                 'totalCompulsoryPaid'       => 0,
@@ -76,17 +89,26 @@ class StudentLedgerController extends Controller
 
         $sessionYearId = $sessionYear->id;
 
-        // ---- Fee structure for this class + session year ----
-        $fee = Fee::where('class_id', $student->class_id)
+        // ---- ALL Fee structures for this class + session year ----
+        // A class may have multiple fees (e.g. separate fee records for different
+        // academic programs), so we aggregate across all matching Fee records.
+        $fees = Fee::where('class_id', $classId)
             ->where('session_year_id', $sessionYearId)
             ->with(['fees_class_type.fees_type', 'fees_class_type.finance_category'])
-            ->first();
+            ->get();
 
-        // ===== Compulsory Expected =====
-        $compulsoryExpected       = collect();
-        $totalCompulsoryExpected  = 0;
-        if ($fee) {
-            $compulsoryExpected = $fee->fees_class_type->where('optional', 0);
+        $feeIds          = $fees->pluck('id')->toArray();
+        $hasFeeStructure = $fees->isNotEmpty();
+
+        // ===== Compulsory Expected (aggregate across ALL fees) =====
+        $compulsoryExpected      = collect();
+        $totalCompulsoryExpected = 0;
+        if ($hasFeeStructure) {
+            foreach ($fees as $fee) {
+                $compulsoryExpected = $compulsoryExpected->merge(
+                    $fee->fees_class_type->where('optional', 0)
+                );
+            }
             $totalCompulsoryExpected = $compulsoryExpected->sum(function ($item) {
                 return ($item->fee_amount_mmk > 0) ? $item->fee_amount_mmk : $item->amount;
             });
@@ -95,11 +117,11 @@ class StudentLedgerController extends Controller
         // ===== Compulsory Paid =====
         $totalCompulsoryPaid   = 0;
         $compulsoryPaidRecords = collect();
-        if ($fee) {
+        if ($hasFeeStructure) {
             $compulsoryPaidRecords = CompulsoryFee::where('student_id', $userId)
                 ->where('status', 'Success')
-                ->whereHas('fees_paid', function ($q) use ($fee) {
-                    $q->where('fees_id', $fee->id);
+                ->whereHas('fees_paid', function ($q) use ($feeIds) {
+                    $q->whereIn('fees_id', $feeIds);
                 })
                 ->with(['fees_paid', 'installment_fee'])
                 ->orderBy('date', 'desc')
@@ -113,11 +135,11 @@ class StudentLedgerController extends Controller
         // ===== Optional Paid =====
         $totalOptionalPaid   = 0;
         $optionalPaidRecords = collect();
-        if ($fee) {
+        if ($hasFeeStructure) {
             $optionalPaidRecords = OptionalFee::where('student_id', $userId)
                 ->where('status', 'Success')
-                ->whereHas('fees_paid', function ($q) use ($fee) {
-                    $q->where('fees_id', $fee->id);
+                ->whereHas('fees_paid', function ($q) use ($feeIds) {
+                    $q->whereIn('fees_id', $feeIds);
                 })
                 ->with(['fees_paid', 'fees_class_type.fees_type', 'fees_class_type.finance_category'])
                 ->orderBy('date', 'desc')
@@ -139,7 +161,7 @@ class StudentLedgerController extends Controller
             $paymentHistory->push([
                 'type'             => 'Compulsory',
                 'date'             => $r->date,
-                'fee_item'         => $fee->name ?? 'Compulsory Fee',
+                'fee_item'         => $fees->first()->name ?? 'Compulsory Fee',
                 'mode'             => $r->mode,
                 'mode_name'        => $r->mode_name,
                 'currency'         => $r->fees_paid->transaction_currency ?? 'MMK',
@@ -175,7 +197,7 @@ class StudentLedgerController extends Controller
         $paymentHistory = $paymentHistory->sortByDesc('date');
 
         return view('student-ledger.show', compact(
-            'student', 'fee', 'sessionYear',
+            'student', 'fees', 'hasFeeStructure', 'sessionYear',
             'compulsoryExpected', 'totalCompulsoryExpected',
             'totalCompulsoryPaid', 'totalCompulsoryOutstanding',
             'optionalPaidRecords', 'totalOptionalPaid', 'totalPaid',
