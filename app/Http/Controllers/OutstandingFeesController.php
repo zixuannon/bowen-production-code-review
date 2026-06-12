@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\OutstandingFeesExport;
 use App\Models\CompulsoryFee;
 use App\Models\Fee;
 use App\Models\FeesClassType;
+use App\Models\OptionalFee;
 use App\Models\Students;
 use App\Models\SessionYear;
 use App\Models\ClassSection;
+use App\Models\School;
 use App\Services\CachingService;
 use App\Services\ResponseService;
 use Illuminate\Support\Facades\Auth;
+use Maatwebsite\Excel\Facades\Excel;
 
 class OutstandingFeesController extends Controller
 {
@@ -39,31 +43,106 @@ class OutstandingFeesController extends Controller
         $filterSessionYearId = $request->get('session_year_id', $sessionYear->id ?? null);
         $allSessionYears = SessionYear::owner()->orderBy('start_date', 'desc')->get();
 
-        // If no session year, show empty
-        if (!$filterSessionYearId) {
-            return view('outstanding-fees.index', [
-                'students'      => collect(),
-                'summary'       => collect(),
-                'allSessionYears' => $allSessionYears,
-                'filterSessionYearId' => null,
-                'classSections'  => collect(),
-                'search'        => $request->get('search'),
-                'classSectionFilter' => $request->get('class_section_id'),
-                'statusFilter'    => $request->get('status'),
-                'outstandingOnly' => $request->get('outstanding_only'),
-            ]);
-        }
-
-        // ---- Step 1: Load students ----
-        $search = $request->get('search');
+        // Filters
+        $search            = $request->get('search');
         $classSectionFilter = $request->get('class_section_id');
         $statusFilter       = $request->get('status');
         $outstandingOnly    = $request->get('outstanding_only');
 
+        // Class Sections for filter dropdown
+        $classSections = ClassSection::owner()->with('class', 'section')->get();
+
+        // If no session year, show empty
+        if (!$filterSessionYearId) {
+            return view('outstanding-fees.index', [
+                'resultRows'      => collect(),
+                'summary'         => collect(),
+                'allSessionYears'  => $allSessionYears,
+                'filterSessionYearId' => null,
+                'classSections'    => $classSections,
+                'search'           => $search,
+                'classSectionFilter' => $classSectionFilter,
+                'statusFilter'     => $statusFilter,
+                'outstandingOnly'  => $outstandingOnly,
+            ]);
+        }
+
+        $filters = compact(
+            'search', 'classSectionFilter', 'statusFilter',
+            'outstandingOnly', 'filterSessionYearId'
+        );
+
+        [$resultRows, $summary] = $this->buildOutstandingFeesData($schoolId, $filters);
+
+        return view('outstanding-fees.index', compact(
+            'resultRows', 'summary', 'allSessionYears', 'filterSessionYearId',
+            'classSections', 'search', 'classSectionFilter', 'statusFilter', 'outstandingOnly'
+        ));
+    }
+
+    /**
+     * Export outstanding fees data as Excel (.xlsx).
+     */
+    public function export()
+    {
+        ResponseService::noPermissionThenRedirect('fees-paid');
+
+        $request   = request();
+        $cache     = app(CachingService::class);
+        $sessionYear = $cache->getDefaultSessionYear();
+        $schoolId  = Auth::user()->school_id;
+
+        $filterSessionYearId = $request->get('session_year_id', $sessionYear->id ?? null);
+
+        $search            = $request->get('search');
+        $classSectionFilter = $request->get('class_section_id');
+        $statusFilter       = $request->get('status');
+        $outstandingOnly    = $request->get('outstanding_only');
+
+        $school = School::findOrFail($schoolId);
+
+        $filters = compact(
+            'search', 'classSectionFilter', 'statusFilter',
+            'outstandingOnly', 'filterSessionYearId'
+        );
+
+        [$resultRows, $summary] = $this->buildOutstandingFeesData($schoolId, $filters);
+
+        $filename = 'outstanding_fees_' . now()->format('Ymd') . '.xlsx';
+
+        return Excel::download(
+            new OutstandingFeesExport($resultRows, $summary, $school->name, $filters),
+            $filename
+        );
+    }
+
+    /**
+     * Build the outstanding fees data: resultRows and summary.
+     *
+     * Returns: [resultRows (Collection), summary (array)]
+     *
+     * Each result row contains:
+     *   full_name, admission_no, user_id, class_name, section_name,
+     *   guardian_name, contact, compulsory_expected, compulsory_paid,
+     *   optional_paid, outstanding, last_payment_date,
+     *   status, status_label
+     */
+    private function buildOutstandingFeesData(int $schoolId, array $filters): array
+    {
+        $search              = $filters['search'] ?? null;
+        $classSectionFilter   = $filters['classSectionFilter'] ?? null;
+        $statusFilter         = $filters['statusFilter'] ?? null;
+        $outstandingOnly      = $filters['outstandingOnly'] ?? false;
+        $filterSessionYearId  = $filters['filterSessionYearId'] ?? null;
+
+        if (!$filterSessionYearId) {
+            return [collect(), collect()];
+        }
+
+        // ---- Step 1: Load students ----
         $studentsQuery = Students::with(['user', 'guardian', 'class_section.class', 'class_section.section'])
             ->where('school_id', $schoolId);
 
-        // Search filter
         if ($search) {
             $normalizedSearch = preg_replace('/\s+/u', '', $search);
             $studentsQuery->where(function ($q) use ($search, $normalizedSearch) {
@@ -81,7 +160,6 @@ class OutstandingFeesController extends Controller
             });
         }
 
-        // Class Section filter
         if ($classSectionFilter) {
             $studentsQuery->where('class_section_id', $classSectionFilter);
         }
@@ -89,30 +167,20 @@ class OutstandingFeesController extends Controller
         $students = $studentsQuery->get();
 
         if ($students->isEmpty()) {
-            return view('outstanding-fees.index', [
-                'students'          => collect(),
-                'summary'           => collect(),
-                'allSessionYears'   => $allSessionYears,
-                'filterSessionYearId' => $filterSessionYearId,
-                'classSections'     => ClassSection::owner()->with('class', 'section')->get(),
-                'search'            => $search,
-                'classSectionFilter'=> $classSectionFilter,
-                'statusFilter'      => $statusFilter,
-                'outstandingOnly'   => $outstandingOnly,
-            ]);
+            return [collect(), collect()];
         }
 
         // ---- Step 2: Resolve class_id per student, group by class_id ----
         $studentUserIds = [];
-        $classIdGroups = []; // class_id => [student objects]
-        $studentData   = []; // user_id => resolved class_id for this student
+        $classIdGroups = [];
+        $studentData   = [];
 
         foreach ($students as $stu) {
             $userId  = $stu->user_id;
             $classId = $stu->class_section->class_id ?? $stu->class_id;
             $studentUserIds[] = $userId;
             $studentData[$userId] = [
-                'student' => $stu,
+                'student'  => $stu,
                 'class_id' => $classId,
             ];
 
@@ -122,19 +190,17 @@ class OutstandingFeesController extends Controller
         }
 
         // ---- Step 3: Batch query ALL fees for relevant class_ids ----
-        $allClassIds     = array_keys($classIdGroups);
-        $allFees         = Fee::whereIn('class_id', $allClassIds)
+        $allClassIds = array_keys($classIdGroups);
+        $allFees     = Fee::whereIn('class_id', $allClassIds)
             ->where('session_year_id', $filterSessionYearId)
             ->with(['fees_class_type.fees_type', 'fees_class_type.finance_category'])
             ->get();
 
-        // Map: class_id => [fee records]
         $feesByClass = [];
         foreach ($allFees as $fee) {
             $feesByClass[$fee->class_id][] = $fee;
         }
 
-        // Collect all fee IDs for batch compulsory_fees query
         $allFeeIds = $allFees->pluck('id')->toArray();
 
         // ---- Step 4: Batch query compulsory paid ----
@@ -148,7 +214,6 @@ class OutstandingFeesController extends Controller
                 ->get();
         }
 
-        // Group paid by student_id (users.id)
         $paidByStudent = [];
         foreach ($allCompulsoryPaid as $paid) {
             $sid = $paid->student_id;
@@ -156,7 +221,23 @@ class OutstandingFeesController extends Controller
             $paidByStudent[$sid]['dates'][] = $paid->date;
         }
 
-        // ---- Step 5: Aggregate in PHP per student ----
+        // ---- Step 5: Batch query optional paid (for export reference only) ----
+        $allOptionalPaid = collect();
+        if (!empty($studentUserIds)) {
+            $allOptionalPaid = OptionalFee::where('school_id', $schoolId)
+                ->where('session_year_id', $filterSessionYearId)
+                ->whereIn('student_id', $studentUserIds)
+                ->where('status', 'Success')
+                ->get();
+        }
+
+        $optionalPaidByStudent = [];
+        foreach ($allOptionalPaid as $opaid) {
+            $sid = $opaid->student_id;
+            $optionalPaidByStudent[$sid][] = $opaid->amount;
+        }
+
+        // ---- Step 6: Aggregate in PHP per student ----
         $resultRows = [];
 
         foreach ($students as $stu) {
@@ -184,9 +265,14 @@ class OutstandingFeesController extends Controller
             $lastPaymentDate = '';
             if (isset($paidByStudent[$userId])) {
                 $compulsoryPaid = array_sum($paidByStudent[$userId]['total']);
-                // Last compulsory payment date
                 $dates = $paidByStudent[$userId]['dates'];
                 $lastPaymentDate = !empty($dates) ? max($dates) : '';
+            }
+
+            // Optional Paid (reference only, not included in outstanding)
+            $optionalPaid = 0;
+            if (isset($optionalPaidByStudent[$userId])) {
+                $optionalPaid = array_sum($optionalPaidByStudent[$userId]);
             }
 
             // Outstanding
@@ -208,50 +294,43 @@ class OutstandingFeesController extends Controller
             }
 
             $resultRows[] = [
-                'student'            => $stu,
-                'user_id'            => $userId,
-                'full_name'          => $stu->user->full_name ?? '',
-                'admission_no'       => $stu->admission_no,
-                'class_name'         => $stu->class_section->class->name ?? ($stu->class->name ?? ''),
-                'section_name'       => $stu->class_section->section->name ?? '',
-                'guardian_name'      => $stu->guardian->full_name ?? '',
-                'contact'            => $stu->guardian->mobile ?? $stu->user->mobile ?? '',
-                'compulsory_expected' => $compulsoryExpected,
-                'compulsory_paid'    => $compulsoryPaid,
-                'outstanding'        => $outstanding,
-                'last_payment_date'  => $lastPaymentDate,
-                'status'             => $status,
-                'status_label'       => $statusLabel,
+                'student'             => $stu,
+                'user_id'             => $userId,
+                'full_name'           => $stu->user->full_name ?? '',
+                'admission_no'        => $stu->admission_no,
+                'class_name'          => $stu->class_section->class->name ?? ($stu->class->name ?? ''),
+                'section_name'        => $stu->class_section->section->name ?? '',
+                'guardian_name'       => $stu->guardian->full_name ?? '',
+                'contact'             => $stu->guardian->mobile ?? $stu->user->mobile ?? '',
+                'compulsory_expected'  => $compulsoryExpected,
+                'compulsory_paid'     => $compulsoryPaid,
+                'optional_paid'       => $optionalPaid,
+                'outstanding'         => $outstanding,
+                'last_payment_date'   => $lastPaymentDate,
+                'status'              => $status,
+                'status_label'        => $statusLabel,
             ];
         }
 
-        // ---- Apply post-aggregation filters ----
         $resultRows = collect($resultRows);
 
-        // Status filter
+        // ---- Apply post-aggregation filters ----
         if ($statusFilter && in_array($statusFilter, ['unpaid', 'partial', 'fully_paid', 'no_fee_structure'])) {
             $resultRows = $resultRows->where('status', $statusFilter);
         }
 
-        // Outstanding only filter
         if ($outstandingOnly) {
             $resultRows = $resultRows->where('outstanding', '>', 0);
         }
 
         // ---- Summary ----
         $summary = [
-            'total_students'   => $resultRows->count(),
-            'total_expected'   => $resultRows->sum('compulsory_expected'),
-            'total_paid'       => $resultRows->sum('compulsory_paid'),
+            'total_students'    => $resultRows->count(),
+            'total_expected'    => $resultRows->sum('compulsory_expected'),
+            'total_paid'        => $resultRows->sum('compulsory_paid'),
             'total_outstanding' => $resultRows->sum('outstanding'),
         ];
 
-        // Class Sections for filter dropdown
-        $classSections = ClassSection::owner()->with('class', 'section')->get();
-
-        return view('outstanding-fees.index', compact(
-            'resultRows', 'summary', 'allSessionYears', 'filterSessionYearId',
-            'classSections', 'search', 'classSectionFilter', 'statusFilter', 'outstandingOnly'
-        ));
+        return [$resultRows, $summary];
     }
 }

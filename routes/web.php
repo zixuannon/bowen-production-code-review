@@ -830,6 +830,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         // Outstanding Fees
         Route::get('outstanding-fees', [OutstandingFeesController::class, 'index'])->name('outstanding-fees.index');
+        Route::get('outstanding-fees/export', [OutstandingFeesController::class, 'export'])->name('outstanding-fees.export');
 
         // Finance Report
         Route::get('finance-report', [FinanceReportController::class, 'index'])->name('finance-report.index');
