@@ -633,6 +633,13 @@
                         @endcan
                         @can('fees-paid')
                             <li class="nav-item">
+                                <a href="{{ route('student-ledger.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
+                                    {{ __('Student Ledger') }}
+                                </a>
+                            </li>
+                        @endcan
+                        @can('fees-paid')
+                            <li class="nav-item">
                                 <a href="{{ route('fees.paid.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
                                     {{ __('Income Summary') }}
                                 </a>
