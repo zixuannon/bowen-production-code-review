@@ -210,5 +210,13 @@
     "Field": "Field",
     "Value": "Value",
     "Yes": "Yes",
-    "No": "No"
+    "No": "No",
+
+    "%": "%",
+    "Name": "Name",
+    "Total": "Total",
+    "Search Results": "Search Results",
+    "Search Student": "Search Student",
+    "Search by name or admission no.": "Search by name or admission no.",
+    "Enter student name or admission number to search.": "Enter student name or admission number to search."
 }

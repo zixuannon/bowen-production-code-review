@@ -208,5 +208,13 @@
     "Field": "字段",
     "Value": "值",
     "Yes": "是",
-    "No": "否"
+    "No": "否",
+
+    "%": "%",
+    "Name": "姓名",
+    "Total": "合计",
+    "Search Results": "搜索结果",
+    "Search Student": "搜索学生",
+    "Search by name or admission no.": "按姓名或学号搜索",
+    "Enter student name or admission number to search.": "输入学生姓名或学号搜索"
 }
