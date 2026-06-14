@@ -28,7 +28,7 @@
     @yield('css')
 </head>
 
-<body class="sidebar-fixed">
+<body class="sidebar-fixed {{ $lang ? 'locale-' . ($lang->code ?? 'en') : 'locale-en' }}">
     <div class="container-scroller">
         {{-- header --}}
         @include('layouts.header')

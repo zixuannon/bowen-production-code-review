@@ -273,3 +273,44 @@ label.filter-menu {
     background-color: #007bff !important;
     color: #fff !important;
 }
+
+/* Chinese font support */
+body.locale-zh,
+body.locale-zh-CN,
+body.locale-cn {
+    font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "WenQuanYi Micro Hei", "ubuntu-regular", Arial, sans-serif !important;
+}
+body.locale-zh .h1,
+body.locale-zh .h2,
+body.locale-zh .h3,
+body.locale-zh .h4,
+body.locale-zh .h5,
+body.locale-zh .h6,
+body.locale-zh-CN .h1,
+body.locale-zh-CN .h2,
+body.locale-zh-CN .h3,
+body.locale-zh-CN .h4,
+body.locale-zh-CN .h5,
+body.locale-zh-CN .h6,
+body.locale-cn .h1,
+body.locale-cn .h2,
+body.locale-cn .h3,
+body.locale-cn .h4,
+body.locale-cn .h5,
+body.locale-cn .h6 {
+    font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "WenQuanYi Micro Hei", "ubuntu-medium", Arial, sans-serif !important;
+}
+body.locale-zh .card-title,
+body.locale-zh-CN .card-title,
+body.locale-cn .card-title,
+body.locale-zh .nav-link,
+body.locale-zh-CN .nav-link,
+body.locale-cn .nav-link,
+body.locale-zh .page-title,
+body.locale-zh-CN .page-title,
+body.locale-cn .page-title,
+body.locale-zh .breadcrumb,
+body.locale-zh-CN .breadcrumb,
+body.locale-cn .breadcrumb {
+    font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "WenQuanYi Micro Hei", "ubuntu-medium", Arial, sans-serif !important;
+}

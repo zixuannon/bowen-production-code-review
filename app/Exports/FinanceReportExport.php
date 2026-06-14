@@ -38,31 +38,31 @@ class FinanceReportExport implements FromArray, WithHeadings, ShouldAutoSize, Wi
         $rows = [];
 
         // ── Section 1: Report Summary ──
-        $rows[] = ['Report Summary'];
-        $rows[] = ['School', $this->schoolName];
-        $rows[] = ['Date From', $this->from];
-        $rows[] = ['Date To', $this->to];
+        $rows[] = [__('Report Summary')];
+        $rows[] = [__('School'), $this->schoolName];
+        $rows[] = [__('Date From'), $this->from];
+        $rows[] = [__('Date To'), $this->to];
 
         $typeLabel = match ($this->typeFilter) {
-            'income'  => 'Income only',
-            'expense' => 'Expense only',
-            default   => 'All (Income + Expense)',
+            'income'  => __('Income only'),
+            'expense' => __('Expense only'),
+            default   => __('All (Income + Expense)'),
         };
-        $rows[] = ['Type Filter', $typeLabel];
-        $rows[] = ['Finance Category Filter', $this->categoryFilter ?: 'All'];
+        $rows[] = [__('Type Filter'), $typeLabel];
+        $rows[] = [__('Finance Category Filter'), $this->categoryFilter ?: __('All')];
 
         $rows[] = [''];
-        $rows[] = ['Total Income (MMK)', $this->data['totalIncome']];
-        $rows[] = ['Total Expense (MMK)', $this->data['totalExpense']];
-        $rows[] = ['Net Income (MMK)', $this->data['netIncome']];
-        $rows[] = ['Compulsory Income (MMK)', $this->data['totalCompulsoryIncome']];
-        $rows[] = ['Optional Income (MMK)', $this->data['totalOptionalIncome']];
-        $rows[] = ['Current Outstanding (MMK)', $this->data['currentOutstanding']];
-        $rows[] = ['Note', 'Outstanding is reference only and is not included in Total Income or Net Income.'];
+        $rows[] = [__('Total Income (MMK)'), $this->data['totalIncome']];
+        $rows[] = [__('Total Expense (MMK)'), $this->data['totalExpense']];
+        $rows[] = [__('Net Income (MMK)'), $this->data['netIncome']];
+        $rows[] = [__('Compulsory Income (MMK)'), $this->data['totalCompulsoryIncome']];
+        $rows[] = [__('Optional Income (MMK)'), $this->data['totalOptionalIncome']];
+        $rows[] = [__('Current Outstanding (MMK)'), $this->data['currentOutstanding']];
+        $rows[] = [__('Note'), __('Outstanding is reference only and is not included in Total Income or Net Income.')];
 
         // ── Section 2: Category Breakdown ──
         $rows[] = [''];
-        $rows[] = ['Category Breakdown'];
+        $rows[] = [__('Category Breakdown')];
 
         $categoryRows = $this->data['categoryRows'] ?? collect();
 

@@ -43,39 +43,39 @@ class OutstandingFeesExport implements FromArray, WithHeadings, ShouldAutoSize, 
         $filterSessionYearId   = $this->filters['filterSessionYearId'] ?? '';
 
         // ── Section 1: Report Summary ──
-        $rows[] = ['Outstanding Fees Report'];
-        $rows[] = ['School', $this->schoolName];
-        $rows[] = ['Export Date', now()->toDateString()];
-        $rows[] = ['Search Filter', $search ?: 'All'];
-        $rows[] = ['Class Section Filter', $classSectionFilter ?: 'All'];
-        $rows[] = ['Session Year Filter', $filterSessionYearName ?: 'All'];
-        $rows[] = ['Status Filter', $statusFilter ?: 'All'];
-        $rows[] = ['Outstanding Only', $outstandingOnly ? 'Yes' : 'No'];
+        $rows[] = [__('Outstanding Fees Report')];
+        $rows[] = [__('School'), $this->schoolName];
+        $rows[] = [__('Export Date'), now()->toDateString()];
+        $rows[] = [__('Search Filter'), $search ?: __('All')];
+        $rows[] = [__('Class Section Filter'), $classSectionFilter ?: __('All')];
+        $rows[] = [__('Session Year Filter'), $filterSessionYearName ?: __('All')];
+        $rows[] = [__('Status Filter'), $statusFilter ?: __('All')];
+        $rows[] = [__('Outstanding Only'), $outstandingOnly ? __('Yes') : __('No')];
 
         $rows[] = [''];
-        $rows[] = ['Total Students', $this->summary['total_students'] ?? 0];
-        $rows[] = ['Total Expected Amount (MMK)', $this->summary['total_expected'] ?? 0];
-        $rows[] = ['Total Paid Amount (MMK)', $this->summary['total_paid'] ?? 0];
-        $rows[] = ['Total Outstanding Amount (MMK)', $this->summary['total_outstanding'] ?? 0];
-        $rows[] = ['Note', 'Outstanding amount is calculated from compulsory fees only. Optional fees are not included in outstanding.'];
+        $rows[] = [__('Total Students'), $this->summary['total_students'] ?? 0];
+        $rows[] = [__('Total Expected Amount (MMK)'), $this->summary['total_expected'] ?? 0];
+        $rows[] = [__('Total Paid Amount (MMK)'), $this->summary['total_paid'] ?? 0];
+        $rows[] = [__('Total Outstanding Amount (MMK)'), $this->summary['total_outstanding'] ?? 0];
+        $rows[] = [__('Note'), __('Outstanding amount is calculated from compulsory fees only. Optional fees are not included in outstanding.')];
 
         // ── Section 2: Outstanding Fees List ──
         $rows[] = [''];
-        $rows[] = ['Outstanding Fees List'];
+        $rows[] = [__('Outstanding Fees List')];
         $rows[] = [
-            'Student Name',
-            'Admission No',
-            'Class',
-            'Section',
-            'Session Year',
-            'Contact',
-            'Expected Amount MMK',
-            'Compulsory Paid MMK',
-            'Optional Paid MMK',
-            'Outstanding Amount MMK',
-            'Status',
-            'Last Payment Date',
-            'User ID',
+            __('Student Name'),
+            __('Admission No'),
+            __('Class'),
+            __('Section'),
+            __('Session Year'),
+            __('Contact'),
+            __('Expected Amount MMK'),
+            __('Compulsory Paid MMK'),
+            __('Optional Paid MMK'),
+            __('Outstanding Amount MMK'),
+            __('Status'),
+            __('Last Payment Date'),
+            __('User ID'),
         ];
 
         foreach ($this->resultRows as $row) {
