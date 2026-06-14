@@ -1,4 +1,5 @@
 <?php
+use App\Http\Controllers\FinanceDashboardController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
