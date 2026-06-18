@@ -15,7 +15,6 @@ use App\Services\BootstrapTableService;
 use App\Services\CachingService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
-use App\Models\TransportationPayment;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -318,7 +317,8 @@ class PayrollController extends Controller
                     $tempRow['paid_leaves'] = $expense->paid_leaves;
                     if ($expense->paid_leaves < $total_leave && $expense->paid_leaves !== null) {
                         $unpaid_leave = $total_leave - $expense->paid_leaves;
-                        $per_day_salary = $salary / 30;
+                        $daysInMonth = Carbon::create($year, $month)->daysInMonth;
+                        $per_day_salary = $daysInMonth > 0 ? $salary / $daysInMonth : 0;
                         $salary_deduction = $unpaid_leave * $per_day_salary;
                         $tempRow['salary_deduction'] = $salary_deduction;
                     }
@@ -388,7 +388,8 @@ class PayrollController extends Controller
                     if ($leaveMaster->leaves < $total_leave) {
                         if ($leaveMaster->leaves !== null) {
                             $unpaid_leave = $total_leave - $leaveMaster->leaves;
-                            $per_day_salary = $salary / 30;
+                            $daysInMonth = Carbon::create($year, $month)->daysInMonth;
+                            $per_day_salary = $daysInMonth > 0 ? $salary / $daysInMonth : 0;
                             $salary_deduction = $unpaid_leave * $per_day_salary;
                         }
                         $tempRow['salary_deduction'] = $salary_deduction;
@@ -398,34 +399,6 @@ class PayrollController extends Controller
                     $tempRow['net_salary'] = $salary + $totalAllowanceAmount - $totalDeductionAmount;
                 }
             }
-
-            $monthStart = Carbon::create($year, $month, 1)->startOfMonth();
-            $monthEnd = Carbon::create($year, $month, 1)->endOfMonth();
-            $transportationPayments = TransportationPayment::where('user_id', $row->user_id)
-                ->whereDate('created_at', '<=', $monthEnd)
-                ->whereDate('expiry_date', '>=', $monthStart)
-                ->get();
-            // echo "<pre>",var_dump($transportationPayments);
-            $transportationdeduction = 0;
-            foreach ($transportationPayments as $transportationPayment) {
-                
-                $startcustomdate = Carbon::create($year, $month,  (int)date('d',strtotime($transportationPayment->created_at)));
-                $endcustomdate = Carbon::create($year, $month,  (int)date('d',strtotime($transportationPayment->expiry_date)));
-                if($transportationPayment->created_at >= $startcustomdate or $transportationPayment->expiry_date > $endcustomdate){
-                     $transportationdeduction += $transportationPayment->included_amount;
-                }
-                // $planStartMonth = Carbon::parse($transportationPayment->created_at)->startOfMonth();
-                // $planEndMonth = Carbon::parse($transportationPayment->expiry_date)->startOfMonth();
-                // $payrollMonth = Carbon::create($year, $month, 1)->startOfMonth();
-                // if (
-                //     $payrollMonth->gte($planStartMonth) &&
-                //     $payrollMonth->lte($planEndMonth)
-                // ) {
-                //     $transportationdeduction += $transportationPayment->included_amount;
-                // }
-            }
-            $tempRow['net_salary'] -= $transportationdeduction;
-            $tempRow['deductions'] = $totalDeductionAmount + $transportationdeduction;
 
             $rows[] = $tempRow;
         }
@@ -520,12 +493,6 @@ class PayrollController extends Controller
             if (!$salary) {
                 return redirect()->back()->with('error', trans('no_data_found'));
             }
-            // transportation deduction
-            $transportationPayments = TransportationPayment::where('user_id', $salary->staff->user_id)
-                ->whereDate('created_at', '<', Carbon::create($salary->year, $salary->month, 1)->endOfMonth())
-                ->whereDate('expiry_date', '>', Carbon::create($salary->year, $salary->month, 1)->endOfMonth())
-                ->get();
-
             // Get total leaves
             $leaves = $this->leave->builder()->where('status', 1)->where('user_id', $salary->staff->user_id)->withCount([
                 'leave_detail as full_leave' => function ($q) use ($salary) {
@@ -546,7 +513,7 @@ class PayrollController extends Controller
             // Total days
             $days = Carbon::now()->year($salary->year)->month($salary->month)->daysInMonth;
 
-            $pdf = PDF::loadView('payroll.slip', compact('schoolSetting', 'salary', 'total_leaves', 'days', 'allow_leaves', 'transportationPayments'));
+            $pdf = PDF::loadView('payroll.slip', compact('schoolSetting', 'salary', 'total_leaves', 'days', 'allow_leaves'));
             return $pdf->stream($salary->title . '-' . $salary->staff->user->full_name . '.pdf');
         } catch (\Throwable $th) {
             ResponseService::logErrorResponse($th);

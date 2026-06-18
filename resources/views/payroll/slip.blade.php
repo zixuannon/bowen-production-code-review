@@ -424,7 +424,7 @@
                     <td class="amount-col">
                         @if ($lwp)
                             @php
-                                $lwp_amount = ($salary->basic_salary / 30) * $lwp;
+                                $lwp_amount = $days > 0 ? ($salary->basic_salary / $days) * $lwp : 0;
                             @endphp
                             <span class="money-text">{{ format_money($lwp_amount) }}</span>
                         @else
@@ -464,10 +464,6 @@
                     </td>
 
                     <td colspan="2">
-                        @php $transportationdeduction = 0; @endphp
-                        @foreach ($transportationPayments as $transportationPayment)
-                            @php $transportationdeduction += $transportationPayment->included_amount; @endphp
-                        @endforeach
                         @foreach ($salary->staff_payroll as $payroll)
                             @if ($payroll->payroll_setting->type == 'deduction')
                                 <div class="row-col">
@@ -516,33 +512,14 @@
                         其他扣款 <span class="en-small">/ Other Deductions</span>
                     </td>
                     <td class="text-right">
-                        @if ($salary->amount < ($salary->basic_salary + $allowance - $lwp_amount - $deduction - $transportationdeduction))
-                            <span class="money-text">{{ format_money(($salary->basic_salary + $allowance - $deduction - $lwp_amount - $transportationdeduction) - $salary->amount) }}</span>
+                        @if ($salary->amount < ($salary->basic_salary + $allowance - $lwp_amount - $deduction))
+                            <span class="money-text">{{ format_money(($salary->basic_salary + $allowance - $deduction - $lwp_amount) - $salary->amount) }}</span>
                             @php
-                                $deduction += ($salary->basic_salary + $allowance - $deduction - $lwp_amount - $transportationdeduction) - $salary->amount;
+                                $deduction += ($salary->basic_salary + $allowance - $deduction - $lwp_amount) - $salary->amount;
                             @endphp
                         @else
                             <span class="money-text">{{ format_money(0) }}</span>
                         @endif
-                    </td>
-                </tr>
-
-                 <tr>
-                    <td class="text-left">
-                        
-                    </td>
-                    <td class="text-right">
-                        
-                    </td>
-
-                    <td class="text-left">
-                        交通扣款 <span class="en-small">/ Transportation Deduction</span>
-                    </td>
-                    <td class="text-right">
-                        <span class="money-text">{{ format_money($transportationdeduction) }}</span>
-                        @php
-                            $deduction += $transportationdeduction;
-                        @endphp
                     </td>
                 </tr>
 
