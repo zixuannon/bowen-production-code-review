@@ -1977,5 +1977,12 @@
     "Search Results": "搜索结果",
     "Search Student": "搜索学生",
     "Search by name or admission no.": "按姓名或学号搜索",
-    "Enter student name or admission number to search.": "输入学生姓名或学号搜索"
+    "Enter student name or admission number to search.": "输入学生姓名或学号搜索",
+    "monthly_summary": "月度汇总",
+    "employees": "员工人数",
+    "total_basic_salary": "基本工资合计",
+    "total_allowance": "津贴合计",
+    "total_deduction": "扣款合计",
+    "total_leave_deduction": "无薪假扣款合计",
+    "total_net_salary": "实发工资合计"
 }

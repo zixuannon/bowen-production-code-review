@@ -49,6 +49,52 @@
                     </div>
                 </div>
 
+                <div class="col-md-12 grid-margin stretch-card" id="summary-card" style="display:none;">
+                    <div class="card">
+                        <div class="card-body">
+                            <h4 class="card-title">{{ __('monthly_summary') }}</h4>
+                            <div class="row">
+                                <div class="col-md-2 col-sm-4 mb-3">
+                                    <div class="card bg-primary text-white text-center p-2">
+                                        <small>{{ __('employees') }}</small>
+                                        <h4 id="summary-employees">0</h4>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 mb-3">
+                                    <div class="card bg-success text-white text-center p-2">
+                                        <small>{{ __('total_basic_salary') }}</small>
+                                        <h5 id="summary-basic-salary">0</h5>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 mb-3">
+                                    <div class="card bg-info text-white text-center p-2">
+                                        <small>{{ __('total_allowance') }}</small>
+                                        <h5 id="summary-allowance">0</h5>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 mb-3">
+                                    <div class="card bg-warning text-white text-center p-2">
+                                        <small>{{ __('total_deduction') }}</small>
+                                        <h5 id="summary-deduction">0</h5>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 mb-3">
+                                    <div class="card bg-danger text-white text-center p-2">
+                                        <small>{{ __('total_leave_deduction') }}</small>
+                                        <h5 id="summary-leave-deduction">0</h5>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 mb-3">
+                                    <div class="card bg-dark text-white text-center p-2">
+                                        <small>{{ __('total_net_salary') }}</small>
+                                        <h5 id="summary-net-salary">0</h5>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="col-md-12 grid-margin stretch-card">
                     <div class="card">
                         <div class="card-body">
@@ -108,6 +154,7 @@
     <script>
         $('#search').click(function (e) {
             e.preventDefault();
+            $('#summary-card').hide();
             $('#table_list').bootstrapTable('refresh');
             $('.staff-table').show();
             let month = $('#month').val();
@@ -126,10 +173,24 @@
         var user_list = [];
 
         function responseHandler(res) {
+            // P2-1: Update monthly summary
+            if (res.summary) {
+                $('#summary-card').show();
+                $('#summary-employees').text(res.summary.employee_count);
+                $('#summary-basic-salary').text(formatMoney(res.summary.total_basic_salary));
+                $('#summary-allowance').text(formatMoney(res.summary.total_allowance));
+                $('#summary-deduction').text(formatMoney(res.summary.total_deduction));
+                $('#summary-leave-deduction').text(formatMoney(res.summary.total_leave_deduction));
+                $('#summary-net-salary').text(formatMoney(res.summary.total_net_salary));
+            }
             $.each(res.rows, function (i, row) {
                 row.state = $.inArray(row.id, selections) !== -1
             })
             return res
+        }
+
+        function formatMoney(value) {
+            return Number(value).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2});
         }
 
         $(function () {
@@ -159,6 +220,7 @@
                 user_list = [];
                 $('#table_list').bootstrapTable('uncheckAll');
                 $('.staff-table').hide();
+                $('#summary-card').hide();
             }, 2000);
         }
     </script>

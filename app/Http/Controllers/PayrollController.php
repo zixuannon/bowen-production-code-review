@@ -244,6 +244,14 @@ class PayrollController extends Controller
         $bulkData['total'] = $total;
         $rows = array();
         $no = 1;
+        $summary = [
+            'employee_count' => 0,
+            'total_basic_salary' => 0,
+            'total_allowance' => 0,
+            'total_deduction' => 0,
+            'total_leave_deduction' => 0,
+            'total_net_salary' => 0,
+        ];
 
         foreach ($res as $row) {
             $tempRow = $row->toArray();
@@ -400,9 +408,18 @@ class PayrollController extends Controller
                 }
             }
 
+            // P2-1: Accumulate monthly summary
+            $summary['employee_count']++;
+            $summary['total_basic_salary'] += $tempRow['salary'] ?? 0;
+            $summary['total_allowance'] += $tempRow['allowances'] ?? 0;
+            $summary['total_deduction'] += $tempRow['deductions'] ?? 0;
+            $summary['total_leave_deduction'] += $tempRow['salary_deduction'] ?? 0;
+            $summary['total_net_salary'] += $tempRow['net_salary'] ?? 0;
+
             $rows[] = $tempRow;
         }
 
+        $bulkData['summary'] = $summary;
         $bulkData['rows'] = $rows;
         return response()->json($bulkData);
     }
