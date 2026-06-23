@@ -77,6 +77,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ContactInquiryController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\AssignElectiveSubjectController;
+use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\DiaryCategoryController;
 use App\Http\Controllers\DiaryController;
 use App\Http\Controllers\VehicleController;
@@ -820,6 +821,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Expense
         Route::get('expense/filter/{session_year_id?}', [ExpenseController::class, 'filter_graph']);
         Route::resource('expense', ExpenseController::class);
+
+        // Bank Accounts
+        Route::get('bank-accounts/list', [BankAccountController::class, 'list'])->name('bank-accounts.list');
+        Route::resource('bank-accounts', BankAccountController::class);
 
         // Finance Category
         Route::get('finance-category/list', [FinanceCategoryController::class, 'list'])->name('finance-category.list');

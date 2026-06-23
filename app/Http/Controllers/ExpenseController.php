@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\FinanceCategory;
 use App\Repositories\Expense\ExpenseInterface;
 use App\Repositories\ExpenseCategory\ExpenseCategoryInterface;
@@ -51,9 +52,11 @@ class ExpenseController extends Controller
             ->pluck('name', 'id')
             ->toArray();
 
+        $bankAccounts = BankAccount::owner()->active()->orderBy('account_name')->pluck('account_name', 'id')->toArray();
+
         $months = sessionYearWiseMonth();
 
-        return view('expense.index', compact('expenseCategory', 'financeCategories', 'sessionYear', 'current_session_year', 'months', 'sessionYearFullData'));
+        return view('expense.index', compact('expenseCategory', 'financeCategories', 'bankAccounts', 'sessionYear', 'current_session_year', 'months', 'sessionYearFullData'));
     }
 
 
@@ -119,6 +122,7 @@ class ExpenseController extends Controller
                 'original_amount' => $originalAmount,
                 'exchange_rate_snapshot' => $exchangeRate,
                 'amount_mmk' => $amountMmk,
+                'bank_account_id' => $request->bank_account_id ?: null,
             ];
 
             $expense = $this->expense->create($data);
@@ -281,6 +285,7 @@ class ExpenseController extends Controller
                 'original_amount' => $originalAmount,
                 'exchange_rate_snapshot' => $exchangeRate,
                 'amount_mmk' => $amountMmk,
+                'bank_account_id' => $request->bank_account_id ?: null,
             ];
             $this->expense->update($id, $data);
             DB::commit();

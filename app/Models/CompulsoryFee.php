@@ -27,6 +27,7 @@ class CompulsoryFee extends Model
         'date',
         'session_year_id',
         'school_id',
+        'bank_account_id',
         'created_at',
         'updated_at'
     ];
@@ -96,6 +97,14 @@ class CompulsoryFee extends Model
     public function payment_transaction()
     {
         return $this->belongsTo(PaymentTransaction::class);
+    }
+
+    /**
+     * Get the bank_account that owns the CompulsoryFee
+     */
+    public function bank_account()
+    {
+        return $this->belongsTo(BankAccount::class, 'bank_account_id');
     }
 
     public function getCreatedAtAttribute()

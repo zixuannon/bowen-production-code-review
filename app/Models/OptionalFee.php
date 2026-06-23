@@ -25,6 +25,7 @@ class OptionalFee extends Model
         'date',
         'session_year_id',
         'school_id',
+        'bank_account_id',
         'created_at',
         'updated_at'
     ];
@@ -59,6 +60,14 @@ class OptionalFee extends Model
 
     public function fees_class_type(){
         return $this->belongsTo(FeesClassType::class, 'fees_class_id');
+    }
+
+    /**
+     * Get the bank_account that owns the OptionalFee
+     */
+    public function bank_account()
+    {
+        return $this->belongsTo(BankAccount::class, 'bank_account_id');
     }
 
     protected static $modeMap = [

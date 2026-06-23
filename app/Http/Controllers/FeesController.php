@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\FeesAdvance;
 use App\Models\FeesClassType;
 use App\Models\FinanceCategory;
@@ -1340,7 +1341,9 @@ class FeesController extends Controller
         $feeCurrency = $fees->getRawOriginal('currency') ?? 'MMK';
         $currencySymbol = $currencyMap[$feeCurrency] ?? 'K';
 
-        return view('Income.pay-compulsory', compact('fees', 'student', 'oneInstallmentPaid', 'currencySymbol', 'isFullyPaid', 'due_charges', 'installment_status'));
+        $bankAccounts = BankAccount::owner()->active()->orderBy('account_name')->get();
+
+        return view('Income.pay-compulsory', compact('fees', 'student', 'oneInstallmentPaid', 'currencySymbol', 'isFullyPaid', 'due_charges', 'installment_status', 'bankAccounts'));
     }
 
     public function payCompulsoryFeesStore(Request $request)
@@ -1466,7 +1469,8 @@ class FeesController extends Controller
                         'amount' => (float) $installment_fee['amount'], // 保存 MMK 金额
                         'due_charges' => $installment_fee['due_charges'] ?? null,
                         'fees_paid_id' => $feesPaidResult->id,
-                        'date' => date('Y-m-d', strtotime($request->date))
+                        'date' => date('Y-m-d', strtotime($request->date)),
+                        'bank_account_id' => $request->bank_account_id ?: null,
                     );
                     $this->compulsoryFee->create($compulsoryFeeData);
 
@@ -1483,7 +1487,8 @@ class FeesController extends Controller
                     'amount' => $compulsoryFeeAmount, // compulsory_fees.amount 保存 MMK 金额
                     'due_charges' => $request->due_charges_amount ?? null,
                     'fees_paid_id' => $feesPaidResult->id,
-                    'date' => date('Y-m-d', strtotime($request->date))
+                    'date' => date('Y-m-d', strtotime($request->date)),
+                    'bank_account_id' => $request->bank_account_id ?: null,
                 );
                 $this->compulsoryFee->create($compulsoryFeeData);
 
@@ -1573,7 +1578,9 @@ class FeesController extends Controller
             ])
             ->get();
 
-        return view('Income.pay-optional', compact('fees', 'student', 'optionalFeesData'));
+        $bankAccounts = BankAccount::owner()->active()->orderBy('account_name')->get();
+
+        return view('Income.pay-optional', compact('fees', 'student', 'optionalFeesData', 'bankAccounts'));
     }
 
     public function payOptionalFeesStore(Request $request)
@@ -1647,6 +1654,7 @@ class FeesController extends Controller
                             'fees_paid_id' => $feesPaidResult->id,
                             'date' => date('Y-m-d', strtotime($request->date)),
                             'status' => "Success",
+                            'bank_account_id' => $request->bank_account_id ?: null,
                             'created_at' => now(),
                             'updated_at' => now()
                         );

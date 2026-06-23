@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Storage;
 class Expense extends Model
 {
     use HasFactory, DateFormatTrait;
-    protected $fillable = ['category_id', 'finance_category_id', 'ref_no', 'staff_id', 'month', 'year', 'title', 'description', 'amount', 'date', 'school_id', 'session_year_id', 'basic_salary', 'paid_leaves', 'vehicle_id', 'file', 'created_by', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk'];
+    protected $fillable = ['category_id', 'finance_category_id', 'ref_no', 'staff_id', 'month', 'year', 'title', 'description', 'amount', 'date', 'school_id', 'session_year_id', 'basic_salary', 'paid_leaves', 'vehicle_id', 'file', 'created_by', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk', 'bank_account_id'];
 
     protected $appends = ['taken_leaves'];
 
@@ -125,5 +125,13 @@ class Expense extends Model
     public function finance_category()
     {
         return $this->belongsTo(FinanceCategory::class, 'finance_category_id');
+    }
+
+    /**
+     * Get the bank_account that owns the Expense
+     */
+    public function bank_account()
+    {
+        return $this->belongsTo(BankAccount::class, 'bank_account_id');
     }
 }

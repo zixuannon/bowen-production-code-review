@@ -969,6 +969,15 @@
                                 </a>
                             </li>
                         @endcanany
+
+                        @canany(['expense-create', 'expense-list'])
+                            <li class="nav-item">
+                                <a href="{{ route('bank-accounts.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Bank Accounts') }}
+                                </a>
+                            </li>
+                        @endcanany
                     </ul>
                 </div>
             </li>
