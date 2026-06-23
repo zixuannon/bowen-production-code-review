@@ -39,6 +39,11 @@
                                     {!! Form::select('finance_category_id', $financeCategories, null, ['class' => 'form-control', 'placeholder' => __('Select Finance Category')]) !!}
                                 </div>
 
+                                <div class="form-group col-sm-12 col-md-3">
+                                    <label>{{ __('Bank Account') }}</label>
+                                    {!! Form::select('bank_account_id', $bankAccounts, null, ['class' => 'form-control', 'placeholder' => __('Select bank account')]) !!}
+                                </div>
+
                                 <div class="form-group col-sm-12 col-md-4">
                                     <label for="title">{{ __('title') }} <span class="text-danger">*</span></label>
                                     <input name="title" id="title" type="text" placeholder="{{ __('title') }}"
@@ -196,6 +201,11 @@
                                     <div class="form-group col-sm-12 col-md-3">
                                         <label>{{ __('Finance Category') }}</label>
                                         {!! Form::select('finance_category_id', $financeCategories, null, ['class' => 'form-control', 'placeholder' => __('Select Finance Category'), 'id' => 'edit_finance_category_id']) !!}
+                                    </div>
+
+                                    <div class="form-group col-sm-12 col-md-3">
+                                        <label>{{ __('Bank Account') }}</label>
+                                        {!! Form::select('bank_account_id', $bankAccounts, null, ['class' => 'form-control', 'placeholder' => __('Select bank account'), 'id' => 'edit_bank_account_id']) !!}
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-4">
@@ -358,6 +368,9 @@
 
             // Set finance category
             $('#edit_finance_category_id').val(data.finance_category_id || '').trigger('change');
+
+            // Set bank account
+            $('#edit_bank_account_id').val(data.bank_account_id || '');
 
             var currency = data.transaction_currency || 'MMK';
             // fallback：旧数据没有 transaction_currency，默认为 MMK

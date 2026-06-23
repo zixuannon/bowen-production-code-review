@@ -264,6 +264,14 @@
                             </div>
                             <hr>
                             @if (!$isFullyPaid)
+                                @if($bankAccounts->isNotEmpty())
+                                <div class="row">
+                                    <div class="form-group col-sm-12 col-md-4">
+                                        <label>{{ __('Deposit to Account') }}</label>
+                                        {!! Form::select('bank_account_id', $bankAccounts->pluck('account_name', 'id'), null, ['class' => 'form-control', 'placeholder' => __('Select bank account')]) !!}
+                                    </div>
+                                </div>
+                                @endif
                                 <div class="row mode-container">
                                     <div class="form-group col-sm-12 col-md-12">
                                         <label>{{ __('Mode') }} <span class="text-danger">*</span></label><br>
