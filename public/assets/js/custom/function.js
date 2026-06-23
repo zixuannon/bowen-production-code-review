@@ -138,6 +138,14 @@ function formAjaxRequest(type, url, data, formElement, submitButtonElement, succ
         }
 
         ajaxRequest(type, url, data, beforeSendCallback, mainSuccessCallback, mainErrorCallback, finalCallback)
+    } else {
+        // Validation failed: restore button and provide user feedback
+        submitButtonElement.attr('disabled', false);
+        let firstError = formElement.find('.has-danger, .text-danger').first();
+        if (firstError.length) {
+            $('html, body').animate({ scrollTop: firstError.offset().top - 100 }, 300);
+        }
+        showWarningToast('Please fill all required fields.');
     }
 }
 
