@@ -155,12 +155,16 @@ class FeesController extends Controller
                 $class = $classes->first(function ($data) use ($class_id) {
                     return $data->id == $class_id;
                 });
+                if (!$class) {
+                    DB::rollback();
+                    return ResponseService::errorResponse('Selected class not found.');
+                }
                 $name = (!empty($request->name)) ? $request->name . " - " : "";
                 $fees = $this->fees->create([
                     'name' => $name . $class->full_name,
                     'due_date' => $request->due_date,
-                    'due_charges' => $request->due_charges_percentage,
-                    'due_charges_amount' => $request->due_charges_amount,
+                    'due_charges' => $request->due_charges_percentage ?? 0,
+                    'due_charges_amount' => $request->due_charges_amount ?? 0,
                     'class_id' => $class_id,
                     'session_year_id' => $sessionYear->id,
                 ]);
