@@ -35,10 +35,13 @@
                                     <table class="table">
                                         <tbody>
                                         @foreach($optionalFeesData as $key =>$optionalFee)
+                                            @php
+                                                $currentStudentPayment = $optionalFee->optional_fees_paid->firstWhere('student_id', $student->id);
+                                            @endphp
                                             <tr>
                                                 <td class="text-left">
-                                                    @if(count($optionalFee->optional_fees_paid))
-                                                        <span data-id="{{ $optionalFee->optional_fees_paid[0]['id']}}" class="text-danger remove-paid-optional-fees" style="cursor: pointer;"><i class="fa fa-times"></i></span>
+                                                    @if($currentStudentPayment)
+                                                        <span data-id="{{ $currentStudentPayment->id }}" class="text-danger remove-paid-optional-fees" style="cursor: pointer;"><i class="fa fa-times"></i></span>
                                                     @else
                                                         <input style="cursor: pointer;" type="checkbox" class="optional-fee-payment" id="optional-{{ $optionalFee->id }}" data-amount="{{ $optionalFee->amount }}" name="fees_class_type[{{ $key }}][id]" value="{{ $optionalFee->id }}">
                                                     @endif
