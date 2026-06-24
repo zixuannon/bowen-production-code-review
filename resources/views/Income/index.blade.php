@@ -571,7 +571,8 @@
             return dueChargesAmount;
         }
 
-        function successFunction() {
+        function successFunction(response) {
+            showSuccessToast(response.message);
             $('.compulsory-fees-types [data-repeater-item]').slice(1).empty();
             $('.fees-installment-repeater [data-repeater-item]').slice(0).empty();
             $('.fees-installment-repeater').hide();
