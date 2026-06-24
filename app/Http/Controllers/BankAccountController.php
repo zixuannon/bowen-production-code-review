@@ -230,6 +230,128 @@ class BankAccountController extends Controller
         $totalIncome = (float)$totalCompulsory + (float)$totalOptional;
         $currentBalance = (float)$bankAccount->opening_balance + $totalIncome - (float)$totalExpenses;
 
+        // ================ Transaction Ledger ================
+        // Load all records (ASC by raw date, then by id for stable ordering)
+        $ledgerCompulsory = CompulsoryFee::with('student:id,first_name,last_name')
+            ->where('bank_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $ledgerOptional = OptionalFee::with('student:id,first_name,last_name')
+            ->where('bank_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $ledgerExpenses = Expense::with('category:id,name')
+            ->where('bank_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        // Count total records (excl. opening) to decide display limit
+        $ledgerTotalCount = $ledgerCompulsory->count() + $ledgerOptional->count() + $ledgerExpenses->count();
+
+        $ledgerRows = collect();
+
+        // 1. Opening Balance — always first before any transaction
+        $ledgerRows->push([
+            'raw_date'   => '0000-00-00', // ensures always first in sort
+            'date'       => $bankAccount->opening_balance_date ?? $bankAccount->created_at,
+            'type'       => 'Opening Balance',
+            'type_key'   => 'opening',
+            'description'=> 'Opening Balance',
+            'payee'      => '-',
+            'ref_id'     => '-',
+            'income'     => 0,
+            'expense'    => 0,
+        ]);
+
+        // 2. Compulsory Fee Income
+        foreach ($ledgerCompulsory as $fee) {
+            $studentName = $fee->student->full_name ?? null;
+            $ledgerRows->push([
+                'raw_date'   => $fee->getRawOriginal('date') ?? '',
+                'date'       => $fee->date,
+                'type'       => 'Compulsory Fee Income',
+                'type_key'   => 'compulsory',
+                'description'=> $studentName ?: ('Student #' . $fee->student_id),
+                'payee'      => $studentName ?: '-',
+                'ref_id'     => $fee->id,
+                'income'     => (float)$fee->amount,
+                'expense'    => 0,
+            ]);
+        }
+
+        // 3. Optional Fee Income
+        foreach ($ledgerOptional as $fee) {
+            $studentName = $fee->student->full_name ?? null;
+            $ledgerRows->push([
+                'raw_date'   => $fee->getRawOriginal('date') ?? '',
+                'date'       => $fee->date,
+                'type'       => 'Optional Fee Income',
+                'type_key'   => 'optional',
+                'description'=> $studentName ?: ('Student #' . $fee->student_id),
+                'payee'      => $studentName ?: '-',
+                'ref_id'     => $fee->id,
+                'income'     => (float)$fee->amount,
+                'expense'    => 0,
+            ]);
+        }
+
+        // 4. Expenses
+        foreach ($ledgerExpenses as $expense) {
+            $ledgerRows->push([
+                'raw_date'   => $expense->getRawOriginal('date') ?? '',
+                'date'       => $expense->date,
+                'type'       => 'Expense',
+                'type_key'   => 'expense',
+                'description'=> $expense->title ?? ('Expense #' . $expense->id),
+                'payee'      => $expense->category->name ?? '-',
+                'ref_id'     => $expense->id,
+                'income'     => 0,
+                'expense'    => (float)$expense->amount,
+            ]);
+        }
+
+        // Sort: raw_date ASC, type_key order ensures stable same-day ordering
+        $typeOrder = ['opening' => 0, 'compulsory' => 1, 'optional' => 2, 'expense' => 3];
+        $ledgerRows = $ledgerRows->sort(function ($a, $b) use ($typeOrder) {
+            $dateCmp = strcmp($a['raw_date'], $b['raw_date']);
+            if ($dateCmp !== 0) return $dateCmp;
+            $typeCmp = ($typeOrder[$a['type_key']] ?? 9) <=> ($typeOrder[$b['type_key']] ?? 9);
+            if ($typeCmp !== 0) return $typeCmp;
+            return ($a['ref_id'] ?? '') <=> ($b['ref_id'] ?? '');
+        })->values();
+
+        // Compute Running Balance (forward pass)
+        $running = 0;
+        $ledgerRows = $ledgerRows->map(function ($row) use (&$running, $bankAccount) {
+            if ($row['type_key'] === 'opening') {
+                $running = (float)$bankAccount->opening_balance;
+            } else {
+                $running += $row['income'] - $row['expense'];
+            }
+            $row['running_balance'] = round($running, 2);
+            return $row;
+        });
+
+        // Reverse for display (newest first)
+        $ledgerRows = $ledgerRows->reverse()->values();
+
+        // Apply display limit if too many rows
+        $ledgerDisplayLimit = 500;
+        $ledgerLimited = $ledgerTotalCount > $ledgerDisplayLimit;
+
+        if ($ledgerLimited) {
+            $ledgerRows = $ledgerRows->take($ledgerDisplayLimit);
+        }
+        // ================ End Transaction Ledger ================
+
         return view('bank-account.show', compact(
             'bankAccount',
             'compulsoryFees',
@@ -239,7 +361,11 @@ class BankAccountController extends Controller
             'totalOptional',
             'totalIncome',
             'totalExpenses',
-            'currentBalance'
+            'currentBalance',
+            'ledgerRows',
+            'ledgerTotalCount',
+            'ledgerLimited',
+            'ledgerDisplayLimit'
         ));
     }
 

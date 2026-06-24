@@ -214,5 +214,85 @@
                 </div>
             </div>
         </div>
+
+        {{-- Transaction Ledger --}}
+        <div class="row">
+            <div class="col-md-12 grid-margin stretch-card">
+                <div class="card">
+                    <div class="card-body">
+                        <h4 class="card-title">
+                            {{ __('Transaction Ledger') }}
+                            @if ($ledgerLimited)
+                                <small class="text-muted">({{ __('Latest') }} {{ $ledgerDisplayLimit }} {{ __('records') }})</small>
+                            @else
+                                <small class="text-muted">({{ $ledgerTotalCount }} {{ __('records') }})</small>
+                            @endif
+                        </h4>
+                        @if ($ledgerRows->isEmpty())
+                            <p class="text-muted text-center py-3">{{ __('No transactions for this account.') }}</p>
+                        @else
+                            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                <table class="table table-sm table-hover table-bordered">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th style="min-width: 100px;">{{ __('Date') }}</th>
+                                            <th style="min-width: 130px;">{{ __('Type') }}</th>
+                                            <th>{{ __('Description') }}</th>
+                                            <th>{{ __('Payee') }}</th>
+                                            <th>{{ __('Ref ID') }}</th>
+                                            <th class="text-right" style="min-width: 100px;">{{ __('Income') }}</th>
+                                            <th class="text-right" style="min-width: 100px;">{{ __('Expense') }}</th>
+                                            <th class="text-right" style="min-width: 120px;">{{ __('Balance') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($ledgerRows as $row)
+                                            @php
+                                                $typeClass = match($row['type_key']) {
+                                                    'opening'    => 'badge-secondary',
+                                                    'compulsory' => 'badge-success',
+                                                    'optional'   => 'badge-info',
+                                                    'expense'    => 'badge-danger',
+                                                    default      => 'badge-light',
+                                                };
+                                            @endphp
+                                            <tr>
+                                                <td>{{ $row['date'] }}</td>
+                                                <td><span class="badge {{ $typeClass }}">{{ $row['type'] }}</span></td>
+                                                <td>{{ $row['description'] }}</td>
+                                                <td>{{ $row['payee'] }}</td>
+                                                <td>{{ $row['ref_id'] }}</td>
+                                                <td class="text-right text-success">
+                                                    @if ($row['income'] > 0)
+                                                        {{ number_format($row['income'], 2) }}
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
+                                                <td class="text-right text-danger">
+                                                    @if ($row['expense'] > 0)
+                                                        {{ number_format($row['expense'], 2) }}
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
+                                                <td class="text-right font-weight-bold">
+                                                    {{ number_format($row['running_balance'], 2) }}
+                                                </td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            @if ($ledgerLimited)
+                                <p class="text-muted text-center small mt-2">
+                                    {{ __('Showing the latest :count records. Earlier transactions are not displayed.', ['count' => $ledgerDisplayLimit]) }}
+                                </p>
+                            @endif
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 @endsection
