@@ -115,9 +115,9 @@ class BankAccountController extends Controller
             $tempRow = $row->toArray();
             $tempRow['no']              = $no++;
             $tempRow['account_type_name'] = $row->account_type;
-            $tempRow['income_total']    = number_format($income, 2);
-            $tempRow['expense_total']   = number_format($expenses, 2);
-            $tempRow['current_balance'] = number_format($balance, 2);
+            $tempRow['income_total']    = round($income, 2);
+            $tempRow['expense_total']   = round($expenses, 2);
+            $tempRow['current_balance'] = round($balance, 2);
             $tempRow['status_badge']    = $row->is_active ? '<span class="badge badge-success">' . __('Active') . '</span>' : '<span class="badge badge-secondary">' . __('Inactive') . '</span>';
             $tempRow['default_badge']   = $row->is_default ? '<span class="badge badge-info">' . __('Default') . '</span>' : '';
             $tempRow['operate']         = $operate;
