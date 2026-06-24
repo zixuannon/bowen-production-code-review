@@ -78,6 +78,7 @@ use App\Http\Controllers\ContactInquiryController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\AssignElectiveSubjectController;
 use App\Http\Controllers\BankAccountController;
+use App\Http\Controllers\BankAccountReportController;
 use App\Http\Controllers\DiaryCategoryController;
 use App\Http\Controllers\DiaryController;
 use App\Http\Controllers\VehicleController;
@@ -845,6 +846,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Finance Report
         Route::get('finance-report', [FinanceReportController::class, 'index'])->name('finance-report.index');
         Route::get('finance-report/export', [FinanceReportController::class, 'export'])->name('finance-report.export');
+
+        // Bank Account Summary Report
+        Route::get('bank-account-report', [BankAccountReportController::class, 'index'])->name('bank-account-report.index');
+        Route::get('bank-account-report/export', [BankAccountReportController::class, 'export'])->name('bank-account-report.export');
 
         // Payroll
         Route::get('payroll/slip/{id?}', [PayrollController::class, 'slip'])->name('payroll.slip');
