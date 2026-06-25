@@ -263,9 +263,9 @@ class BankAccountController extends Controller
         $ledgerRows->push([
             'raw_date'   => '0000-00-00', // ensures always first in sort
             'date'       => $bankAccount->opening_balance_date ?? $bankAccount->created_at,
-            'type'       => 'Opening Balance',
+            'type'       => __('Opening Balance'),
             'type_key'   => 'opening',
-            'description'=> 'Opening Balance',
+            'description'=> __('Opening Balance'),
             'payee'      => '-',
             'ref_id'     => '-',
             'income'     => 0,
@@ -278,7 +278,7 @@ class BankAccountController extends Controller
             $ledgerRows->push([
                 'raw_date'   => $fee->getRawOriginal('date') ?? '',
                 'date'       => $fee->date,
-                'type'       => 'Compulsory Fee Income',
+                'type'       => __('Compulsory Fee Income'),
                 'type_key'   => 'compulsory',
                 'description'=> $studentName ?: ('Student #' . $fee->student_id),
                 'payee'      => $studentName ?: '-',
@@ -294,7 +294,7 @@ class BankAccountController extends Controller
             $ledgerRows->push([
                 'raw_date'   => $fee->getRawOriginal('date') ?? '',
                 'date'       => $fee->date,
-                'type'       => 'Optional Fee Income',
+                'type'       => __('Optional Fee Income'),
                 'type_key'   => 'optional',
                 'description'=> $studentName ?: ('Student #' . $fee->student_id),
                 'payee'      => $studentName ?: '-',
@@ -309,7 +309,7 @@ class BankAccountController extends Controller
             $ledgerRows->push([
                 'raw_date'   => $expense->getRawOriginal('date') ?? '',
                 'date'       => $expense->date,
-                'type'       => 'Expense',
+                'type'       => __('Expense'),
                 'type_key'   => 'expense',
                 'description'=> $expense->title ?? ('Expense #' . $expense->id),
                 'payee'      => $expense->category->name ?? '-',

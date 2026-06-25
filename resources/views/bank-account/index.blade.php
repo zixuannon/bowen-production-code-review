@@ -134,8 +134,8 @@
                                         data-formatter="balanceFormatter">{{ __('Expense Total') }}</th>
                                     <th scope="col" data-field="current_balance" data-sortable="true"
                                         data-formatter="balanceFormatter">{{ __('Current Balance') }}</th>
-                                    <th scope="col" data-field="status_badge">{{ __('Status') }}</th>
-                                    <th scope="col" data-field="default_badge">{{ __('Default') }}</th>
+                                    <th scope="col" data-field="status_badge" data-escape="false">{{ __('Status') }}</th>
+                                    <th scope="col" data-field="default_badge" data-escape="false">{{ __('Default') }}</th>
                                     <th scope="col" data-field="operate" data-events="bankAccountEvents" data-escape="false">
                                         {{ __('Action') }}
                                     </th>
