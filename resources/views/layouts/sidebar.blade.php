@@ -697,6 +697,85 @@
             </li>
         @endcan
 
+        {{-- Expense --}}
+        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
+            'expense-create', 'expense-list', 'expense-edit', 'expense-delete'])
+            <li class="nav-item">
+                <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
+                    aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">
+                    <i class="fa fa-money menu-icon"></i>
+                    <span class="menu-title">{{ __('Expenses') }}</span>
+                    <i class="menu-arrow"></i>
+                </a>
+                <div class="collapse" id="expense-menu">
+                    <ul class="nav flex-column sub-menu">
+                        {{-- Expense Management 支出管理 --}}
+                        <li class="nav-item menu-group-label">
+                            <span class="menu-group-text">{{ __('Expense Management') }}</span>
+                        </li>
+                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
+                            'expense-category-delete'])
+                            <li class="nav-item">
+                                <a href="{{ route('finance-category.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('Finance Categories') }} </a>
+                            </li>
+                        @endcanany
+
+                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
+                            'expense-category-delete'])
+                            <li class="nav-item">
+                                <a href="{{ route('expense-category.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('Expense Categories') }} </a>
+                            </li>
+                        @endcanany
+
+                        @canany(['expense-create', 'expense-list', 'expense-edit', 'expense-delete'])
+                            <li class="nav-item">
+                                <a href="{{ route('expense.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Manage Expenses') }}
+                                </a>
+                            </li>
+                        @endcanany
+
+                        {{-- Bank Accounts 银行账户 --}}
+                        <li class="nav-item menu-group-label">
+                            <span class="menu-group-text">{{ __('Bank Accounts') }}</span>
+                        </li>
+
+                        @canany(['expense-create', 'expense-list'])
+                            <li class="nav-item">
+                                <a href="{{ route('bank-accounts.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Bank Accounts') }}
+                                </a>
+                            </li>
+                        @endcanany
+
+                        @canany(['expense-create', 'expense-list'])
+                            <li class="nav-item">
+                                <a href="{{ route('bank-transfers.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Bank Transfer') }}
+                                </a>
+                            </li>
+                        @endcanany
+
+                        @canany(['expense-list'])
+                            <li class="nav-item">
+                                <a href="{{ route('bank-account-report.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Bank Account Report') }}
+                                </a>
+                            </li>
+                        @endcanany
+                    </ul>
+                </div>
+            </li>
+        @endcanany
+
         {{-- Transportation Module --}}
         @canany(['route-list', 'pickup-points-list', 'vehicles-list', 'RouteVehicle-list', 'driver-helper-list',
             'transportationRequests-list', 'transportationexpense-list'])
@@ -929,77 +1008,6 @@
                 </a>
             </li>
         @endcan
-
-
-        {{-- Expense --}}
-        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
-            'expense-create', 'expense-list', 'expense-edit', 'expense-delete'])
-            <li class="nav-item">
-                <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
-                    aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">
-                    <i class="fa fa-money menu-icon"></i>
-                    <span class="menu-title">{{ __('Expenses') }}</span>
-                    <i class="menu-arrow"></i>
-                </a>
-                <div class="collapse" id="expense-menu">
-                    <ul class="nav flex-column sub-menu">
-                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
-                            'expense-category-delete'])
-                            <li class="nav-item">
-                                <a href="{{ route('finance-category.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
-                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('Finance Categories') }} </a>
-                            </li>
-                        @endcanany
-
-                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
-                            'expense-category-delete'])
-                            <li class="nav-item">
-                                <a href="{{ route('expense-category.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
-                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('Expense Categories') }} </a>
-                            </li>
-                        @endcanany
-
-                        @canany(['expense-create', 'expense-list', 'expense-edit', 'expense-delete'])
-                            <li class="nav-item">
-                                <a href="{{ route('expense.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Manage Expenses') }}
-                                </a>
-                            </li>
-                        @endcanany
-
-                        @canany(['expense-create', 'expense-list'])
-                            <li class="nav-item">
-                                <a href="{{ route('bank-accounts.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Accounts') }}
-                                </a>
-                            </li>
-                        @endcanany
-
-                        @canany(['expense-create', 'expense-list'])
-                            <li class="nav-item">
-                                <a href="{{ route('bank-transfers.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Transfer') }}
-                                </a>
-                            </li>
-                        @endcanany
-
-                        @canany(['expense-list'])
-                            <li class="nav-item">
-                                <a href="{{ route('bank-account-report.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Account Report') }}
-                                </a>
-                            </li>
-                        @endcanany
-                    </ul>
-                </div>
-            </li>
-        @endcanany
 
         {{-- Payroll --}}
         @canany(['payroll-create', 'payroll-list', 'payroll-edit', 'payroll-delete', 'payroll-settings-list',
