@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
+use App\Models\BankTransfer;
 use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
@@ -92,17 +93,35 @@ class BankAccountController extends Controller
             ->groupBy('bank_account_id')
             ->pluck('total', 'bank_account_id');
 
+        // Transfer In sums
+        $transferInSums = BankTransfer::whereIn('to_account_id', $bankAccountIds)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->where('status', 'completed')
+            ->selectRaw('to_account_id, SUM(amount) as total')
+            ->groupBy('to_account_id')
+            ->pluck('total', 'to_account_id');
+
+        // Transfer Out sums
+        $transferOutSums = BankTransfer::whereIn('from_account_id', $bankAccountIds)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->where('status', 'completed')
+            ->selectRaw('from_account_id, SUM(amount) as total')
+            ->groupBy('from_account_id')
+            ->pluck('total', 'from_account_id');
+
         $bulkData = [];
         $bulkData['total'] = $total;
         $dataRows  = [];
         $no        = 1;
 
         foreach ($rows as $row) {
-            $compulsory = (float)($compulsoryIncome[$row->id] ?? 0);
-            $optional   = (float)($optionalIncome[$row->id] ?? 0);
-            $expenses   = (float)($expenseSums[$row->id] ?? 0);
-            $income     = $compulsory + $optional;
-            $balance    = (float)$row->opening_balance + $income - $expenses;
+            $compulsory  = (float)($compulsoryIncome[$row->id] ?? 0);
+            $optional    = (float)($optionalIncome[$row->id] ?? 0);
+            $expenses    = (float)($expenseSums[$row->id] ?? 0);
+            $transferIn  = (float)($transferInSums[$row->id] ?? 0);
+            $transferOut = (float)($transferOutSums[$row->id] ?? 0);
+            $income      = $compulsory + $optional;
+            $balance     = (float)$row->opening_balance + $income + $transferIn - $expenses - $transferOut;
 
             $operate = '';
             if (!$row->trashed()) {
@@ -228,8 +247,18 @@ class BankAccountController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->sum('amount') ?? 0;
 
+        $totalTransferIn = BankTransfer::where('to_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->where('status', 'completed')
+            ->sum('amount') ?? 0;
+
+        $totalTransferOut = BankTransfer::where('from_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->where('status', 'completed')
+            ->sum('amount') ?? 0;
+
         $totalIncome = (float)$totalCompulsory + (float)$totalOptional;
-        $currentBalance = (float)$bankAccount->opening_balance + $totalIncome - (float)$totalExpenses;
+        $currentBalance = (float)$bankAccount->opening_balance + $totalIncome + (float)$totalTransferIn - (float)$totalExpenses - (float)$totalTransferOut;
 
         // ================ Transaction Ledger ================
         // Load all records (ASC by raw date, then by id for stable ordering)
@@ -254,8 +283,25 @@ class BankAccountController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
+        $ledgerTransfersIn = BankTransfer::with('from_account:id,account_name')
+            ->where('to_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->where('status', 'completed')
+            ->orderBy('transfer_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $ledgerTransfersOut = BankTransfer::with('to_account:id,account_name')
+            ->where('from_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->where('status', 'completed')
+            ->orderBy('transfer_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
         // Count total records (excl. opening) to decide display limit
-        $ledgerTotalCount = $ledgerCompulsory->count() + $ledgerOptional->count() + $ledgerExpenses->count();
+        $ledgerTotalCount = $ledgerCompulsory->count() + $ledgerOptional->count() + $ledgerExpenses->count()
+                          + $ledgerTransfersIn->count() + $ledgerTransfersOut->count();
 
         $ledgerRows = collect();
 
@@ -288,7 +334,24 @@ class BankAccountController extends Controller
             ]);
         }
 
-        // 3. Optional Fee Income
+        // 3. Transfer In
+        foreach ($ledgerTransfersIn as $transfer) {
+            $fromName = $transfer->from_account->account_name ?? '-';
+            $refNo    = $transfer->reference_no ? ('#' . $transfer->reference_no) : '';
+            $ledgerRows->push([
+                'raw_date'   => $transfer->getRawOriginal('transfer_date') ?? '',
+                'date'       => $transfer->transfer_date,
+                'type'       => __('Transfer In'),
+                'type_key'   => 'transfer_in',
+                'description'=> __('From :account', ['account' => $fromName]) . $refNo,
+                'payee'      => $fromName,
+                'ref_id'     => 'TR-' . $transfer->id,
+                'income'     => (float)$transfer->amount,
+                'expense'    => 0,
+            ]);
+        }
+
+        // 4. Optional Fee Income
         foreach ($ledgerOptional as $fee) {
             $studentName = $fee->student->full_name ?? null;
             $ledgerRows->push([
@@ -304,7 +367,7 @@ class BankAccountController extends Controller
             ]);
         }
 
-        // 4. Expenses
+        // 5. Expenses
         foreach ($ledgerExpenses as $expense) {
             $ledgerRows->push([
                 'raw_date'   => $expense->getRawOriginal('date') ?? '',
@@ -319,8 +382,25 @@ class BankAccountController extends Controller
             ]);
         }
 
+        // 6. Transfer Out
+        foreach ($ledgerTransfersOut as $transfer) {
+            $toName = $transfer->to_account->account_name ?? '-';
+            $refNo  = $transfer->reference_no ? ('#' . $transfer->reference_no) : '';
+            $ledgerRows->push([
+                'raw_date'   => $transfer->getRawOriginal('transfer_date') ?? '',
+                'date'       => $transfer->transfer_date,
+                'type'       => __('Transfer Out'),
+                'type_key'   => 'transfer_out',
+                'description'=> __('To :account', ['account' => $toName]) . $refNo,
+                'payee'      => $toName,
+                'ref_id'     => 'TR-' . $transfer->id,
+                'income'     => 0,
+                'expense'    => (float)$transfer->amount,
+            ]);
+        }
+
         // Sort: raw_date ASC, type_key order ensures stable same-day ordering
-        $typeOrder = ['opening' => 0, 'compulsory' => 1, 'optional' => 2, 'expense' => 3];
+        $typeOrder = ['opening' => 0, 'compulsory' => 1, 'transfer_in' => 2, 'optional' => 3, 'expense' => 4, 'transfer_out' => 5];
         $ledgerRows = $ledgerRows->sort(function ($a, $b) use ($typeOrder) {
             $dateCmp = strcmp($a['raw_date'], $b['raw_date']);
             if ($dateCmp !== 0) return $dateCmp;
@@ -362,6 +442,8 @@ class BankAccountController extends Controller
             'totalOptional',
             'totalIncome',
             'totalExpenses',
+            'totalTransferIn',
+            'totalTransferOut',
             'currentBalance',
             'ledgerRows',
             'ledgerTotalCount',

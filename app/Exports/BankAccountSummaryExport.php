@@ -43,11 +43,13 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
         $data[] = [''];
 
         // ── Section 2: Summary Table ──
-        $data[] = [__('Account Name'), __('Bank'), __('Period Opening Balance'), __('Income During Period'), __('Expense During Period'), __('Closing Balance')];
+        $data[] = [__('Account Name'), __('Bank'), __('Period Opening Balance'), __('Income During Period'), __('Expense During Period'), __('Transfer In During Period'), __('Transfer Out During Period'), __('Net Transfer'), __('Closing Balance')];
 
         $totalOpening = 0;
         $totalIncome  = 0;
         $totalExpense = 0;
+        $totalTransferIn  = 0;
+        $totalTransferOut = 0;
         $totalClosing = 0;
 
         foreach ($this->rows as $row) {
@@ -57,12 +59,17 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
                 $row['period_opening_balance'],
                 $row['period_income'],
                 $row['period_expense'],
+                $row['transfer_in_during'] ?? 0,
+                $row['transfer_out_during'] ?? 0,
+                $row['net_transfer'] ?? 0,
                 $row['closing_balance'],
             ];
-            $totalOpening += $row['period_opening_balance'];
-            $totalIncome  += $row['period_income'];
-            $totalExpense += $row['period_expense'];
-            $totalClosing += $row['closing_balance'];
+            $totalOpening    += $row['period_opening_balance'];
+            $totalIncome     += $row['period_income'];
+            $totalExpense    += $row['period_expense'];
+            $totalTransferIn  += ($row['transfer_in_during'] ?? 0);
+            $totalTransferOut += ($row['transfer_out_during'] ?? 0);
+            $totalClosing    += $row['closing_balance'];
         }
 
         // Total row
@@ -71,6 +78,9 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
             round($totalOpening, 2),
             round($totalIncome, 2),
             round($totalExpense, 2),
+            round($totalTransferIn, 2),
+            round($totalTransferOut, 2),
+            round($totalTransferIn - $totalTransferOut, 2),
             round($totalClosing, 2),
         ];
 
@@ -83,7 +93,7 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
      */
     public function headings(): array
     {
-        return ['Field', 'Value', '', '', '', ''];
+        return ['Field', 'Value', '', '', '', '', '', '', ''];
     }
 
     /**
@@ -100,16 +110,17 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
 
                 // Bold table header row: Section 1 has 5 rows (0-4), so header is row 6
                 $headerRow = 6;
-                $sheet->getStyle("A{$headerRow}:F{$headerRow}")->getFont()->setBold(true);
+                $lastCol   = 'I'; // 9 columns (A-I): Account, Bank, Opening, Income, Expense, TransferIn, TransferOut, NetTransfer, Closing
+                $sheet->getStyle("A{$headerRow}:{$lastCol}{$headerRow}")->getFont()->setBold(true);
 
                 // Bold the TOTAL row
                 $totalRow = $headerRow + count($this->rows) + 1;
-                $sheet->getStyle("A{$totalRow}:F{$totalRow}")->getFont()->setBold(true);
+                $sheet->getStyle("A{$totalRow}:{$lastCol}{$totalRow}")->getFont()->setBold(true);
 
-                // Number format for amount columns (C-F) in data rows
+                // Number format for amount columns (C-I) in data rows
                 $dataStart = $headerRow + 1;
                 if ($dataStart <= $totalRow) {
-                    $sheet->getStyle("C{$dataStart}:F{$totalRow}")
+                    $sheet->getStyle("C{$dataStart}:{$lastCol}{$totalRow}")
                         ->getNumberFormat()
                         ->setFormatCode('#,##0.00');
                 }
