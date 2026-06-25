@@ -1984,5 +1984,19 @@
     "total_allowance": "津贴合计",
     "total_deduction": "扣款合计",
     "total_leave_deduction": "无薪假扣款合计",
-    "total_net_salary": "实发工资合计"
+    "total_net_salary": "实发工资合计",
+    "Bank Account Report": "银行账户报表",
+    "Bank Account Summary Report": "银行账户汇总报表",
+    "Bank Account Summary": "银行账户汇总",
+    "Bank Account": "银行账户",
+    "Bank Account Filter": "银行账户筛选",
+    "All Accounts": "全部账户",
+    "Account Name": "账户名称",
+    "Bank": "银行",
+    "Period Opening Balance": "期初余额",
+    "Income During Period": "期间收入",
+    "Expense During Period": "期间支出",
+    "Closing Balance": "期末余额",
+    "Account Summary": "账户汇总",
+    "Export Excel": "导出 Excel"
 }

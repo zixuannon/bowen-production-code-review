@@ -34,16 +34,16 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
         $data = [];
 
         // ── Section 1: Report Summary ──
-        $data[] = ['Bank Account Summary Report'];
-        $data[] = ['Date From', $this->dateFrom];
-        $data[] = ['Date To', $this->dateTo];
-        $data[] = ['Bank Account Filter', $this->bankAccountId
+        $data[] = [__('Bank Account Summary Report')];
+        $data[] = [__('Date From'), $this->dateFrom];
+        $data[] = [__('Date To'), $this->dateTo];
+        $data[] = [__('Bank Account Filter'), $this->bankAccountId
             ? ($this->rows[0]['account_name'] ?? '-')
-            : 'All Accounts'];
+            : __('All Accounts')];
         $data[] = [''];
 
         // ── Section 2: Summary Table ──
-        $data[] = ['Account Name', 'Bank', 'Period Opening Balance', 'Income During Period', 'Expense During Period', 'Closing Balance'];
+        $data[] = [__('Account Name'), __('Bank'), __('Period Opening Balance'), __('Income During Period'), __('Expense During Period'), __('Closing Balance')];
 
         $totalOpening = 0;
         $totalIncome  = 0;
@@ -67,7 +67,7 @@ class BankAccountSummaryExport implements FromArray, WithHeadings, ShouldAutoSiz
 
         // Total row
         $data[] = [
-            'TOTAL', '',
+            __('Total'), '',
             round($totalOpening, 2),
             round($totalIncome, 2),
             round($totalExpense, 2),
