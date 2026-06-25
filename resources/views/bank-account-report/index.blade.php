@@ -62,7 +62,7 @@
 
         {{-- Summary Cards --}}
         <div class="row">
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body text-center">
                         <h3 class="text-info">{{ number_format($totalOpening) }} {{ __('MMK') }}</h3>
@@ -70,7 +70,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body text-center">
                         <h3 class="text-success">{{ number_format($totalIncome) }} {{ __('MMK') }}</h3>
@@ -78,7 +78,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body text-center">
                         <h3 class="text-danger">{{ number_format($totalExpense) }} {{ __('MMK') }}</h3>
@@ -86,7 +86,23 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h3 class="text-info">{{ number_format($totalTransferIn) }} {{ __('MMK') }}</h3>
+                        <small class="text-muted">{{ __('Transfer In During Period') }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2 grid-margin stretch-card">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h3 class="text-warning">{{ number_format($totalTransferOut) }} {{ __('MMK') }}</h3>
+                        <small class="text-muted">{{ __('Transfer Out During Period') }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body text-center">
                         <h3 class="{{ $totalClosing >= 0 ? 'text-primary' : 'text-danger' }}">
@@ -120,6 +136,9 @@
                                             <th class="text-right">{{ __('Period Opening Balance') }}</th>
                                             <th class="text-right">{{ __('Income During Period') }}</th>
                                             <th class="text-right">{{ __('Expense During Period') }}</th>
+                                            <th class="text-right">{{ __('Transfer In During Period') }}</th>
+                                            <th class="text-right">{{ __('Transfer Out During Period') }}</th>
+                                            <th class="text-right">{{ __('Net Transfer') }}</th>
                                             <th class="text-right">{{ __('Closing Balance') }}</th>
                                         </tr>
                                     </thead>
@@ -135,6 +154,11 @@
                                                 <td class="text-right">{{ number_format($row['period_opening_balance'], 2) }}</td>
                                                 <td class="text-right text-success">{{ number_format($row['period_income'], 2) }}</td>
                                                 <td class="text-right text-danger">{{ number_format($row['period_expense'], 2) }}</td>
+                                                <td class="text-right text-info">{{ number_format($row['transfer_in_during'] ?? 0, 2) }}</td>
+                                                <td class="text-right text-warning">{{ number_format($row['transfer_out_during'] ?? 0, 2) }}</td>
+                                                <td class="text-right {{ ($row['net_transfer'] ?? 0) >= 0 ? 'text-success' : 'text-danger' }}">
+                                                    {{ number_format($row['net_transfer'] ?? 0, 2) }}
+                                                </td>
                                                 <td class="text-right {{ $row['closing_balance'] >= 0 ? 'text-primary' : 'text-danger' }}">
                                                     {{ number_format($row['closing_balance'], 2) }}
                                                 </td>
@@ -147,6 +171,11 @@
                                             <td class="text-right">{{ number_format($totalOpening, 2) }}</td>
                                             <td class="text-right text-success">{{ number_format($totalIncome, 2) }}</td>
                                             <td class="text-right text-danger">{{ number_format($totalExpense, 2) }}</td>
+                                            <td class="text-right text-info">{{ number_format($totalTransferIn, 2) }}</td>
+                                            <td class="text-right text-warning">{{ number_format($totalTransferOut, 2) }}</td>
+                                            <td class="text-right {{ $totalNetTransfer >= 0 ? 'text-success' : 'text-danger' }}">
+                                                {{ number_format($totalNetTransfer, 2) }}
+                                            </td>
                                             <td class="text-right {{ $totalClosing >= 0 ? 'text-primary' : 'text-danger' }}">
                                                 {{ number_format($totalClosing, 2) }}
                                             </td>

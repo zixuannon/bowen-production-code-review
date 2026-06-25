@@ -52,7 +52,7 @@
 
         {{-- Summary Cards --}}
         <div class="row">
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card card-body bg-light">
                     <h6 class="text-muted mb-1">{{ __('Opening Balance') }}</h6>
                     <h3 class="mb-0">{{ number_format($bankAccount->opening_balance, 2) }} {{ $bankAccount->currency }}</h3>
@@ -62,7 +62,7 @@
                 </div>
             </div>
 
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card card-body bg-success-light">
                     <h6 class="text-muted mb-1">{{ __('Total Income') }}</h6>
                     <h3 class="mb-0 text-success">{{ number_format($totalIncome, 2) }} {{ $bankAccount->currency }}</h3>
@@ -73,18 +73,32 @@
                 </div>
             </div>
 
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
+                <div class="card card-body bg-info-light">
+                    <h6 class="text-muted mb-1">{{ __('Transfer In') }}</h6>
+                    <h3 class="mb-0 text-info">{{ number_format($totalTransferIn, 2) }} {{ $bankAccount->currency }}</h3>
+                </div>
+            </div>
+
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card card-body bg-danger-light">
                     <h6 class="text-muted mb-1">{{ __('Total Expenses') }}</h6>
                     <h3 class="mb-0 text-danger">{{ number_format($totalExpenses, 2) }} {{ $bankAccount->currency }}</h3>
                 </div>
             </div>
 
-            <div class="col-md-3 grid-margin stretch-card">
+            <div class="col-md-2 grid-margin stretch-card">
+                <div class="card card-body bg-warning-light">
+                    <h6 class="text-muted mb-1">{{ __('Transfer Out') }}</h6>
+                    <h3 class="mb-0 text-warning">{{ number_format($totalTransferOut, 2) }} {{ $bankAccount->currency }}</h3>
+                </div>
+            </div>
+
+            <div class="col-md-2 grid-margin stretch-card">
                 <div class="card card-body bg-primary-light">
                     <h6 class="text-muted mb-1">{{ __('Current Balance') }}</h6>
                     <h3 class="mb-0 text-primary">{{ number_format($currentBalance, 2) }} {{ $bankAccount->currency }}</h3>
-                    <small class="text-muted">{{ __('Opening + Income - Expenses') }}</small>
+                    <small class="text-muted">{{ __('Op + Income + Transfer In - Expense - Transfer Out') }}</small>
                 </div>
             </div>
         </div>
@@ -249,11 +263,13 @@
                                         @foreach ($ledgerRows as $row)
                                             @php
                                                 $typeClass = match($row['type_key']) {
-                                                    'opening'    => 'badge-secondary',
-                                                    'compulsory' => 'badge-success',
-                                                    'optional'   => 'badge-info',
-                                                    'expense'    => 'badge-danger',
-                                                    default      => 'badge-light',
+                                                    'opening'      => 'badge-secondary',
+                                                    'compulsory'   => 'badge-success',
+                                                    'transfer_in'  => 'badge-info',
+                                                    'optional'     => 'badge-primary',
+                                                    'expense'      => 'badge-danger',
+                                                    'transfer_out' => 'badge-warning',
+                                                    default        => 'badge-light',
                                                 };
                                             @endphp
                                             <tr>

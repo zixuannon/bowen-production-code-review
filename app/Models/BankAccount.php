@@ -83,6 +83,22 @@ class BankAccount extends Model
         return $this->hasMany(Expense::class, 'bank_account_id');
     }
 
+    /**
+     * Transfers out of this account.
+     */
+    public function transfers_out()
+    {
+        return $this->hasMany(BankTransfer::class, 'from_account_id');
+    }
+
+    /**
+     * Transfers into this account.
+     */
+    public function transfers_in()
+    {
+        return $this->hasMany(BankTransfer::class, 'to_account_id');
+    }
+
     public function getCreatedAtAttribute()
     {
         return $this->formatDateValue($this->getRawOriginal('created_at'));

@@ -79,6 +79,7 @@ use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\AssignElectiveSubjectController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankAccountReportController;
+use App\Http\Controllers\BankTransferController;
 use App\Http\Controllers\DiaryCategoryController;
 use App\Http\Controllers\DiaryController;
 use App\Http\Controllers\VehicleController;
@@ -826,6 +827,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Bank Accounts
         Route::get('bank-accounts/list', [BankAccountController::class, 'list'])->name('bank-accounts.list');
         Route::resource('bank-accounts', BankAccountController::class);
+
+        // Bank Transfers
+        Route::get('bank-transfers/list', [BankTransferController::class, 'list'])->name('bank-transfers.list');
+        Route::resource('bank-transfers', BankTransferController::class)->only(['index', 'store', 'destroy']);
 
         // Finance Category
         Route::get('finance-category/list', [FinanceCategoryController::class, 'list'])->name('finance-category.list');
