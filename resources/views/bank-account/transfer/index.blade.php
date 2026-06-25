@@ -153,17 +153,24 @@
                 error: function(xhr) {
                     if (xhr.status === 422) {
                         var resp = xhr.responseJSON;
-                        if (resp.message) {
+                        if (resp && resp.message) {
                             showErrorToast(resp.message);
-                        } else if (resp.errors) {
-                            var msg = '';
-                            $.each(resp.errors, function(key, val) {
-                                msg += val[0] + '<br>';
-                            });
-                            showErrorToast(msg);
+                        } else if (resp && resp.errors) {
+                            var firstKey = Object.keys(resp.errors)[0];
+                            if (firstKey) {
+                                var firstError = resp.errors[firstKey];
+                                var msg = Array.isArray(firstError) ? firstError[0] : firstError;
+                                showErrorToast(msg);
+                            } else {
+                                showErrorToast('{{ __('error_occurred') }}');
+                            }
+                        } else {
+                            showErrorToast('{{ __('error_occurred') }}');
                         }
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        showErrorToast(xhr.responseJSON.message);
                     } else {
-                        showErrorToast('{{ __('Something went wrong.') }}');
+                        showErrorToast('{{ __('error_occurred') }}');
                     }
                 }
             });
