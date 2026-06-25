@@ -983,7 +983,7 @@
                             <li class="nav-item">
                                 <a href="{{ route('bank-account-report.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    Bank Account Report
+                                    {{ __('Bank Account Report') }}
                                 </a>
                             </li>
                         @endcanany
