@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ApiController;
+use App\Http\Controllers\Api\Dify\DifyApiController;
 use App\Http\Controllers\Api\ParentApiController;
 use App\Http\Controllers\Api\StaffApiController;
 use App\Http\Controllers\Api\StudentApiController;
@@ -407,4 +408,12 @@ Route::group(['middleware' => ['APISwitchDatabase',]], static function () {
 
     Route::get('diaries', [ApiController::class, 'getStudentDiaries']);
 
+});
+
+/**
+ * DIFY API - Machine-to-Machine
+ * 鉴权: DifyToken Middleware (独立 api_tokens 表)
+ **/
+Route::group(['prefix' => 'dify', 'middleware' => ['DifyToken']], static function () {
+    Route::get('admission/today-count', [DifyApiController::class, 'todayAdmissionCount']);
 });
