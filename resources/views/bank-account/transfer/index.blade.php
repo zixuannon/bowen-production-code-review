@@ -18,7 +18,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h4 class="card-title">{{ __('New Transfer') }}</h4>
-                        <form class="pt-3" id="create-form" novalidate="novalidate">
+                        <form class="pt-3" id="bank-transfer-create-form" novalidate="novalidate">
                             @csrf
                             <div class="row">
                                 <div class="form-group col-sm-12 col-md-3">
@@ -131,7 +131,7 @@
         }
 
         // ========== Create Form ==========
-        $('#create-form').on('submit', function(e) {
+        $('#bank-transfer-create-form').on('submit', function(e) {
             e.preventDefault();
             var formData = new FormData(this);
 
@@ -144,7 +144,7 @@
                 success: function(response) {
                     if (response.error === false) {
                         showSuccessToast(response.message);
-                        $('#create-form')[0].reset();
+                        $('#bank-transfer-create-form')[0].reset();
                         $('#table_list').bootstrapTable('refresh');
                     } else {
                         showErrorToast(response.message);
@@ -154,13 +154,13 @@
                     if (xhr.status === 422) {
                         var resp = xhr.responseJSON;
                         if (resp && resp.message) {
-                            showErrorToast(resp.message);
+                            showErrorToast(toastMessage(resp.message));
                         } else if (resp && resp.errors) {
                             var firstKey = Object.keys(resp.errors)[0];
                             if (firstKey) {
                                 var firstError = resp.errors[firstKey];
                                 var msg = Array.isArray(firstError) ? firstError[0] : firstError;
-                                showErrorToast(msg);
+                                showErrorToast(toastMessage(msg));
                             } else {
                                 showErrorToast('{{ __('error_occurred') }}');
                             }
@@ -175,6 +175,14 @@
                 }
             });
         });
+
+        function toastMessage(msg) {
+            if (typeof msg !== 'string') return msg;
+            if (msg.toLowerCase().indexOf('to account id and from account id must be different') !== -1) {
+                return '{{ __('转出账户和转入账户不能相同。') }}';
+            }
+            return msg;
+        }
 
         // ========== Cancel Transfer ==========
         window.transferEvents = {
