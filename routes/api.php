@@ -416,4 +416,5 @@ Route::group(['middleware' => ['APISwitchDatabase',]], static function () {
  **/
 Route::group(['prefix' => 'dify', 'middleware' => ['DifyToken']], static function () {
     Route::get('admission/today-count', [DifyApiController::class, 'todayAdmissionCount']);
+    Route::get('admission/list', [DifyApiController::class, 'admissionList']);
 });
