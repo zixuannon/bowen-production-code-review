@@ -117,9 +117,10 @@ class DifyTokenMiddleware
         $path = $request->path();
 
         $map = [
-            'api/dify/admission/today-count' => 'admission:read',
-            'api/dify/admission/list'        => 'admission:read',
+            'api/dify/admission/today-count'  => 'admission:read',
+            'api/dify/admission/list'         => 'admission:read',
             'api/dify/teacher/today-schedule' => 'timetable:read',
+            'api/dify/class/student-list'     => 'class:read',
         ];
 
         // Strip trailing slash for matching

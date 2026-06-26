@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\Dify;
 
 use App\Http\Controllers\Controller;
+use App\Models\ClassSection;
 use App\Models\Students;
 use App\Models\Timetable;
 use App\Models\User;
+use App\Services\CachingService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -194,6 +196,148 @@ class DifyApiController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => [
+                    'items'      => $items->values(),
+                    'pagination' => [
+                        'page'        => $paginator->currentPage(),
+                        'per_page'    => $paginator->perPage(),
+                        'total'       => $paginator->total(),
+                        'total_pages' => $paginator->lastPage(),
+                    ],
+                ],
+                'message' => 'OK',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => '服务器内部错误',
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * 班级学生名单（分页）
+     *
+     * GET /api/dify/class/student-list
+     *
+     * Query params:
+     *   class_section_id   必填，班级 section ID
+     *   session_year_id    可选，默认当前学年
+     *   search             可选，按学生姓名或 admission_no 搜索
+     *   page               可选，默认 1
+     *   per_page           可选，默认 20，最大 50
+     *
+     * 输出：class{class_section_id,class_name,section_name}, items[], pagination
+     * 不返回电话、地址、生日、证件等隐私字段
+     */
+    public function classStudentList(Request $request): JsonResponse
+    {
+        try {
+            // class_section_id is required
+            if (!$request->query('class_section_id')) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'MISSING_PARAMETER',
+                        'message' => '缺少 class_section_id 参数',
+                    ],
+                ], 422);
+            }
+
+            // Validate optional params
+            $request->validate([
+                'class_section_id' => 'integer|min:1',
+                'session_year_id'  => 'nullable|integer|min:1',
+                'search'           => 'nullable|string|max:100',
+                'page'             => 'nullable|integer|min:1',
+                'per_page'         => 'nullable|integer|min:1|max:50',
+            ]);
+
+            $classSectionId = (int) $request->query('class_section_id');
+
+            // Check class_section exists
+            $classSection = ClassSection::with(['class', 'section'])->find($classSectionId);
+            if (!$classSection) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'NOT_FOUND',
+                        'message' => '班级不存在',
+                    ],
+                ], 404);
+            }
+
+            // Resolve session year (default to current)
+            $sessionYearId = $request->query('session_year_id');
+            if (!$sessionYearId) {
+                $schoolId = $request->attributes->get('dify_school_id');
+                $cache = app(CachingService::class);
+                $sessionYear = $cache->getDefaultSessionYear($schoolId);
+                $sessionYearId = $sessionYear ? $sessionYear->id : null;
+            }
+
+            // Pagination
+            $page    = (int) $request->query('page', 1);
+            $perPage = (int) $request->query('per_page', 20);
+            $perPage = min($perPage, 50);
+
+            // Query students in this class section
+            $query = Students::query()
+                ->where('class_section_id', $classSectionId)
+                ->with(['user']);
+
+            if ($sessionYearId) {
+                $query->where('session_year_id', $sessionYearId);
+            }
+
+            // Search by student name or admission_no
+            if ($search = $request->query('search')) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('admission_no', 'like', "%{$search}%")
+                      ->orWhereHas('user', function ($uq) use ($search) {
+                          $uq->where('first_name', 'like', "%{$search}%")
+                            ->orWhere('last_name', 'like', "%{$search}%")
+                            ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$search}%"]);
+                      });
+                });
+            }
+
+            // Order by roll_number ascending
+            $paginator = $query->orderBy('roll_number', 'asc')
+                ->paginate($perPage, ['*'], 'page', $page);
+
+            // Map to safe fields (no guardian_phone, address, birthday, etc.)
+            $items = $paginator->map(function (Students $student) {
+                return [
+                    'student_id'          => $student->id,
+                    'admission_no'        => $student->admission_no,
+                    'roll_number'         => $student->roll_number,
+                    'student_name'        => trim(
+                        ($student->user->first_name ?? '') . ' ' . ($student->user->last_name ?? '')
+                    ),
+                    'gender'              => $student->user->gender ?? null,
+                    'application_status'  => $student->application_status,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'class'      => [
+                        'class_section_id' => $classSection->id,
+                        'class_name'       => $classSection->class->name ?? null,
+                        'section_name'     => $classSection->section->name ?? null,
+                    ],
                     'items'      => $items->values(),
                     'pagination' => [
                         'page'        => $paginator->currentPage(),
