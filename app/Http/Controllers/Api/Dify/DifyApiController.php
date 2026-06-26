@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\Dify;
 
 use App\Http\Controllers\Controller;
 use App\Models\Students;
+use App\Models\Timetable;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -199,6 +201,140 @@ class DifyApiController extends Controller
                         'total'       => $paginator->total(),
                         'total_pages' => $paginator->lastPage(),
                     ],
+                ],
+                'message' => 'OK',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => '服务器内部错误',
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * 教师今日课表
+     *
+     * GET /api/dify/teacher/today-schedule
+     *
+     * Query params:
+     *   teacher_id    可选，教师 user_id（与 teacher_name 至少传一个）
+     *   teacher_name  可选，按教师姓名模糊搜索（与 teacher_id 至少传一个）
+     *   day           可选，英文星期名，默认今天，例如 Monday / Friday
+     *
+     * 输出：date, day, day_label, teacher{id,name}, total_periods, periods[]
+     */
+    public function teacherTodaySchedule(Request $request): JsonResponse
+    {
+        try {
+            // Validate inputs
+            $request->validate([
+                'teacher_id'   => 'nullable|integer|min:1',
+                'teacher_name' => 'nullable|string|max:100',
+                'day'          => 'nullable|in:Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday',
+            ]);
+
+            // At least one of teacher_id/teacher_name must be provided
+            $teacherId   = $request->query('teacher_id');
+            $teacherName = $request->query('teacher_name');
+            if (!$teacherId && !$teacherName) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'MISSING_PARAMETER',
+                        'message' => '请至少提供 teacher_id 或 teacher_name',
+                    ],
+                ], 422);
+            }
+
+            // Resolve day (default today)
+            $day = $request->query('day', Carbon::now()->format('l'));
+
+            // Resolve teacher
+            $teacherQuery = User::query()->role('Teacher');
+
+            if ($teacherId) {
+                $teacherQuery->where('id', $teacherId);
+            } else {
+                $teacherQuery->where(function ($q) use ($teacherName) {
+                    $q->where('first_name', 'like', "%{$teacherName}%")
+                      ->orWhere('last_name', 'like', "%{$teacherName}%")
+                      ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$teacherName}%"]);
+                });
+            }
+
+            $teacher = $teacherQuery->first();
+
+            if (!$teacher) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'NOT_FOUND',
+                        'message' => '未找到匹配的教师',
+                    ],
+                ], 404);
+            }
+
+            // Query timetable periods for this teacher on the given day
+            $periods = Timetable::query()
+                ->whereHas('subject_teacher', function ($q) use ($teacher) {
+                    $q->where('teacher_id', $teacher->id);
+                })
+                ->where('day', $day)
+                ->with([
+                    'class_section.class',
+                    'class_section.section',
+                    'subject',
+                ])
+                ->orderBy('start_time')
+                ->get();
+
+            // Build period list
+            $periodList = $periods->map(function (Timetable $t) {
+                return [
+                    'start_time'   => $t->start_time,
+                    'end_time'     => $t->end_time,
+                    'subject_name' => $t->subject->name ?? null,
+                    'class_name'   => $t->class_section->class->name ?? null,
+                    'section_name' => $t->class_section->section->name ?? null,
+                    'type'         => $t->type,
+                    'note'         => $t->note,
+                ];
+            });
+
+            $dayLabels = [
+                'Monday'    => '星期一',
+                'Tuesday'   => '星期二',
+                'Wednesday' => '星期三',
+                'Thursday'  => '星期四',
+                'Friday'    => '星期五',
+                'Saturday'  => '星期六',
+                'Sunday'    => '星期日',
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'date'          => Carbon::now()->toDateString(),
+                    'day'           => $day,
+                    'day_label'     => $dayLabels[$day] ?? $day,
+                    'teacher'       => [
+                        'id'   => $teacher->id,
+                        'name' => trim($teacher->first_name . ' ' . $teacher->last_name),
+                    ],
+                    'total_periods' => $periodList->count(),
+                    'periods'       => $periodList->values(),
                 ],
                 'message' => 'OK',
             ]);
