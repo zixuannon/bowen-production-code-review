@@ -642,14 +642,18 @@ class DifyApiController extends Controller
 
                 $feesPaidIds = $feesPaidRecords->pluck('id');
 
-                // Compulsory paid from CompulsoryFee records
+                // Compulsory paid from CompulsoryFee records (Success status only)
                 $compulsoryPaid = $feesPaidIds->isNotEmpty()
-                    ? (int) CompulsoryFee::whereIn('fees_paid_id', $feesPaidIds)->sum('amount')
+                    ? (int) CompulsoryFee::whereIn('fees_paid_id', $feesPaidIds)
+                        ->where('status', 'Success')
+                        ->sum('amount')
                     : 0;
 
-                // Optional paid from OptionalFee records
+                // Optional paid from OptionalFee records (Success status only)
                 $optionalPaid = $feesPaidIds->isNotEmpty()
-                    ? (int) OptionalFee::whereIn('fees_paid_id', $feesPaidIds)->sum('amount')
+                    ? (int) OptionalFee::whereIn('fees_paid_id', $feesPaidIds)
+                        ->where('status', 'Success')
+                        ->sum('amount')
                     : 0;
             }
 
