@@ -422,4 +422,5 @@ Route::group(['prefix' => 'dify', 'middleware' => ['DifyToken']], static functio
     Route::get('class/student-list', [DifyApiController::class, 'classStudentList']);
     Route::get('student/payment-status', [DifyApiController::class, 'studentPaymentStatus']);
     Route::get('student/fee-detail', [DifyApiController::class, 'studentFeeDetail']);
+    Route::get('student/profile', [DifyApiController::class, 'studentProfile']);
 });

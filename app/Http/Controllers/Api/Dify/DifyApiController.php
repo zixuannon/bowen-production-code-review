@@ -1129,6 +1129,138 @@ class DifyApiController extends Controller
         }
     }
 
+    /**
+     * 学生基础资料查询
+     *
+     * GET /api/dify/student/profile
+     *
+     * Query params:
+     *   student_id       可选
+     *   admission_no     可选
+     *   student_name     可选，模糊搜索
+     *   session_year_id  可选，默认当前学年
+     *
+     * 至少提供 student_id、admission_no、student_name 之一
+     *
+     * 不返回：家长电话/email、学生email、地址、生日、证件号、银行账户、内部备注、密码等隐私字段
+     */
+    public function studentProfile(Request $request): JsonResponse
+    {
+        try {
+            // ---- 1. Validate lookup params ----
+            $studentId   = $request->query('student_id');
+            $admissionNo = $request->query('admission_no');
+            $studentName = $request->query('student_name');
+
+            if (!$studentId && !$admissionNo && !$studentName) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'MISSING_PARAMETER',
+                        'message' => '请至少提供 student_id、admission_no 或 student_name',
+                    ],
+                ], 422);
+            }
+
+            $request->validate([
+                'student_id'      => 'nullable|integer|min:1',
+                'admission_no'    => 'nullable|string|max:100',
+                'student_name'    => 'nullable|string|max:100',
+                'session_year_id' => 'nullable|integer|min:1',
+            ]);
+
+            // ---- 2. Resolve student ----
+            $studentQuery = Students::query()->with(['user', 'class_section.class', 'class_section.section']);
+
+            if ($studentId) {
+                $student = $studentQuery->find($studentId);
+            } elseif ($admissionNo) {
+                $student = $studentQuery->where('admission_no', $admissionNo)->first();
+            } else {
+                // Fuzzy search by student_name
+                $matchedUsers = User::query()
+                    ->role('Student')
+                    ->where(function ($q) use ($studentName) {
+                        $q->where('first_name', 'like', "%{$studentName}%")
+                          ->orWhere('last_name', 'like', "%{$studentName}%")
+                          ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$studentName}%"]);
+                    })
+                    ->get();
+
+                if ($matchedUsers->count() > 1) {
+                    return response()->json([
+                        'success' => false,
+                        'error'   => [
+                            'code'    => 'MULTIPLE_MATCHES',
+                            'message' => '匹配到多个学生，请使用 admission_no 或 student_id 精确查询',
+                        ],
+                    ], 422);
+                }
+
+                if ($matchedUsers->isNotEmpty()) {
+                    $student = $studentQuery->where('user_id', $matchedUsers->first()->id)->first();
+                }
+            }
+
+            if (!isset($student) || !$student) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'NOT_FOUND',
+                        'message' => '未找到匹配的学生',
+                    ],
+                ], 404);
+            }
+
+            // ---- 3. Resolve session year ----
+            $sessionYearId = $this->resolveSessionYearId($request);
+            $sessionYear = SessionYear::find($sessionYearId);
+
+            // ---- 4. Build response ----
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'student' => [
+                        'student_id'       => $student->id,
+                        'admission_no'     => $student->admission_no,
+                        'student_name'     => trim(
+                            ($student->user->first_name ?? '') . ' ' . ($student->user->last_name ?? '')
+                        ),
+                        'class_name'       => $student->class_section->class->name ?? null,
+                        'section_name'     => $student->class_section->section->name ?? null,
+                        'class_section_id' => $student->class_section_id,
+                        'status'           => $student->user->status ?? null,
+                    ],
+                    'school' => [
+                        'school_id'   => $request->attributes->get('dify_school_id'),
+                        'school_code' => $request->attributes->get('dify_school_code'),
+                    ],
+                    'session_year' => [
+                        'session_year_id' => $sessionYear ? $sessionYear->id : null,
+                        'name'            => $sessionYear ? $sessionYear->name : null,
+                    ],
+                ],
+                'message' => 'OK',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => '服务器内部错误',
+                ],
+            ], 500);
+        }
+    }
+
     // ---------------------------------------------------------------
     //  Private helpers (minimal extraction, no new files)
     // ---------------------------------------------------------------
