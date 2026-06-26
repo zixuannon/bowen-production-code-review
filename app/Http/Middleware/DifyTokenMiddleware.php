@@ -123,6 +123,7 @@ class DifyTokenMiddleware
             'api/dify/class/list'               => 'class:read',
             'api/dify/class/student-list'       => 'class:read',
             'api/dify/student/payment-status'   => 'fees:read',
+            'api/dify/student/fee-detail'      => 'fees:read',
         ];
 
         // Strip trailing slash for matching
