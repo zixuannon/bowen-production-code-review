@@ -4,6 +4,11 @@ namespace App\Http\Controllers\Api\Dify;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClassSection;
+use App\Models\CompulsoryFee;
+use App\Models\Fee;
+use App\Models\FeesPaid;
+use App\Models\OptionalFee;
+use App\Models\SessionYear;
 use App\Models\Students;
 use App\Models\Timetable;
 use App\Models\User;
@@ -470,6 +475,234 @@ class DifyApiController extends Controller
                         'per_page'    => $paginator->perPage(),
                         'total'       => $paginator->total(),
                         'total_pages' => $paginator->lastPage(),
+                    ],
+                ],
+                'message' => 'OK',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => '服务器内部错误',
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * 学生缴费状态查询（单个学生）
+     *
+     * GET /api/dify/student/payment-status
+     *
+     * Query params:
+     *   student_id       可选
+     *   admission_no     可选
+     *   student_name     可选，模糊搜索
+     *   session_year_id  可选，默认当前学年
+     *
+     * 至少提供 student_id、admission_no、student_name 之一
+     * student_name 匹配到多个学生时返回 422 MULTIPLE_MATCHES
+     *
+     * 金额计算逻辑（与 OutstandingFeesController / StudentLedgerController 一致）：
+     *   - payment_summary.total_due / outstanding 仅计算 compulsory fee（optional=0）
+     *   - payment_summary.status 仅基于 compulsory 缴费状态
+     *   - optional fee 不视为欠费，仅作 breakdown 参考显示
+     *
+     * 输出：student, session_year, payment_summary, breakdown
+     * 不返回家长电话/地址/生日/证件/bank_account 等隐私字段
+     */
+    public function studentPaymentStatus(Request $request): JsonResponse
+    {
+        try {
+            // At least one lookup param required
+            $studentId   = $request->query('student_id');
+            $admissionNo = $request->query('admission_no');
+            $studentName = $request->query('student_name');
+
+            if (!$studentId && !$admissionNo && !$studentName) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'MISSING_PARAMETER',
+                        'message' => '请至少提供 student_id、admission_no 或 student_name',
+                    ],
+                ], 422);
+            }
+
+            // Validate optional params
+            $request->validate([
+                'student_id'      => 'nullable|integer|min:1',
+                'admission_no'    => 'nullable|string|max:100',
+                'student_name'    => 'nullable|string|max:100',
+                'session_year_id' => 'nullable|integer|min:1',
+            ]);
+
+            // Resolve student
+            $student = null;
+            $studentQuery = Students::query()->with(['user', 'class_section.class', 'class_section.section']);
+
+            if ($studentId) {
+                $student = $studentQuery->find($studentId);
+            } elseif ($admissionNo) {
+                $student = $studentQuery->where('admission_no', $admissionNo)->first();
+            } else {
+                // Search by name via User model
+                $matchedUsers = User::query()
+                    ->role('Student')
+                    ->where(function ($q) use ($studentName) {
+                        $q->where('first_name', 'like', "%{$studentName}%")
+                          ->orWhere('last_name', 'like', "%{$studentName}%")
+                          ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$studentName}%"]);
+                    })
+                    ->get();
+
+                if ($matchedUsers->count() > 1) {
+                    return response()->json([
+                        'success' => false,
+                        'error'   => [
+                            'code'    => 'MULTIPLE_MATCHES',
+                            'message' => '匹配到多个学生，请使用 admission_no 或 student_id 精确查询',
+                        ],
+                    ], 422);
+                }
+
+                if ($matchedUsers->isNotEmpty()) {
+                    $student = $studentQuery->where('user_id', $matchedUsers->first()->id)->first();
+                }
+            }
+
+            if (!$student) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'NOT_FOUND',
+                        'message' => '未找到匹配的学生',
+                    ],
+                ], 404);
+            }
+
+            // Resolve session year
+            $schoolId = $request->attributes->get('dify_school_id');
+            $cache = app(CachingService::class);
+            $defaultSession = $cache->getDefaultSessionYear($schoolId);
+
+            $sessionYearId = $request->query('session_year_id');
+            if (!$sessionYearId) {
+                $sessionYearId = $defaultSession ? $defaultSession->id : null;
+            }
+
+            // Get session year name
+            $sessionYear = SessionYear::find($sessionYearId);
+
+            // Build student info
+            $classId    = $student->class_section->class_id ?? null;
+            $studentUserId = $student->user_id;
+
+            // Find fee structure for this class + session year
+            $fee = Fee::query()
+                ->where('class_id', $classId)
+                ->where('session_year_id', $sessionYearId)
+                ->with(['fees_class_type'])
+                ->first();
+
+            // Calculate totals
+            $compulsoryDue = 0;
+            $optionalDue   = 0;
+            $compulsoryPaid = 0;
+            $optionalPaid   = 0;
+
+            if ($fee) {
+                // Total due from FeesClassType (multi-currency aware, consistent
+                // with OutstandingFeesController / StudentLedgerController)
+                $compulsoryDue = $fee->fees_class_type
+                    ->where('optional', 0)
+                    ->sum(function ($item) {
+                        return ($item->fee_amount_mmk > 0) ? $item->fee_amount_mmk : $item->amount;
+                    });
+                $optionalDue = $fee->fees_class_type
+                    ->where('optional', 1)
+                    ->sum(function ($item) {
+                        return ($item->fee_amount_mmk > 0) ? $item->fee_amount_mmk : $item->amount;
+                    });
+
+                // Total paid from FeesPaid (use FeesPaid.amount as master total)
+                $feesPaidRecords = FeesPaid::query()
+                    ->where('fees_id', $fee->id)
+                    ->where('student_id', $studentUserId)
+                    ->get();
+
+                $feesPaidIds = $feesPaidRecords->pluck('id');
+
+                // Compulsory paid from CompulsoryFee records
+                $compulsoryPaid = $feesPaidIds->isNotEmpty()
+                    ? (int) CompulsoryFee::whereIn('fees_paid_id', $feesPaidIds)->sum('amount')
+                    : 0;
+
+                // Optional paid from OptionalFee records
+                $optionalPaid = $feesPaidIds->isNotEmpty()
+                    ? (int) OptionalFee::whereIn('fees_paid_id', $feesPaidIds)->sum('amount')
+                    : 0;
+            }
+
+            // payment_summary: based on COMPULSORY fees only.
+            // Optional fees are elective and do NOT count as debt — consistent
+            // with OutstandingFeesController and StudentLedgerController.
+            $totalDue   = $compulsoryDue;
+            $totalPaid  = $compulsoryPaid;
+            $outstanding = max(0, $compulsoryDue - $compulsoryPaid);
+
+            // Status based solely on compulsory fees
+            if ($compulsoryDue == 0) {
+                $status = 'no_fee';
+            } elseif ($outstanding <= 0) {
+                $status = 'paid';
+            } elseif ($compulsoryPaid > 0 && $outstanding > 0) {
+                $status = 'partial';
+            } else {
+                $status = 'unpaid';
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'student' => [
+                        'student_id'   => $student->id,
+                        'admission_no' => $student->admission_no,
+                        'student_name' => trim(
+                            ($student->user->first_name ?? '') . ' ' . ($student->user->last_name ?? '')
+                        ),
+                        'class_name'   => $student->class_section->class->name ?? null,
+                        'section_name' => $student->class_section->section->name ?? null,
+                    ],
+                    'session_year' => [
+                        'session_year_id' => $sessionYear ? $sessionYear->id : null,
+                        'name'            => $sessionYear ? $sessionYear->name : null,
+                    ],
+                    'payment_summary' => [
+                        'total_due'          => $totalDue,
+                        'total_paid'         => $totalPaid,
+                        'outstanding_amount' => $outstanding,
+                        'status'             => $status,
+                    ],
+                    'breakdown' => [
+                        'compulsory' => [
+                            'total_due'          => $compulsoryDue,
+                            'total_paid'         => $compulsoryPaid,
+                            'outstanding_amount' => max(0, $compulsoryDue - $compulsoryPaid),
+                        ],
+                        'optional' => [
+                            'optional_available' => $optionalDue,
+                            'optional_paid'      => $optionalPaid,
+                        ],
                     ],
                 ],
                 'message' => 'OK',
