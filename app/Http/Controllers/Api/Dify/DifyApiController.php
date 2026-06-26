@@ -368,6 +368,132 @@ class DifyApiController extends Controller
     }
 
     /**
+     * 班级列表（分页）
+     *
+     * GET /api/dify/class/list
+     *
+     * Query params:
+     *   session_year_id      可选，默认当前学年
+     *   search               可选，按 class name / section name 搜索
+     *   only_with_students   可选，true 只返回有学生的班级
+     *   page                 可选，默认 1
+     *   per_page             可选，默认 50，最大 100
+     *
+     * 输出：class_section_id, class_id, section_id, class_name, section_name,
+     *       full_name, student_count
+     */
+    public function classList(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'session_year_id'    => 'nullable|integer|min:1',
+                'search'             => 'nullable|string|max:100',
+                'only_with_students' => 'nullable|in:true,false,1,0',
+                'page'               => 'nullable|integer|min:1',
+                'per_page'           => 'nullable|integer|min:1|max:100',
+            ]);
+
+            // Resolve session year (default to current)
+            $sessionYearId = $request->query('session_year_id');
+            if (!$sessionYearId) {
+                $schoolId = $request->attributes->get('dify_school_id');
+                $cache = app(CachingService::class);
+                $sessionYear = $cache->getDefaultSessionYear($schoolId);
+                $sessionYearId = $sessionYear ? $sessionYear->id : null;
+            }
+
+            // Pagination
+            $page    = (int) $request->query('page', 1);
+            $perPage = (int) $request->query('per_page', 50);
+            $perPage = min($perPage, 100);
+
+            // Base query: class sections with class & section loaded
+            $query = ClassSection::query()
+                ->with(['class', 'section'])
+                ->withCount(['students' => function ($q) use ($sessionYearId) {
+                    if ($sessionYearId) {
+                        $q->where('session_year_id', $sessionYearId);
+                    }
+                }]);
+
+            // Search by class name or section name
+            if ($search = $request->query('search')) {
+                $query->where(function ($q) use ($search) {
+                    $q->whereHas('class', function ($cq) use ($search) {
+                        $cq->where('name', 'like', "%{$search}%");
+                    })->orWhereHas('section', function ($sq) use ($search) {
+                        $sq->where('name', 'like', "%{$search}%");
+                    });
+                });
+            }
+
+            // Only return classes that have students
+            $onlyWithStudents = $request->query('only_with_students');
+            if ($onlyWithStudents === 'true' || $onlyWithStudents === '1') {
+                $query->having('students_count', '>', 0);
+            }
+
+            // Order by class name then section name
+            $query->orderBy(
+                ClassSection::select('name')
+                    ->from('classes')
+                    ->whereColumn('classes.id', 'class_sections.class_id')
+            )->orderBy(
+                ClassSection::select('name')
+                    ->from('sections')
+                    ->whereColumn('sections.id', 'class_sections.section_id')
+            );
+
+            $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+
+            // Map to output fields
+            $items = $paginator->map(function (ClassSection $cs) {
+                return [
+                    'class_section_id' => $cs->id,
+                    'class_id'         => $cs->class_id,
+                    'section_id'       => $cs->section_id,
+                    'class_name'       => $cs->class->name ?? null,
+                    'section_name'     => $cs->section->name ?? null,
+                    'full_name'        => trim(
+                        ($cs->class->name ?? '') . ' ' . ($cs->section->name ?? '')
+                    ),
+                    'student_count'    => (int) $cs->students_count,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'items'      => $items->values(),
+                    'pagination' => [
+                        'page'        => $paginator->currentPage(),
+                        'per_page'    => $paginator->perPage(),
+                        'total'       => $paginator->total(),
+                        'total_pages' => $paginator->lastPage(),
+                    ],
+                ],
+                'message' => 'OK',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => '服务器内部错误',
+                ],
+            ], 500);
+        }
+    }
+
+    /**
      * 教师今日课表
      *
      * GET /api/dify/teacher/today-schedule
