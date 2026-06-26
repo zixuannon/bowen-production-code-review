@@ -283,13 +283,7 @@ class DifyApiController extends Controller
             }
 
             // Resolve session year (default to current)
-            $sessionYearId = $request->query('session_year_id');
-            if (!$sessionYearId) {
-                $schoolId = $request->attributes->get('dify_school_id');
-                $cache = app(CachingService::class);
-                $sessionYear = $cache->getDefaultSessionYear($schoolId);
-                $sessionYearId = $sessionYear ? $sessionYear->id : null;
-            }
+            $sessionYearId = $this->resolveSessionYearId($request);
 
             // Pagination
             $page    = (int) $request->query('page', 1);
@@ -399,13 +393,7 @@ class DifyApiController extends Controller
             ]);
 
             // Resolve session year (default to current)
-            $sessionYearId = $request->query('session_year_id');
-            if (!$sessionYearId) {
-                $schoolId = $request->attributes->get('dify_school_id');
-                $cache = app(CachingService::class);
-                $sessionYear = $cache->getDefaultSessionYear($schoolId);
-                $sessionYearId = $sessionYear ? $sessionYear->id : null;
-            }
+            $sessionYearId = $this->resolveSessionYearId($request);
 
             // Pagination
             $page    = (int) $request->query('page', 1);
@@ -591,14 +579,7 @@ class DifyApiController extends Controller
             }
 
             // Resolve session year
-            $schoolId = $request->attributes->get('dify_school_id');
-            $cache = app(CachingService::class);
-            $defaultSession = $cache->getDefaultSessionYear($schoolId);
-
-            $sessionYearId = $request->query('session_year_id');
-            if (!$sessionYearId) {
-                $sessionYearId = $defaultSession ? $defaultSession->id : null;
-            }
+            $sessionYearId = $this->resolveSessionYearId($request);
 
             // Get session year name
             $sessionYear = SessionYear::find($sessionYearId);
@@ -862,5 +843,307 @@ class DifyApiController extends Controller
                 ],
             ], 500);
         }
+    }
+
+    /**
+     * 学生费用明细查询（单个学生）
+     *
+     * GET /api/dify/student/fee-detail
+     *
+     * Query params:
+     *   student_id       可选
+     *   admission_no     可选
+     *   student_name     可选，模糊搜索
+     *   session_year_id  可选，默认当前学年
+     *
+     * 至少提供 student_id、admission_no、student_name 之一
+     *
+     * 金额计算逻辑：
+     *   - summary 仅基于 compulsory fee（与 system 现有逻辑一致）
+     *   - compulsory_items: 逐项显示 FeesClassType(optional=0) 的应缴/已缴/欠费/状态
+     *     （per-item paid 按比例分配，因 CompulsoryFee 表无 fees_class_type_id 字段）
+     *   - optional_items: 逐项显示 FeesClassType(optional=1) 的可选金额/已缴金额
+     *     （OptionalFee 表有 fees_class_id，可精确映射）
+     *   - optional 不计入欠费，不影响 summary.status
+     *   - 所有已缴金额只统计 status = Success
+     *
+     * 输出：student, session_year, summary, compulsory_items[], optional_items[]
+     * 不返回家长电话/地址/生日/证件/bank_account 等隐私字段
+     */
+    public function studentFeeDetail(Request $request): JsonResponse
+    {
+        try {
+            // ---- 1. Validate lookup params ----
+            $studentId   = $request->query('student_id');
+            $admissionNo = $request->query('admission_no');
+            $studentName = $request->query('student_name');
+
+            if (!$studentId && !$admissionNo && !$studentName) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'MISSING_PARAMETER',
+                        'message' => '请至少提供 student_id、admission_no 或 student_name',
+                    ],
+                ], 422);
+            }
+
+            $request->validate([
+                'student_id'      => 'nullable|integer|min:1',
+                'admission_no'    => 'nullable|string|max:100',
+                'student_name'    => 'nullable|string|max:100',
+                'session_year_id' => 'nullable|integer|min:1',
+            ]);
+
+            // ---- 2. Resolve student (same pattern as studentPaymentStatus) ----
+            $student = null;
+            $studentQuery = Students::query()->with(['user', 'class_section.class', 'class_section.section']);
+
+            if ($studentId) {
+                $student = $studentQuery->find($studentId);
+            } elseif ($admissionNo) {
+                $student = $studentQuery->where('admission_no', $admissionNo)->first();
+            } else {
+                $matchedUsers = User::query()
+                    ->role('Student')
+                    ->where(function ($q) use ($studentName) {
+                        $q->where('first_name', 'like', "%{$studentName}%")
+                          ->orWhere('last_name', 'like', "%{$studentName}%")
+                          ->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", ["%{$studentName}%"]);
+                    })
+                    ->get();
+
+                if ($matchedUsers->count() > 1) {
+                    return response()->json([
+                        'success' => false,
+                        'error'   => [
+                            'code'    => 'MULTIPLE_MATCHES',
+                            'message' => '匹配到多个学生，请使用 admission_no 或 student_id 精确查询',
+                        ],
+                    ], 422);
+                }
+
+                if ($matchedUsers->isNotEmpty()) {
+                    $student = $studentQuery->where('user_id', $matchedUsers->first()->id)->first();
+                }
+            }
+
+            if (!$student) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => [
+                        'code'    => 'NOT_FOUND',
+                        'message' => '未找到匹配的学生',
+                    ],
+                ], 404);
+            }
+
+            // ---- 3. Resolve session year ----
+            $sessionYearId = $this->resolveSessionYearId($request);
+            $sessionYear = SessionYear::find($sessionYearId);
+
+            $classId       = $student->class_section->class_id ?? null;
+            $studentUserId = $student->user_id;
+
+            // ---- 4. Find fee structure ----
+            $fee = Fee::query()
+                ->where('class_id', $classId)
+                ->where('session_year_id', $sessionYearId)
+                ->with(['fees_class_type.fees_type'])
+                ->first();
+
+            // ---- 5. Compute compulsory data ----
+            $compulsoryItems  = collect();
+            $totalCompulsoryDue  = 0;
+            $totalCompulsoryPaid = 0;
+
+            if ($fee) {
+                // 5a. Per-item due from FeesClassType (optional=0)
+                $compulsoryClassTypes = $fee->fees_class_type
+                    ->where('optional', 0)
+                    ->values();
+
+                foreach ($compulsoryClassTypes as $ct) {
+                    $due = ($ct->fee_amount_mmk > 0) ? (float) $ct->fee_amount_mmk : (float) $ct->amount;
+                    $totalCompulsoryDue += $due;
+                }
+
+                // 5b. Compulsory paid (aggregate, Success only)
+                $feesPaidRecords = FeesPaid::query()
+                    ->where('fees_id', $fee->id)
+                    ->where('student_id', $studentUserId)
+                    ->get();
+                $feesPaidIds = $feesPaidRecords->pluck('id');
+
+                $totalCompulsoryPaid = $feesPaidIds->isNotEmpty()
+                    ? (float) CompulsoryFee::whereIn('fees_paid_id', $feesPaidIds)
+                        ->where('status', 'Success')
+                        ->sum('amount')
+                    : 0;
+
+                // 5c. Per-item paid (proportional distribution — ESTIMATE only)
+                // CompulsoryFee 表无 fees_class_type_id，无法精确映射，因此按比例分摊。
+                // 这里的 paid/outstanding/status 均为估算值，仅供参考，不可用于对账/催缴。
+                if ($totalCompulsoryDue > 0) {
+                    $paidRatio = $totalCompulsoryPaid / $totalCompulsoryDue;
+                } else {
+                    $paidRatio = 0;
+                }
+
+                foreach ($compulsoryClassTypes as $ct) {
+                    $due = ($ct->fee_amount_mmk > 0) ? (float) $ct->fee_amount_mmk : (float) $ct->amount;
+                    $paid       = (float) round($due * $paidRatio, 2);
+                    $outstanding = max(0, $due - $paid);
+
+                    // item-level status is estimated, based on proportional allocation
+                    if ($due == 0) {
+                        $itemStatus = 'no_fee';
+                    } elseif ($outstanding <= 0) {
+                        $itemStatus = 'paid';
+                    } elseif ($paid > 0) {
+                        $itemStatus = 'partial';
+                    } else {
+                        $itemStatus = 'unpaid';
+                    }
+
+                    $compulsoryItems->push([
+                        'fee_type_id'                => $ct->fees_type_id,
+                        'fee_name'                   => $ct->fees_type->name ?? 'Compulsory Fee',
+                        'due_amount'                 => $due,
+                        'estimated_paid_amount'      => $paid,
+                        'estimated_outstanding_amount' => $outstanding,
+                        'status'                     => $itemStatus,
+                        'allocation_method'          => 'proportional_estimate',
+                    ]);
+                }
+            }
+
+            // ---- 6. Compute optional data ----
+            $optionalItems   = collect();
+            $totalOptionalAvailable = 0;
+            $totalOptionalPaid      = 0;
+
+            if ($fee) {
+                $optionalClassTypes = $fee->fees_class_type
+                    ->where('optional', 1)
+                    ->values();
+
+                foreach ($optionalClassTypes as $ct) {
+                    $available = ($ct->fee_amount_mmk > 0) ? (float) $ct->fee_amount_mmk : (float) $ct->amount;
+                    $totalOptionalAvailable += $available;
+                }
+
+                // Optional paid (per-item from OptionalFee, Success only)
+                $feesPaidRecordsOpt = FeesPaid::query()
+                    ->where('fees_id', $fee->id)
+                    ->where('student_id', $studentUserId)
+                    ->get();
+                $feesPaidIdsOpt = $feesPaidRecordsOpt->pluck('id');
+
+                $optionalPaidRecords = $feesPaidIdsOpt->isNotEmpty()
+                    ? OptionalFee::whereIn('fees_paid_id', $feesPaidIdsOpt)
+                        ->where('status', 'Success')
+                        ->get()
+                        ->groupBy('fees_class_id')
+                    : collect();
+
+                foreach ($optionalClassTypes as $ct) {
+                    $available = ($ct->fee_amount_mmk > 0) ? (float) $ct->fee_amount_mmk : (float) $ct->amount;
+
+                    $paid = isset($optionalPaidRecords[$ct->id])
+                        ? (float) $optionalPaidRecords[$ct->id]->sum('amount')
+                        : 0;
+
+                    $totalOptionalPaid += $paid;
+
+                    $optionalItems->push([
+                        'fee_type_id'      => $ct->fees_type_id,
+                        'fee_name'         => $ct->fees_type->name ?? 'Optional Fee',
+                        'available_amount' => $available,
+                        'paid_amount'      => $paid,
+                        'selected_or_paid' => $paid > 0,
+                    ]);
+                }
+            }
+
+            // ---- 7. Summary (compulsory only, same logic as studentPaymentStatus) ----
+            $summaryCompulsoryDue   = $totalCompulsoryDue;
+            $summaryCompulsoryPaid  = $totalCompulsoryPaid;
+            $summaryOutstanding     = max(0, $summaryCompulsoryDue - $summaryCompulsoryPaid);
+
+            if ($summaryCompulsoryDue == 0) {
+                $summaryStatus = 'no_fee';
+            } elseif ($summaryOutstanding <= 0) {
+                $summaryStatus = 'paid';
+            } elseif ($summaryCompulsoryPaid > 0 && $summaryOutstanding > 0) {
+                $summaryStatus = 'partial';
+            } else {
+                $summaryStatus = 'unpaid';
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'student' => [
+                        'student_id'   => $student->id,
+                        'admission_no' => $student->admission_no,
+                        'student_name' => trim(
+                            ($student->user->first_name ?? '') . ' ' . ($student->user->last_name ?? '')
+                        ),
+                        'class_name'   => $student->class_section->class->name ?? null,
+                        'section_name' => $student->class_section->section->name ?? null,
+                    ],
+                    'session_year' => [
+                        'session_year_id' => $sessionYear ? $sessionYear->id : null,
+                        'name'            => $sessionYear ? $sessionYear->name : null,
+                    ],
+                    'summary' => [
+                        'compulsory_total_due'  => $summaryCompulsoryDue,
+                        'compulsory_total_paid' => $summaryCompulsoryPaid,
+                        'compulsory_outstanding' => $summaryOutstanding,
+                        'optional_available'    => $totalOptionalAvailable,
+                        'optional_paid'         => $totalOptionalPaid,
+                        'status'                => $summaryStatus,
+                    ],
+                    'compulsory_items' => $compulsoryItems->values(),
+                    'optional_items'   => $optionalItems->values(),
+                ],
+                'message' => 'OK',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'VALIDATION_ERROR',
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'error'   => [
+                    'code'    => 'SERVER_ERROR',
+                    'message' => '服务器内部错误',
+                ],
+            ], 500);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    //  Private helpers (minimal extraction, no new files)
+    // ---------------------------------------------------------------
+
+    /**
+     * Resolve session_year_id from request, fallback to default school session year.
+     */
+    private function resolveSessionYearId(Request $request): ?int
+    {
+        $sessionYearId = $request->query('session_year_id');
+        if (!$sessionYearId) {
+            $schoolId = $request->attributes->get('dify_school_id');
+            $sessionYear = app(CachingService::class)->getDefaultSessionYear($schoolId);
+            return $sessionYear ? (int) $sessionYear->id : null;
+        }
+        return (int) $sessionYearId;
     }
 }
