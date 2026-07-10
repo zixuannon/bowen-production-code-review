@@ -15,6 +15,7 @@ use App\Services\SessionYearsTrackingsService;
 use App\Services\CachingService;
 use App\Services\FeaturesService;
 use App\Services\ResponseService;
+use App\Services\StaffLeave\TwoStageLeaveService;
 use App\Services\SubscriptionService;
 use Carbon\Carbon;
 use GuzzleHttp\RetryMiddleware;
@@ -22,7 +23,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use PDF;
 use Throwable;
@@ -77,8 +77,9 @@ class StaffController extends Controller
     }
 
     /**
-     * Per-request cache: Schema check is evaluated at most once per HTTP
-     * request.  The first call queries the school database; all subsequent
+     * Per-request cache: TwoStageLeaveService::isEnabled() is evaluated
+     * at most once per HTTP request. The first call goes through the full
+     * three-tier gating (global flag → allowlist → schema); all subsequent
      * calls within the same request return the cached result.
      *
      * This is NOT shared across requests or schools — each Controller
@@ -90,9 +91,14 @@ class StaffController extends Controller
      * Detect whether the two-stage leave supervisor feature is available
      * for the current school database.
      *
-     * This allows gradual rollout: only schools whose database has been
-     * migrated will see the supervisor UI and logic.  Other schools
-     * continue to work exactly as before.
+     * Unified gate via TwoStageLeaveService::isEnabled():
+     *  1. global flag == true
+     *  2. current school database in allowlist
+     *  3. schema complete (10 columns)
+     *
+     * Only schools explicitly enabled via the allowlist + global flag
+     * will see supervisor UI and logic. Other schools continue to work
+     * exactly as before.
      */
     protected function isSupervisorFeatureEnabled(): bool
     {
@@ -101,8 +107,7 @@ class StaffController extends Controller
         }
 
         try {
-            return $this->supervisorFeatureEnabled = Schema::connection('school')
-                ->hasColumn('staffs', 'supervisor_user_id');
+            return $this->supervisorFeatureEnabled = TwoStageLeaveService::isEnabled();
         } catch (\Throwable) {
             return $this->supervisorFeatureEnabled = false;
         }

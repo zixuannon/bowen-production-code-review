@@ -854,7 +854,8 @@
                         </li>
 
                         {{-- Supervisor leave approval (Phase 3) --}}
-                        @if(config('features.staff_leave_two_stage_enabled') && App\Models\Staff::where('supervisor_user_id', Auth::id())->exists())
+                        {{-- Unified gate: TwoStageLeaveService::isEnabled() ensures global flag + allowlist + schema --}}
+                        @if(\App\Services\StaffLeave\TwoStageLeaveService::isEnabled() && Auth::user()->subordinates()->exists())
                             <li class="nav-item">
                                 <a href="{{ route('leave.supervisor') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
@@ -864,7 +865,8 @@
                         @endif
 
                         {{-- HR read-only view (Supervisor Final Approval) --}}
-                        @if(config('features.staff_leave_two_stage_enabled') && Auth::user()->can('hr-view-leave'))
+                        {{-- Unified gate: TwoStageLeaveService::isEnabled() ensures global flag + allowlist + schema --}}
+                        @if(\App\Services\StaffLeave\TwoStageLeaveService::isEnabled() && Auth::user()->can('hr-view-leave'))
                             <li class="nav-item">
                                 <a href="{{ route('leave.hr') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
