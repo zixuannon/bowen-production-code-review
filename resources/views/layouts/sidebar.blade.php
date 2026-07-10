@@ -853,6 +853,26 @@
                             </a>
                         </li>
 
+                        {{-- Supervisor leave approval (Phase 3) --}}
+                        @if(config('features.staff_leave_two_stage_enabled') && App\Models\Staff::where('supervisor_user_id', Auth::id())->exists())
+                            <li class="nav-item">
+                                <a href="{{ route('leave.supervisor') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                    {{ __('supervisor_leave_requests') }}
+                                </a>
+                            </li>
+                        @endif
+
+                        {{-- HR read-only view (Supervisor Final Approval) --}}
+                        @if(config('features.staff_leave_two_stage_enabled') && Auth::user()->can('hr-view-leave'))
+                            <li class="nav-item">
+                                <a href="{{ route('leave.hr') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                    {{ __('hr_leave_requests') }}
+                                </a>
+                            </li>
+                        @endif
+
                         <li class="nav-item">
                             <a href="{{ route('leave.report') }}" class="nav-link"
                                 data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">

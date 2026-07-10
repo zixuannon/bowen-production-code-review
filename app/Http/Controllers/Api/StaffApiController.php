@@ -37,10 +37,12 @@ use App\Repositories\User\UserInterface;
 use App\Services\CachingService;
 use App\Services\FeaturesService;
 use App\Services\ResponseService;
+use App\Services\StaffLeave\TwoStageLeaveService;
 use Auth;
 use Carbon\Carbon;
 use DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use PDF;
@@ -106,6 +108,16 @@ class StaffApiController extends Controller
         $this->staffAttendance = $staffAttendance;
         $this->holiday = $holiday;
         $this->leaveDetail = $leaveDetail;
+    }
+
+    /**
+     * Determine whether the two-stage leave approval flow should be active.
+     *
+     * Delegates to the shared TwoStageLeaveService (Phase 3 + Phase 4 unified).
+     */
+    protected function isTwoStageEnabled(): bool
+    {
+        return TwoStageLeaveService::isEnabled();
     }
 
     public function myPayroll(Request $request)
@@ -404,7 +416,11 @@ class StaffApiController extends Controller
                 $q->where('custom_role', 1)->whereNot('name', 'Teacher');
             })->withTrashed()->count();
 
-            $leaves = $this->leave->builder()->where('status', 0)->count();
+            $leavesQuery = $this->leave->builder()->where('status', 0);
+            if ($this->isTwoStageEnabled()) {
+                $leavesQuery->whereNull('supervisor_status');
+            }
+            $leaves = $leavesQuery->count();
             $data = [
                 'students' => $students,
                 'teachers' => $teachers,
@@ -545,7 +561,12 @@ class StaffApiController extends Controller
             if ($request->leave_id) {
                 $sql = $this->leave->findById($request->leave_id, ['*'], ['user:id,first_name,last_name,image,email,mobile', 'leave_detail', 'file'])->orderBy('created_at', 'DESC')->get();
             } else {
-                $sql = $this->leave->builder()->where('status', 0)->with('user:id,first_name,last_name,image,email,mobile', 'leave_detail', 'file')->orderBy('created_at', 'DESC')->get();
+                $sql = $this->leave->builder()->where('status', 0);
+                // Exclude new two-stage records from old admin approval list
+                if ($this->isTwoStageEnabled()) {
+                    $sql->whereNull('supervisor_status');
+                }
+                $sql = $sql->with('user:id,first_name,last_name,image,email,mobile', 'leave_detail', 'file')->orderBy('created_at', 'DESC')->get();
             }
             ResponseService::successResponse('Data Fetched Successfully', $sql);
         } catch (\Throwable $th) {
@@ -567,6 +588,16 @@ class StaffApiController extends Controller
         }
         try {
             DB::beginTransaction();
+
+            // Guard: if two-stage is enabled, block old endpoint for new-flow records
+            if ($this->isTwoStageEnabled()) {
+                $existingLeave = $this->leave->findById($request->leave_id);
+                if ($existingLeave && !is_null($existingLeave->supervisor_status)) {
+                    DB::rollBack();
+                    ResponseService::errorResponse(trans('leave_new_flow_old_endpoint_error'));
+                }
+            }
+
             $leave = $this->leave->update($request->leave_id, ['status' => $request->status]);
 
             $user[] = $leave->user_id;
@@ -618,6 +649,16 @@ class StaffApiController extends Controller
         }
         try {
             DB::beginTransaction();
+
+            // Phase 4 guard: block deletion of new-flow records via API
+            if ($this->isTwoStageEnabled()) {
+                $existingLeave = $this->leave->findById($request->leave_id);
+                if ($existingLeave && !is_null($existingLeave->supervisor_status)) {
+                    DB::rollBack();
+                    ResponseService::errorResponse(trans('two_stage_leave_cannot_delete'));
+                }
+            }
+
             $this->leave->deleteById($request->leave_id);
             DB::commit();
             ResponseService::successResponse('Data Deleted Successfully');

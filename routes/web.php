@@ -872,6 +872,15 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::get('report', [LeaveController::class, 'report'])->name('leave.report');
             Route::get('detail', [LeaveController::class, 'detail'])->name('leave.detail');
 
+            // Supervisor two-stage approval (Phase 3)
+            Route::get('supervisor/requests', [LeaveController::class, 'supervisorRequests'])->name('leave.supervisor');
+            Route::get('supervisor/requests/show', [LeaveController::class, 'supervisorRequestsShow'])->name('leave.supervisor.show');
+            Route::put('supervisor/status/update', [LeaveController::class, 'supervisorStatusUpdate'])->name('leave.supervisor.status.update');
+
+            // HR read-only view (Supervisor Final Approval)
+            Route::get('hr/requests', [LeaveController::class, 'hrRequests'])->name('leave.hr');
+            Route::get('hr/requests/show', [LeaveController::class, 'hrRequestsShow'])->name('leave.hr.show');
+            // PUT leave/hr/status/update removed — HR no longer approves/rejects
         });
 
         Route::resource('leave', LeaveController::class);

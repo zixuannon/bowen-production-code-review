@@ -33,6 +33,7 @@ use App\Repositories\User\UserInterface;
 use App\Services\CachingService;
 use App\Services\Payment\PaymentService;
 use App\Services\ResponseService;
+use App\Services\StaffLeave\TwoStageLeaveService;
 use App\Repositories\Fees\FeesInterface;
 use App\Repositories\ExtraFormField\ExtraFormFieldsInterface;
 use Auth;
@@ -41,6 +42,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use PDF;
@@ -88,7 +90,6 @@ class ApiController extends Controller
     private PickupPointRepositoryInterface $pickupPoint;
     private ExtraFormFieldsInterface $extraFormFields;
 
-
     public function __construct(CachingService $cache, HolidayInterface $holiday, StudentInterface $student, PaymentConfigurationInterface $paymentConfiguration, PaymentTransactionInterface $paymentTransaction, GalleryInterface $gallery, SessionYearInterface $sessionYear, LeaveDetailInterface $leaveDetail, LeaveMasterInterface $leaveMaster, LeaveInterface $leave, UserInterface $user, MediumInterface $medium, ClassSectionInterface $classSection, ExamResultInterface $examResult, GradesInterface $grade, FilesInterface $files, ChatInterface $chat, MessageInterface $message, AttachmentInterface $attachment, SchoolSettingInterface $schoolSettings, FeesInterface $fees, PickupPointRepositoryInterface $pickupPoint, ExtraFormFieldsInterface $extraFormFields)
     {
         $this->cache = $cache;
@@ -114,6 +115,16 @@ class ApiController extends Controller
         $this->fees = $fees;
         $this->pickupPoint = $pickupPoint;
         $this->extraFormFields = $extraFormFields;
+    }
+
+    /**
+     * Determine whether the two-stage leave approval flow should be active.
+     *
+     * Delegates to the shared TwoStageLeaveService (Phase 3 + Phase 4 unified).
+     */
+    protected function isTwoStageEnabled(): bool
+    {
+        return TwoStageLeaveService::isEnabled();
     }
 
     public function logout(Request $request)
@@ -660,6 +671,26 @@ class ApiController extends Controller
                 ResponseService::errorResponse('You already have a leave request during this period.');
             }
 
+            // ---- Two-stage leave: validate and resolve supervisor ----
+            $resolvedSupervisorUserId = null;
+            if ($this->isTwoStageEnabled()) {
+                $staff = \App\Models\Staff::where('user_id', Auth::user()->id)->first();
+                if (!$staff || !$staff->supervisor_user_id) {
+                    ResponseService::errorResponse(trans('no_valid_supervisor_configured'));
+                }
+                $resolvedSupervisorUserId = $staff->supervisor_user_id;
+
+                $supervisorUser = User::where('id', $resolvedSupervisorUserId)
+                    ->where('school_id', Auth::user()->school_id)
+                    ->whereHas('staff')
+                    ->first();
+                if (!$supervisorUser || $resolvedSupervisorUserId == Auth::user()->id) {
+                    ResponseService::errorResponse(trans('no_valid_supervisor_configured'));
+                }
+
+            }
+            // ----------------------------------------------------------------
+
             $leave_data = [
                 'user_id' => Auth::user()->id,
                 'reason' => $request->reason,
@@ -668,6 +699,19 @@ class ApiController extends Controller
                 'status' => 0,
                 'leave_master_id' => $leaveMaster->id
             ];
+
+            // Write two-stage fields explicitly when enabled
+            if ($resolvedSupervisorUserId !== null) {
+                $leave_data['supervisor_status'] = \App\Models\Leave::APPROVAL_PENDING;
+                $leave_data['supervisor_user_id'] = $resolvedSupervisorUserId;
+                $leave_data['supervisor_comment'] = null;
+                $leave_data['supervisor_reviewed_at'] = null;
+                $leave_data['hr_status'] = null;
+                $leave_data['hr_user_id'] = null;
+                $leave_data['hr_comment'] = null;
+                $leave_data['hr_reviewed_at'] = null;
+                $leave_data['withdrawn_at'] = null;
+            }
 
             $holidays = explode(',', $leaveMaster->holiday);
 
@@ -704,17 +748,22 @@ class ApiController extends Controller
 
             $this->leaveDetail->createBulk($data);
 
-            $user = $this->user->builder()->whereHas('roles.permissions', function ($q) {
-                $q->where('name', 'approve-leave');
-            })->pluck('id');
-
+            // Determine notification recipients based on flow
+            if ($resolvedSupervisorUserId !== null) {
+                $notifyUser = [$resolvedSupervisorUserId];
+                $title = Auth::user()->full_name . ' has submitted a new leave request.';
+            } else {
+                $notifyUser = $this->user->builder()->whereHas('roles.permissions', function ($q) {
+                    $q->where('name', 'approve-leave');
+                })->pluck('id');
+                $title = Auth::user()->full_name . ' has submitted a new leave request.';
+            }
             $type = "Leave";
-            $title = Auth::user()->full_name . ' has submitted a new leave request.';
             $body = $request->reason;
 
             DB::commit();
 
-            send_notification($user, $title, $body, $type);
+            send_notification($notifyUser, $title, $body, $type);
 
             ResponseService::successResponse("Data Stored Successfully");
         } catch (Throwable $e) {

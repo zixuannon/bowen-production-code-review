@@ -265,6 +265,32 @@ function leaveQueryParams(p) {
     };
 }
 
+function supervisorLeaveQueryParams(p) {
+    return {
+        limit: p.limit,
+        sort: p.sort,
+        order: p.order,
+        offset: p.offset,
+        search: p.search,
+        session_year_id: $('#session_year_id').val(),
+        filter_upcoming: $('#filter_upcoming').val(),
+        month_id: $('#filter_month_id').val(),
+    };
+}
+
+function hrLeaveQueryParams(p) {
+    return {
+        limit: p.limit,
+        sort: p.sort,
+        order: p.order,
+        offset: p.offset,
+        search: p.search,
+        session_year_id: $('#session_year_id').val(),
+        filter_upcoming: $('#filter_upcoming').val(),
+        month_id: $('#filter_month_id').val(),
+    };
+}
+
 function AssignTeacherQueryParams(p) {
     return {
         limit: p.limit,
