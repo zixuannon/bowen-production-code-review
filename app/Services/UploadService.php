@@ -41,6 +41,15 @@ class UploadService {
     ];
 
     /**
+     * Extensions that, when used by the client, imply the file should be an image.
+     * If the actual content MIME is not an image, the file is rejected.
+     */
+    const IMAGE_EXTENSION_INDICATORS = [
+        'jpg', 'jpeg', 'png', 'gif', 'webp',
+        'bmp', 'ico', 'tiff', 'tif', 'svg',
+    ];
+
+    /**
      * Upload a file to the public storage disk.
      *
      * @param  UploadedFile  $requestFile
@@ -77,6 +86,20 @@ class UploadService {
 
         // 6. Detect real MIME type from file content (not from extension)
         $realMime = $requestFile->getMimeType();
+
+        // 6b. Reject MIME/extension misalignment for image-like extensions.
+        // If the client claims an image extension, the content must actually
+        // be an image. This prevents PHP payloads stored as .jpg etc.
+        if (in_array($originalExt, static::IMAGE_EXTENSION_INDICATORS)) {
+            if (!in_array($realMime, static::IMAGE_MIMES)) {
+                throw new RuntimeException('File content does not match its extension.');
+            }
+            // For SVG specifically: block at the service layer by default.
+            // SVG can carry XSS and is not safe for untrusted upload.
+            if ($originalExt === 'svg' || $realMime === 'image/svg+xml') {
+                throw new RuntimeException('SVG files are not allowed.');
+            }
+        }
 
         // 7. Determine the safe output extension
         $safeExt = static::resolveSafeExtension($originalExt, $realMime);

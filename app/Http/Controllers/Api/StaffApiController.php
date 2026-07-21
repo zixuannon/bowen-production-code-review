@@ -939,6 +939,7 @@ class StaffApiController extends Controller
             'type' => 'required|in:All users,Specific users,Over Due Fees,Roles',
             'user_id.*' => 'required_if:type,Specific users',
             'roles.*' => 'required_if:type,Roles',
+            'file' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
         ]);
         if ($validator->fails()) {
             ResponseService::validationError($validator->errors()->first());

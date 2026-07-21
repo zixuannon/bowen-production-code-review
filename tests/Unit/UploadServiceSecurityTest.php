@@ -186,6 +186,45 @@ class UploadServiceSecurityTest extends TestCase
     }
 
     /**
+     * Test that image extension indicators are defined and cover common types.
+     */
+    public function test_image_extension_indicators_are_defined(): void
+    {
+        $indicators = UploadService::IMAGE_EXTENSION_INDICATORS;
+        $this->assertContains('jpg', $indicators);
+        $this->assertContains('jpeg', $indicators);
+        $this->assertContains('png', $indicators);
+        $this->assertContains('gif', $indicators);
+        $this->assertContains('webp', $indicators);
+        $this->assertContains('svg', $indicators);
+        $this->assertContains('bmp', $indicators);
+    }
+
+    /**
+     * Test that blocked extensions do NOT appear in image indicators.
+     */
+    public function test_blocked_extensions_not_in_image_indicators(): void
+    {
+        $blocked = UploadService::BLOCKED_EXTENSIONS;
+        $indicators = UploadService::IMAGE_EXTENSION_INDICATORS;
+
+        foreach ($blocked as $ext) {
+            $this->assertNotContains($ext, $indicators, "Blocked extension '$ext' should NOT be an image indicator.");
+        }
+    }
+
+    /**
+     * Test resolveSafeExtension returns canonical jpg even for 'jpeg' client ext.
+     */
+    public function test_resolve_safe_extension_canonicalizes_jpeg_to_jpg(): void
+    {
+        $method = $this->getMethod('resolveSafeExtension');
+
+        $result = $method->invoke(null, 'jpeg', 'image/jpeg');
+        $this->assertEquals('jpg', $result);
+    }
+
+    /**
      * Helper to access private/protected methods via reflection.
      */
     private function getMethod(string $name): \ReflectionMethod
