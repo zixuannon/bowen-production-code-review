@@ -245,6 +245,24 @@ class StaffImageValidationTest extends TestCase
     }
 
     /**
+     * UploadValidationException must be converted to a safe 422 JSON response
+     * by the exception handler — never a 500 with a stack trace.
+     */
+    public function test_upload_validation_exception_returns_422(): void
+    {
+        $exception = new \App\Exceptions\UploadValidationException('Blocked for test.');
+        $handler = new \App\Exceptions\Handler(app());
+
+        $request = \Illuminate\Http\Request::create('/dummy', 'POST');
+        $request->headers->set('Accept', 'application/json');
+
+        $response = $handler->render($request, $exception);
+
+        $this->assertEquals(422, $response->getStatusCode());
+        $this->assertTrue($response->isClientError());
+    }
+
+    /**
      * Create a Validator instance with store() rules.
      */
     private function makeStoreValidator($image, string $email = 'valid-store-test@example.com'): \Illuminate\Validation\Validator

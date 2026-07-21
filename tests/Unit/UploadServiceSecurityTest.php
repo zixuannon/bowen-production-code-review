@@ -2,10 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Exceptions\UploadValidationException;
 use App\Services\UploadService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
-use RuntimeException;
 
 class UploadServiceSecurityTest extends TestCase
 {
@@ -35,7 +35,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, '../../../etc/passwd.jpg');
     }
 
@@ -43,7 +43,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, 'etc/passwd.jpg');
     }
 
@@ -51,7 +51,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, 'etc\\passwd.jpg');
     }
 
@@ -59,7 +59,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, "avatar.jpg\0.php");
     }
 
@@ -70,7 +70,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, 'avatar.php56.jpg');
     }
 
@@ -78,7 +78,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, 'avatar.php.jpg');
     }
 
@@ -86,7 +86,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, 'image.phtml.png');
     }
 
@@ -94,7 +94,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('validateFilename');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, 'image.phar.jpeg');
     }
 
@@ -122,7 +122,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('sanitizePath');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, '../etc');
     }
 
@@ -130,7 +130,7 @@ class UploadServiceSecurityTest extends TestCase
     {
         $method = $this->getMethod('sanitizePath');
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(UploadValidationException::class);
         $method->invoke(null, "user\0hidden");
     }
 
@@ -222,6 +222,16 @@ class UploadServiceSecurityTest extends TestCase
 
         $result = $method->invoke(null, 'jpeg', 'image/jpeg');
         $this->assertEquals('jpg', $result);
+    }
+
+    /**
+     * UploadValidationException must extend RuntimeException so that
+     * try/catch blocks catching RuntimeException still work.
+     */
+    public function test_upload_validation_exception_is_a_runtime_exception(): void
+    {
+        $e = new UploadValidationException('test');
+        $this->assertInstanceOf(\RuntimeException::class, $e);
     }
 
     /**

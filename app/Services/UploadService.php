@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
+use App\Exceptions\UploadValidationException;
 use Auth;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Facades\Image;
-use RuntimeException;
 
 class UploadService {
 
@@ -56,7 +56,7 @@ class UploadService {
      * @param  string        $folder  Relative folder name (will be prefixed by school-id or super-admin).
      * @return string  Relative path, e.g. "15/user/abc123.jpg"
      *
-     * @throws RuntimeException
+     * @throws UploadValidationException
      */
     public static function upload($requestFile, $folder) {
         // 1. Sanitize folder path (prevent path traversal through folder)
@@ -73,12 +73,12 @@ class UploadService {
 
         // 3. Reject empty extension
         if (empty($originalExt)) {
-            throw new RuntimeException('File extension cannot be empty.');
+            throw new UploadValidationException('File extension cannot be empty.');
         }
 
         // 4. Reject blocked extensions (blacklist)
         if (in_array($originalExt, static::BLOCKED_EXTENSIONS)) {
-            throw new RuntimeException('File type is not allowed.');
+            throw new UploadValidationException('File type is not allowed.');
         }
 
         // 5. Validate original filename against double-extension and path-traversal attacks
@@ -92,12 +92,12 @@ class UploadService {
         // be an image. This prevents PHP payloads stored as .jpg etc.
         if (in_array($originalExt, static::IMAGE_EXTENSION_INDICATORS)) {
             if (!in_array($realMime, static::IMAGE_MIMES)) {
-                throw new RuntimeException('File content does not match its extension.');
+                throw new UploadValidationException('File content does not match its extension.');
             }
             // For SVG specifically: block at the service layer by default.
             // SVG can carry XSS and is not safe for untrusted upload.
             if ($originalExt === 'svg' || $realMime === 'image/svg+xml') {
-                throw new RuntimeException('SVG files are not allowed.');
+                throw new UploadValidationException('SVG files are not allowed.');
             }
         }
 
@@ -115,7 +115,7 @@ class UploadService {
                 $image = Image::make($requestFile)->encode($safeExt, 60);
                 Storage::disk('public')->put($fullPath, (string) $image);
             } catch (\Exception $e) {
-                throw new RuntimeException('Failed to process image file: ' . $e->getMessage());
+                throw new UploadValidationException('Failed to process image file: ' . $e->getMessage());
             }
         } else {
             // Non-image files: store as-is (extension already validated)
@@ -148,17 +148,17 @@ class UploadService {
      * Also rejects path-traversal sequences.
      *
      * @param  string  $filename
-     * @throws RuntimeException
+     * @throws UploadValidationException
      */
     protected static function validateFilename(string $filename): void {
         // Path traversal detection
         if (str_contains($filename, '..') || str_contains($filename, '/') || str_contains($filename, '\\')) {
-            throw new RuntimeException('Invalid filename.');
+            throw new UploadValidationException('Invalid filename.');
         }
 
         // Null-byte injection
         if (str_contains($filename, "\0")) {
-            throw new RuntimeException('Invalid filename.');
+            throw new UploadValidationException('Invalid filename.');
         }
 
         // Check each dot-separated segment for blocked extensions
@@ -166,7 +166,7 @@ class UploadService {
         foreach ($parts as $part) {
             $lower = strtolower($part);
             if (in_array($lower, static::BLOCKED_EXTENSIONS)) {
-                throw new RuntimeException('File type is not allowed.');
+                throw new UploadValidationException('File type is not allowed.');
             }
         }
     }
@@ -176,11 +176,11 @@ class UploadService {
      *
      * @param  string  $path
      * @return string
-     * @throws RuntimeException
+     * @throws UploadValidationException
      */
     protected static function sanitizePath(string $path): string {
         if (str_contains($path, '..') || str_contains($path, "\0")) {
-            throw new RuntimeException('Invalid folder path.');
+            throw new UploadValidationException('Invalid folder path.');
         }
         return trim($path, '/\\');
     }
@@ -195,7 +195,6 @@ class UploadService {
      * @param  string       $originalExt
      * @param  string|null  $realMime
      * @return string
-     * @throws RuntimeException
      */
     protected static function resolveSafeExtension(string $originalExt, ?string $realMime): string {
         // If we recognize the MIME, use the canonical extension

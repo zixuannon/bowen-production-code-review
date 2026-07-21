@@ -13,7 +13,7 @@ class Handler extends ExceptionHandler
      * @var array<int, class-string<Throwable>>
      */
     protected $dontReport = [
-        //
+        UploadValidationException::class,
     ];
 
     /**
@@ -41,7 +41,15 @@ class Handler extends ExceptionHandler
 
     function render($request, Throwable $exception)
     {
-        
+        // Convert upload validation failures into safe 422 JSON responses.
+        // No stack trace, no internal message — just a generic validation error.
+        if ($exception instanceof UploadValidationException) {
+            return response()->json([
+                'error'   => true,
+                'message' => 'File upload rejected.',
+            ], 422);
+        }
+
         if ($this->isHttpException($exception)) {
             switch ($exception->getCode()) {
 
