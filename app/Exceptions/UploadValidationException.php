@@ -7,16 +7,36 @@ use RuntimeException;
 /**
  * Thrown when file upload fails security validation.
  *
- * The global exception handler converts this into a safe
- * 422 JSON validation response — never a 500 with a stack trace.
+ * The global exception handler converts this into:
+ * - A 422 JSON response for API requests (expects JSON).
+ * - A redirect back with validation errors for browser form requests.
+ *
+ * No stack trace or server path is ever exposed to the client.
  */
 class UploadValidationException extends RuntimeException
 {
     /**
-     * @param  string  $message  Human-readable reason (not exposed to client by default)
+     * Upload field name for validation error key (e.g. 'image', 'file', 'vertical_logo').
+     *
+     * @var string
      */
-    public function __construct(string $message = 'File upload failed validation.')
+    protected string $field;
+
+    /**
+     * @param  string  $message  Human-readable reason (used for server-side logging only)
+     * @param  string  $field    Upload field name for the validation error bag (default: 'file')
+     */
+    public function __construct(string $message = 'File upload failed validation.', string $field = 'file')
     {
         parent::__construct($message);
+        $this->field = $field;
+    }
+
+    /**
+     * Get the upload field name for the validation error.
+     */
+    public function getField(): string
+    {
+        return $this->field;
     }
 }

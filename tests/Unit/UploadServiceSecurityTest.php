@@ -227,11 +227,19 @@ class UploadServiceSecurityTest extends TestCase
     /**
      * UploadValidationException must extend RuntimeException so that
      * try/catch blocks catching RuntimeException still work.
+     * It must also carry the upload field name for targeted validation errors.
      */
     public function test_upload_validation_exception_is_a_runtime_exception(): void
     {
         $e = new UploadValidationException('test');
         $this->assertInstanceOf(\RuntimeException::class, $e);
+
+        // Default field
+        $this->assertEquals('file', $e->getField());
+
+        // Custom field
+        $e2 = new UploadValidationException('test', 'image');
+        $this->assertEquals('image', $e2->getField());
     }
 
     /**

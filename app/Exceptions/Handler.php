@@ -3,6 +3,8 @@
 namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -13,7 +15,7 @@ class Handler extends ExceptionHandler
      * @var array<int, class-string<Throwable>>
      */
     protected $dontReport = [
-        UploadValidationException::class,
+        //
     ];
 
     /**
@@ -41,13 +43,32 @@ class Handler extends ExceptionHandler
 
     function render($request, Throwable $exception)
     {
-        // Convert upload validation failures into safe 422 JSON responses.
-        // No stack trace, no internal message — just a generic validation error.
         if ($exception instanceof UploadValidationException) {
-            return response()->json([
-                'error'   => true,
-                'message' => 'File upload rejected.',
-            ], 422);
+            // Write a desensitized warning log: no file content, cookies,
+            // tokens, or sensitive request parameters.
+            Log::warning('Upload rejected', [
+                'reason'  => $exception->getMessage(),
+                'user_id' => Auth::id(),
+                'route'   => $request->route() ? $request->route()->uri() : $request->path(),
+                'ip'      => $request->ip(),
+                'field'   => $exception->getField(),
+            ]);
+
+            $safeMessage = 'File upload rejected.';
+            $field       = $exception->getField();
+
+            // API / AJAX requests: return 422 JSON
+            if ($request->expectsJson() || $request->wantsJson()) {
+                return response()->json([
+                    'error'   => true,
+                    'message' => $safeMessage,
+                ], 422);
+            }
+
+            // Browser form requests: redirect back with validation error
+            return redirect()->back()
+                ->withErrors([$field => $safeMessage])
+                ->withInput();
         }
 
         if ($this->isHttpException($exception)) {

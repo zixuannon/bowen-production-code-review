@@ -245,21 +245,121 @@ class StaffImageValidationTest extends TestCase
     }
 
     /**
-     * UploadValidationException must be converted to a safe 422 JSON response
-     * by the exception handler — never a 500 with a stack trace.
+     * API 请求：UploadValidationException → 422 JSON，不暴露堆栈。
      */
-    public function test_upload_validation_exception_returns_422(): void
+    public function test_api_upload_exception_returns_json_422(): void
     {
-        $exception = new \App\Exceptions\UploadValidationException('Blocked for test.');
+        $exception = new \App\Exceptions\UploadValidationException('Blocked for test.', 'image');
         $handler = new \App\Exceptions\Handler(app());
 
-        $request = \Illuminate\Http\Request::create('/dummy', 'POST');
+        $request = \Illuminate\Http\Request::create('/api/dummy', 'POST');
         $request->headers->set('Accept', 'application/json');
 
         $response = $handler->render($request, $exception);
 
         $this->assertEquals(422, $response->getStatusCode());
         $this->assertTrue($response->isClientError());
+
+        $body = $response->getData(true);
+        $this->assertArrayHasKey('error', $body);
+        $this->assertTrue($body['error']);
+        $this->assertEquals('File upload rejected.', $body['message']);
+    }
+
+    /**
+     * Web 表单请求：UploadValidationException → 302 redirect，
+     * session 中包含对应字段的 validation error。
+     */
+    public function test_web_upload_exception_redirects_with_errors(): void
+    {
+        $this->withoutMiddleware();
+
+        $exception = new \App\Exceptions\UploadValidationException('Blocked extension', 'image');
+        $handler = new \App\Exceptions\Handler(app());
+
+        // Simulate a browser form POST (no JSON Accept header)
+        $request = \Illuminate\Http\Request::create('/staff/store', 'POST', [], [], [], [
+            'HTTP_REFERER' => 'http://localhost/staff/create',
+        ]);
+
+        $response = $handler->render($request, $exception);
+
+        // Browser request → redirect back
+        $this->assertEquals(302, $response->getStatusCode());
+        $this->assertTrue($response->isRedirection());
+
+        // Session should contain the validation error
+        $errors = session('errors');
+        $this->assertNotNull($errors, 'Session should have validation errors.');
+        $this->assertTrue($errors->has('image'), 'Errors should contain the "image" field.');
+    }
+
+    /**
+     * 危险上传应产生脱敏 warning 日志（user_id、route、IP、原因）。
+     * 不得记录文件内容、Cookie、Token。
+     */
+    public function test_dangerous_upload_logs_desensitized_warning(): void
+    {
+        \Illuminate\Support\Facades\Log::shouldReceive('warning')
+            ->once()
+            ->withArgs(function (string $message, array $context) {
+                // Context must contain only safe fields
+                $allowed = ['reason', 'user_id', 'route', 'ip', 'field'];
+                $actual  = array_keys($context);
+
+                // No extra (sensitive) keys
+                $extra = array_diff($actual, $allowed);
+                if (!empty($extra)) {
+                    return false;
+                }
+
+                // Required keys must be present
+                return isset($context['reason'])
+                    && isset($context['route'])
+                    && isset($context['ip'])
+                    && $context['field'] === 'image'
+                    && strpos($context['reason'], 'Cookie') === false
+                    && strpos($context['reason'], 'token') === false;
+            });
+
+        $exception = new \App\Exceptions\UploadValidationException('Blocked extension', 'image');
+        $handler = new \App\Exceptions\Handler(app());
+
+        $request = \Illuminate\Http\Request::create('/staff/store', 'POST', [], [], [], [
+            'HTTP_REFERER' => 'http://localhost/staff/create',
+        ]);
+
+        $handler->render($request, $exception);
+        // Log::shouldReceive will auto-verify
+    }
+
+    /**
+     * 响应体中不得包含堆栈跟踪或服务器路径。
+     */
+    public function test_upload_exception_response_has_no_stack_trace(): void
+    {
+        $exception = new \App\Exceptions\UploadValidationException('Blocked for test.', 'image');
+        $handler = new \App\Exceptions\Handler(app());
+
+        // API variant
+        $apiRequest = \Illuminate\Http\Request::create('/api/dummy', 'POST');
+        $apiRequest->headers->set('Accept', 'application/json');
+        $apiResponse = $handler->render($apiRequest, $exception);
+        $apiBody = json_encode($apiResponse->getData(true));
+        $this->assertStringNotContainsStringIgnoringCase('Stack trace', $apiBody);
+        $this->assertStringNotContainsStringIgnoringCase('/app/', $apiBody);
+        $this->assertStringNotContainsStringIgnoringCase('vendor', $apiBody);
+
+        // Web variant
+        $webRequest = \Illuminate\Http\Request::create('/staff/store', 'POST', [], [], [], [
+            'HTTP_REFERER' => 'http://localhost/staff/create',
+        ]);
+        $webResponse = $handler->render($webRequest, $exception);
+        $webContent = method_exists($webResponse, 'content') ? $webResponse->content() : (string) $webResponse;
+
+        // Redirect itself won't contain stack traces, but we still verify
+        $this->assertStringNotContainsStringIgnoringCase('Stack trace', $webContent);
+        $this->assertStringNotContainsStringIgnoringCase('/app/', $webContent);
     }
 
     /**

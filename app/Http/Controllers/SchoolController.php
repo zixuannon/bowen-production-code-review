@@ -247,7 +247,7 @@ class SchoolController extends Controller
                     }
 
                     if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
-                        $image = UploadService::upload($fields['data'], 'school');
+                        $image = UploadService::upload($fields['data'], 'school', 'data');
                         $data = $image;
                     }
 
@@ -573,7 +573,7 @@ class SchoolController extends Controller
                     if ($fields['input_type'] == 'file') {
                         if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
 
-                            $image = UploadService::upload($fields['data'], 'school');
+                            $image = UploadService::upload($fields['data'], 'school', 'data');
                             $schoolDataArray[] = array(
                                 'id' => $fields['id'] ?? null, // Handle nullable 'id'
                                 'school_inquiry_id' => null,
@@ -655,7 +655,7 @@ class SchoolController extends Controller
                 // storage via the repository (which also uses UploadService).
                 $schoolSettingData[] = [
                     'name' => 'vertical_logo',
-                    'data' => UploadService::upload($request->file('edit_school_image'), 'school'),
+                    'data' => UploadService::upload($request->file('edit_school_image'), 'school', 'edit_school_image'),
                     'type' => 'file',
                     'school_id' => $request->edit_id
                 ];
@@ -1015,7 +1015,7 @@ class SchoolController extends Controller
                         }
 
                         if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
-                            $image = UploadService::upload($fields['data'], 'school');
+                            $image = UploadService::upload($fields['data'], 'school', 'data');
                             $data = $image;
                         }
 

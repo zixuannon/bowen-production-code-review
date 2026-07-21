@@ -45,7 +45,7 @@ final class SchoolQueueService
             }
 
             if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
-                $image = UploadService::upload($fields['data'], 'school');
+                $image = UploadService::upload($fields['data'], 'school', 'data');
                 $data = $image;
             }
 

@@ -73,7 +73,7 @@ class UserService {
         //NOTE : This line will return the old values if the user is already exists
         $user = $this->user->guardian()->where('email', $email)->first();
         if (!empty($image)) {
-            $parent['image'] = UploadService::upload($image, 'guardian');
+            $parent['image'] = UploadService::upload($image, 'guardian', 'image');
         }
         if (!empty($user)) {
             if (isset($parent['image'])) {

@@ -38,7 +38,7 @@ class SchoolRepository extends BaseRepository implements SchoolInterface {
         if ($user) {
             $image_path = '';
             if ($image) {
-                $image_path = UploadService::upload($image, $folder);
+                $image_path = UploadService::upload($image, $folder, 'image');
                 $image_path = $image_path;
             }
 
