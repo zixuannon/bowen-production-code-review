@@ -150,7 +150,7 @@ class GuardianController extends Controller {
                 if ($guardian->image) {
                     UploadService::delete($guardian->getRawOriginal('image'));
                 }
-                $data['image'] = UploadService::upload($request->image, 'guardian');
+                $data['image'] = UploadService::upload($request->image, 'guardian', 'image');
             }
 
             if ($request->reset_password) {

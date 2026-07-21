@@ -186,12 +186,12 @@ class WebSettingsController extends Controller
             'section_data' => 'required|array',
             'section_data.*.feature' => 'required|string',
             'section_data.*.description' => 'required|string',
-            'section_data.*.image' => 'required|file|mimes:jpeg,png,jpg,svg',
+            'section_data.*.image' => 'required|file|mimes:jpeg,png,jpg,webp',
         ], [
             'title.required' => 'Title is required.',
             'heading.required' => 'Heading is required.',
             'section_data.required' => 'Section Data is required.',
-            'section_data.*.image.mimes' => 'Image must be a jpg, jpeg, png, svg file.',
+            'section_data.*.image.mimes' => 'Image must be a jpg, jpeg, png, webp file.',
         ]);
 
         if ($validator->fails()) {
@@ -289,11 +289,11 @@ class WebSettingsController extends Controller
             'section_data' => 'required|array',
             'section_data.*.feature' => 'required|string',
             'section_data.*.description' => 'required|string',
-            'section_data.*.image' => 'file|mimes:jpeg,png,jpg,svg',
+            'section_data.*.image' => 'file|mimes:jpeg,png,jpg,webp',
         ], [
             'title.required' => 'Title is required.',
             'heading.required' => 'Heading is required.',
-            'section_data.*.image.mimes' => 'Image must be a jpg, jpeg, png, svg file.',
+            'section_data.*.image.mimes' => 'Image must be a jpg, jpeg, png, webp file.',
         ]);
 
         if ($validator->fails()) {

@@ -119,6 +119,7 @@ class StaffController extends Controller
                 'role_id' => 'required|numeric',
                 'status' => 'nullable|in:0,1',
                 'dob' => 'required',
+                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
             ], [
                 'email.regex' => 'Please enter a valid email (e.g. user@example.com).',
             ]);
@@ -433,7 +434,8 @@ class StaffController extends Controller
                 'mobile' => 'required|digits_between:6,15',
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $id,
                 'role_id' => 'required|numeric',
-                'dob' => 'required'
+                'dob' => 'required',
+                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
             ]);
             if ($validator->fails()) {
                 ResponseService::validationError($validator->errors()->first());

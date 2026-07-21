@@ -39,7 +39,7 @@ class SchoolSettingRepository extends SaaSRepository implements SchoolSettingInt
                     UploadService::delete($data);
                 }
                 // Upload New File
-                $payload[$column]['data'] = UploadService::upload($value['data'], $this->uploadFolder);
+                $payload[$column]['data'] = UploadService::upload($value['data'], $this->uploadFolder, 'data');
             }
         }
         return $this->defaultModel()->upsert($payload, $uniqueColumns, $updatingColumn);

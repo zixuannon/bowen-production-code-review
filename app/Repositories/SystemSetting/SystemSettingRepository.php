@@ -33,7 +33,7 @@ class SystemSettingRepository extends BaseRepository implements SystemSettingInt
                     UploadService::delete($data);
                 }
                 // Upload New File
-                $payload[$column]['data'] = UploadService::upload($value['data'], $this->uploadFolder);
+                $payload[$column]['data'] = UploadService::upload($value['data'], $this->uploadFolder, 'data');
             }
         }
         return $this->defaultModel()->upsert($payload, $uniqueColumns, $updatingColumn);

@@ -247,7 +247,7 @@ class SchoolController extends Controller
                     }
 
                     if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
-                        $image = UploadService::upload($fields['data'], 'school');
+                        $image = UploadService::upload($fields['data'], 'school', 'data');
                         $data = $image;
                     }
 
@@ -519,7 +519,7 @@ class SchoolController extends Controller
             'edit_school_support_phone' => 'required|numeric|digits_between:6,15',
             'edit_school_tagline' => 'required',
             'edit_school_address' => 'required',
-            'edit_school_image' => 'nullable|mimes:jpg,jpeg,png,svg,svg+xml|max:2048',
+            'edit_school_image' => 'nullable|mimes:jpg,jpeg,png,webp|max:2048',
             'edit_domain' => [
                 'nullable',
                 'unique:schools,domain,' . $id
@@ -573,7 +573,7 @@ class SchoolController extends Controller
                     if ($fields['input_type'] == 'file') {
                         if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
 
-                            $image = UploadService::upload($fields['data'], 'school');
+                            $image = UploadService::upload($fields['data'], 'school', 'data');
                             $schoolDataArray[] = array(
                                 'id' => $fields['id'] ?? null, // Handle nullable 'id'
                                 'school_inquiry_id' => null,
@@ -651,9 +651,11 @@ class SchoolController extends Controller
             );
 
             if ($request->hasFile('edit_school_image')) {
+                // Upload via UploadService for safe re-encoding; avoid duplicate
+                // storage via the repository (which also uses UploadService).
                 $schoolSettingData[] = [
                     'name' => 'vertical_logo',
-                    'data' => $request->file('edit_school_image')->store('school', 'public'),
+                    'data' => UploadService::upload($request->file('edit_school_image'), 'school', 'edit_school_image'),
                     'type' => 'file',
                     'school_id' => $request->edit_id
                 ];
@@ -1013,7 +1015,7 @@ class SchoolController extends Controller
                         }
 
                         if (isset($fields['data']) && $fields['data'] instanceof UploadedFile) {
-                            $image = UploadService::upload($fields['data'], 'school');
+                            $image = UploadService::upload($fields['data'], 'school', 'data');
                             $data = $image;
                         }
 

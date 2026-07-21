@@ -87,6 +87,7 @@ class NotificationController extends Controller
             'message' => 'required',
             'roles' => 'required|array',
             'user_id' => 'required|not_in:0,null',
+            'image' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
         ], [
             'title.required' => 'Title is required.',
             'message.required' => 'Message is required.',

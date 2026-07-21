@@ -94,7 +94,7 @@ class BaseRepository implements BaseInterface {
 
         foreach ($payload as $column => $value) {
             if ($value instanceof UploadedFile) {
-                $payload[$column] = UploadService::upload($value, $this->uploadFolder);
+                $payload[$column] = UploadService::upload($value, $this->uploadFolder, $column);
             }
         }
         return $this->defaultModel()->create($payload);
@@ -112,7 +112,7 @@ class BaseRepository implements BaseInterface {
         foreach ($payload as $key => $arr) {
             foreach ($arr as $column => $value) {
                 if ($value instanceof UploadedFile) {
-                    $payload[$key][$column] = UploadService::upload($value, $this->uploadFolder);
+                    $payload[$key][$column] = UploadService::upload($value, $this->uploadFolder, $column);
                 }
             }
             $payload[$key]['created_at'] = now();
@@ -136,7 +136,7 @@ class BaseRepository implements BaseInterface {
                 if ($model->getAttributes()[$column]) {
                     UploadService::delete($model->getAttributes()[$column]);
                 }
-                $payload[$column] = UploadService::upload($value, $this->uploadFolder);
+                $payload[$column] = UploadService::upload($value, $this->uploadFolder, $column);
             }
         }
         $model->update($payload);
@@ -153,7 +153,7 @@ class BaseRepository implements BaseInterface {
     public function updateOrCreate(array $uniqueColumns, array $updatingColumn): Model {
         foreach ($updatingColumn as $column => $value) {
             if ($value instanceof UploadedFile) {
-                $updatingColumn[$column] = UploadService::upload($value, $this->uploadFolder);
+                $updatingColumn[$column] = UploadService::upload($value, $this->uploadFolder, $column);
             }
         }
         return $this->defaultModel()->updateOrCreate($uniqueColumns, $updatingColumn);
@@ -171,7 +171,7 @@ class BaseRepository implements BaseInterface {
         foreach ($payloads as $key => $payload) {
             foreach ($payload as $column => $value) {
                 if ($value instanceof UploadedFile) {
-                    $payloads[$key][$column] = UploadService::upload($value, $this->uploadFolder);
+                    $payloads[$key][$column] = UploadService::upload($value, $this->uploadFolder, $column);
                 }
             }
         }
@@ -242,7 +242,7 @@ class BaseRepository implements BaseInterface {
         foreach ($payloads as $key => $payload) {
             foreach ($payload as $column => $value) {
                 if ($value instanceof UploadedFile) {
-                    $payloads[$key][$column] = UploadService::upload($value, $this->uploadFolder);
+                    $payloads[$key][$column] = UploadService::upload($value, $this->uploadFolder, $column);
                 }
             }
         }

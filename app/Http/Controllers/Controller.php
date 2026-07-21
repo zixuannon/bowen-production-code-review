@@ -784,7 +784,7 @@ class Controller extends BaseController
             //NOTE : This line will return the old values if the user is already exists
             $parentUser = User::where('email', $request->guardian_email)->first();
             if (!empty($request->guardian_image)) {
-                $parent['image'] = UploadService::upload($request->guardian_image, 'guardian');
+                $parent['image'] = UploadService::upload($request->guardian_image, 'guardian', 'guardian_image');
             }
             if (!empty($parentUser)) {
                 if (isset($parent['image'])) {
@@ -802,7 +802,7 @@ class Controller extends BaseController
             }
             $image = null;
             if ($request->hasFile('image')) {
-                $image = UploadService::upload($request->image, 'user');
+                $image = UploadService::upload($request->image, 'user', 'image');
             }
             $password = app(UserService::class)->makeStudentPassword($request->dob);
             //Create Student User First
