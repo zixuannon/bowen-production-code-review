@@ -22,7 +22,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
 use App\Repositories\Files\FilesInterface;
@@ -623,7 +622,12 @@ class LeaveController extends Controller
     public function supervisorRequests()
     {
         ResponseService::noFeatureThenRedirect('Staff Leave Management');
-        // Entry is gated by having subordinates; no new permission yet
+
+        // Unified gate: must pass TwoStageLeaveService::isEnabled()
+        if (!$this->isTwoStageEnabled()) {
+            return redirect()->route('leave.request')->with('error', trans('supervisor_not_authorized'));
+        }
+
         $sessionYear = $this->sessionYear->builder()->pluck('name', 'id');
         $current_session_year = app(CachingService::class)->getDefaultSessionYear();
         $leaveMaster = $this->leaveMaster->builder()->where('session_year_id', $current_session_year->id)->first();
@@ -645,6 +649,11 @@ class LeaveController extends Controller
     public function supervisorRequestsShow()
     {
         ResponseService::noFeatureThenSendJson('Staff Leave Management');
+
+        // Unified gate: prevent Unknown column on un-migrated schools
+        if (!$this->isTwoStageEnabled()) {
+            return response()->json(['error' => true, 'message' => trans('supervisor_not_authorized')], 403);
+        }
 
         $offset = request('offset', 0);
         $limit = request('limit', 10);
