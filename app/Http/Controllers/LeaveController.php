@@ -119,7 +119,7 @@ class LeaveController extends Controller
         ], [
 
             'leave_master_id.required' => 'Kindly contact the school admin to update settings for continued access.',
-            'type.required' => 'Kindly select different dates as the ones mentioned are already allocated as holidays.',
+            'type.required' => 'Please select Full Day or Half Day for each leave date.',
             'files.*.mimes' => 'Only JPG, JPEG, PNG, PDF, DOC, and DOCX files are allowed.',
             'files.*.max_file_size' => "Each file must not exceed {$file_upload_size_limit} MB.",
         ]);

@@ -19,7 +19,7 @@
                             {{ __('create') . ' ' . __('leave') }}
                         </h4>
 
-                        <form action="{{ route('leave.store') }}" class="create-form pt-3" novalidate="novalidate"
+                        <form action="{{ route('leave.store') }}" method="POST" class="create-form pt-3" novalidate="novalidate"
                               data-success-function="formSuccessFunction">
                             @csrf
                             <div class="row">

@@ -3021,6 +3021,11 @@ $("#select-all").on('click', function () {
 });
 
 
+// Ensure Bootstrap datepicker changeDate triggers the change event for leave dates
+$('body').on('changeDate', '.leave-date', function () {
+    $(this).trigger('change');
+});
+
 $('#to_date,#from_date').change(function (e) {
     e.preventDefault();
     let from_date = $('#from_date').val().split("-").reverse().join("-");
