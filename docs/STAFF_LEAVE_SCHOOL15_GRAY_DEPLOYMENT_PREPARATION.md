@@ -1,22 +1,31 @@
 # STAFF LEAVE 新方案 — School 15 灰度部署准备方案
 
 > **状态**: 部署准备（不执行部署，不修改生产，不开启功能开关）
-> **日期**: 2026-07-10
-> **版本**: v2 (学校级白名单已实现)
+> **日期**: 2026-07-31 (统一门控修复版)
+> **版本**: v3 (统一门控修复)
 
 ---
 
-## 一、当前版本
+## 一、当前版本 (LATEST: v3)
+
+| 项目 | 值 |
+|------|-----|
+| Git 分支 | `fix/unify-staff-leave-gates` |
+| 独立 Commit SHA | `7c4542ecb13243cedc5129f1f482d1608d67b0f6` |
+| Short | `7c4542e` |
+| Commit 消息 | Unify tenant gates for staff leave gray rollout |
+| 文件数 | 25 部署文件 + test + docs |
+
+> ✅ **Status**: 统一门控修复完成，44 tests 通过 (54 assertions)。
+
+### 旧版本 (SUPERSEDED)
 
 | 项目 | 值 |
 |------|-----|
 | Git 分支 | `feature-staff-leave-two-stage-approval` |
 | 独立 Commit SHA | `e9ec8a0ea2af8dee907c5a5fb75f64d6d9848628` |
-| Short | `e9ec8a0` |
-| Commit 消息 | Add supervisor-final staff leave workflow with school allowlist |
+| Artifact | `staff_leave_school15_4a6dc93.tar.gz` — **已废弃** |
 | 文件数 | 34 个 committed (25 部署 + 8 docs + 1 test) |
-
-> ✅ **Status**: 独立 commit 已创建，仅包含 Staff Leave 文件。无 Dify、Finance、缓存文件。
 
 ### 无关文件状态
 

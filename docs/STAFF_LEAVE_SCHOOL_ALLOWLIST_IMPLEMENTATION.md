@@ -230,7 +230,72 @@ Manifest 文件数: **25** (19 modified + 6 new)
 
 ---
 
-## 十二、部署决策
+## 十二、统一门控修复 (2026-07-31)
+
+### 12.1 修复目标
+
+所有 Staff Leave 新功能统一走 `TwoStageLeaveService::isEnabled()`：
+
+- **StaffController** — `isSupervisorFeatureEnabled()` 已统一走 `TwoStageLeaveService::isEnabled()`
+- **Sidebar** — Supervisor/HR 菜单已统一走 `TwoStageLeaveService::isEnabled()`，短路逻辑防止未迁移学校查询新字段
+- **LeaveController** — `supervisorRequests()` 和 `supervisorRequestsShow()` 新增 `isTwoStageEnabled()` 守卫
+- **ApiController / StaffApiController** — 已统一走 `TwoStageLeaveService::isEnabled()`
+- **User::subordinates()** — 已在 sidebar 中实际使用，仅当 `isEnabled()` 返回 true 后才调用
+- **common.js 的 hrModal** — 无遗留代码
+
+### 12.2 非白名单学校行为
+
+- 不显示 Supervisor 菜单
+- 不显示 HR 菜单
+- 不显示 Staff supervisor 字段
+- 不接受 any supervisor_user_id 写入
+- 旧 Staff/Leave 流程不变
+
+### 12.3 未迁移学校保护
+
+未迁移学校不会触发 `Unknown column supervisor_user_id`：
+- `supervisorRequestsShow()` 在查询前先检查 `isTwoStageEnabled()`
+- sidebar 在调用 `subordinates()` 前先短路检查 `isEnabled()`
+- API endpoint 在查询前先检查 `isTwoStageEnabled()`
+
+### 12.4 测试结果
+
+| 测试套件 | 数量 | 结果 |
+|----------|------|------|
+| TwoStageLeaveServiceAllowlistTest | 18 | ✅ 通过 |
+| TwoStageLeaveServiceIsEnabledTest | 15 | ✅ 通过 |
+| StaffLeaveUnifiedGateTest (Feature) | 11 | ✅ 通过 |
+| **合计** | **44** | **54 个断言** |
+
+### 12.5 新 Commit
+
+| 项目 | 值 |
+|------|-----|
+| Branch | `fix/unify-staff-leave-gates` |
+| Commit SHA | `7c4542ecb13243cedc5129f1f482d1608d67b0f6` |
+| Short | `7c4542e` |
+| Message | Unify tenant gates for staff leave gray rollout |
+
+### 12.6 新 Artifact
+
+| 项目 | 值 |
+|------|-----|
+| 文件名 | `staff_leave_school15_7c4542e.tar.gz` |
+| SHA256 | `c0e937351a4a0f78bc0cacc85b301f733faffcd43866fe3df28978fae0d97e59` |
+| 文件数 | 25 (tar vs git 完全一致) |
+| 旧包 | `staff_leave_school15_4a6dc93.tar.gz` — **SUPERSEDED** |
+
+### 12.7 P0/P1/P2
+
+| 级别 | 数量 |
+|------|------|
+| P0 | 0 |
+| P1 | 0 |
+| P2 | 0 |
+
+---
+
+## 十三、部署决策
 
 | 决策点 | 答案 |
 |--------|------|

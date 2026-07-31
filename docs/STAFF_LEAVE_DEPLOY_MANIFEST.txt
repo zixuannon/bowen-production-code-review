@@ -1,3 +1,17 @@
+# Staff Leave Supervisor-Final Approval — Deploy Manifest
+# ================================================================
+# Commit:  7c4542ecb13243cedc5129f1f482d1608d67b0f6 (7c4542e)
+# Branch:  fix/unify-staff-leave-gates
+# Message: Unify tenant gates for staff leave gray rollout
+# ================================================================
+# Artifact: staff_leave_school15_7c4542e.tar.gz
+# SHA256:   c0e937351a4a0f78bc0cacc85b301f733faffcd43866fe3df28978fae0d97e59
+# Status:   CURRENT (for School15 gray deployment)
+# ================================================================
+# SUPERSEDED:
+#   staff_leave_school15_4a6dc93.tar.gz — superseded, do not deploy
+# ================================================================
+# Files (25):
 app/Http/Controllers/Api/ApiController.php
 app/Http/Controllers/Api/StaffApiController.php
 app/Http/Controllers/LeaveController.php
