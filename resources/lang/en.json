@@ -247,5 +247,6 @@
     "hr_final_approved": "HR Final Approved",
     "hr_final_rejected": "HR Final Rejected",
     "withdrawn": "Withdrawn",
+    "two_stage_leave_legacy_page_notice": "The direct supervisor approval flow is enabled. This page only shows legacy leave requests. Please use",
     "legacy_leave_pending": "Legacy Pending"
 }

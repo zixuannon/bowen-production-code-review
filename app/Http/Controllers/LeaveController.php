@@ -939,7 +939,9 @@ class LeaveController extends Controller
     /**
      * Bootstrap-table data endpoint for HR leave requests (read-only).
      *
-     * HR can view all supervisor-processed records (approved or rejected).
+     * HR can view all two-stage leave records with a supervisor_status
+     * (pending = 0, approved = 1, rejected = 2).
+     * Excludes old-flow records (supervisor_status IS NULL) and withdrawn records.
      * Compatible with historical hr_status=0/1/2 records.
      */
     public function hrRequestsShow()
@@ -956,14 +958,10 @@ class LeaveController extends Controller
         $filter_upcoming = request('filter_upcoming');
         $month_id = request('month_id');
 
-        // HR sees supervisor-processed records in the new flow:
-        // supervisor_status IN (1, 2) AND withdrawn_at IS NULL
-        // Also compatible with historical records where hr_status may be set
+        // HR sees all two-stage records: pending (0), approved (1), rejected (2)
+        // Excludes old-flow (supervisor_status IS NULL) and withdrawn records
         $sql = $this->leave->builder()->with('leave_detail', 'file', 'user')
-            ->whereIn('supervisor_status', [
-                \App\Models\Leave::APPROVAL_APPROVED,
-                \App\Models\Leave::APPROVAL_REJECTED,
-            ])
+            ->whereNotNull('supervisor_status')
             ->whereNull('withdrawn_at')
             ->where(function ($query) use ($search) {
                 $query->when($search, function ($query) use ($search) {

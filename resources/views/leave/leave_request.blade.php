@@ -15,6 +15,16 @@
             <div class="col-md-12 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body">
+                        @if($isTwoStageEnabled ?? false)
+                            <div class="alert alert-info alert-dismissible fade show" role="alert">
+                                <i class="fa fa-info-circle mr-2"></i>
+                                {{ __('two_stage_leave_legacy_page_notice') }}
+                                <a href="{{ route('leave.hr') }}" class="alert-link ml-1">{{ __('hr_leave_requests') }}</a>
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        @endif
                         <h4 class="card-title">{{ __('staff') . ' ' . __('leaves') }}</h4>
                         {!! Form::hidden('holiday_days', $holiday_days ?? '', ['class' => 'form-control holiday_days']) !!}
                         {!! Form::hidden('public_holiday', $public_holiday ?? '', ['class' => 'form-control public_holiday']) !!}
@@ -70,6 +80,7 @@
             </div>
         </div>
 
+        @if(!($isTwoStageEnabled ?? false))
         <div class="modal fade" id="editModal" data-backdrop="static" tabindex="-1" role="dialog"
              aria-labelledby="exampleModalLabel" aria-hidden="true">
             <div class="modal-dialog" role="document">
@@ -146,5 +157,6 @@
                 </div>
             </div>
         </div>
+        @endif
     </div>
 @endsection

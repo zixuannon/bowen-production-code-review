@@ -2091,7 +2091,7 @@
     "leave_not_found": "请假申请未找到。",
     "reviewed_at": "审批时间",
     "two_stage_schema_incomplete": "两级请假审批功能暂时不可用，请联系系统管理员检查系统配置。",
-    "hr_leave_requests": "HR请假审批",
+    "hr_leave_requests": "HR请假记录",
     "hr_pending": "等待HR审批",
     "hr_approved": "HR已批准",
     "hr_rejected": "HR已拒绝",
@@ -2115,5 +2115,6 @@
     "withdrawn": "已撤回",
     "leave_approved_notification_for_hr": "有一条员工请假已由直属主管批准。",
     "legacy_leave_pending": "遗留待处理",
+    "two_stage_leave_legacy_page_notice": "当前学校已启用直属主管审批流程。此页面仅显示旧流程请假记录。请前往",
     "supervisor_status": "主管审批状态"
 }
