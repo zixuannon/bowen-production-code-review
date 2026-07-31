@@ -836,7 +836,7 @@
         @endcan
 
         {{-- Leave --}}
-        @canany(['leave-list', 'leave-create', 'leave-edit', 'leave-delete'])
+        @canany(['leave-list', 'leave-create', 'leave-edit', 'leave-delete', 'hr-view-leave'])
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#staff-leave-menu" data-access="@hasFeatureAccess('Staff Leave Management')"
                     aria-expanded="false" aria-controls="staff-leave-menu">
