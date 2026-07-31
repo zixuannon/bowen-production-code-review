@@ -68,16 +68,30 @@
                                     </div>
                                 @endif
 
-                                @if (Auth::user()->school_id)
-                                <div class="form-group col-sm-12 col-md-4">
-                                    <label for="session_year_id">{{ __('session_year') }} <span class="text-danger">*</span></label>
-                                    <select name="session_year_id" id="session_year_id" class="form-control" required>
-                                        @foreach ($sessionYears as $sessionYear)
-                                            <option value="{{ $sessionYear->id }}">{{ $sessionYear->name }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                @endif
+                                    @if (Auth::user()->school_id)
+                                    <div class="form-group col-sm-12 col-md-4">
+                                        <label for="session_year_id">{{ __('session_year') }} <span class="text-danger">*</span></label>
+                                        <select name="session_year_id" id="session_year_id" class="form-control" required>
+                                            @foreach ($sessionYears as $sessionYear)
+                                                <option value="{{ $sessionYear->id }}">{{ $sessionYear->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    @if (Auth::user()->school_id && $supervisorFeatureEnabled)
+                                    <div class="form-group col-sm-12 col-md-4">
+                                        <label for="supervisor_user_id">{{ __('direct_supervisor') }}</label>
+                                        <select name="supervisor_user_id" id="supervisor_user_id" class="form-control select2-dropdown" style="width:100%">
+                                            <option value="" {{ old('supervisor_user_id') === null || old('supervisor_user_id') === '' ? 'selected' : '' }}>{{ __('none') }}</option>
+                                            @foreach ($supervisorCandidates as $candidate)
+                                                <option value="{{ $candidate->id }}"
+                                                    {{ (string) old('supervisor_user_id') === (string) $candidate->id ? 'selected' : '' }}>
+                                                    {{ $candidate->first_name }} {{ $candidate->last_name }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    @endif
+                                    @endif
 
 
                                 @if (!Auth::user()->school_id)
@@ -356,6 +370,9 @@
                                 <th scope="col" data-field="no">{{ __('no.') }}</th>
                                 <th scope="col" data-field="full_name" data-sortable="true" data-formatter="StaffNameFormatter">{{ __('name') }}</th>
                                 <th scope="col" data-field="roles_name" data-sortable="false">{{ __('role') }}</th>
+                                @if (Auth::user()->school_id && $supervisorFeatureEnabled)
+                                    <th scope="col" data-field="supervisor_name" data-sortable="false" data-formatter="supervisorNameFormatter">{{ __('direct_supervisor') }}</th>
+                                @endif
                                 <th scope="col" data-field="mobile" data-sortable="true">{{ __('mobile') }}</th>
                                 @if (!Auth::user()->school_id)
                                     <th scope="col" data-field="staff.salary" data-visible="false">{{ __('Salary') }}</th>
@@ -442,6 +459,17 @@
                                             <label for="joining_date">{{ __('joining_date') }}</label>
                                             {!! Form::text('joining_date', null, ['placeholder' => __('joining_date'), 'class' => 'datepicker-popup form-control','autocomplete'=>'off','id' => 'edit_joining_date']) !!}
                                         </div>
+                                        @if (Auth::user()->school_id && $supervisorFeatureEnabled)
+                                        <div class="form-group col-sm-12 col-md-4">
+                                            <label for="edit_supervisor_user_id">{{ __('direct_supervisor') }}</label>
+                                            <select name="supervisor_user_id" id="edit_supervisor_user_id" class="form-control select2-dropdown" style="width:100%">
+                                                <option value="">{{ __('none') }}</option>
+                                                @foreach ($supervisorCandidates as $candidate)
+                                                    <option value="{{ $candidate->id }}">{{ $candidate->first_name }} {{ $candidate->last_name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        @endif
                                     @endif
 
 

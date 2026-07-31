@@ -124,7 +124,7 @@
                                 <th scope="col" data-field="days">{{ __('total') }}</th>
                                 <th scope="col" data-events="tableDescriptionEvents" data-formatter="descriptionFormatter" data-field="reason">{{ __('reason') }}</th>
                                 <th scope="col" data-formatter="fileFormatter" data-field="files">{{ __('attachments') }}</th>
-                                <th scope="col" data-formatter="leaveStatusFormatter" data-field="status">{{ __('status') }}</th>
+                                <th scope="col" data-formatter="leaveStageStatusFormatter" data-field="status">{{ __('status') }}</th>
                                 <th scope="col" data-field="created_at" >{{ __('created_at') }}</th>
                                 <th data-events="leaveEvents" scope="col" data-field="operate" data-escape="false">
                                     {{ __('action') }}</th>

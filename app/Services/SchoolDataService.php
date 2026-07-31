@@ -246,6 +246,9 @@ class SchoolDataService
 
         $this->createDriverRole($school);
         $this->createHelperRole($school);
+
+        // Phase 4: Optional default HR role (convenience, not required)
+        $this->createHrRole($school);
     }
 
     public function defaultRoles($school)
@@ -355,6 +358,10 @@ class SchoolDataService
             ...self::permission('shift'),
             ...self::permission('leave'),
             ['name' => 'approve-leave'],
+
+            // Supervisor Final Approval: HR read-only view
+            ['name' => 'hr-view-leave'],
+
             ...self::permission('faqs'),
 
             ['name' => 'fcm-setting-manage'],
@@ -791,6 +798,28 @@ class SchoolDataService
             'leave-delete',
         ];
         $helper_role->syncPermissions($HelperHasAccessTo);
+    }
+
+    /**
+     * Create optional default HR role (read-only view + notification recipient).
+     *
+     * The HR role has hr-view-leave permission. Schools may also assign
+     * this permission to other roles. Controller checks permission, not role.
+     * No users are automatically assigned this role.
+     *
+     * Uses givePermissionTo (NOT syncPermissions) to append without
+     * removing any existing permissions the HR role may already have.
+     */
+    public function createHrRole($school)
+    {
+        $hr_role = Role::updateOrCreate([
+            'name' => 'HR',
+            'school_id' => $school->id,
+            'custom_role' => 0,
+            'editable' => 1,
+        ]);
+        // givePermissionTo is idempotent — preserves all existing permissions
+        $hr_role->givePermissionTo('hr-view-leave');
     }
 
     public function createPayrollSettingsSeeder($school)
