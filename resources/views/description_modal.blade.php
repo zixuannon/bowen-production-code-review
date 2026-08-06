@@ -9,7 +9,7 @@
                 </button>
             </div>
             <div class="modal-body">
-                <p class="description-data text-break">Modal body text goes here.</p>
+                <p class="description-data text-break" style="white-space: pre-wrap;">Modal body text goes here.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">{{ __('close') }}</button>

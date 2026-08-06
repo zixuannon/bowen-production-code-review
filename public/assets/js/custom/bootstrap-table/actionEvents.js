@@ -251,7 +251,7 @@ window.assignmentEvents = {
         if (row.file) {
             $.each(row.file, function (key, data) {
                 if (data.type != 4) {
-                    html_file += '<div class="file"><a target="_blank" href="' + data.file_url + '" class="m-1">' + data.file_name + '</a> <span class="fa fa-times text-danger remove-assignment-file" data-id=' + data.id + '></span><br><br></div>'
+                    html_file += '<div class="file"><a target="_blank" rel="noopener noreferrer" href="' + safeUrlAttr(data.file_url) + '" class="m-1">' + escapeHtml(data.file_name) + '</a> <span class="fa fa-times text-danger remove-assignment-file" data-id=' + data.id + '></span><br><br></div>'
                 }
                 if (data.type == 4) {
                     $('#edit_add_url').val(data.file_url);
@@ -300,7 +300,7 @@ window.announcementEvents = {
         if (row.file) {
             $.each(row.file, function (key, data) {
                 if (data.type != 4) {
-                    html_file += '<div class="file"><a target="_blank" href="' + data.file_url + '" class="m-1">' + data.file_name + '</a> <span class="fa fa-times text-danger remove-assignment-file" data-id=' + data.id + '></span><br><br></div>'
+                    html_file += '<div class="file"><a target="_blank" rel="noopener noreferrer" href="' + safeUrlAttr(data.file_url) + '" class="m-1">' + escapeHtml(data.file_name) + '</a> <span class="fa fa-times text-danger remove-assignment-file" data-id=' + data.id + '></span><br><br></div>'
                 }
                 if (data.type == 4) {
                     $('#edit_add_url').val(data.file_url);
@@ -484,7 +484,7 @@ window.assignmentSubmissionEvents = {
         $('#student_name').val(row.student.full_name);
 
         $.each(row.file, function (key, data) {
-            file_html += " <a target='_blank' href='" + data.file_url + "'>" + data.file_name + "</a><br>";
+            file_html += " <a target='_blank' rel='noopener noreferrer' href='" + safeUrlAttr(data.file_url) + "'>" + escapeHtml(data.file_name) + "</a><br>";
         });
 
         $('#files').html(file_html);
@@ -517,7 +517,7 @@ window.assignmentSubmissionEvents = {
 window.examResultEvents = {
     'click .edit-data': function (e, value, row) {
         $('#edit_id').val(row.id)
-        $('.student_name').html(row.user.full_name);
+        $('.student_name').text(row.user.full_name);
         $('.subject_container').html('');
 
         $.each(row.user.exam_marks, function (key, data) {
@@ -619,7 +619,7 @@ window.feesPaidEvents = {
         $('#optional_fees_id').val(row.fees.id);
         $('#optional_student_id').val(row.student_id);
         $('#optional_class_id').val(row.class_id);
-        $('.student_name').html(row.student_name + ' :- ' + row.class_name);
+        $('.student_name').text((row.student_name || '') + ' :- ' + (row.class_name || ''));
         $('.current-date').val(row.current_date);
 
         function showModeContainer() {
@@ -1254,7 +1254,7 @@ window.leaveEvents = {
 
         if (row.file) {
             $.each(row.file, function (key, data) {
-                html_file += '<div class="file"><a target="_blank" href="' + data.file_url + '" class="m-1">' + data.file_name + '</a></span><br><br></div>'
+                html_file += '<div class="file"><a target="_blank" rel="noopener noreferrer" href="' + safeUrlAttr(data.file_url) + '" class="m-1">' + escapeHtml(data.file_name) + '</a></span><br><br></div>'
             })
 
             $('#attachment').html(html_file);
@@ -1271,6 +1271,39 @@ window.leaveEvents = {
 
 
         $('input[name=status][value=' + row.status + '].leave-status').prop('checked', true);
+    }
+};
+
+window.supervisorLeaveEvents = {
+    'click .edit-data': function (e, value, row) {
+        e.preventDefault();
+        e.stopPropagation();
+        let html_file = '';
+        $('#supervisor_leave_id').val(row.id);
+        let trimmedFromDate = row.from_date.split(' ')[0];
+        let trimmedToDate = row.to_date.split(' ')[0];
+        $('#supervisor_from_date').val(trimmedFromDate);
+        $('#supervisor_to_date').val(trimmedToDate);
+        $('#supervisor_reason').val(row.reason);
+        $('#supervisor_comment').val(row.supervisor_comment || '');
+
+        if (row.file) {
+            $.each(row.file, function (key, data) {
+                html_file += '<div class="file"><a target="_blank" rel="noopener noreferrer" href="' + safeUrlAttr(data.file_url) + '" class="m-1">' + escapeHtml(data.file_name) + '</a></span><br><br></div>'
+            });
+            $('#supervisor_attachment').html(html_file);
+        } else {
+            $('#supervisor_attachment').html('');
+        }
+
+        // Reset radio buttons
+        $('input[name=status]').prop('checked', false);
+
+        // Set modal form action
+        $('#supervisorForm').attr('action', baseUrl + '/leave/supervisor/status/update');
+
+        // Open the supervisor modal
+        $('#supervisorModal').modal('show');
     }
 };
 
@@ -1526,7 +1559,28 @@ window.staffEvents = {
         $('#edit_last_name').val(row.last_name);
         $('#edit_mobile').val(row.mobile);
         $('#edit_email').val(row.email);
-        $('#edit_salary').val(row.staff.salary);
+        $('#edit_salary').val(row.staff ? row.staff.salary : '');
+
+        // Supervisor: restore all options, disable self, then set value
+        var $supervisorSelect = $('#edit_supervisor_user_id');
+        if ($supervisorSelect.length) {
+            // 1. Restore all options (re-enable any previously disabled)
+            $supervisorSelect.find('option').prop('disabled', false);
+
+            // 2. Disable current employee from being selectable as supervisor
+            var editingUserId = row.id;
+            if (editingUserId) {
+                $supervisorSelect.find('option[value="' + editingUserId + '"]').prop('disabled', true);
+            }
+
+            // 3. Set current supervisor value (null-safe)
+            var currentSupervisorId = '';
+            if (row.staff && row.staff.supervisor_user_id !== undefined && row.staff.supervisor_user_id !== null) {
+                currentSupervisorId = row.staff.supervisor_user_id;
+            }
+            $supervisorSelect.val(currentSupervisorId).trigger('change');
+        }
+
         $('#edit_school_id').val(row.support_school_id).trigger('change');
         $('#edit_role_id').val(row.roles[0].id);
         $('#edit_staff_image').attr('src', row.image);
@@ -1642,6 +1696,15 @@ window.staffEvents = {
         })
     }
 };
+
+// Reset supervisor options when edit modal is closed, so previous employee's
+// disabled option is restored before the next employee is edited.
+$(document).on('hidden.bs.modal', '#editModal', function () {
+    var $select = $('#edit_supervisor_user_id');
+    if ($select.length) {
+        $select.find('option').prop('disabled', false);
+    }
+});
 
 window.feesEvents = {
     'click .edit-data': function (e, value, row) {
@@ -1953,41 +2016,38 @@ window.subscriptionEvents = {
 window.tableDescriptionEvents = {
     'click .bootstrap-table-description': function (e, value, row) {
         console.log(row.name);
-        $('.modal-title').html(row.name);
-        $('.modal-title').html(row.title);
-        $('.description-data').html(row.instructions);
-        $('.description-data').html(row.description);
-        $('.description-data').html(row.reason);
-        $('.description-data').html(row.message);
+        // Use .text() instead of .html() for user-provided data to prevent XSS
+        $('.modal-title').text(row.name || '');
+        $('.modal-title').text(row.title || '');
+        // Show full description in modal body with CSS preserving line breaks
+        var fullDesc = row.description || row.instructions || row.reason || row.message || '';
+        $('.description-data').text(fullDesc);
 
 
         if (row.student) {
-            $('.modal-title').html('<h3>' + window.trans['student'] + '</h3>');
+            $('.modal-title').html('<h3>' + escapeHtml(window.trans['student']) + '</h3>');
             var listStudents = '';
             let currURL = window.location.href;
             let students = row.diary_students;
-            const description = `<div class='col-md-12 mb-3'>
-                                    <h5>${row.diary_category.name ?? ''}</h5>
-                                    <p>${row.description ?? ''}</p>
-                                </div>`;
-            // const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const description = '<div class="col-md-12 mb-3">'
+                + '<h5>' + escapeHtml(row.diary_category ? row.diary_category.name : '') + '</h5>'
+                + '<p>' + escapeHtml(row.description || '') + '</p>'
+                + '</div>';
 
             students?.forEach(student => {
-                listStudents += `<div class='col-md-3 mb-3'>
-                                    <div class='card p-3'>
-                                        <div><h4>${student.student.full_name}</h4></div>
-                                        <div class="mb-2">${student.class_section.full_name}</div>
-                                        <div>
-                                            <a href="${currURL}/${student.diary_id}/remove-student/${student.id}" class="delete-form bg-danger text-white px-3 rounded py-2" title="Remove Student">
-                                            ${window.trans['remove']} <i class="fa fa-trash"></i></a>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
+                listStudents += '<div class="col-md-3 mb-3">'
+                    + '<div class="card p-3">'
+                    + '<div><h4>' + escapeHtml(student.student.full_name) + '</h4></div>'
+                    + '<div class="mb-2">' + escapeHtml(student.class_section.full_name) + '</div>'
+                    + '<div>'
+                    + '<a href="' + currURL + '/' + student.diary_id + '/remove-student/' + student.id + '" class="delete-form bg-danger text-white px-3 rounded py-2" title="Remove Student">'
+                    + escapeHtml(window.trans['remove']) + ' <i class="fa fa-trash"></i></a>'
+                    + '</div>'
+                    + '</div>'
+                    + '</div>';
             });
             $('.description-data').addClass('d-flex align-items-center justify-content-start flex-wrap');
             $('.description-data').html(description + listStudents);
-            // $('.description-data').html();
             let hideModalTimeout; // store timeout ID globally
 
             $('.modal-content').on('mouseenter', function () {
@@ -2202,14 +2262,9 @@ window.diaryCategoryEvents = {
 
 window.diaryEvents = {
     'click #diaryModal': function (e, value, row) {
-
-
-        // $('.modal-title').html(row.name);
-        $('.modal-title').html(row.title);
-        $('.diary-student-data').html(row.student);
-        // $('.description-data').html(row.description);
-        // $('.description-data').html(row.reason);
-        // $('.description-data').html(row.message);
+        // Use .text() instead of .html() to prevent XSS from user-provided titles/student data
+        $('.modal-title').text(row.title || '');
+        $('.diary-student-data').text(row.student || '');
     }
 };
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Role;
+use App\Models\User;
 use App\Repositories\School\SchoolInterface;
 use App\Repositories\Staff\StaffInterface;
 use App\Repositories\SessionYear\SessionYearInterface;
@@ -14,6 +15,7 @@ use App\Services\SessionYearsTrackingsService;
 use App\Services\CachingService;
 use App\Services\FeaturesService;
 use App\Services\ResponseService;
+use App\Services\StaffLeave\TwoStageLeaveService;
 use App\Services\SubscriptionService;
 use Carbon\Carbon;
 use GuzzleHttp\RetryMiddleware;
@@ -74,6 +76,43 @@ class StaffController extends Controller
         $this->sessionYearsTrackingsService = $sessionYearsTrackingsService;
     }
 
+    /**
+     * Per-request cache: TwoStageLeaveService::isEnabled() is evaluated
+     * at most once per HTTP request. The first call goes through the full
+     * three-tier gating (global flag → allowlist → schema); all subsequent
+     * calls within the same request return the cached result.
+     *
+     * This is NOT shared across requests or schools — each Controller
+     * instance is freshly created per request.
+     */
+    private ?bool $supervisorFeatureEnabled = null;
+
+    /**
+     * Detect whether the two-stage leave supervisor feature is available
+     * for the current school database.
+     *
+     * Unified gate via TwoStageLeaveService::isEnabled():
+     *  1. global flag == true
+     *  2. current school database in allowlist
+     *  3. schema complete (10 columns)
+     *
+     * Only schools explicitly enabled via the allowlist + global flag
+     * will see supervisor UI and logic. Other schools continue to work
+     * exactly as before.
+     */
+    protected function isSupervisorFeatureEnabled(): bool
+    {
+        if ($this->supervisorFeatureEnabled !== null) {
+            return $this->supervisorFeatureEnabled;
+        }
+
+        try {
+            return $this->supervisorFeatureEnabled = TwoStageLeaveService::isEnabled();
+        } catch (\Throwable) {
+            return $this->supervisorFeatureEnabled = false;
+        }
+    }
+
     public function index()
     {
         ResponseService::noFeatureThenRedirect('Staff Management');
@@ -102,7 +141,20 @@ class StaffController extends Controller
         }
 
 
-        return response(view('staff.index', compact('roles', 'schools', 'features', 'allowances', 'deductions', 'extraFields', 'sessionYears')));
+        $supervisorFeatureEnabled = false;
+        $supervisorCandidates = [];
+        if (Auth::user()->school_id && $this->isSupervisorFeatureEnabled()) {
+            $supervisorFeatureEnabled = true;
+            $supervisorCandidates = User::where('school_id', Auth::user()->school_id)
+                ->where('status', 1)
+                ->whereHas('staff')
+                ->select('id', 'first_name', 'last_name')
+                ->orderBy('first_name')
+                ->get();
+        }
+
+
+        return response(view('staff.index', compact('roles', 'schools', 'features', 'allowances', 'deductions', 'extraFields', 'sessionYears', 'supervisorCandidates', 'supervisorFeatureEnabled')));
     }
 
     public function store(Request $request)
@@ -111,7 +163,7 @@ class StaffController extends Controller
         ResponseService::noPermissionThenSendJson('staff-create');
 
         try {
-            $validator = Validator::make($request->all(), [
+            $rules = [
                 'first_name' => 'required',
                 'last_name' => 'required',
                 'mobile' => 'required|digits_between:6,15',
@@ -119,8 +171,13 @@ class StaffController extends Controller
                 'role_id' => 'required|numeric',
                 'status' => 'nullable|in:0,1',
                 'dob' => 'required',
-                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
-            ], [
+            ];
+
+            if ($this->isSupervisorFeatureEnabled()) {
+                $rules['supervisor_user_id'] = 'nullable|integer|exists:users,id';
+            }
+
+            $validator = Validator::make($request->all(), $rules, [
                 'email.regex' => 'Please enter a valid email (e.g. user@example.com).',
             ]);
             if ($validator->fails()) {
@@ -226,15 +283,42 @@ class StaffController extends Controller
                 $joining_date = null;
             }
 
+            // Validate supervisor assignment (school-level only, feature-gated)
+            if ($this->isSupervisorFeatureEnabled() && Auth::user() && Auth::user()->school_id && $request->filled('supervisor_user_id')) {
+                $supervisorUserId = $request->supervisor_user_id;
+
+                // Prevent selecting self (defensive)
+                if ($supervisorUserId == $user->id) {
+                    DB::rollback();
+                    ResponseService::errorResponse('Cannot set yourself as direct supervisor');
+                }
+
+                // Verify supervisor is an active staff in the same school
+                $supervisorValid = User::where('id', $supervisorUserId)
+                    ->where('school_id', $user->school_id)
+                    ->where('status', 1)
+                    ->whereHas('staff')
+                    ->exists();
+
+                if (!$supervisorValid) {
+                    DB::rollback();
+                    ResponseService::errorResponse('Selected supervisor is not a valid staff member in this school');
+                }
+            }
+
             if (Auth::user() && Auth::user()->school_id) {
-                $staff = $this->staff->create([
+                $staffData = [
                     'user_id' => $user->id,
                     'qualification' => null,
                     'salary' => $request->salary ?? 0,
                     'joining_date' => $joining_date,
                     'join_session_year_id' => $request->session_year_id,
-                    'leave_session_year_id' => null
-                ]);
+                    'leave_session_year_id' => null,
+                ];
+                if ($this->isSupervisorFeatureEnabled()) {
+                    $staffData['supervisor_user_id'] = $request->filled('supervisor_user_id') ? $request->supervisor_user_id : null;
+                }
+                $staff = $this->staff->create($staffData);
             } else {
                 $staff = $this->staff->create([
                     'user_id' => $user->id,
@@ -328,6 +412,11 @@ class StaffController extends Controller
         $order = request('order', 'DESC');
         $session_year_id = request('session_year_id');
 
+        $eagerLoads = ['staff', 'roles', 'support_school.school'];
+        if ($this->isSupervisorFeatureEnabled()) {
+            $eagerLoads[] = 'staff.supervisor';
+        }
+
         $sql = $this->user->builder()
             ->where(function ($query) {
                 $query->whereHas('roles', function ($q) {
@@ -336,7 +425,7 @@ class StaffController extends Controller
                     $q->whereNot('name', 'Teacher');
                 });
             })
-            ->with('staff', 'roles', 'support_school.school');
+            ->with($eagerLoads);
 
         if ($session_year_id) {
             $sql->whereHas('staff', function ($q) use ($session_year_id) {
@@ -395,8 +484,13 @@ class StaffController extends Controller
             $tempRow = $row->toArray();
             $tempRow['no'] = $no++;
             $tempRow['dob_org'] = $row->getRawOriginal('dob');
-            $tempRow['joining_date_org'] = $row->staff->getRawOriginal('joining_date');
+            $tempRow['joining_date_org'] = $row->staff ? $row->staff->getRawOriginal('joining_date') : null;
             $tempRow['support_school_id'] = $row->support_school->pluck('school_id');
+            if ($this->isSupervisorFeatureEnabled()) {
+                $staffRecord = $row->staff;
+                $supervisor = $staffRecord ? $staffRecord->supervisor : null;
+                $tempRow['supervisor_name'] = $supervisor ? trim($supervisor->first_name . ' ' . $supervisor->last_name) : '';
+            }
             $tempRow['operate'] = $operate;
             $tempRow['roles_name'] = $row->roles->pluck('name');
             if (Auth::user()->school_id) {
@@ -428,15 +522,20 @@ class StaffController extends Controller
         ResponseService::noFeatureThenRedirect('Staff Management');
         ResponseService::noPermissionThenSendJson('staff-edit');
         try {
-            $validator = Validator::make($request->all(), [
+            $rules = [
                 'first_name' => 'required',
                 'last_name' => 'required',
                 'mobile' => 'required|digits_between:6,15',
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $id,
                 'role_id' => 'required|numeric',
                 'dob' => 'required',
-                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
-            ]);
+            ];
+
+            if ($this->isSupervisorFeatureEnabled()) {
+                $rules['supervisor_user_id'] = 'nullable|integer|exists:users,id';
+            }
+
+            $validator = Validator::make($request->all(), $rules);
             if ($validator->fails()) {
                 ResponseService::validationError($validator->errors()->first());
             }
@@ -502,10 +601,49 @@ class StaffController extends Controller
                 $joining_date = null;
             }
 
-            $this->staff->update($user->staff->id, [
+            // Validate supervisor assignment (school-level only, feature-gated)
+            if ($this->isSupervisorFeatureEnabled() && $user->school_id) {
+                $supervisorUserId = $request->supervisor_user_id;
+
+                if ($request->filled('supervisor_user_id')) {
+                    // Prevent selecting self
+                    if ($supervisorUserId == $user->id) {
+                        DB::rollback();
+                        ResponseService::errorResponse('Cannot set yourself as direct supervisor');
+                    }
+
+                    // Verify supervisor is an active staff in the same school
+                    $supervisorValid = User::where('id', $supervisorUserId)
+                        ->where('school_id', $user->school_id)
+                        ->where('status', 1)
+                        ->whereHas('staff')
+                        ->exists();
+
+                    if (!$supervisorValid) {
+                        DB::rollback();
+                        ResponseService::errorResponse('Selected supervisor is not a valid staff member in this school');
+                    }
+
+                    // Prevent direct bidirectional cycle (A→B when B→A)
+                    $bidirectionalCycle = \App\Models\Staff::where('user_id', $supervisorUserId)
+                        ->where('supervisor_user_id', $user->id)
+                        ->exists();
+
+                    if ($bidirectionalCycle) {
+                        DB::rollback();
+                        ResponseService::errorResponse(trans('supervisor_cycle_error'));
+                    }
+                }
+            }
+
+            $staffUpdateData = [
                 'salary' => $request->salary,
-                'joining_date' => $joining_date
-            ]);
+                'joining_date' => $joining_date,
+            ];
+            if ($this->isSupervisorFeatureEnabled()) {
+                $staffUpdateData['supervisor_user_id'] = $request->filled('supervisor_user_id') ? $request->supervisor_user_id : null;
+            }
+            $this->staff->update($user->staff->id, $staffUpdateData);
 
             if ($user->school_id) {
                 $leave_permission = [

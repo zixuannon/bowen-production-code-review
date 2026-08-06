@@ -2,6 +2,37 @@
 // noinspection JSUnusedGlobalSymbols
 
 /**
+ * Safely escape HTML entities in user-provided text.
+ * Uses textContent (via jQuery) for robust entity encoding,
+ * avoiding unsafe string-replace-only approaches.
+ * @param {*} value - The value to escape
+ * @returns {string} HTML-escaped string, or empty string for null/undefined
+ */
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return $('<div>').text(String(value)).html();
+}
+
+/**
+ * Safely validate a URL for use in href attributes.
+ * Blocks javascript: and data: protocol URLs.
+ * @param {string} url - The URL to validate
+ * @returns {string} The original URL if safe, or '#' if unsafe
+ */
+function safeUrlAttr(url) {
+    if (!url) {
+        return '#';
+    }
+    var trimmed = String(url).trim().toLowerCase();
+    if (trimmed.indexOf('javascript:') === 0 || trimmed.indexOf('data:') === 0) {
+        return '#';
+    }
+    return url;
+}
+
+/**
  * 格式化货币显示
  * @param {*} value - 金额值
  * @param {string} currency - 货币代码 (MMK/CNY/USD)，默认 MMK
@@ -52,22 +83,24 @@ function fileFormatter(value, row) {
         let other_link_counter = 1;
 
         $.each(row.file, function (key, data) {
+            var safeUrl = safeUrlAttr(data.file_url);
+            var safeName = escapeHtml(data.file_name || '');
             //1 = File Upload , 2 = YouTube , 3 = Uploaded Video , 4 = Other
             if (data.type == 1) {
                 // 1 = File Upload
-                file_upload += "<a href='" + data.file_url + "' target='_blank' >" + file_upload_counter + ". File Upload</a><br>";
+                file_upload += "<a href='" + safeUrl + "' target='_blank' rel='noopener noreferrer'>" + file_upload_counter + ". " + safeName + "</a><br>";
                 file_upload_counter++;
             } else if (data.type == 2) {
                 // 2 = YouTube Link
-                youtube_link += "<a href='" + data.file_url + "' target='_blank' >" + youtube_link_counter + ". YouTube Link</a><br>";
+                youtube_link += "<a href='" + safeUrl + "' target='_blank' rel='noopener noreferrer'>" + youtube_link_counter + ". YouTube Link</a><br>";
                 youtube_link_counter++;
             } else if (data.type == 3) {
                 // 3 = Uploaded Video
-                video_upload += "<a href='" + data.file_url + "' target='_blank' >" + video_upload_counter + ". Video Upload</a><br>";
+                video_upload += "<a href='" + safeUrl + "' target='_blank' rel='noopener noreferrer'>" + video_upload_counter + ". Video Upload</a><br>";
                 video_upload_counter++;
             } else if (data.type == 4) {
                 // 4 = Other Link
-                other_link += "<a href='" + data.file_url + "' target='_blank' class='text-truncate'>" + other_link_counter + ". Link</a><br>";
+                other_link += "<a href='" + safeUrl + "' target='_blank' rel='noopener noreferrer' class='text-truncate'>" + other_link_counter + ". Link</a><br>";
                 other_link_counter++;
             }
         })
@@ -141,19 +174,23 @@ function packageTypeFormatter(value, row) {
 }
 
 function descriptionFormatter(value, row) {
-    let html = '';
-    if (value) {
-        html = '<div class="bootstrap-table-description" data-toggle="modal" data-target="#descriptionModal"><a href="javascript:void(0)">' + value + '</a></div>';
+    if (!value) {
+        return '';
     }
-    return html;
+    // Truncate to 80 chars for display; modal shows the full text
+    var escaped = escapeHtml(value);
+    var truncated = escaped.length > 80 ? escaped.substring(0, 80) + '...' : escaped;
+    return '<div class="bootstrap-table-description" data-toggle="modal" data-target="#descriptionModal">'
+        + '<a href="javascript:void(0)">' + truncated + '</a></div>';
 }
 
 function diaryFormatter(value, row) {
-    let html = '';
-    if (value) {
-        html = '<div class="bootstrap-table-description" data-toggle="modal" data-target="#diaryModal">' + value + '</div>';
+    if (!value) {
+        return '';
     }
-    return html;
+    var escaped = escapeHtml(value);
+    var truncated = escaped.length > 80 ? escaped.substring(0, 80) + '...' : escaped;
+    return '<div class="bootstrap-table-description" data-toggle="modal" data-target="#diaryModal">' + truncated + '</div>';
 }
 
 function diaryTypeFormatter(value, row) {
@@ -166,12 +203,82 @@ function diaryTypeFormatter(value, row) {
 
 function leaveStatusFormatter(value) {
     if (value == 0) {
-        return "<span class='badge badge-warning'>" + window.trans["pending"] + "</span>";
+        return "<span class='badge badge-warning'>" + (window.trans["pending"] || "Pending") + "</span>";
     } else if (value == 1) {
-        return "<span class='badge badge-success'>" + window.trans["approved"] + "</span>";
+        return "<span class='badge badge-success'>" + (window.trans["approved"] || "Approved") + "</span>";
     } else {
-        return "<span class='badge badge-danger'>" + window.trans["rejected"] + "</span>";
+        return "<span class='badge badge-danger'>" + (window.trans["rejected"] || "Rejected") + "</span>";
     }
+}
+
+function supervisorStatusFormatter(value, row) {
+    // For two-stage leave, show supervisor_status badge
+    // Handles null/undefined gracefully — returns safe empty string
+    if (value === null || value === undefined) {
+        return '';
+    }
+    if (value == 0) {
+        return "<span class='badge badge-warning'>" + (window.trans["supervisor_pending"] || "Pending Supervisor") + "</span>";
+    } else if (value == 1) {
+        return "<span class='badge badge-info'>" + (window.trans["supervisor_approved"] || "Approved by Supervisor") + "</span>";
+    } else if (value == 2) {
+        return "<span class='badge badge-danger'>" + (window.trans["supervisor_rejected"] || "Rejected by Supervisor") + "</span>";
+    }
+    return '';
+}
+
+function hrStatusFormatter(value, row) {
+    // For Phase 4 HR final approval status
+    if (value == 0 || value === 0) {
+        return "<span class='badge badge-warning'>" + (window.trans["hr_pending"] || "Pending") + "</span>";
+    } else if (value == 1 || value === 1) {
+        return "<span class='badge badge-success'>" + (window.trans["hr_approved"] || "Approved") + "</span>";
+    } else if (value == 2 || value === 2) {
+        return "<span class='badge badge-danger'>" + (window.trans["hr_rejected"] || "Rejected") + "</span>";
+    }
+    return '';
+}
+
+function leaveStageStatusFormatter(value, row) {
+    // Employee leave list two-stage status display (Supervisor Final Approval)
+    // If withdrawn, show withdrawn status
+    if (row.withdrawn_at) {
+        return "<span class='badge badge-secondary'>" + (window.trans["withdrawn"] || "Withdrawn") + "</span>";
+    }
+    // If supervisor_status is null, use legacy status
+    if (row.supervisor_status === null || row.supervisor_status === undefined) {
+        if (row.status == 0) {
+            return "<span class='badge badge-warning'>" + (window.trans["pending"] || "Pending") + "</span>";
+        } else if (row.status == 1) {
+            return "<span class='badge badge-success'>" + (window.trans["approved"] || "Approved") + "</span>";
+        } else if (row.status == 2) {
+            return "<span class='badge badge-danger'>" + (window.trans["rejected"] || "Rejected") + "</span>";
+        }
+        return '';
+    }
+    // Two-stage flow (Supervisor Final Approval)
+    if (row.supervisor_status == 0) {
+        return "<span class='badge badge-warning'>" + (window.trans["supervisor_pending"] || "Waiting for Supervisor") + "</span>";
+    } else if (row.supervisor_status == 2) {
+        return "<span class='badge badge-danger'>" + (window.trans["supervisor_rejected"] || "Supervisor Rejected") + "</span>";
+    } else if (row.supervisor_status == 1) {
+        // Supervisor approved = final approval in new flow
+        // Historical: if hr_status=1/2, display accordingly
+        if (row.hr_status == 1) {
+            return "<span class='badge badge-success'>" + (window.trans["hr_final_approved"] || "HR Approved") + "</span>";
+        }
+        if (row.hr_status == 2) {
+            return "<span class='badge badge-danger'>" + (window.trans["hr_final_rejected"] || "HR Rejected") + "</span>";
+        }
+        // Legacy edge case: supervisor approved but hr_status=0 and status=0
+        // (Phase 4 test data that was never finalized — NOT "Approved")
+        if ((row.hr_status === 0 || row.hr_status === "0") && (row.status === 0 || row.status === "0")) {
+            return "<span class='badge badge-warning'>" + (window.trans["legacy_leave_pending"] || "Legacy Pending") + "</span>";
+        }
+        // New flow: supervisor approved = final (hr_status is null, status=1)
+        return "<span class='badge badge-success'>" + (window.trans["approved"] || "Approved") + "</span>";
+    }
+    return '';
 }
 
 function userTypeFormatter(value, row) {
@@ -272,7 +379,7 @@ function salaryStatusFormatter(value) {
 }
 
 function assignmentFileFormatter(value, row) {
-    return "<a target='_blank' href='" + row.file + "'>" + row.name + "</a>";
+    return "<a target='_blank' rel='noopener noreferrer' href='" + safeUrlAttr(row.file) + "'>" + escapeHtml(row.name) + "</a>";
 }
 
 
@@ -330,7 +437,7 @@ function imageFormatter(value) {
 
 function StudentNameFormatter(value, row) {
     let html = '';
-    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.user.image) + ' <div class="ms-3"> <h6 class="mb-0">' + row.user.full_name + '</h6> <small class="text-muted"> ' + row.user.email + ' </small> </div> </div>';
+    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.user.image) + ' <div class="ms-3"> <h6 class="mb-0">' + escapeHtml(row.user.full_name) + '</h6> <small class="text-muted"> ' + escapeHtml(row.user.email) + ' </small> </div> </div>';
     return html;
 }
 
@@ -373,7 +480,7 @@ function NotificationUserNameFormatter(value, row) {
 
 function StaffNameFormatter(value, row) {
     let html = '';
-    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.image) + ' <div class="ms-3"> <h6 class="mb-0">' + row.full_name + '</h6> <small class="text-muted"> ' + row.email + ' </small> </div> </div>';
+    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.image) + ' <div class="ms-3"> <h6 class="mb-0">' + escapeHtml(row.full_name) + '</h6> <small class="text-muted"> ' + escapeHtml(row.email) + ' </small> </div> </div>';
     return html;
 }
 function CreatedByNameFormatter(value, row) {
@@ -481,7 +588,7 @@ function schoolAdminFormatter(value, row) {
 
 function linkFormatter(value, row) {
     if (row.link) {
-        return "<a href='" + row.link + "' target='_blank'>" + row.link + "</a>";
+        return "<a href='" + safeUrlAttr(row.link) + "' target='_blank' rel='noopener noreferrer'>" + escapeHtml(row.link) + "</a>";
     } else {
         return '-'
     }
@@ -1561,4 +1668,10 @@ function tripReportUserFormatter(value, row) {
         '</a>' +
         '</div>' +
         '</div>';
+}
+function supervisorNameFormatter(value, row) {
+    if (row.supervisor_name) {
+        return row.supervisor_name;
+    }
+    return '<span class="text-muted">—</span>';
 }

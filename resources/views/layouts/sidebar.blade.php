@@ -836,7 +836,7 @@
         @endcan
 
         {{-- Leave --}}
-        @canany(['leave-list', 'leave-create', 'leave-edit', 'leave-delete'])
+        @canany(['leave-list', 'leave-create', 'leave-edit', 'leave-delete', 'hr-view-leave'])
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#staff-leave-menu" data-access="@hasFeatureAccess('Staff Leave Management')"
                     aria-expanded="false" aria-controls="staff-leave-menu">
@@ -852,6 +852,28 @@
                                 {{ __('apply_leave') }}
                             </a>
                         </li>
+
+                        {{-- Supervisor leave approval (Phase 3) --}}
+                        {{-- Unified gate: TwoStageLeaveService::isEnabled() ensures global flag + allowlist + schema --}}
+                        @if(\App\Services\StaffLeave\TwoStageLeaveService::isEnabled() && Auth::user()->subordinates()->exists())
+                            <li class="nav-item">
+                                <a href="{{ route('leave.supervisor') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                    {{ __('supervisor_leave_requests') }}
+                                </a>
+                            </li>
+                        @endif
+
+                        {{-- HR read-only view (Supervisor Final Approval) --}}
+                        {{-- Unified gate: TwoStageLeaveService::isEnabled() ensures global flag + allowlist + schema --}}
+                        @if(\App\Services\StaffLeave\TwoStageLeaveService::isEnabled() && Auth::user()->can('hr-view-leave'))
+                            <li class="nav-item">
+                                <a href="{{ route('leave.hr') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                    {{ __('hr_leave_requests') }}
+                                </a>
+                            </li>
+                        @endif
 
                         <li class="nav-item">
                             <a href="{{ route('leave.report') }}" class="nav-link"

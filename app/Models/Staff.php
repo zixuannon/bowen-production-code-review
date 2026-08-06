@@ -20,7 +20,8 @@ class Staff extends Model
         'session_year_id',
         'join_session_year_id',
         'leave_session_year_id',
-        'license'
+        'license',
+        'supervisor_user_id',
     ];
     protected $hidden = ['created_at', 'updated_at'];
 
@@ -92,6 +93,16 @@ class Staff extends Model
     public function extra_user_datas()
     {
         return $this->hasMany(ExtraStudentData::class, 'user_id');
+    }
+
+    /**
+     * Get the supervisor (直属主管) for this Staff
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function supervisor()
+    {
+        return $this->belongsTo(User::class, 'supervisor_user_id')->withTrashed();
     }
 
     /**

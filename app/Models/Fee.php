@@ -22,8 +22,6 @@ class Fee extends Model {
         'class_id',
         'school_id',
         'session_year_id',
-        'created_at',
-        'updated_at'
     ];
 
     protected $appends = ['include_fee_installments', 'total_compulsory_fees', 'total_optional_fees', 'compulsory_fees', 'optional_fees', 'format_due_date'];
@@ -80,23 +78,27 @@ class Fee extends Model {
     }
 
     public function getTotalCompulsoryFeesAttribute() {
-        if ($this->relationLoaded('fees_class_type')) {
+        if ($this->relationLoaded('fees_class_type') && $this->fees_class_type->isNotEmpty()) {
             $compulsoryFees = $this->fees_class_type->filter(function ($data) {
                 return $data->optional == 0;
             });
             return $compulsoryFees->sum('amount');
         }
-        return null;
+        // Fall back to the raw DB column value when relation is not loaded or empty
+        $raw = $this->getRawOriginal('total_compulsory_fees');
+        return $raw !== null ? (float) $raw : null;
     }
 
     public function getTotalOptionalFeesAttribute() {
-        if ($this->relationLoaded('fees_class_type')) {
+        if ($this->relationLoaded('fees_class_type') && $this->fees_class_type->isNotEmpty()) {
             $optionalFees = $this->fees_class_type->filter(function ($data) {
                 return $data->optional == 1;
             });
             return $optionalFees->sum('amount');
         }
-        return null;
+        // Fall back to the raw DB column value when relation is not loaded or empty
+        $raw = $this->getRawOriginal('total_optional_fees');
+        return $raw !== null ? (float) $raw : null;
     }
 
 

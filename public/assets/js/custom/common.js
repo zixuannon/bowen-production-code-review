@@ -355,6 +355,7 @@ $('#edit-form,.edit-form,.edit-form-without-reset,.edit-form-staff-payroll-setti
                     $('#editModal').modal('hide');
                     $('#change-bill').modal('hide');
                     $('#viewModal').modal('hide');
+                    $('#supervisorModal').modal('hide');
                     
                     $('#update-current-plan').modal('hide');
                     $('#tags').removeTag();

@@ -12,7 +12,47 @@ class Leave extends Model
 {
     use HasFactory, DateFormatTrait;
 
-    protected $fillable = ['user_id', 'reason', 'from_date', 'to_date', 'status', 'school_id', 'leave_master_id'];
+    // ---- Status constants (leaves.status) ----
+    const STATUS_PENDING   = 0;
+    const STATUS_APPROVED  = 1;
+    const STATUS_REJECTED  = 2;
+    const STATUS_WITHDRAWN = 3;
+
+    // ---- Approval sub-status (supervisor_status / hr_status) ----
+    const APPROVAL_PENDING   = 0;
+    const APPROVAL_APPROVED  = 1;
+    const APPROVAL_REJECTED  = 2;
+
+    protected $fillable = [
+        'user_id',
+        'reason',
+        'from_date',
+        'to_date',
+        'status',
+        'school_id',
+        'leave_master_id',
+        // Two-stage approval fields (Phase 1)
+        'supervisor_status',
+        'supervisor_comment',
+        'supervisor_user_id',
+        'supervisor_reviewed_at',
+        'hr_status',
+        'hr_comment',
+        'hr_user_id',
+        'hr_reviewed_at',
+        'withdrawn_at',
+    ];
+
+    /**
+     * The attributes that should be treated as dates.
+     *
+     * @var array
+     */
+    protected $dates = [
+        'supervisor_reviewed_at',
+        'hr_reviewed_at',
+        'withdrawn_at',
+    ];
 
     public function scopeOwner()
     {
@@ -64,6 +104,22 @@ class Leave extends Model
     public function file()
     {
         return $this->morphMany(File::class, 'modal');
+    }
+
+    /**
+     * Get the supervisor who approved/rejected this leave.
+     */
+    public function supervisorApprover()
+    {
+        return $this->belongsTo(User::class, 'supervisor_user_id')->withTrashed();
+    }
+
+    /**
+     * Get the HR who approved/rejected this leave.
+     */
+    public function hrApprover()
+    {
+        return $this->belongsTo(User::class, 'hr_user_id')->withTrashed();
     }
 
     public function getUpdatedAtAttribute()

@@ -94,6 +94,15 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Staff::class, 'user_id', 'id');
     }
 
+    /**
+     * Get the subordinates (直属下属) for this User (if they are a supervisor).
+     * Returns Staff records where supervisor_user_id = this user's id.
+     */
+    public function subordinates()
+    {
+        return $this->hasMany(Staff::class, 'supervisor_user_id', 'id');
+    }
+
     public function class_section_teacher()
     {
         return $this->hasOne(ClassSection::class, 'class_teacher_id')->withTrashed();

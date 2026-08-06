@@ -1,0 +1,39 @@
+# Staff Leave Supervisor-Final Approval — Deploy Manifest
+# ================================================================
+# Commit:  7c4542ecb13243cedc5129f1f482d1608d67b0f6 (7c4542e)
+# Branch:  fix/unify-staff-leave-gates
+# Message: Unify tenant gates for staff leave gray rollout
+# ================================================================
+# Artifact: staff_leave_school15_7c4542e.tar.gz
+# SHA256:   c0e937351a4a0f78bc0cacc85b301f733faffcd43866fe3df28978fae0d97e59
+# Status:   CURRENT (for School15 gray deployment)
+# ================================================================
+# SUPERSEDED:
+#   staff_leave_school15_4a6dc93.tar.gz — superseded, do not deploy
+# ================================================================
+# Files (25):
+app/Http/Controllers/Api/ApiController.php
+app/Http/Controllers/Api/StaffApiController.php
+app/Http/Controllers/LeaveController.php
+app/Http/Controllers/StaffController.php
+app/Models/Leave.php
+app/Models/Staff.php
+app/Models/User.php
+app/Services/SchoolDataService.php
+app/Console/Commands/InstallHrLeavePermissionForSchool.php
+app/Services/StaffLeave/TwoStageLeaveService.php
+config/features.php
+database/migrations/schools/2026_07_08_000001_add_two_stage_leave_approval.php
+public/assets/js/custom/bootstrap-table/actionEvents.js
+public/assets/js/custom/bootstrap-table/formatter.js
+public/assets/js/custom/bootstrap-table/queryParams.js
+public/assets/js/custom/common.js
+resources/lang/en.json
+resources/lang/zh-cn.json
+resources/views/description_modal.blade.php
+resources/views/layouts/sidebar.blade.php
+resources/views/leave/index.blade.php
+resources/views/leave/hr_requests.blade.php
+resources/views/leave/supervisor_requests.blade.php
+resources/views/staff/index.blade.php
+routes/web.php
