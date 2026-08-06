@@ -20,6 +20,8 @@ class CompulsoryFee extends Model
         'installment_id',
         'mode',
         'cheque_no',
+        'reference_no',
+        'import_batch_id',
         'amount',
         'due_charges',
         'fees_paid_id',

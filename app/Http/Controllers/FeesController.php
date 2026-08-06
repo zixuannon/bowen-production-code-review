@@ -27,6 +27,8 @@ use App\Services\BootstrapTableService;
 use App\Services\SessionYearsTrackingsService;
 use App\Services\CachingService;
 use App\Services\ResponseService;
+use App\Services\FeesPaymentService;
+use App\Services\FeesPaidImportService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use DateTime;
@@ -1350,197 +1352,157 @@ class FeesController extends Controller
         return view('Income.pay-compulsory', compact('fees', 'student', 'oneInstallmentPaid', 'currencySymbol', 'isFullyPaid', 'due_charges', 'installment_status', 'bankAccounts'));
     }
 
-    public function payCompulsoryFeesStore(Request $request)
+    public function payCompulsoryFeesStore(Request $request, FeesPaymentService $paymentService)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-paid');
 
         $request->validate([
-            'fees_id' => 'required|numeric',
-            'student_id' => 'required|numeric',
-            'installment_mode' => 'required|boolean',
-            'installment_fees' => 'array',
-            'installment_fees' => 'required_if:installment_mode,1',
+            'fees_id'              => 'required|numeric',
+            'student_id'           => 'required|numeric',
+            'installment_mode'     => 'required|boolean',
+            'installment_fees'     => 'required_if:installment_mode,1|array',
             // 多货币字段：暂时不要求，付款默认使用 MMK
             'transaction_currency' => 'nullable|in:MMK,CNY,USD',
-            'original_amount' => 'nullable|numeric|min:0',
+            'original_amount'      => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0.0001',
-
         ], [
             'installment_fees.required_if' => 'Please select at least one installment',
-            'transaction_currency.in' => 'Transaction currency must be MMK, CNY, or USD',
-            'original_amount.min' => 'Original amount must be 0 or greater',
-            'exchange_rate_snapshot.min' => 'Exchange rate must be greater than 0',
+            'transaction_currency.in'      => 'Transaction currency must be MMK, CNY, or USD',
+            'original_amount.min'          => 'Original amount must be 0 or greater',
+            'exchange_rate_snapshot.min'   => 'Exchange rate must be greater than 0',
         ]);
 
+        $fees = $this->fees->findById($request->fees_id, ['*'], [
+            'fees_class_type.fees_type:id,name',
+            'installments:id,name,due_date,due_charges,due_charges_type,fees_id'
+        ]);
 
         try {
             DB::beginTransaction();
-            $fees = $this->fees->findById($request->fees_id, ['*'], ['fees_class_type.fees_type:id,name', 'installments:id,name,due_date,due_charges,fees_id']);
-            //            if (count($fees->installments) > 0) {
-            //                collect($fees->installments)->map(function ($data) use ($fees) {
-            //                    $data['minimum_amount'] = $fees->total_compulsory_fees / count($fees->installments);
-            //                    $data['total_amount'] = $data['minimum_amount']; //Due charges
-            //                    return $data;
-            //                });
-            //            }
 
-            $feesPaid = $this->feesPaid->builder()->where([
-                'fees_id' => $request->fees_id,
-                'student_id' => $request->student_id
-            ])->first();
+            $result = $paymentService->processPayment($request->all(), $fees);
 
-            if (!empty($feesPaid) && $feesPaid->is_fully_paid) {
-                ResponseService::errorResponse("Compulsory Fees already Paid");
-            }
-
-            // ========== 多货币处理 ==========
-            // 支持 MMK / USD / CNY 付款
-            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
-            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
-            $originalAmount = (float)($request->original_amount ?? 0);
-            
-            // 获取付款金额（MMK 等值）
-            if ($request->installment_mode) {
-                // 分期模式
-                if (!empty($request->installment_fees)) {
-                    $amount = array_sum(array_column($request->installment_fees, 'amount'));
-                } else {
-                    $amount = 0;
-                }
-                $amount += $request->advance ?? 0;
-            } else {
-                // 全额付款模式
-                if ($request->enter_amount) {
-                    $amount = (float) $request->enter_amount;
-                } else {
-                    $amount = (float) $request->total_amount;
-                }
-            }
-            
-            // 计算 MMK 等值金额
-            if ($transactionCurrency === 'MMK') {
-                // MMK 付款：amount 和 amount_mmk 相同
-                $amountMmk = $amount;
-                $originalAmount = $amount;
-                $exchangeRate = 1;
-            } else {
-                // USD / CNY 付款：amount 是 MMK 等值，originalAmount 是原币金额
-                $amountMmk = $amount;
-                if ($originalAmount <= 0) {
-                    // 如果前端没传 original_amount，用 amount 和汇率反推
-                    $originalAmount = $amount / $exchangeRate;
-                }
-            }
-            // =============================================
-
-            if (empty($feesPaid)) {
-                $feesPaidResult = $this->feesPaid->create([
-                    'date' => date('Y-m-d', strtotime($request->date)),
-                    'is_fully_paid' => $amount >= $fees->total_compulsory_fees,
-                    'is_used_installment' => $request->installment_mode,
-                    'fees_id' => $request->fees_id,
-                    'student_id' => $request->student_id,
-                    'amount' => $amount,
-                    'transaction_currency' => $transactionCurrency,
-                    'original_amount' => $originalAmount,
-                    'exchange_rate_snapshot' => $exchangeRate,
-                    'amount_mmk' => $amountMmk,
-                ]);
-            } else {
-                $feesPaidResult = $this->feesPaid->update($feesPaid->id, [
-                    'amount' => $amount + $feesPaid->amount,
-                    'is_fully_paid' => ($amount + $feesPaid->amount) >= $fees->total_compulsory_fees,
-                    'transaction_currency' => $transactionCurrency,
-                    'original_amount' => $originalAmount,
-                    'exchange_rate_snapshot' => $exchangeRate,
-                    'amount_mmk' => $amountMmk,
-                ]);
-            }
-
-            // 计算需要保存到 compulsory_fees 的 MMK 金额
-            $compulsoryFeeAmount = $amount;
-
-            if ($request->installment_mode == 1) {
-                if (!empty($request->installment_fees)) {
-                    foreach ($request->installment_fees as $installment_fee) {
-                        $compulsoryFeeData = array(
-                            'student_id' => $request->student_id,
-                            'type' => 'Installment Payment',
-                            'installment_id' => $installment_fee['id'],
-                            'mode' => $request->mode,
-                    'cheque_no' => ($request->mode == 2 || $request->mode == '2' || $request->mode == 'Cheque') ? $request->cheque_no : null,
-                        'amount' => (float) $installment_fee['amount'], // 保存 MMK 金额
-                        'due_charges' => $installment_fee['due_charges'] ?? null,
-                        'fees_paid_id' => $feesPaidResult->id,
-                        'date' => date('Y-m-d', strtotime($request->date)),
-                        'bank_account_id' => $request->bank_account_id ?: null,
-                    );
-                    $this->compulsoryFee->create($compulsoryFeeData);
-
-                        $sessionYear = $this->cache->getDefaultSessionYear();
-                        $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\CompulsoryFee', $feesPaidResult->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
-                    }
-                }
-            } else {
-                $compulsoryFeeData = array(
-                    'type' => 'Full Payment',
-                    'student_id' => $request->student_id,
-                    'mode' => $request->mode,
-                    'cheque_no' => ($request->mode == 2 || $request->mode == '2' || $request->mode == 'Cheque') ? $request->cheque_no : null,
-                    'amount' => $compulsoryFeeAmount, // compulsory_fees.amount 保存 MMK 金额
-                    'due_charges' => $request->due_charges_amount ?? null,
-                    'fees_paid_id' => $feesPaidResult->id,
-                    'date' => date('Y-m-d', strtotime($request->date)),
-                    'bank_account_id' => $request->bank_account_id ?: null,
-                );
-                $this->compulsoryFee->create($compulsoryFeeData);
-
-                $sessionYear = $this->cache->getDefaultSessionYear();
-                $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\CompulsoryFee', $feesPaidResult->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
-            }
-
-
-            // Add advance amount in installment
-            if ($request->advance > 0) {
-                $updateCompulsoryFees = $this->compulsoryFee->builder()->where('student_id', $request->student_id)->with('fees_paid')->whereHas('fees_paid', function ($q) use ($request) {
-                    $q->where('fees_id', $request->fees_id);
-                })->orderBy('id', 'DESC')->first();
-
-                // advance 金额已经是 MMK
-                $advanceAmountMmk = (float) $request->advance;
-
-                $updateCompulsoryFees->amount += $advanceAmountMmk;
-                $updateCompulsoryFees->save();
-
-                FeesAdvance::create([
-                    'compulsory_fee_id' => $updateCompulsoryFees->id,
-                    'student_id' => $request->student_id,
-                    'parent_id' => $request->parent_id,
-                    'amount' => $advanceAmountMmk // advance 保存 MMK 金额
-                ]);
-            }
             DB::commit();
 
+            // Notification AFTER successful commit (NOT in service)
             $student = $this->student->builder()->where('user_id', $request->student_id)->first();
-            $user[] = $student->guardian_id;              
+            $user[] = $student->guardian_id;
             if ($user) {
-                // Get fees name safely
-                $paymentType = $request->installment_mode ? 'Installment Payment' : 'Full Payment';
+                $paymentType = $result['installment_mode'] ? 'Installment Payment' : 'Full Payment';
                 $title = 'Fees Payment Successful';
-                // 显示 MMK 等值金额
-                $body = "Your payment of " . format_money($amountMmk) . " for " . $paymentType . " was successful.";
+                $body = "Your payment of " . format_money($result['amount_mmk']) . " for " . $paymentType . " was successful.";
                 $type = "payment";
-                
                 send_notification($user, $title, $body, $type);
             }
-         
-           
+
             ResponseService::successResponse("Data Updated SuccessFully");
+        } catch (\InvalidArgumentException $e) {
+            DB::rollback();
+            Log::warning('FeesPaymentService validation failed', [
+                'message' => $e->getMessage(),
+                'user_id' => Auth::id(),
+            ]);
+            ResponseService::errorResponse($e->getMessage());
         } catch (Throwable $e) {
             DB::rollback();
             ResponseService::logErrorResponse($e, 'FeesController -> compulsoryFeesPaidStore method ');
             ResponseService::errorResponse();
+        }
+    }
+
+    /**
+    /**
+     * Download Excel sample template for Fees Paid import.
+     */
+    public function feesPaidImportTemplate()
+    {
+        ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenRedirect('fees-paid');
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\FeesPaidSampleExport(),
+            'fees_paid_import_template.xlsx'
+        );
+    }
+
+    /**
+     * Preview: Upload Excel file for compulsory fee import.
+     *
+     * Returns JSON with preview rows and summary.
+     */
+    public function feesPaidImportPreview(Request $request, FeesPaidImportService $importService)
+    {
+        ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenRedirect('fees-paid');
+
+        $request->validate([
+            'file' => 'required|file|max:5120',
+        ]);
+
+        try {
+            $result = $importService->preview(
+                $request->file('file'),
+                Auth::user()->school_id,
+                Auth::id()
+            );
+
+            return response()->json([
+                'error'   => false,
+                'message' => 'Preview ready',
+                'data'    => $result,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error'   => true,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Import preview error', ['message' => $e->getMessage()]);
+            return response()->json([
+                'error'   => true,
+                'message' => 'Preview failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Confirm: Process the previewed batch.
+     *
+     * All-or-nothing atomic batch within a school DB transaction.
+     */
+    public function feesPaidImportConfirm(Request $request, FeesPaidImportService $importService)
+    {
+        ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenRedirect('fees-paid');
+
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        try {
+            $result = $importService->confirm(
+                $request->token,
+                Auth::user()->school_id,
+                Auth::id()
+            );
+
+            return response()->json([
+                'error'   => false,
+                'message' => "Import completed. {$result['imported']} rows imported, {$result['skipped']} skipped.",
+                'data'    => $result,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error'   => true,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Import confirm error', ['message' => $e->getMessage()]);
+            return response()->json([
+                'error'   => true,
+                'message' => 'Confirmation failed: ' . $e->getMessage(),
+            ], 500);
         }
     }
 

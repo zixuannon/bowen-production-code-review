@@ -10,6 +10,12 @@
             <h3 class="page-title">
                 {{ __('manage') . ' ' . __('fees') }} {{ __('paid') }}
             </h3>
+            <nav aria-label="breadcrumb">
+                <button type="button" class="btn btn-theme btn-sm float-right" id="btn-import-excel"
+                    onclick="openImportModal()">
+                    <i class="fa fa-upload mr-1"></i> {{ __('Import Excel') }}
+                </button>
+            </nav>
         </div>
         <div class="row">
             {{-- Total Fees --}}
@@ -181,9 +187,358 @@
             </div>
         </div>
     </div>
+
+    {{-- ============ Import Excel Modal ============ --}}
+    <div class="modal fade" id="importExcelModal" tabindex="-1" role="dialog" aria-labelledby="importExcelLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">{{ __('Import Fees Paid (Excel)') }}</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close" onclick="closeImportModal()">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+
+                    {{-- Step 1: Upload --}}
+                    <div id="import-step-upload">
+                        <div class="text-muted mb-3">
+                            <i class="fa fa-info-circle"></i>
+                            {{ __('Download template first, fill data, then upload. Max 500 rows. Max file size: 5MB.') }}
+                        </div>
+                        <div class="mb-3">
+                            <a href="{{ route('fees.import.template') }}" class="btn btn-outline-theme btn-sm" id="btn-download-template">
+                                <i class="fa fa-download"></i> {{ __('Download Template') }}
+                            </a>
+                        </div>
+                        <div class="custom-file mb-3">
+                            <input type="file" class="custom-file-input" id="import-file-input" accept=".xlsx,.xls,.csv">
+                            <label class="custom-file-label" for="import-file-input">{{ __('Choose Excel file...') }}</label>
+                        </div>
+                        <div id="import-file-info" class="text-muted small mb-2" style="display:none;">
+                            <span id="import-file-name"></span> (<span id="import-file-size"></span>)
+                        </div>
+                        <div class="form-group">
+                            <button type="button" class="btn btn-theme" id="btn-upload-preview"
+                                onclick="uploadForPreview()" disabled>
+                                <i class="fa fa-search"></i> {{ __('Preview') }}
+                            </button>
+                            <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="closeImportModal()">{{ __('Cancel') }}</button>
+                        </div>
+                        <div id="import-upload-error" class="alert alert-danger" style="display:none;"></div>
+                    </div>
+
+                    {{-- Step 2: Preview --}}
+                    <div id="import-step-preview" style="display:none;">
+                        <div class="mb-3">
+                            <strong>{{ __('Batch Token') }}:</strong>
+                            <code id="import-token" class="text-break"></code>
+                            <span id="import-token-expiry" class="text-muted small ml-2"></span>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-3"><span class="badge badge-secondary" id="imp-total">0 Total</span></div>
+                            <div class="col-md-3"><span class="badge badge-success" id="imp-valid">0 Valid</span></div>
+                            <div class="col-md-3"><span class="badge badge-warning" id="imp-duplicate">0 Duplicate</span></div>
+                            <div class="col-md-3"><span class="badge badge-danger" id="imp-error">0 Error</span></div>
+                        </div>
+                        <div style="max-height:350px; overflow-y:auto;">
+                            <table class="table table-sm table-bordered" id="import-preview-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th><th>{{ __('Status') }}</th><th>{{ __('Student') }}</th>
+                                        <th>{{ __('Reference No') }}</th><th>{{ __('Amount') }}</th>
+                                        <th>{{ __('Mode') }}</th><th>{{ __('Errors') }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div id="import-preview-error-msg" class="alert alert-warning small mt-2" style="display:none;"></div>
+                        <div class="form-group mt-3">
+                            <button type="button" class="btn btn-success" id="btn-confirm-import"
+                                onclick="confirmImport()" disabled>
+                                <i class="fa fa-check"></i> {{ __('Confirm Import') }}
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary"
+                                onclick="resetImportModal()">{{ __('Back') }}</button>
+                        </div>
+                        <div id="import-confirm-error" class="alert alert-danger mt-2" style="display:none;"></div>
+                    </div>
+
+                    {{-- Step 3: Result --}}
+                    <div id="import-step-result" style="display:none;">
+                        <div class="text-center mb-3">
+                            <i class="fa fa-check-circle text-success" style="font-size:48px;"></i>
+                            <h4 class="mt-2">{{ __('Import Completed') }}</h4>
+                        </div>
+                        <table class="table table-sm table-bordered">
+                            <tr><td>{{ __('Batch ID') }}</td><td id="result-batch-id"></td></tr>
+                            <tr><td>{{ __('Imported') }}</td><td id="result-imported" class="text-success font-weight-bold"></td></tr>
+                            <tr><td>{{ __('Skipped') }}</td><td id="result-skipped" class="text-warning font-weight-bold"></td></tr>
+                            <tr><td>{{ __('Total Rows') }}</td><td id="result-total"></td></tr>
+                        </table>
+                        <div class="form-group text-center">
+                            <button type="button" class="btn btn-theme" data-dismiss="modal" onclick="closeImportModal()">{{ __('Close') }}</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 @section('js')
     <script>
+        // ================================================================
+        // Import state
+        // ================================================================
+        let importToken = null;
+        let importHasErrors = false;
+        let importIsConfirming = false;
+
+        function openImportModal() {
+            resetImportModal();
+            $('#importExcelModal').modal('show');
+        }
+
+        function closeImportModal() {
+            $('#importExcelModal').modal('hide');
+            if (importToken) {
+                // Refresh fee list after import
+                $('#table_list').bootstrapTable('refresh');
+            }
+            resetImportModal();
+        }
+
+        function resetImportModal() {
+            importToken = null;
+            importHasErrors = false;
+            importIsConfirming = false;
+            $('#import-step-upload').show();
+            $('#import-step-preview').hide();
+            $('#import-step-result').hide();
+            $('#import-file-input').val('');
+            $('.custom-file-label').text('Choose Excel file...');
+            $('#import-file-info').hide();
+            $('#btn-upload-preview').prop('disabled', true);
+            $('#import-upload-error').hide().text('');
+            $('#import-preview-table tbody').empty();
+            $('#import-preview-error-msg').hide();
+            $('#btn-confirm-import').prop('disabled', true).html('<i class="fa fa-check"></i> Confirm Import');
+            $('#import-confirm-error').hide().text('');
+            $('#import-upload-error').hide();
+        }
+
+        // ---- File input handler ----
+        $('#import-file-input').on('change', function() {
+            const file = this.files[0];
+            if (file) {
+                $('.custom-file-label').text(file.name);
+                $('#import-file-name').text(file.name);
+                $('#import-file-size').text(formatFileSize(file.size));
+                $('#import-file-info').show();
+
+                // Validate size
+                if (file.size > 5 * 1024 * 1024) {
+                    $('#import-upload-error').text('File size exceeds 5MB limit').show();
+                    $('#btn-upload-preview').prop('disabled', true);
+                } else {
+                    $('#import-upload-error').hide();
+                    $('#btn-upload-preview').prop('disabled', false);
+                }
+            } else {
+                $('.custom-file-label').text('Choose Excel file...');
+                $('#import-file-info').hide();
+                $('#btn-upload-preview').prop('disabled', true);
+            }
+        });
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // ---- Upload for Preview ----
+        function uploadForPreview() {
+            const fileInput = $('#import-file-input')[0];
+            if (!fileInput.files.length) return;
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const $btn = $('#btn-upload-preview');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
+            $('#import-upload-error').hide();
+
+            $.ajax({
+                url: '{{ route('fees.import.preview') }}',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(response) {
+                    if (response.error) {
+                        showUploadError(response.message);
+                        return;
+                    }
+                    renderPreview(response.data);
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                        ? xhr.responseJSON.message
+                        : 'Upload failed. Please check the file format.';
+                    showUploadError(msg);
+                }
+            });
+        }
+
+        function showUploadError(msg) {
+            $('#import-upload-error').text(msg).show();
+            $('#btn-upload-preview').prop('disabled', false).html('<i class="fa fa-search"></i> Preview');
+        }
+
+        // ---- Render Preview ----
+        function renderPreview(data) {
+            importToken = data.token;
+            importHasErrors = (data.summary.error > 0 || data.summary.duplicate > 0);
+
+            $('#import-step-upload').hide();
+            $('#import-step-preview').show();
+
+            $('#import-token').text(data.token);
+
+            // Token expiry
+            const now = new Date();
+            const expiry = new Date(now.getTime() + 30 * 60 * 1000);
+            $('#import-token-expiry').text('(expires at ' + expiry.toLocaleTimeString() + ')');
+
+            // Summary badges
+            $('#imp-total').text(data.summary.total + ' Total');
+            $('#imp-valid').text(data.summary.valid + ' Valid');
+            $('#imp-duplicate').text(data.summary.duplicate + ' Duplicate');
+            $('#imp-error').text(data.summary.error + ' Error');
+
+            // Rows
+            const $tbody = $('#import-preview-table tbody');
+            $tbody.empty();
+            data.rows.forEach(function(row) {
+                let statusBadge;
+                if (row.status === 'valid') {
+                    statusBadge = '<span class="badge badge-success">Valid</span>';
+                } else if (row.status === 'duplicate') {
+                    statusBadge = '<span class="badge badge-warning">Duplicate</span>';
+                } else {
+                    statusBadge = '<span class="badge badge-danger">Error</span>';
+                }
+
+                const errors = (row.errors && row.errors.length)
+                    ? row.errors.join('; ')
+                    : (row.warnings && row.warnings.length ? row.warnings.join('; ') : '');
+
+                $tbody.append(
+                    '<tr>' +
+                    '<td>' + row.row_number + '</td>' +
+                    '<td>' + statusBadge + '</td>' +
+                    '<td>' + (row.student_name || '-') + '</td>' +
+                    '<td>' + (row.reference_no || '-') + '</td>' +
+                    '<td>' + (row.payment_data && row.payment_data.enter_amount ? row.payment_data.enter_amount : '-') + '</td>' +
+                    '<td>' + (row.payment_mode || '-') + '</td>' +
+                    '<td class="text-danger small">' + (errors ? escapeHtml(errors) : '-') + '</td>' +
+                    '</tr>'
+                );
+            });
+
+            // Error rows > 0 => disable Confirm
+            if (data.summary.error > 0) {
+                $('#btn-confirm-import').prop('disabled', true);
+                $('#import-preview-error-msg')
+                    .text('Error rows present. Fix errors and re-upload before confirming.')
+                    .show();
+            } else {
+                $('#btn-confirm-import').prop('disabled', false);
+                $('#import-preview-error-msg').hide();
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ---- Confirm Import ----
+        function confirmImport() {
+            if (importIsConfirming) return;
+            if (!importToken) return;
+
+            importIsConfirming = true;
+            const $btn = $('#btn-confirm-import');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Confirming...');
+            $('#import-confirm-error').hide();
+
+            $.ajax({
+                url: '{{ route('fees.import.confirm') }}',
+                type: 'POST',
+                data: { token: importToken },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(response) {
+                    if (response.error) {
+                        showConfirmError(response.message);
+                        return;
+                    }
+                    renderResult(response.data);
+                },
+                error: function(xhr) {
+                    importIsConfirming = false;
+                    let msg = 'Confirmation failed.';
+                    if (xhr.status === 422) {
+                        // Token expired / completed / failed / cross-user / cross-school
+                        msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Batch is no longer valid. Please re-upload the file.';
+                    } else if (xhr.status === 500) {
+                        msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Internal server error. Please try again.';
+                    }
+                    showConfirmError(msg);
+                }
+            });
+        }
+
+        function showConfirmError(msg) {
+            importIsConfirming = false;
+            const $btn = $('#btn-confirm-import');
+            // If batch has moved to a terminal state, disable permanently
+            if (msg.toLowerCase().indexOf('expired') >= 0 ||
+                msg.toLowerCase().indexOf('completed') >= 0 ||
+                msg.toLowerCase().indexOf('failed') >= 0 ||
+                msg.toLowerCase().indexOf('processing') >= 0) {
+                $btn.prop('disabled', true).html('Cannot Confirm');
+            } else {
+                $btn.prop('disabled', false).html('<i class="fa fa-check"></i> Confirm Import');
+            }
+            $('#import-confirm-error').text(msg).show();
+        }
+
+        // ---- Show Result ----
+        function renderResult(data) {
+            importIsConfirming = false;
+            $('#import-step-preview').hide();
+            $('#import-step-result').show();
+            $('#result-batch-id').text(data.batch_id || '-');
+            $('#result-imported').text(data.imported || 0);
+            $('#result-skipped').text(data.skipped || 0);
+            $('#result-total').text(data.total_rows || 0);
+        }
+
+        // ================================================================
+        // Existing Filters (unchanged)
+        // ================================================================
 
         $('#filter_paid_status').change(function (e) { 
             e.preventDefault();

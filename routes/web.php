@@ -707,6 +707,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
             Route::get('/pay/compulsory/{feesID}/{studentID}', [FeesController::class, 'payCompulsoryFeesIndex'])->name('fees.compulsory.index');
             Route::post('pay/compulsory', [FeesController::class, 'payCompulsoryFeesStore'])->name('fees.compulsory.store');
+            // Fees Paid Import (Excel batch)
+            Route::get('/import/template', [FeesController::class, 'feesPaidImportTemplate'])->name('fees.import.template');
+            Route::post('/import/preview', [FeesController::class, 'feesPaidImportPreview'])->name('fees.import.preview');
+            Route::post('/import/confirm', [FeesController::class, 'feesPaidImportConfirm'])->name('fees.import.confirm');
 
             // Optional Fees Payment Offline
             Route::get('/optional-fees', [FeesController::class, 'optionalFees'])->name('fees.optional');
