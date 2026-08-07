@@ -459,9 +459,35 @@ class FeesPaidSchoolIdTest extends TestCase
         $this->assertNotNull($cf, 'CompulsoryFee must be created');
         $this->assertEquals($this->schoolId, $cf->school_id);
 
+        // import_batch_id must link back to the batch
+        $this->assertNotNull($cf->import_batch_id, 'CompulsoryFee.import_batch_id must be set from Excel import');
+        $this->assertEquals($result['batch_id'], $cf->import_batch_id,
+            'CompulsoryFee.import_batch_id must match the confirm batch');
+
+        // reference_no must be correct
+        $this->assertEquals($refNo, $cf->reference_no,
+            'CompulsoryFee.reference_no must match the import row');
+
         // FeesPaid checks — THE P0 FIX
         $fp = $this->assertFeesPaidSchoolId($fee, $this->schoolId);
         $this->assertEquals(1000, $fp->amount);
+    }
+
+    /**
+     * Verify manual payment does NOT set import_batch_id.
+     *
+     * @test
+     */
+    public function manual_payment_does_not_set_import_batch_id(): void
+    {
+        $fee = $this->createTestFee(500.00, null, 'NOIMP');
+        $result = $this->processPayment($fee, [
+            'total_amount' => 500, 'enter_amount' => 500,
+            'transaction_currency' => 'MMK',
+        ]);
+        $cf = $result['compulsory_fees'][0];
+        $this->assertNull($cf->import_batch_id,
+            'Manual payment must NOT set import_batch_id');
     }
 
     // ================================================================

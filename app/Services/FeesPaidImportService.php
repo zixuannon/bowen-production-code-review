@@ -209,6 +209,9 @@ class FeesPaidImportService
                         // Re-validate ALL business conditions against CURRENT DB state
                         $fee = $this->revalidateRow($pRow, $schoolId);
 
+                        // Inject import_batch_id so compulsory_fees records link back to the batch
+                        $pRow['payment_data']['import_batch_id'] = $batch->id;
+
                         // Process payment via FeesPaymentService
                         $this->paymentService->processPayment($pRow['payment_data'], $fee);
 

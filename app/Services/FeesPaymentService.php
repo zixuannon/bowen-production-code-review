@@ -184,7 +184,7 @@ class FeesPaymentService
 
         if ($installmentMode && !empty($data['installment_fees'])) {
             foreach ($data['installment_fees'] as $inst) {
-                $cf = CompulsoryFee::create([
+                $cfData = [
                     'student_id'      => $data['student_id'],
                     'type'            => 'Installment Payment',
                     'installment_id'  => $inst['id'],
@@ -197,11 +197,15 @@ class FeesPaymentService
                     'date'            => $dateStr,
                     'school_id'       => $schoolId,
                     'bank_account_id' => $data['bank_account_id'] ?? null,
-                ]);
+                ];
+                if (!empty($data['import_batch_id'])) {
+                    $cfData['import_batch_id'] = $data['import_batch_id'];
+                }
+                $cf = CompulsoryFee::create($cfData);
                 $compulsoryFees[] = $cf;
             }
         } else {
-            $cf = CompulsoryFee::create([
+            $cfData = [
                 'type'            => 'Full Payment',
                 'student_id'      => $data['student_id'],
                 'mode'            => $paymentMode,
@@ -213,7 +217,11 @@ class FeesPaymentService
                 'date'            => $dateStr,
                 'school_id'       => $schoolId,
                 'bank_account_id' => $data['bank_account_id'] ?? null,
-            ]);
+            ];
+            if (!empty($data['import_batch_id'])) {
+                $cfData['import_batch_id'] = $data['import_batch_id'];
+            }
+            $cf = CompulsoryFee::create($cfData);
             $compulsoryFees[] = $cf;
         }
 
