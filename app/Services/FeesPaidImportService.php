@@ -664,7 +664,7 @@ class FeesPaidImportService
                 [
                     'id'          => $installmentId ?? 0,
                     'amount'      => $amount,
-                    'due_charges' => null,
+                    'due_charges' => 0,
                 ]
             ] : [],
             'mode'                   => $mode ?: 'Cash',
@@ -674,7 +674,7 @@ class FeesPaidImportService
             'total_amount'           => $fee ? $fee->total_compulsory_fees : 0,
             'enter_amount'           => empty($installmentName) ? $amount : null,
             'reference_no'           => $referenceNo,
-            'due_charges_amount'     => null,
+            'due_charges_amount'     => 0,
             'advance'                => 0,
             'parent_id'              => null,
             'transaction_currency'   => 'MMK',

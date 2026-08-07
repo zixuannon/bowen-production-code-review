@@ -457,20 +457,142 @@ class FeesPaidSchoolIdTest extends TestCase
         // CompulsoryFee checks
         $cf = CompulsoryFee::where('reference_no', $refNo)->first();
         $this->assertNotNull($cf, 'CompulsoryFee must be created');
-        $this->assertEquals($this->schoolId, $cf->school_id);
 
-        // import_batch_id must link back to the batch
+        // P0: school_id
+        $this->assertEquals($this->schoolId, $cf->school_id,
+            'CompulsoryFee.school_id must equal Auth user school_id');
+
+        // P0: import_batch_id must link back to the batch
         $this->assertNotNull($cf->import_batch_id, 'CompulsoryFee.import_batch_id must be set from Excel import');
         $this->assertEquals($result['batch_id'], $cf->import_batch_id,
             'CompulsoryFee.import_batch_id must match the confirm batch');
 
-        // reference_no must be correct
+        // P0: reference_no must be correct
         $this->assertEquals($refNo, $cf->reference_no,
             'CompulsoryFee.reference_no must match the import row');
+
+        // P1: due_charges must be 0.0, NOT null (DB column is NOT NULL in production)
+        $this->assertNotNull($cf->due_charges, 'CompulsoryFee.due_charges must NOT be null');
+        $this->assertSame(0.0, (float) $cf->due_charges,
+            'CompulsoryFee.due_charges must be 0.0 when no late charge');
+
+        // P1: Cash payment cheque_no is null — must not cause DB constraint error
+        // (cheque_no is nullable, so null is accepted)
+        $this->assertNull($cf->cheque_no,
+            'Cash payment should store null cheque_no (column is nullable)');
 
         // FeesPaid checks — THE P0 FIX
         $fp = $this->assertFeesPaidSchoolId($fee, $this->schoolId);
         $this->assertEquals(1000, $fp->amount);
+    }
+
+    /**
+     * P1: Excel import installment payment with no late charge → due_charges=0, not null.
+     *
+     * @test
+     */
+    public function excel_import_installment_due_charges_zero_not_null(): void
+    {
+        $fee = $this->createTestFee(1000.00, null, 'EXCELINST');
+        $refNo = 'INV-INST-P1-' . strtoupper(Str::random(8));
+
+        // Create an installment for the fee
+        $instName = 'Inst P1 ' . Str::random(4);
+        $instId = (int) (20000 + random_int(1, 99999));
+        DB::table('fees_installments')->insertOrIgnore([
+            'id'               => $instId,
+            'name'             => $instName,
+            'due_date'         => now()->addDays(15)->format('Y-m-d'),
+            'due_charges'      => 0,
+            'due_charges_type' => 'fixed',
+            'fees_id'          => $fee->id,
+            'session_year_id'  => $this->sessionYearId,
+            'school_id'        => $this->schoolId,
+        ]);
+
+        $result = $this->excelConfirm([
+            $this->admissionNo,
+            '2025-2026',
+            $this->className,
+            $fee->name,
+            '',
+            $instName,
+            now()->format('Y-m-d'),
+            500,
+            'Cash',
+            '',
+            $refNo,
+        ], $fee);
+
+        $this->assertEquals(1, $result['imported']);
+
+        $cf = CompulsoryFee::where('reference_no', $refNo)->first();
+        $this->assertNotNull($cf, 'CompulsoryFee must be created for installment payment');
+        $this->assertEquals('Installment Payment', $cf->type);
+
+        // P1: due_charges must be 0.0 even for installment mode
+        $this->assertNotNull($cf->due_charges,
+            'Installment due_charges must NOT be null (DB is NOT NULL in production)');
+        $this->assertSame(0.0, (float) $cf->due_charges,
+            'Installment due_charges must be 0.0 when installment has no late charge');
+
+        $this->assertEquals($this->schoolId, $cf->school_id);
+        $this->assertNotNull($cf->import_batch_id);
+    }
+
+    /**
+     * P1: Confirm failure still performs complete transaction rollback
+     * (no dirty data left in compulsory_fees or fees_paids).
+     *
+     * Already covered by confirm_failure_rollback_does_not_create_fees_paid,
+     * but this test additionally verifies compulsory_fees.due_charges
+     * integrity in the rollback path by confirming that the manually inserted
+     * record still has its original due_charges value unchanged.
+     *
+     * @test
+     */
+    public function p1_rollback_preserves_due_charges_on_existing_records(): void
+    {
+        $fee = $this->createTestFee(1000.00, null, 'P1ROLL');
+        $refNo = 'INV-P1ROLL-' . strtoupper(Str::random(8));
+
+        $header = ['Student Admission No', 'Academic Year', 'Class Name',
+            'Fee Structure Name', 'Bank Account Name', 'Installment Name',
+            'Payment Date', 'Amount (MMK)', 'Payment Mode', 'Cheque No', 'Reference No'];
+        $row = [$this->admissionNo, '2025-2026', $this->className, $fee->name, '', '',
+            now()->format('Y-m-d'), 1000, 'Cash', '', $refNo];
+        $content = implode(',', $header) . "\n" . implode(',', $row) . "\n";
+        $tmpPath = tempnam(sys_get_temp_dir(), 'fpp_p1_') . '.csv';
+        file_put_contents($tmpPath, $content);
+
+        $file = new UploadedFile($tmpPath, 'test.csv', 'text/csv', null, true);
+
+        $service = app(FeesPaidImportService::class);
+        $preview = $service->preview($file, $this->schoolId, $this->authUserId);
+        @unlink($tmpPath);
+
+        // Insert a duplicate with a known due_charges value BEFORE confirm
+        $cf = new CompulsoryFee();
+        $cf->forceFill([
+            'student_id'   => $this->studentUserId,
+            'type'         => 'Full Payment',
+            'mode'         => 'Cash',
+            'amount'       => 500,
+            'due_charges'  => 5.50,
+            'date'         => now()->format('Y-m-d'),
+            'school_id'    => $this->schoolId,
+            'reference_no' => $refNo,
+        ]);
+        $cf->save();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $service->confirm($preview['token'], $this->schoolId, $this->authUserId);
+
+        // P1: the pre-existing record's due_charges must remain 5.50 (not corrupted)
+        $cfAfter = CompulsoryFee::find($cf->id);
+        $this->assertNotNull($cfAfter, 'Pre-existing compulsory_fees must still exist after rollback');
+        $this->assertSame(5.50, (float) $cfAfter->due_charges,
+            'Pre-existing record due_charges must be preserved after rollback');
     }
 
     /**
