@@ -40,8 +40,15 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-3">
-                                    <label>{{ __('Bank Account') }}</label>
-                                    {!! Form::select('bank_account_id', $bankAccounts, null, ['class' => 'form-control', 'placeholder' => __('Select bank account')]) !!}
+                                    <label>{{ __('Bank Account') }} <span class="text-danger">*</span></label>
+                                    @if(!empty($bankAccounts))
+                                        {!! Form::select('bank_account_id', $bankAccounts, null, ['class' => 'form-control', 'placeholder' => __('Select bank account'), 'required' => true]) !!}
+                                    @else
+                                        <div class="alert alert-warning py-2 mb-0">
+                                            <i class="fa fa-exclamation-triangle"></i>
+                                            {{ __('No active fund account available.') }}
+                                        </div>
+                                    @endif
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-4">
@@ -204,8 +211,15 @@
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-3">
-                                        <label>{{ __('Bank Account') }}</label>
-                                        {!! Form::select('bank_account_id', $bankAccounts, null, ['class' => 'form-control', 'placeholder' => __('Select bank account'), 'id' => 'edit_bank_account_id']) !!}
+                                        <label>{{ __('Bank Account') }} <span class="text-danger">*</span></label>
+                                        @if(!empty($bankAccounts))
+                                            {!! Form::select('bank_account_id', $bankAccounts, null, ['class' => 'form-control', 'placeholder' => __('Select bank account'), 'id' => 'edit_bank_account_id', 'required' => true]) !!}
+                                        @else
+                                            <div class="alert alert-warning py-2 mb-0">
+                                                <i class="fa fa-exclamation-triangle"></i>
+                                                {{ __('No active fund account available.') }}
+                                            </div>
+                                        @endif
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-4">

@@ -35,6 +35,7 @@ class FeesPaidImportHttpTest extends TestCase
     private int $sessionYearId;
     private string $className;
     private string $academicYearName;
+    private string $bankAccountName;
 
     protected function setUp(): void
     {
@@ -100,6 +101,23 @@ class FeesPaidImportHttpTest extends TestCase
 
         $this->otherAdminUser = $this->createAdminUser('OtherAdmin', $this->schoolId);
         $this->assignPermission($this->otherAdminUser, 'fees-paid');
+
+        // Create default bank account for import tests
+        $this->ensureBankAccountsTable();
+        $this->bankAccountName = 'HTTP Bank ' . Str::random(4);
+        DB::table('bank_accounts')->insert([
+            'school_id'          => $this->schoolId,
+            'account_name'       => $this->bankAccountName,
+            'account_number'     => 'HTTP-ACC',
+            'bank_name'          => 'Test Bank',
+            'account_type'       => 'checking',
+            'currency'           => 'MMK',
+            'opening_balance'    => 0,
+            'opening_balance_date'=> now()->format('Y-m-d'),
+            'is_active'          => 1,
+            'created_at'         => now(),
+            'updated_at'         => now(),
+        ]);
     }
 
     private function actAsAdminForImport(?User $user = null): void
@@ -252,7 +270,7 @@ class FeesPaidImportHttpTest extends TestCase
 
         $file = $this->createXlsxFromRows([
             ['NONEXISTENT-ADM', $this->academicYearName, $this->className,
-             $this->feeStructureName, '', '', '2025-01-15', '50000', 'Cash', '',
+             $this->feeStructureName, $this->bankAccountName, '', '2025-01-15', '50000', 'Cash', '',
              'INV-ERR-CONFIRM-' . Str::uuid()->toString()],
         ]);
 
@@ -660,6 +678,32 @@ class FeesPaidImportHttpTest extends TestCase
         }
     }
 
+    private function ensureBankAccountsTable(): void
+    {
+        try {
+            DB::connection()->getPdo()->query('SELECT 1 FROM bank_accounts LIMIT 1');
+        } catch (\Throwable) {
+            DB::statement("CREATE TABLE IF NOT EXISTS bank_accounts (
+                id bigint unsigned NOT NULL AUTO_INCREMENT,
+                school_id bigint unsigned NOT NULL DEFAULT 1,
+                account_name varchar(255) NOT NULL,
+                account_number varchar(100) DEFAULT NULL,
+                bank_name varchar(255) DEFAULT NULL,
+                account_type varchar(50) DEFAULT 'checking',
+                currency varchar(3) DEFAULT 'MMK',
+                opening_balance decimal(12,2) DEFAULT 0.00,
+                opening_balance_date date DEFAULT NULL,
+                is_active tinyint NOT NULL DEFAULT 1,
+                is_default tinyint NOT NULL DEFAULT 0,
+                notes text DEFAULT NULL,
+                created_at timestamp NULL DEFAULT NULL,
+                updated_at timestamp NULL DEFAULT NULL,
+                deleted_at timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (id)
+            )");
+        }
+    }
+
     private function createAdminUser(string $name, int $schoolId): User
     {
         $email = strtolower($name) . '-import-' . Str::random(6) . '@test.local';
@@ -754,7 +798,7 @@ class FeesPaidImportHttpTest extends TestCase
             $this->academicYearName,
             $this->className,
             $feeStructureName,
-            '',   // Bank Account Name
+            $this->bankAccountName,   // Bank Account Name
             '',   // Installment Name
             '2025-01-15',
             '50000',
@@ -804,7 +848,7 @@ class FeesPaidImportHttpTest extends TestCase
     {
         return $this->createXlsxFromRows([
             ['ADM-DUMMY', $this->academicYearName, $this->className,
-             'Dummy Fee', '', '', '2025-01-15', '50000', 'Cash', '',
+             'Dummy Fee', $this->bankAccountName, '', '2025-01-15', '50000', 'Cash', '',
              'INV-VALID-' . Str::uuid()->toString()],
         ]);
     }

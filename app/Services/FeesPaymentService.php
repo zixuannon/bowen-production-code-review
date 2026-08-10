@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Helpers\MoneyDecimal;
+use App\Models\BankAccount;
 use App\Models\CompulsoryFee;
 use App\Models\Fee;
 use App\Models\FeesAdvance;
@@ -98,6 +99,22 @@ class FeesPaymentService
     {
         $schoolId = Auth::user()->school_id;
         $userId   = Auth::id();
+
+        // ---- 0. Guard: bank_account_id must be a valid, active, school-owned fund account ----
+        $bankAccountId = $data['bank_account_id'] ?? null;
+        if (empty($bankAccountId)) {
+            throw new \InvalidArgumentException('Fund account (bank_account_id) is required for fee payment.');
+        }
+        $bankAccount = BankAccount::where('id', $bankAccountId)
+            ->where('school_id', $schoolId)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->first();
+        if (!$bankAccount) {
+            throw new \InvalidArgumentException(
+                'Fund account is not valid, not active, or does not belong to this school.'
+            );
+        }
 
         // ---- 1. Load existing FeesPaid ----
         $feesPaid = FeesPaid::where([

@@ -83,8 +83,18 @@ class ExpenseController extends Controller
             'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
             'original_amount' => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0',
+            'bank_account_id' => [
+                'required',
+                Rule::exists('bank_accounts', 'id')->where(function ($query) {
+                    $query->where('school_id', Auth::user()->school_id)
+                          ->where('is_active', true)
+                          ->whereNull('deleted_at');
+                }),
+            ],
         ], [
-            'ref_no.unique' => 'Reference number already exists for the selected session year.'
+            'ref_no.unique' => 'Reference number already exists for the selected session year.',
+            'bank_account_id.required' => 'Please select a fund account for this expense.',
+            'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
         try {
             DB::beginTransaction();
@@ -246,8 +256,18 @@ class ExpenseController extends Controller
             'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
             'original_amount' => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0',
+            'bank_account_id' => [
+                'required',
+                Rule::exists('bank_accounts', 'id')->where(function ($query) {
+                    $query->where('school_id', Auth::user()->school_id)
+                          ->where('is_active', true)
+                          ->whereNull('deleted_at');
+                }),
+            ],
         ], [
-            'ref_no.unique' => 'Reference number already exists for the selected session year.'
+            'ref_no.unique' => 'Reference number already exists for the selected session year.',
+            'bank_account_id.required' => 'Please select a fund account for this expense.',
+            'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
         try {
             DB::beginTransaction();

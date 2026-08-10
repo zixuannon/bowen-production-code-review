@@ -38,6 +38,7 @@ class FeesPaidImportServiceTest extends TestCase
     private string $feeStructureName;
     private string $className;
     private string $academicYearName;
+    private string $bankAccountName;
 
     protected function setUp(): void
     {
@@ -91,6 +92,10 @@ class FeesPaidImportServiceTest extends TestCase
 
         $this->studentId  = $this->createStudentUser('Test', 'Student1', $this->schoolId, $this->admissionNo1, $this->classId, $this->sessionYearId);
         $this->studentId2 = $this->createStudentUser('Test', 'Student2', $this->schoolId, $this->admissionNo2, $this->classId, $this->sessionYearId);
+
+        // Create default bank account for import tests
+        $this->bankAccountName = 'Import Test Bank ' . Str::random(4);
+        $this->createTestBankAccount($this->bankAccountName);
 
         Auth::loginUsingId($this->authUserId);
     }
@@ -351,7 +356,7 @@ class FeesPaidImportServiceTest extends TestCase
             $this->academicYearName,
             $this->className,
             $feeName,
-            '',   // Bank Account Name
+            $this->bankAccountName,   // Bank Account Name
             '',   // Installment Name
             $date,
             (string) $amount,
@@ -371,7 +376,7 @@ class FeesPaidImportServiceTest extends TestCase
             $this->academicYearName,
             $this->className,
             $feeName,
-            '',   // Bank Account Name
+            $this->bankAccountName,   // Bank Account Name
             $installmentName,
             $date,
             (string) $amount,
@@ -797,7 +802,7 @@ class FeesPaidImportServiceTest extends TestCase
         $file = $this->createCsvFile(
             $this->defaultHeader(),
             [[$this->admissionNo1, $this->academicYearName, $this->className, 'NonExistentFee',
-              '', '', '2025-08-01', '1000', 'Cash', '', 'INV-FAILED-STATUS-' . Str::uuid()->toString()]]
+              $this->bankAccountName, '', '2025-08-01', '1000', 'Cash', '', 'INV-FAILED-STATUS-' . Str::uuid()->toString()]]
         );
 
         $service = app(FeesPaidImportService::class);
@@ -1126,7 +1131,7 @@ class FeesPaidImportServiceTest extends TestCase
         $file = $this->createCsvFile(
             $this->defaultHeader(),
             [['NONEXISTENT-ADM', $this->academicYearName, $this->className,
-              $this->feeStructureName, '', '', '2025-08-01', '1000', 'Cash', '',
+              $this->feeStructureName, $this->bankAccountName, '', '2025-08-01', '1000', 'Cash', '',
               'INV-UNKNOWN-ADM-' . Str::uuid()->toString()]]
         );
 

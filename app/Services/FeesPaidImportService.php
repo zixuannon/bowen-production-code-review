@@ -513,9 +513,12 @@ class FeesPaidImportService
             }
         }
 
-        // ---- 5. Match Bank Account by name (optional) ----
+        // ---- 5. Match Bank Account by name (required) ----
         $bankAccountName = trim($raw['bank_account_name'] ?? '');
-        if (!empty($bankAccountName)) {
+        if (empty($bankAccountName)) {
+            $base['errors'][] = 'Bank Account Name is required';
+            $base['status'] = 'error';
+        } else {
             $bankQuery = BankAccount::where('account_name', $bankAccountName)
                 ->where('school_id', $schoolId)
                 ->active();

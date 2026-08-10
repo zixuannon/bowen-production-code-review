@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Helpers\MoneyDecimal;
+use App\Models\BankAccount;
 use App\Models\CompulsoryFee;
 use App\Models\Fee;
 use App\Models\FeeImportBatch;
@@ -32,6 +33,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
     private int $authUserId;
     private int $studentId;
+    private int $bankAccountId;
 
     protected function setUp(): void
     {
@@ -42,6 +44,42 @@ class FeesPaymentCharacterizationTest extends TestCase
         $this->studentId = $this->createUser('Test', 'Student', 1);
 
         Auth::loginUsingId($this->authUserId);
+
+        // Ensure bank_accounts table exists
+        try {
+            DB::connection()->getPdo()->query('SELECT 1 FROM bank_accounts LIMIT 1');
+        } catch (\Throwable) {
+            DB::statement("CREATE TABLE IF NOT EXISTS bank_accounts (
+                id bigint unsigned NOT NULL AUTO_INCREMENT,
+                school_id bigint unsigned NOT NULL DEFAULT 1,
+                account_name varchar(255) NOT NULL,
+                account_number varchar(100) DEFAULT NULL,
+                bank_name varchar(255) DEFAULT NULL,
+                account_type varchar(50) DEFAULT 'checking',
+                currency varchar(3) DEFAULT 'MMK',
+                opening_balance decimal(12,2) DEFAULT 0.00,
+                opening_balance_date date DEFAULT NULL,
+                is_active tinyint NOT NULL DEFAULT 1,
+                is_default tinyint NOT NULL DEFAULT 0,
+                notes text DEFAULT NULL,
+                created_at timestamp NULL DEFAULT NULL,
+                updated_at timestamp NULL DEFAULT NULL,
+                deleted_at timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (id)
+            )");
+        }
+
+        // Create a test bank account
+        $this->bankAccountId = DB::table('bank_accounts')->insertGetId([
+            'school_id'     => 1,
+            'account_name'  => 'Test Fund Account',
+            'account_type'  => 'cash',
+            'currency'      => 'MMK',
+            'opening_balance' => 0,
+            'is_active'     => 1,
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
 
         // Ensure session_year exists
         try {
@@ -112,7 +150,7 @@ class FeesPaymentCharacterizationTest extends TestCase
     public function multiple_null_reference_no_allowed(): void
     {
         $cf1 = CompulsoryFee::create([
-            'student_id'   => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'type'         => 'Full Payment',
             'mode'         => 'Cash',
             'amount'       => 100,
@@ -121,7 +159,7 @@ class FeesPaymentCharacterizationTest extends TestCase
             'reference_no' => null,
         ]);
         $cf2 = CompulsoryFee::create([
-            'student_id'   => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'type'         => 'Full Payment',
             'mode'         => 'Cash',
             'amount'       => 200,
@@ -140,7 +178,7 @@ class FeesPaymentCharacterizationTest extends TestCase
     {
         $ref = 'INV-DUP-' . uniqid();
         CompulsoryFee::create([
-            'student_id'   => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'type'         => 'Full Payment',
             'mode'         => 'Cash',
             'amount'       => 100,
@@ -151,7 +189,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $this->expectException(\Illuminate\Database\UniqueConstraintViolationException::class);
         CompulsoryFee::create([
-            'student_id'   => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'type'         => 'Full Payment',
             'mode'         => 'Cash',
             'amount'       => 200,
@@ -171,7 +209,7 @@ class FeesPaymentCharacterizationTest extends TestCase
         $ref = 'CROSS-REF-' . uniqid();
 
         $cf1 = CompulsoryFee::create([
-            'student_id'   => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'type'         => 'Full Payment',
             'mode'         => 'Cash',
             'amount'       => 100,
@@ -180,7 +218,7 @@ class FeesPaymentCharacterizationTest extends TestCase
             'reference_no' => $ref,
         ]);
         $cf2 = CompulsoryFee::create([
-            'student_id'   => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'type'         => 'Full Payment',
             'mode'         => 'Cash',
             'amount'       => 200,
@@ -341,7 +379,8 @@ class FeesPaymentCharacterizationTest extends TestCase
         $service = app(FeesPaymentService::class);
         $result = $service->processPayment([
             'fees_id'               => $fee->id,
-            'student_id'            => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
+            'bank_account_id'       => $this->bankAccountId,
             'installment_mode'      => false,
             'installment_fees'      => [],
             'mode'                  => 'Cash',
@@ -386,7 +425,8 @@ class FeesPaymentCharacterizationTest extends TestCase
         $service = app(FeesPaymentService::class);
         $result = $service->processPayment([
             'fees_id'               => $fee->id,
-            'student_id'            => $this->studentId,
+            'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
+            'bank_account_id'       => $this->bankAccountId,
             'installment_mode'      => true,
             'installment_fees'      => [
                 ['id' => 99, 'amount' => 1500, 'due_charges' => 0],
@@ -422,7 +462,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         // Payment 1: 1000
         $r1 = $service->processPayment([
-            'fees_id'      => $fee->id, 'student_id' => $this->studentId,
+            'fees_id'      => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 3000, 'enter_amount' => 1000,
@@ -434,7 +474,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         // Payment 2: 2000
         $r2 = $service->processPayment([
-            'fees_id'      => $fee->id, 'student_id' => $this->studentId,
+            'fees_id'      => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 3000, 'enter_amount' => 2000,
@@ -453,7 +493,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $result = $service->processPayment([
-            'fees_id'      => $fee->id, 'student_id' => $this->studentId,
+            'fees_id'      => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 1000, 'enter_amount' => 1000,
@@ -479,7 +519,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $result = $service->processPayment([
-            'fees_id'      => $fee->id, 'student_id' => $this->studentId,
+            'fees_id'      => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 1000, 'enter_amount' => 1000,
@@ -504,7 +544,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $result = $service->processPayment([
-            'fees_id'      => $fee->id, 'student_id' => $this->studentId,
+            'fees_id'      => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 1000, 'enter_amount' => 1100,
@@ -528,7 +568,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $service->processPayment([
-            'fees_id' => $fee->id, 'student_id' => $this->studentId,
+            'fees_id' => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 500, 'enter_amount' => 500,
@@ -539,7 +579,7 @@ class FeesPaymentCharacterizationTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('already Paid');
         $service->processPayment([
-            'fees_id' => $fee->id, 'student_id' => $this->studentId,
+            'fees_id' => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 500, 'enter_amount' => 100,
@@ -557,7 +597,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $service->processPayment([
-            'fees_id' => $fee->id, 'student_id' => $this->studentId,
+            'fees_id' => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 2000, 'enter_amount' => 1000,
@@ -569,7 +609,7 @@ class FeesPaymentCharacterizationTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('already exists');
         $service->processPayment([
-            'fees_id' => $fee->id, 'student_id' => $this->studentId,
+            'fees_id' => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 2000, 'enter_amount' => 1000,
@@ -588,7 +628,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $service->processPayment([
-            'fees_id' => $fee->id, 'student_id' => $this->studentId,
+            'fees_id' => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 500, 'enter_amount' => 500,
@@ -609,7 +649,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         $service = app(FeesPaymentService::class);
         $service->processPayment([
-            'fees_id' => $fee->id, 'student_id' => $this->studentId,
+            'fees_id' => $fee->id, 'student_id' => $this->studentId, 'bank_account_id' => $this->bankAccountId,
             'installment_mode' => false, 'installment_fees' => [],
             'mode' => 'Cash', 'date' => now()->format('Y-m-d'),
             'total_amount' => 500, 'enter_amount' => 500,

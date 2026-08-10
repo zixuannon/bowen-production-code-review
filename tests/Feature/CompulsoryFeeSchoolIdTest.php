@@ -14,6 +14,7 @@ class CompulsoryFeeSchoolIdTest extends TestCase
     private int $authUserId;
     private int $studentId;
     private int $schoolId = 1;
+    private int $bankAccountId;
 
     protected function setUp(): void
     {
@@ -23,6 +24,10 @@ class CompulsoryFeeSchoolIdTest extends TestCase
         $this->studentId  = $this->createUser('Test', 'Student', $this->schoolId);
 
         Auth::loginUsingId($this->authUserId);
+
+        // Ensure bank_accounts table exists
+        $this->ensureBankAccountsTable();
+        $this->bankAccountId = $this->createBankAccount($this->schoolId);
 
         try {
             DB::table('session_years')->insertOrIgnore([
@@ -39,6 +44,58 @@ class CompulsoryFeeSchoolIdTest extends TestCase
     // ================================================================
     // Helpers
     // ================================================================
+
+    private function ensureBankAccountsTable(): void
+    {
+        try {
+            DB::connection()->getPdo()->query('SELECT 1 FROM bank_accounts LIMIT 1');
+        } catch (\Throwable) {
+            DB::statement("CREATE TABLE IF NOT EXISTS bank_accounts (
+                id bigint unsigned NOT NULL AUTO_INCREMENT,
+                school_id bigint unsigned NOT NULL DEFAULT 1,
+                account_name varchar(255) NOT NULL,
+                account_number varchar(100) DEFAULT NULL,
+                bank_name varchar(255) DEFAULT NULL,
+                account_type varchar(50) DEFAULT 'checking',
+                currency varchar(3) DEFAULT 'MMK',
+                opening_balance decimal(12,2) DEFAULT 0.00,
+                opening_balance_date date DEFAULT NULL,
+                is_active tinyint NOT NULL DEFAULT 1,
+                is_default tinyint NOT NULL DEFAULT 0,
+                notes text DEFAULT NULL,
+                created_at timestamp NULL DEFAULT NULL,
+                updated_at timestamp NULL DEFAULT NULL,
+                deleted_at timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (id)
+            )");
+        }
+    }
+
+    /**
+     * Get or create a bank account for a given school.
+     * Returns existing ID if one exists, creates new otherwise.
+     */
+    private function createBankAccount(int $schoolId): int
+    {
+        $existing = DB::table('bank_accounts')
+            ->where('school_id', $schoolId)
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->first();
+        if ($existing) {
+            return $existing->id;
+        }
+        return DB::table('bank_accounts')->insertGetId([
+            'school_id'     => $schoolId,
+            'account_name'  => 'CompFeeTest Bank ' . $schoolId,
+            'account_type'  => 'cash',
+            'currency'      => 'MMK',
+            'opening_balance'=> 0,
+            'is_active'     => 1,
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+    }
 
     private function createUser(string $first, string $last, int $schoolId): int
     {
@@ -73,6 +130,10 @@ class CompulsoryFeeSchoolIdTest extends TestCase
 
     private function processPayment(Fee $fee, array $overrides = []): array
     {
+        // Get or create a bank account for the current auth user's school
+        $schoolId = Auth::user()->school_id ?? $this->schoolId;
+        $bankId = $this->createBankAccount($schoolId);
+
         $service = app(FeesPaymentService::class);
         return $service->processPayment(array_merge([
             'fees_id'               => $fee->id,
@@ -87,6 +148,7 @@ class CompulsoryFeeSchoolIdTest extends TestCase
             'advance'               => 0,
             'transaction_currency'  => 'MMK',
             'reference_no'          => null,
+            'bank_account_id'       => $bankId,
         ], $overrides), $fee);
     }
 

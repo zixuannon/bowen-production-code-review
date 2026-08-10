@@ -38,6 +38,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 class FeesController extends Controller
@@ -1366,11 +1367,21 @@ class FeesController extends Controller
             'transaction_currency' => 'nullable|in:MMK,CNY,USD',
             'original_amount'      => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0.0001',
+            'bank_account_id'      => [
+                'required',
+                Rule::exists('bank_accounts', 'id')->where(function ($query) {
+                    $query->where('school_id', Auth::user()->school_id)
+                          ->where('is_active', true)
+                          ->whereNull('deleted_at');
+                }),
+            ],
         ], [
             'installment_fees.required_if' => 'Please select at least one installment',
             'transaction_currency.in'      => 'Transaction currency must be MMK, CNY, or USD',
             'original_amount.min'          => 'Original amount must be 0 or greater',
             'exchange_rate_snapshot.min'   => 'Exchange rate must be greater than 0',
+            'bank_account_id.required'     => 'Please select a fund account for this payment.',
+            'bank_account_id.exists'       => 'The selected fund account is not valid or does not belong to this school.',
         ]);
 
         $fees = $this->fees->findById($request->fees_id, ['*'], [
@@ -1556,6 +1567,17 @@ class FeesController extends Controller
         $request->validate([
             'fees_id' => 'required|numeric',
             'student_id' => 'required|numeric',
+            'bank_account_id' => [
+                'required',
+                Rule::exists('bank_accounts', 'id')->where(function ($query) {
+                    $query->where('school_id', Auth::user()->school_id)
+                          ->where('is_active', true)
+                          ->whereNull('deleted_at');
+                }),
+            ],
+        ], [
+            'bank_account_id.required' => 'Please select a fund account for this payment.',
+            'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
         try {
             DB::beginTransaction();

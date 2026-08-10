@@ -37,6 +37,8 @@ class FeesPaidSchoolIdTest extends TestCase
     private int $sessionYearId;
     private string $admissionNo;
     private string $className;
+    private int $bankAccountId;
+    private string $bankAccountName;
 
     protected function setUp(): void
     {
@@ -76,6 +78,19 @@ class FeesPaidSchoolIdTest extends TestCase
         );
 
         Auth::loginUsingId($this->authUserId);
+
+        // Create a valid test bank account (unique name per test)
+        $this->bankAccountName = 'SchoolId Bank ' . Str::random(6);
+        $this->bankAccountId = DB::table('bank_accounts')->insertGetId([
+            'school_id'          => $this->schoolId,
+            'account_name'       => $this->bankAccountName,
+            'account_type'       => 'cash',
+            'currency'           => 'MMK',
+            'opening_balance'    => 0,
+            'is_active'          => 1,
+            'created_at'         => now(),
+            'updated_at'         => now(),
+        ]);
     }
 
     // ================================================================
@@ -98,6 +113,28 @@ class FeesPaidSchoolIdTest extends TestCase
                 ]);
             }
         }
+    }
+
+    private function createBankAccount(int $schoolId): int
+    {
+        $existing = DB::table('bank_accounts')
+            ->where('school_id', $schoolId)
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->first();
+        if ($existing) {
+            return $existing->id;
+        }
+        return DB::table('bank_accounts')->insertGetId([
+            'school_id'     => $schoolId,
+            'account_name'  => 'SchoolId Bank ' . $schoolId . ' ' . Str::random(6),
+            'account_type'  => 'cash',
+            'currency'      => 'MMK',
+            'opening_balance'=> 0,
+            'is_active'     => 1,
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
     }
 
     private function ensureBaseTables(): void
@@ -250,6 +287,10 @@ class FeesPaidSchoolIdTest extends TestCase
      */
     private function processPayment(Fee $fee, array $overrides = []): array
     {
+        // Get or create a bank account for the current auth user's school
+        $schoolId = Auth::user()->school_id ?? $this->schoolId;
+        $bankId = $this->createBankAccount($schoolId);
+
         $service = app(FeesPaymentService::class);
         return $service->processPayment(array_merge([
             'fees_id'               => $fee->id,
@@ -265,6 +306,7 @@ class FeesPaidSchoolIdTest extends TestCase
             'advance'               => 0,
             'transaction_currency'  => 'MMK',
             'reference_no'          => null,
+            'bank_account_id'       => $bankId,
         ], $overrides), $fee);
     }
 
@@ -443,7 +485,7 @@ class FeesPaidSchoolIdTest extends TestCase
             '2025-2026',
             $this->className,
             $fee->name,
-            '',
+            $this->bankAccountName,
             '',
             now()->format('Y-m-d'),
             1000,
@@ -515,7 +557,7 @@ class FeesPaidSchoolIdTest extends TestCase
             '2025-2026',
             $this->className,
             $fee->name,
-            '',
+            $this->bankAccountName,
             $instName,
             now()->format('Y-m-d'),
             500,
