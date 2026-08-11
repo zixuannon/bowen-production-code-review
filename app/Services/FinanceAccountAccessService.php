@@ -42,6 +42,17 @@ class FinanceAccountAccessService
         return $user->hasAnyRole(['Super Admin', 'School Admin', 'Head Finance']);
     }
 
+    /**
+     * Creating, editing, or retiring a Fund Account changes the finance control
+     * plane. It is deliberately the same elevated capability as managing its
+     * user assignments; a Cashier may view an assigned account but may not
+     * administer it.
+     */
+    public function canManageAccounts(User $user): bool
+    {
+        return $this->canManageAccountAssignments($user);
+    }
+
     public function canModifyOpeningBalance(User $user): bool
     {
         return $this->mayChangeOpeningBalance($user);

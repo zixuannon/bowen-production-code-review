@@ -519,8 +519,8 @@ class FeesPaidImportService
             $base['errors'][] = 'Bank Account Name is required';
             $base['status'] = 'error';
         } else {
-            $bankQuery = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())
-                ->where('account_name', $bankAccountName)
+            $bankQuery = BankAccount::where('account_name', $bankAccountName)
+                ->where('school_id', $schoolId)
                 ->active();
             $match = $this->matchOne('Bank Account Name', $bankQuery, $bankAccountName);
 

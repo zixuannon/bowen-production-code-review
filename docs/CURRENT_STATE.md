@@ -30,7 +30,20 @@ Local development is the only active implementation/test environment. Use local/
 
 ## Current phase
 
-Finance P1 Financial Audit Safety — **LOCAL ACCEPTANCE VERIFIED**. Production remains deployed (with its historical non-mutating browser coverage noted below); all destructive-path acceptance evidence was completed only in deterministic BOWEN_QA local synthetic data.
+Finance P2-A Roles + Fund Account Ownership Foundation — **LOCAL QA VERIFIED**. Production remains read-only. P2-A adds only the tenant-local role, ownership, and centralized authorization foundation; applying account scope to fee/expense dropdowns, transfers, and reports remains a later phase.
+
+P2-A local evidence:
+
+- Tenant migration: `2026_08_11_000001_create_bank_account_user_table.php` creates the `bank_account_user` many-to-many pivot with unique pair and cascading tenant-local foreign keys.
+- Roles: `Head Finance` and `Cashier` reuse Spatie. Fixture Cashiers receive only `expense-list`; Head Finance receives the minimal current finance permissions. Neither inherits the complete School Admin permission set.
+- Centralized `FinanceAccountAccessService`: current-school query scope, direct-account authorization, all-account access for School Admin/Head Finance, and elevated account/assignment/opening-balance capability checks.
+- BOWEN_QA: `QA_HEAD_FINANCE`, `QA_CASHIER_A`, `QA_CASHIER_B`; Fund Accounts `QA_P2_CASH_A`, `QA_P2_CASH_B`, `QA_P2_BANK`; A/B are assigned only to their respective cash accounts. Head Finance access is role-based, not pivot-based.
+- Targeted PHPUnit: 3 tests / 21 assertions pass (the current PHP runtime reports known vendor deprecation notices only).
+- Local Playwright: 4/4 pass — Cashier A isolation, Head Finance all-account visibility, direct unassigned-account rejection, and Cashier edit/opening-balance rejection (HTTP 403).
+
+P2-A intentionally does **not** yet apply the foundation to fee/expense selectors, transfer flows, or reporting. No production deployment or migration is prepared.
+
+Finance P1 Financial Audit Safety remains **LOCAL ACCEPTANCE VERIFIED**. Production remains deployed (with its historical non-mutating browser coverage noted below); all destructive-path acceptance evidence was completed only in deterministic BOWEN_QA local synthetic data.
 
 Implemented locally:
 
@@ -124,7 +137,7 @@ Historical same-host staging work is retained for future reference only. It is n
 
 ## Next task
 
-Finance P1 local acceptance is complete. Do not implement Finance Roles until role business rules are approved. Any future production release requires a fresh, explicit production deployment/migration gate.
+Finance P2-B, if approved: apply the tested centralized account scope to fee/expense account selectors, transfers, and account reports, with direct-request authorization tests. Do not start Branch Finance, transfer handover, daily closing, reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
 ## Backlog
 

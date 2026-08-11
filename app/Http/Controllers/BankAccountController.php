@@ -128,9 +128,11 @@ class BankAccountController extends Controller
             $operate = '';
             if (!$row->trashed()) {
                 $operate .= BootstrapTableService::viewButton(route('bank-accounts.show', $row->id));
-                $operate .= BootstrapTableService::editButton(route('bank-accounts.edit', $row->id));
-                if (!$row->is_default) {
-                    $operate .= BootstrapTableService::deleteButton(route('bank-accounts.destroy', $row->id));
+                if (app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user())) {
+                    $operate .= BootstrapTableService::editButton(route('bank-accounts.edit', $row->id));
+                    if (!$row->is_default) {
+                        $operate .= BootstrapTableService::deleteButton(route('bank-accounts.destroy', $row->id));
+                    }
                 }
             }
 
@@ -157,6 +159,7 @@ class BankAccountController extends Controller
 
     public function store(Request $request)
     {
+        abort_unless(app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
 
@@ -460,10 +463,12 @@ class BankAccountController extends Controller
 
     public function edit($id)
     {
+        $access = app(FinanceAccountAccessService::class);
+        abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
 
-        $bankAccount = app(FinanceAccountAccessService::class)->scope(Auth::user())->findOrFail($id);
+        $bankAccount = $access->scope(Auth::user())->findOrFail($id);
 
         return response()->json([
             'error' => false,
@@ -473,6 +478,8 @@ class BankAccountController extends Controller
 
     public function update(Request $request, $id)
     {
+        $access = app(FinanceAccountAccessService::class);
+        abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
 
@@ -489,14 +496,11 @@ class BankAccountController extends Controller
             'notes'               => 'nullable|string|max:1000',
         ]);
 
+        $bankAccount = $access->scope(Auth::user())->findOrFail($id);
+
         try {
             DB::beginTransaction();
 
-        $access = app(FinanceAccountAccessService::class);
-        $bankAccount = $access->scope(Auth::user())->findOrFail($id);
-        if (!$access->mayChangeOpeningBalance(Auth::user()) && ((float) $request->opening_balance !== (float) $bankAccount->opening_balance || ($request->opening_balance_date ?: null) !== $bankAccount->opening_balance_date?->toDateString())) {
-            abort(403, 'Cashiers cannot change opening balances.');
-        }
             $schoolId    = Auth::user()->school_id;
 
             // If set as default, unset other defaults
@@ -559,12 +563,14 @@ class BankAccountController extends Controller
 
     public function destroy($id)
     {
+        $access = app(FinanceAccountAccessService::class);
+        abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
 
-        try {
-            $bankAccount = app(FinanceAccountAccessService::class)->scope(Auth::user())->findOrFail($id);
+        $bankAccount = $access->scope(Auth::user())->findOrFail($id);
 
+        try {
             if ($bankAccount->is_default) {
                 return response()->json([
                     'error'   => true,

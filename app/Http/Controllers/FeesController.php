@@ -1374,7 +1374,7 @@ class FeesController extends Controller
         $feeCurrency = $fees->getRawOriginal('currency') ?? 'MMK';
         $currencySymbol = $currencyMap[$feeCurrency] ?? 'K';
 
-        $bankAccounts = app(\App\Services\FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())->active()->orderBy('account_name')->get();
+        $bankAccounts = BankAccount::owner()->active()->orderBy('account_name')->get();
 
         return view('Income.pay-compulsory', compact('fees', 'student', 'oneInstallmentPaid', 'currencySymbol', 'isFullyPaid', 'due_charges', 'installment_status', 'bankAccounts'));
     }
@@ -1409,7 +1409,6 @@ class FeesController extends Controller
             'bank_account_id.required'     => 'Please select a fund account for this payment.',
             'bank_account_id.exists'       => 'The selected fund account is not valid or does not belong to this school.',
         ]);
-        app(\App\Services\FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
 
         $fees = $this->fees->findById($request->fees_id, ['*'], [
             'fees_class_type.fees_type:id,name',
@@ -1582,7 +1581,7 @@ class FeesController extends Controller
             ])
             ->get();
 
-        $bankAccounts = app(\App\Services\FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())->active()->orderBy('account_name')->get();
+        $bankAccounts = BankAccount::owner()->active()->orderBy('account_name')->get();
 
         return view('Income.pay-optional', compact('fees', 'student', 'optionalFeesData', 'bankAccounts'));
     }
@@ -1606,7 +1605,6 @@ class FeesController extends Controller
             'bank_account_id.required' => 'Please select a fund account for this payment.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
-        app(\App\Services\FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
         try {
             DB::beginTransaction();
 

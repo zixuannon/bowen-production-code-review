@@ -44,24 +44,27 @@
 - [x] BOWEN_QA deterministic local tenant, login fixture, representative configuration, and guarded reset/seed command prepared
 - [x] Finance P1 — LOCAL ACCEPTANCE VERIFIED: deterministic BOWEN_QA Playwright payment-delete and opening-balance scenarios, tenant DB/ledger/balance/reference assertions, and targeted Finance regression passed. No production deployment occurred.
 
-## P1 — Finance Roles
+## P2-A — Roles + Fund Account Ownership Foundation
 
-Pending business design:
+- [x] Reuse Spatie roles for Head Finance and Cashier
+- [x] Tenant-local `bank_account_user` many-to-many ownership migration
+- [x] Centralized current-school Fund Account scope and direct-account authorization service
+- [x] School Admin and Head Finance all-current-school access
+- [x] Head Finance assignment-management capability
+- [x] Cashier explicit-assignment-only capability and opening-balance restriction
+- [x] Deterministic BOWEN_QA Head Finance/Cashier users, three P2 accounts, and A/B assignments
+- [x] Targeted PHPUnit and local Playwright authorization verification
 
-- Head Finance
-- Cashier
-- Branch Finance
-- Auditor
+## P2-B — Apply Fund Account Scope to Finance Workflows
 
-Do not implement until role visibility/action rules are approved.
+Pending approval/implementation:
 
-## P1 — Fund Account Ownership
+- Fee payment and Excel import Fund Account choices and write-path validation
+- Expense Fund Account choices and write-path validation
+- Bank Transfer visibility and direct-request authorization
+- Bank Account reports/ledger filtering and direct-request authorization
 
-Preferred direction to validate later:
-
-- user ↔ Fund Account many-to-many assignment
-- account-level visibility/actions
-- role + account ownership compose together
+Do not start Branch Finance, transfer handover, daily closing, reconciliation, refund/void/reversal, or a production release as part of P2-B.
 
 ## P1 — Transfer Handover
 

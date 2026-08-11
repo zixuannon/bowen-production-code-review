@@ -22,15 +22,15 @@ function csrfToken(html) {
   return match[1];
 }
 
-async function authenticateLocalBowenQa() {
+async function authenticateLocalBowenQa(email = EMAIL, statePath = authState) {
   const baseURL = localBaseUrl();
-  const api = await request.newContext({ baseURL });
+  const api = await request.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   try {
     const login = await api.get('/login', { maxRedirects: 0 });
     if (login.status() !== 200) throw new Error(`Local GET /login returned HTTP ${login.status()}.`);
 
     const response = await api.post('/login', {
-      form: { _token: csrfToken(await login.text()), email: EMAIL, password: PASSWORD, code: SCHOOL_CODE },
+      form: { _token: csrfToken(await login.text()), email, password: PASSWORD, code: SCHOOL_CODE },
       maxRedirects: 0,
     });
     if (![302, 303].includes(response.status())) {
@@ -44,14 +44,14 @@ async function authenticateLocalBowenQa() {
     const dashboard = await api.get('/dashboard', { maxRedirects: 0 });
     if (dashboard.status() !== 200) throw new Error(`Authenticated local dashboard returned HTTP ${dashboard.status()}.`);
     const html = await dashboard.text();
-    if (!html.includes('Bowen School') || !html.includes('Finance')) {
-      throw new Error('Authenticated dashboard did not render the expected BOWEN_QA identity and finance navigation.');
+    if (!html.includes('Bowen School')) {
+      throw new Error('Authenticated dashboard did not render the expected BOWEN_QA identity.');
     }
 
     fs.mkdirSync(path.dirname(authState), { recursive: true, mode: 0o700 });
-    await api.storageState({ path: authState });
-    fs.chmodSync(authState, 0o600);
-    return authState;
+    await api.storageState({ path: statePath });
+    fs.chmodSync(statePath, 0o600);
+    return statePath;
   } finally {
     await api.dispose();
   }

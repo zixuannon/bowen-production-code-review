@@ -344,16 +344,22 @@ class LocalBowenQa extends Command
     private function seedFinanceRoleAssignments(int $schoolId, $now): void
     {
         $school = DB::connection('school');
-        $adminRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'School Admin')->first();
         foreach (['Head Finance', 'Cashier'] as $roleName) {
             $school->table('roles')->updateOrInsert(['school_id' => $schoolId, 'name' => $roleName, 'guard_name' => 'web'], ['updated_at' => $now, 'created_at' => $now]);
         }
         $headRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'Head Finance')->value('id');
         $cashierRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'Cashier')->value('id');
-        foreach ($school->table('role_has_permissions')->where('role_id', $adminRole->id)->get() as $permission) {
-            $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permission->permission_id, 'role_id' => $headRole], []);
-            $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permission->permission_id, 'role_id' => $cashierRole], []);
+        // Do not clone School Admin. Finance roles receive only the permissions
+        // they need for the foundation; account scope then further restricts
+        // Cashier visibility to explicit assignments.
+        $permissionIds = $school->table('permissions')
+            ->whereIn('name', ['expense-list', 'expense-create', 'fees-paid'])
+            ->pluck('id', 'name');
+        $school->table('role_has_permissions')->whereIn('role_id', [$headRole, $cashierRole])->delete();
+        foreach ($permissionIds as $permissionId) {
+            $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permissionId, 'role_id' => $headRole], []);
         }
+        $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permissionIds['expense-list'], 'role_id' => $cashierRole], []);
         foreach ([['qa_head_finance@bowen-qa.test', $headRole], ['qa_cashier_a@bowen-qa.test', $cashierRole], ['qa_cashier_b@bowen-qa.test', $cashierRole]] as [$email, $role]) {
             $id = $school->table('users')->where('email', $email)->value('id');
             $school->table('model_has_roles')->updateOrInsert(['role_id' => $role, 'model_id' => $id, 'model_type' => 'App\\Models\\User'], []);
