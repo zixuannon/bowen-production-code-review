@@ -150,7 +150,7 @@ class FeesPaymentService
         $referenceNo = null;
         if (!empty($data['reference_no'])) {
             $referenceNo = strtoupper(trim($data['reference_no']));
-            $existing = CompulsoryFee::where('school_id', $schoolId)
+            $existing = CompulsoryFee::withTrashed()->where('school_id', $schoolId)
                 ->where('reference_no', $referenceNo)
                 ->exists();
             if ($existing) {

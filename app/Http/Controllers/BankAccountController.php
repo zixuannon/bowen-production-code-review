@@ -9,6 +9,7 @@ use App\Models\Expense;
 use App\Models\OptionalFee;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -133,6 +134,9 @@ class BankAccountController extends Controller
             }
 
             $tempRow = $row->toArray();
+            $tempRow['opening_balance_date'] = $row->opening_balance_date
+                ? $row->opening_balance_date->format('d-m-Y')
+                : null;
             $tempRow['no']              = $no++;
             $tempRow['account_type_name'] = $row->account_type;
             $tempRow['income_total']    = round($income, 2);
@@ -186,9 +190,10 @@ class BankAccountController extends Controller
             ]);
             $data['school_id'] = $schoolId;
             $data['opening_balance']      = $request->opening_balance ?? 0;
-            $data['opening_balance_date'] = $request->opening_balance_date ?: null;
+            $data['opening_balance_date'] = $this->normalizeOpeningBalanceDate($request->opening_balance_date);
             $data['is_active']  = $request->has('is_active') ? (bool)$request->is_active : true;
             $data['is_default'] = $request->has('is_default') ? (bool)$request->is_default : false;
+            $data['created_by'] = Auth::id();
 
             BankAccount::create($data);
 
@@ -502,9 +507,39 @@ class BankAccountController extends Controller
                 'opening_balance_date', 'is_active', 'is_default', 'notes',
             ]);
             $data['opening_balance']      = $request->opening_balance ?? 0;
-            $data['opening_balance_date'] = $request->opening_balance_date ?: null;
+            $data['opening_balance_date'] = $this->normalizeOpeningBalanceDate($request->opening_balance_date);
             $data['is_active']  = $request->has('is_active') ? (bool)$request->is_active : false;
             $data['is_default'] = $request->has('is_default') ? (bool)$request->is_default : false;
+            $data['updated_by'] = Auth::id();
+
+            // Log opening balance adjustment if changed
+            $newBalance = (float) ($request->opening_balance ?? 0);
+            $newBalanceDate = $data['opening_balance_date'];
+            $oldBalance = (float) $bankAccount->opening_balance;
+            $oldBalanceDate = $bankAccount->opening_balance_date?->toDateString();
+
+            $balanceChanged = abs($newBalance - $oldBalance) > 0.001;
+            $dateChanged = $newBalanceDate !== $oldBalanceDate;
+
+            if ($balanceChanged || $dateChanged) {
+                $reason = $request->adjustment_reason;
+                if (empty(trim($reason ?? ''))) {
+                    return response()->json([
+                        'error'   => true,
+                        'message' => __('Please provide a reason for the opening balance change.'),
+                    ], 422);
+                }
+
+                \App\Models\BankAccountBalanceAdjustment::create([
+                    'bank_account_id'           => $bankAccount->id,
+                    'old_opening_balance'       => $oldBalance,
+                    'new_opening_balance'       => $newBalance,
+                    'old_opening_balance_date'  => $oldBalanceDate,
+                    'new_opening_balance_date'  => $newBalanceDate,
+                    'changed_by'                => Auth::id(),
+                    'reason'                    => trim($reason),
+                ]);
+            }
 
             $bankAccount->update($data);
 
@@ -540,5 +575,19 @@ class BankAccountController extends Controller
             ResponseService::logErrorResponse($e, 'BankAccountController -> Destroy');
             ResponseService::errorResponse();
         }
+    }
+
+    private function normalizeOpeningBalanceDate(?string $date): ?string
+    {
+        $date = trim((string) $date);
+        if ($date === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $date)) {
+            return Carbon::createFromFormat('!d-m-Y', $date)->toDateString();
+        }
+
+        return Carbon::parse($date)->toDateString();
     }
 }

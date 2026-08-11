@@ -7,14 +7,15 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
 use App\Traits\DateFormatTrait;
 use Illuminate\Support\Facades\Storage;
 
 class Expense extends Model
 {
-    use HasFactory, DateFormatTrait;
-    protected $fillable = ['category_id', 'finance_category_id', 'ref_no', 'staff_id', 'month', 'year', 'title', 'description', 'amount', 'date', 'school_id', 'session_year_id', 'basic_salary', 'paid_leaves', 'vehicle_id', 'file', 'created_by', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk', 'bank_account_id'];
+    use HasFactory, SoftDeletes, DateFormatTrait;
+    protected $fillable = ['category_id', 'finance_category_id', 'ref_no', 'staff_id', 'month', 'year', 'title', 'description', 'amount', 'date', 'school_id', 'session_year_id', 'basic_salary', 'paid_leaves', 'vehicle_id', 'file', 'created_by', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk', 'bank_account_id', 'deleted_by', 'delete_reason', 'updated_by'];
 
     protected $appends = ['taken_leaves'];
 
@@ -105,6 +106,12 @@ class Expense extends Model
     }
     public function creator(){
          return $this->belongsTo(User::class, 'created_by');
+    }
+    public function deleted_by_user(){
+         return $this->belongsTo(User::class, 'deleted_by');
+    }
+    public function updated_by_user(){
+         return $this->belongsTo(User::class, 'updated_by');
     }
 
     public function getFileAttribute($value)

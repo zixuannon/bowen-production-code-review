@@ -566,7 +566,7 @@ class FeesPaidImportService
                 $excelRefNos[] = $referenceNo;
             }
 
-            $dbExists = CompulsoryFee::where('school_id', $schoolId)
+            $dbExists = CompulsoryFee::withTrashed()->where('school_id', $schoolId)
                 ->where('reference_no', $referenceNo)
                 ->exists();
             if ($dbExists) {

@@ -234,6 +234,12 @@
                                             placeholder="{{ __('reference_no') }}" class="form-control" />
                                     </div>
 
+                                    <div class="form-group col-sm-12 col-md-6">
+                                        <label for="edit_reason">{{ __('Edit Reason') }} <span class="text-danger">*</span></label>
+                                        <textarea name="edit_reason" id="edit_reason" class="form-control" rows="2" required
+                                            placeholder="{{ __('Explain why this expense is being edited') }}"></textarea>
+                                    </div>
+
                                     <div class="form-group col-sm-12 col-md-2">
                                         <label for="edit_currency">{{ __('Currency') }} <span
                                                 class="text-danger">*</span></label>
@@ -544,6 +550,58 @@
             let sessionYearId = $('#edit_session_year_id').val(); // current session year in edit modal
             setEditDatepickerLimits(sessionYearId);
             $('#edit_date').val(''); // clear date
+        });
+
+        // ========== Delete with reason handler ==========
+        $(document).on('click', '.delete-form-reason', function (e) {
+            e.preventDefault();
+            let url = $(this).attr('href');
+            Swal.fire({
+                title: '{{ __('Delete Expense') }}',
+                html:
+                    '<label class="d-block text-left">{{ __('Deletion Reason') }} <span class="text-danger">*</span></label>' +
+                    '<input id="swal-delete-reason" class="swal2-input" placeholder="{{ __('e.g. Duplicate expense, Wrong entry, Cancelled transaction') }}">',
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: '{{ __('Delete') }}',
+                cancelButtonText: '{{ __('Cancel') }}',
+                confirmButtonColor: '#d33',
+                preConfirm: function () {
+                    let reason = $('#swal-delete-reason').val();
+                    if (!reason || !reason.trim()) {
+                        Swal.showValidationMessage('{{ __('Please provide a deletion reason.') }}');
+                        return false;
+                    }
+                    return reason.trim();
+                }
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: url,
+                        type: 'DELETE',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            delete_reason: result.value
+                        },
+                        success: function (response) {
+                            if (response.error === false) {
+                                showSuccessToast(response.message);
+                                $('#table_list').bootstrapTable('refresh');
+                            } else {
+                                showErrorToast(response.message);
+                            }
+                        },
+                        error: function (xhr) {
+                            var resp = xhr.responseJSON;
+                            if (resp && resp.message) {
+                                showErrorToast(resp.message);
+                            } else {
+                                showErrorToast('{{ __('Something went wrong.') }}');
+                            }
+                        }
+                    });
+                }
+            });
         });
     </script>
 @endsection

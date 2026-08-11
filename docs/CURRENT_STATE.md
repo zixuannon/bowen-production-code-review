@@ -1,0 +1,143 @@
+# eSchool Current State
+
+Last updated: 2026-08-11
+
+## Active production target
+
+- Server: `43.160.241.126`
+- Project: `/www/wwwroot/43.160.241.126`
+- Canonical SSH alias: `eschool-prod`
+
+`183.240.79.48` is a legacy/rollback environment only. It must not be selected, connected to, deployed to, or migrated for Finance P1.
+
+## Current area
+
+Finance V2
+
+## Active development pipeline — V2
+
+`LOCAL → TARGETED TEST → LOCAL PLAYWRIGHT → REVIEW → PRODUCTION GATE`
+
+Local development is the only active implementation/test environment. Use local/test databases and deterministic synthetic data for migrations, PHPUnit, Playwright, debugging, and finance write-path acceptance. Production is read-only until an explicit production gate is approved.
+
+`staging.school.mmbowen.com` is **PAUSED / NOT PART OF ACTIVE PIPELINE**. Do not authenticate to, test, debug, deploy to, delete, or otherwise modify staging without separate authorization.
+
+## Completed and production-verified
+
+- P0: Income and Expense require a valid Fund Account.
+- P0: Cross-school, inactive, and deleted Fund Account protection.
+- Existing Excel paid-fee import production regression passed after P0.
+
+## Current phase
+
+Finance P1 Financial Audit Safety — **LOCAL ACCEPTANCE VERIFIED**. Production remains deployed (with its historical non-mutating browser coverage noted below); all destructive-path acceptance evidence was completed only in deterministic BOWEN_QA local synthetic data.
+
+Implemented locally:
+
+- Expense delete: SoftDelete + deleted_by + delete_reason.
+- Expense edit: change history with old/new values, reason, changed_by.
+- Fee payment delete: SoftDelete + deleted_by + delete_reason; historical reference_no remains reserved.
+- Opening balance edit: adjustment history with old/new balance/date and reason.
+
+Current automated evidence:
+
+- 104 tests
+- 344 assertions
+- 0 failures
+
+## P1 production deployment evidence
+
+Completed on `eschool-prod`:
+
+- Full checksum-verified tenant backups: `/root/backups/finance_p1_20260810_163626`.
+- The six targeted P1 migrations completed on all eight tenants, with schema verification and one P1-only batch per tenant.
+- Canary: `eschool_saas_1_demo` (batch 5); remaining batches: Zixuan 8, Bahan 7, Timecitys 7, `20_` 7, `21_` 7, Zixuanyang 7, `32_` 2.
+- The final application release contains 15 P1 files: 13 initial files plus `FeesPaidImportService.php` and `FeesPaymentService.php`, which reserve references held by soft-deleted payments.
+- PHP syntax and Laravel autoload checks passed, caches were cleared, and production was restored online.
+- Browser checks passed without a financial write: public/dashboard access, expense list, expense delete-reason dialog and empty-reason rejection, required expense edit reason, paid-fee list, optional-fee list, Bank Account list/report, and expense report.
+- No production financial record was created, edited, deleted, refunded, or transferred for testing.
+
+## Production preflight evidence
+
+Exact tenant databases observed:
+
+- `eschool_saas_1_demo`
+- `eschool_saas_15_zixuan`
+- `eschool_saas_17_bahan`
+- `eschool_saas_19_timecitys`
+- `eschool_saas_20_`
+- `eschool_saas_21_`
+- `eschool_saas_31_zixuanyang`
+- `eschool_saas_32_`
+
+All eight showed:
+
+- required base finance tables: 5/5
+- P1 schema present before migration: none
+
+Important unrelated pending school migrations exist on several tenants.
+
+Therefore:
+
+- DO NOT use broad `php artisan migrate:school` for the P1 cutover.
+- P1 production migration must target only the six P1 migration files.
+
+## Local acceptance requirements
+
+The following are deliberately **not** marked PASS in production and are not production blockers:
+
+1. Compulsory and optional payment delete-reason dialogs, including empty-reason rejection and post-delete accounting/audit verification.
+2. Opening-balance reason validation and `BankAccountBalanceAdjustment` audit verification.
+
+They require a dedicated local/test tenant with synthetic data and browser permission to perform controlled finance writes. No further production financial testing is authorized for these paths.
+
+### BOWEN local QA environment — ready
+
+The generic local demo was not representative because the local central database had no installed school, only default SaaS settings, and only one enabled feature. Bowen’s visible structure is driven by a combination of current application code, central branding/subscription features, and tenant-local school settings, roles, permissions, academic-year data, and finance bootstrap.
+
+- Local-only tenant: `BOWEN_QA` in fixed database `eschool_local_bowen_qa`.
+- Reset/seed: `php artisan local:bowen-qa reset`. The command has no selectable database/tenant argument and refuses non-local APP_ENV, non-local APP_URL, staging, production, and production-style database names.
+- Fixture: synthetic QA admin/teacher/guardian/student, `Bowen QA 2026`, class/section, compulsory and optional fee structures, two QA Fund Accounts, fixed payment `BOWEN_QA_P1_PAYMENT_001`, and fixed expense `BOWEN_QA_P1_EXPENSE_001`.
+- Representative configuration: Bowen-style school/system name, non-sensitive public branding images copied with checksum verification, active Bowen-equivalent subscription feature names, and School Admin role/permission bootstrap. No production users, students, financial records, uploads other than the two public branding images, sessions, or credentials were copied.
+- Repeatability: two reset/seed cycles produced the same stable fixture fingerprint (`f0309de62232949dff2649309f1233ea67bd3a88a14b36ca59702fc566a17fbe`).
+- Local browser target: guarded `http://127.0.0.1:8000`, authenticating only to `BOWEN_QA`; the auth state remains gitignored. Representative browser checks pass for dashboard, Fund Accounts, Expenses, compulsory/optional paid-fee pages, and the Excel paid-fee import UI.
+
+Focused production read-only code parity confirms the Finance P0/P1, paid-fee import, and relevant finance/sidebar views used by local QA match the deployed production files. Two unrelated production-only Xiaobailong AI route/sidebar additions are not present in local; they are recorded for separate source-of-truth reconciliation and are outside Finance P1.
+
+Finance P1 local acceptance completed in BOWEN_QA: the real delete-reason dialog rejects empty input then soft-deletes `BOWEN_QA_P1_PAYMENT_001`; audit actor/reason, normal-versus-history visibility, FeesPaid/outstanding, Fund Account balance, ledger exclusion, and manual/Excel reference reservation all pass. The Bank Account edit form now conditionally renders/submits `adjustment_reason`, preserves controller validation, records exactly one opening-balance adjustment, and does not create one for an unrelated edit. A cascade-risk fix retains zeroed FeesPaid aggregates so a soft-deleted payment cannot be removed by a foreign-key cascade.
+
+## Archived staging provisioning — paused
+
+Historical same-host staging work is retained for future reference only. It is not an active requirement or deployment target under Pipeline V2. Production application/data remain protected and were not changed.
+
+- Same host: `eschool-prod` (`43.160.241.126`); separate staging root `staging.school.mmbowen.com` at `/www/wwwroot/staging.school.mmbowen.com`.
+- Isolation contract: APP_ENV/APP_KEY/.env/storage/session/cache/queue are independent; central `eschool_staging`; FINANCE_QA tenant `eschool_staging_finance_qa`; staging-only least-privilege credentials; staging must never point to `sql_43_160_241_126` or `eschool_saas_*`.
+- Prepared tooling: `StagingFinanceQaGuard`, `staging:finance-qa` (verify/seed/reset), guarded runtime/deploy scripts, a synthetic FINANCE_QA baseline, a staging runbook, and Playwright P1 acceptance scenarios.
+- The reset command requires exact staging environment, URL, central database, school, and tenant database checks, a confirmation flag, and creates a targeted local snapshot before resetting only `QA_P1_%` fixtures.
+- Payment-delete and opening-balance browser acceptance remain deliberately unverified until the isolated environment and synthetic credentials exist. No production financial mutation was used for testing.
+- Same-host preflight (2026-08-11): `eschool-prod` is `VM-0-4-ubuntu`; production root exists; 77 GB is free. Nginx 1.24, PHP 8.3 FPM (`/tmp/php-cgi-83.sock`) / PHP 8.3 CLI (`/usr/bin/php83`), MariaDB 10.11, and Redis are available. The production CLI default remains PHP 8.1; Node/npm are not installed.
+- DNS now resolves `staging.school.mmbowen.com` to the active host. The isolated staging root, independent `.env`/APP_KEY/storage/session/cache, `eschool_staging` central DB, and `eschool_staging_finance_qa` tenant DB are provisioned. The application DB account has privileges limited to those two staging DBs; the temporary MariaDB staging-admin credential file was deleted after application credential verification.
+- `FINANCE_QA` is installed through the real per-school migration mechanism. Its synthetic tenant includes QA users, student/class/session, compulsory and optional fees, four test Fund Accounts, a transfer, and an expense. `staging:finance-qa verify` passes.
+- `https://staging.school.mmbowen.com` is live with its own Let’s Encrypt certificate. HTTP redirects to HTTPS; the staging Nginx vhost contains no production proxy routes. PHP/FPM writable-path and tenant-local `Teacher`-role bootstrap defects were corrected in the staging-only setup.
+- Runtime isolation verified: central DB `eschool_staging`, school DB `eschool_staging_finance_qa`, mail `log`, queue `sync`, cache/session `file`. Production project and production databases were not modified.
+- Staging-only visual guard deployed: login and authenticated layouts render `STAGING — FINANCE_QA · TEST DATA ONLY` only when `app()->environment('staging')`. The focused view test confirms it renders for staging and is absent for production; staging login rendering was verified over HTTPS. Staging `APP_NAME` is `STAGING_FINANCE_QA` so the login title cannot be mistaken for production.
+
+## Next task
+
+Finance P1 local acceptance is complete. Do not implement Finance Roles until role business rules are approved. Any future production release requires a fresh, explicit production deployment/migration gate.
+
+## Backlog
+
+- Repair the isolated `TwoStageLeaveServiceIsEnabledTest` bootstrap (`Target class [config] does not exist`) and the generic `ExampleTest` HTTP host fixture (`HTTP_HOST` is absent). These caused 16 unrelated failures in the full local suite and are outside Finance P1 scope.
+
+## Roadmap after P1 production verification
+
+1. Head Finance / Cashier / Branch Finance role design
+2. Fund Account user ownership and account-level permissions
+3. Transfer → Handover + Receiver confirmation
+4. Daily Cash Closing
+5. Bank Reconciliation
+6. Refund / Void / Reversal
+7. Reports and Audit
+
+Do not implement finance roles until P1 is production-verified and business rules are confirmed.

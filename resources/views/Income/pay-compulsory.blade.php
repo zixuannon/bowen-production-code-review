@@ -92,9 +92,9 @@
                                                 @if(!empty($installment->is_paid))
                                                     {{--If installment is paid--}}
                                                     <td>
-                                                        <span class="remove-installment-fees-paid text-left" data-id="{{$installment->is_paid->id}}">
-                                                            <i class="fa fa-times text-danger" style="cursor:pointer" aria-hidden="true"></i>
-                                                        </span>
+                                                        <button type="button" class="remove-installment-fees-paid btn btn-link p-0 text-left text-danger" data-id="{{$installment->is_paid->id}}" aria-label="{{ __('delete') }}">
+                                                            <span aria-hidden="true">&times;</span>
+                                                        </button>
                                                     </td>
 
                                                     <td colspan="2" class="text-left">
@@ -219,9 +219,9 @@
                                             @foreach ($student->fees_paid->compulsory_fee as $fees)
                                                 <tr class="without_installment_enter_amount">
                                                     <td>
-                                                        <span class="remove-installment-fees-paid text-left" title="{{ __('delete') }}" data-id="{{ $fees->id }}">
-                                                            <i class="fa fa-times text-danger" style="cursor:pointer" aria-hidden="true"></i>
-                                                        </span>
+                                                        <button type="button" class="remove-installment-fees-paid btn btn-link p-0 text-left text-danger" title="{{ __('delete') }}" data-id="{{ $fees->id }}" aria-label="{{ __('delete') }}">
+                                                            <span aria-hidden="true">&times;</span>
+                                                        </button>
 
                                                         {{ $fees->date }}
                                                     </td>
@@ -531,5 +531,43 @@
         function successFunction() {
             window.location.href = "{{route('fees.paid.index')}}";
         }
+
+        // Override fee payment delete to collect reason
+        $('.compulsory-fees-content').on('click', '.remove-installment-fees-paid', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var $el = $(this);
+            var installmentPaidId = $el.data('id');
+            if (!installmentPaidId) return;
+            var url = baseUrl + '/fees/paid/remove-installment-fees/' + installmentPaidId;
+            Swal.fire({
+                title: '{{ __('Delete Payment') }}',
+                html: '<label class="d-block text-left">{{ __('Deletion Reason') }} <span class="text-danger">*</span></label>' +
+                      '<input id="swal-fee-delete-reason" class="swal2-input" placeholder="{{ __('Reason for deleting this payment...') }}">',
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: '{{ __('Delete') }}',
+                confirmButtonColor: '#d33',
+                preConfirm: function () {
+                    var reason = $('#swal-fee-delete-reason').val();
+                    if (!reason || !reason.trim()) {
+                        Swal.showValidationMessage('{{ __('Please provide a reason.') }}');
+                        return false;
+                    }
+                    return reason.trim();
+                }
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: url, type: 'DELETE',
+                        data: { _token: '{{ csrf_token() }}', delete_reason: result.value },
+                        success: function () { window.location.reload(); },
+                        error: function (xhr) {
+                            showErrorToast(xhr.responseJSON?.message || '{{ __('Error') }}');
+                        }
+                    });
+                }
+            });
+        });
     </script>
 @endsection

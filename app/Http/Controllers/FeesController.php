@@ -775,10 +775,17 @@ class FeesController extends Controller
         }
     }
 
-    public function removeOptionalFees($id)
+    public function removeOptionalFees(Request $request, $id)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-paid');
+
+        $request->validate([
+            'delete_reason' => 'required|string|max:255',
+        ], [
+            'delete_reason.required' => 'Please provide a reason for deleting this payment.',
+        ]);
+
         try {
             DB::beginTransaction();
 
@@ -787,7 +794,11 @@ class FeesController extends Controller
             $feesPaidId = $optionalFeeData->fees_paid_id;
             $optionalFeeAmount = $optionalFeeData->amount;
 
-            $this->optionalFee->permanentlyDeleteById($id); // Permanently Delete Optional Fees Data
+            // Soft delete: preserve audit trail (deleted_by, deleted_at, delete_reason)
+            $optionalFeeData->deleted_by = Auth::id();
+            $optionalFeeData->delete_reason = $request->delete_reason;
+            $optionalFeeData->save();
+            $optionalFeeData->delete();
 
             // Check Fees Transactions Entry
             $feesPaidDataQuery = $this->feesPaid->builder()->where('id', $feesPaidId);
@@ -798,7 +809,9 @@ class FeesController extends Controller
                 if ($finalAmount > 0) {
                     $this->feesPaid->update($feesPaidId, ['amount' => $finalAmount]); // Update Fees Paid Data with Final Amount
                 } else {
-                    $this->feesPaid->permanentlyDeleteById($feesPaidId);
+                    // Retain the aggregate row: deleting it can cascade into the
+                    // just-soft-deleted payment and destroy its audit history.
+                    $this->feesPaid->update($feesPaidId, ['amount' => 0, 'is_fully_paid' => 0]);
                 }
             } else {
                 $this->feesPaid->permanentlyDeleteById($feesPaidId);
@@ -816,10 +829,17 @@ class FeesController extends Controller
         }
     }
 
-    public function removeInstallmentFees($compulsoryFeesPaidID)
+    public function removeInstallmentFees(Request $request, $compulsoryFeesPaidID)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-paid');
+
+        $request->validate([
+            'delete_reason' => 'required|string|max:255',
+        ], [
+            'delete_reason.required' => 'Please provide a reason for deleting this payment.',
+        ]);
+
         try {
             DB::beginTransaction();
 
@@ -828,7 +848,11 @@ class FeesController extends Controller
             $feesPaidId = $installmentFeeTransaction->fees_paid_id;
             $feesTransactionAmount = $installmentFeeTransaction->amount;
 
-            $this->compulsoryFee->permanentlyDeleteById($compulsoryFeesPaidID); // Permanently Delete Fees Transaction Data
+            // Soft delete: preserve audit trail (deleted_by, deleted_at, delete_reason)
+            $installmentFeeTransaction->deleted_by = Auth::id();
+            $installmentFeeTransaction->delete_reason = $request->delete_reason;
+            $installmentFeeTransaction->save();
+            $installmentFeeTransaction->delete();
 
             // Check Fees Transactions Entry
             $feesPaidDataQuery = $this->feesPaid->builder()->where('id', $feesPaidId);
@@ -839,7 +863,9 @@ class FeesController extends Controller
                 if ($finalAmount > 0) {
                     $this->feesPaid->update($feesPaidId, ['amount' => $finalAmount, 'is_fully_paid' => 0]); // Update Fees Paid Data with Final Amount
                 } else {
-                    $this->feesPaid->permanentlyDeleteById($feesPaidId);
+                    // Retain the aggregate row: deleting it can cascade into the
+                    // just-soft-deleted payment and destroy its audit history.
+                    $this->feesPaid->update($feesPaidId, ['amount' => 0, 'is_fully_paid' => 0]);
                 }
             } else {
                 $this->feesPaid->permanentlyDeleteById($feesPaidId);

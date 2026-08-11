@@ -26,6 +26,8 @@ class OptionalFee extends Model
         'session_year_id',
         'school_id',
         'bank_account_id',
+        'deleted_by',
+        'delete_reason',
         'created_at',
         'updated_at'
     ];

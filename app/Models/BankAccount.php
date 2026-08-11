@@ -24,6 +24,8 @@ class BankAccount extends Model
         'is_active',
         'is_default',
         'notes',
+        'created_by',
+        'updated_by',
     ];
 
     protected $casts = [

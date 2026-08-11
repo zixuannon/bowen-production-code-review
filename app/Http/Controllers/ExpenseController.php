@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
+use App\Models\ExpenseChangeLog;
 use App\Models\FinanceCategory;
 use App\Repositories\Expense\ExpenseInterface;
 use App\Repositories\ExpenseCategory\ExpenseCategoryInterface;
@@ -80,6 +81,7 @@ class ExpenseController extends Controller
                     })
             ],
             'amount' => 'required|numeric|min:0',
+            'edit_reason' => 'required|string|max:255',
             'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
             'original_amount' => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0',
@@ -93,6 +95,7 @@ class ExpenseController extends Controller
             ],
         ], [
             'ref_no.unique' => 'Reference number already exists for the selected session year.',
+            'edit_reason.required' => 'Please provide a reason for this expense edit.',
             'bank_account_id.required' => 'Please select a fund account for this expense.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
@@ -218,7 +221,7 @@ class ExpenseController extends Controller
             $operate = '';
             if (!$row->month) {
                 $operate .= BootstrapTableService::editButton(route('expense.update', $row->id));
-                $operate .= BootstrapTableService::deleteButton(route('expense.destroy', $row->id));
+                $operate .= BootstrapTableService::deleteButtonWithReason(route('expense.destroy', $row->id));
             }
 
             $tempRow = $row->toArray();
@@ -306,7 +309,20 @@ class ExpenseController extends Controller
                 'exchange_rate_snapshot' => $exchangeRate,
                 'amount_mmk' => $amountMmk,
                 'bank_account_id' => $request->bank_account_id ?: null,
+                'updated_by'   => Auth::id(),
             ];
+
+            // ---- Log financially significant changes ----
+            $oldExpense = $this->expense->findById($id);
+            $editReason = $request->edit_reason ?: null;
+            $this->logExpenseChange($oldExpense, 'amount', $oldExpense->amount, $amount, Auth::id(), $editReason);
+            $this->logExpenseChange($oldExpense, 'bank_account_id', $oldExpense->bank_account_id, ($request->bank_account_id ?: null), Auth::id(), $editReason);
+            $oldDate = $oldExpense->getRawOriginal('date') ?? $oldExpense->date;
+            $newDate = $request->date
+                ? Carbon::createFromFormat($schoolSettings['date_format'], $request->date)->format('Y-m-d')
+                : null;
+            $this->logExpenseChange($oldExpense, 'date', $oldDate, $newDate, Auth::id(), $editReason);
+
             $this->expense->update($id, $data);
             DB::commit();
             ResponseService::successResponse('Data Updated Successfully');
@@ -318,14 +334,29 @@ class ExpenseController extends Controller
     }
 
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-delete');
 
+        $request->validate([
+            'delete_reason' => 'required|string|max:255',
+        ], [
+            'delete_reason.required' => 'Please provide a reason for deleting this expense.',
+        ]);
+
         try {
             DB::beginTransaction();
-            $this->expense->deleteById($id);
+
+            // Load expense ensuring it belongs to current school
+            $expense = $this->expense->builder()->where('id', $id)->firstOrFail();
+
+            $expense->deleted_by = Auth::id();
+            $expense->delete_reason = $request->delete_reason;
+            $expense->save();
+
+            $expense->delete(); // Soft delete
+
             $sessionYear = $this->cache->getDefaultSessionYear();
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Expense', $id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             DB::commit();
@@ -373,5 +404,28 @@ class ExpenseController extends Controller
             ResponseService::logErrorResponse($e, "Expense Controller -> Filter Method");
             ResponseService::errorResponse();
         }
+    }
+
+    /**
+     * Log a single field change if the value actually changed.
+     */
+    private function logExpenseChange($expense, string $field, $oldValue, $newValue, int $changedBy, ?string $reason): void
+    {
+        // Normalize for comparison
+        $oldStr = is_scalar($oldValue) ? (string) $oldValue : json_encode($oldValue);
+        $newStr = is_scalar($newValue) ? (string) $newValue : json_encode($newValue);
+
+        if ($oldStr === $newStr) {
+            return;
+        }
+
+        ExpenseChangeLog::create([
+            'expense_id' => $expense->id,
+            'field_name' => $field,
+            'old_value'  => $oldStr,
+            'new_value'  => $newStr,
+            'changed_by' => $changedBy,
+            'reason'     => $reason,
+        ]);
     }
 }

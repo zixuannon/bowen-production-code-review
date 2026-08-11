@@ -212,6 +212,15 @@
                                         class="datepicker-popup-no-future form-control" autocomplete="off" />
                                 </div>
 
+                                <div class="form-group col-sm-12 col-md-6 d-none" id="opening-balance-adjustment-reason-group">
+                                    <label for="adjustment_reason">{{ __('Opening Balance Adjustment Reason') }} <span class="text-danger">*</span></label>
+                                    <input name="adjustment_reason" id="adjustment_reason" type="text"
+                                        class="form-control" maxlength="255"
+                                        placeholder="{{ __('Explain why the opening balance or date is changing') }}" />
+                                    <div class="invalid-feedback" id="adjustment_reason_error"></div>
+                                    <small class="form-text text-muted">{{ __('Required only when the opening balance or opening balance date changes.') }}</small>
+                                </div>
+
                                 <div class="form-group col-sm-12 col-md-3">
                                     <label>{{ __('Notes') }}</label>
                                     <input name="edit_notes" id="edit_notes" type="text" class="form-control"
@@ -297,7 +306,7 @@
 
         // ========== Edit: Load data into modal ==========
         window.bankAccountEvents = {
-            'click .edit-btn': function(e, value, row) {
+            'click .edit-data': function(e, value, row) {
                 $('#edit_id').val(row.id);
                 $('#edit_account_name').val(row.account_name);
                 $('#edit_account_number').val(row.account_number || '');
@@ -306,6 +315,11 @@
                 $('#edit_currency').val(row.currency);
                 $('#edit_opening_balance').val(row.opening_balance);
                 $('#edit_opening_balance_date').val(row.opening_balance_date || '');
+                $('#edit_opening_balance').data('original-value', normalizeOpeningBalance(row.opening_balance));
+                $('#edit_opening_balance_date').data('original-value', normalizeOpeningBalanceDate(row.opening_balance_date));
+                setOpeningBalanceAdjustmentReasonVisibility(false);
+                $('#adjustment_reason').val('').removeClass('is-invalid').prop('required', false);
+                $('#adjustment_reason_error').text('');
                 $('#edit_notes').val(row.notes || '');
                 $('#edit_is_active').prop('checked', row.is_active == 1 || row.is_active === true);
                 $('#edit_is_default').prop('checked', row.is_default == 1 || row.is_default === true);
@@ -346,9 +360,61 @@
             }
         };
 
+        function normalizeOpeningBalance(value) {
+            var parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00';
+        }
+
+        function normalizeOpeningBalanceDate(value) {
+            var normalized = (value || '').toString().trim();
+            if (!normalized) return '';
+
+            // The stored value is ISO but the legacy datepicker displays
+            // DD-MM-YYYY. Compare the calendar date rather than its display
+            // format so unrelated edits do not create a false audit change.
+            var iso = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+            var display = normalized.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (display) return display[3] + '-' + display[2] + '-' + display[1];
+            return normalized;
+        }
+
+        function isOpeningBalanceAdjustment() {
+            return normalizeOpeningBalance($('#edit_opening_balance').val()) !== $('#edit_opening_balance').data('original-value') ||
+                normalizeOpeningBalanceDate($('#edit_opening_balance_date').val()) !== $('#edit_opening_balance_date').data('original-value');
+        }
+
+        function setOpeningBalanceAdjustmentReasonVisibility(show) {
+            $('#opening-balance-adjustment-reason-group').toggleClass('d-none', !show);
+            $('#adjustment_reason').prop('required', show);
+            if (!show) {
+                $('#adjustment_reason').val('').removeClass('is-invalid');
+                $('#adjustment_reason_error').text('');
+            }
+        }
+
+        $('#edit_opening_balance, #edit_opening_balance_date').on('input change', function() {
+            setOpeningBalanceAdjustmentReasonVisibility(isOpeningBalanceAdjustment());
+        });
+
+        $('#adjustment_reason').on('input', function() {
+            if ($(this).val().trim()) {
+                $(this).removeClass('is-invalid');
+                $('#adjustment_reason_error').text('');
+            }
+        });
+
         // ========== Edit Form Submit ==========
         $('#edit-form').on('submit', function(e) {
             e.preventDefault();
+            var openingBalanceChanged = isOpeningBalanceAdjustment();
+            var adjustmentReason = $('#adjustment_reason').val().trim();
+            setOpeningBalanceAdjustmentReasonVisibility(openingBalanceChanged);
+            if (openingBalanceChanged && !adjustmentReason) {
+                $('#adjustment_reason').addClass('is-invalid').focus();
+                $('#adjustment_reason_error').text('{{ __('Please provide a reason for the opening balance change.') }}');
+                return;
+            }
             var id = $('#edit_id').val();
             var formData = new FormData();
             formData.append('_method', 'PUT');
@@ -359,6 +425,9 @@
             formData.append('currency', $('#edit_currency').val());
             formData.append('opening_balance', $('#edit_opening_balance').val() || 0);
             formData.append('opening_balance_date', $('#edit_opening_balance_date').val());
+            if (openingBalanceChanged) {
+                formData.append('adjustment_reason', adjustmentReason);
+            }
             formData.append('notes', $('#edit_notes').val());
             formData.append('is_active', $('#edit_is_active').is(':checked') ? '1' : '0');
             formData.append('is_default', $('#edit_is_default').is(':checked') ? '1' : '0');
@@ -389,9 +458,14 @@
             if (xhr.status === 422) {
                 var errors = xhr.responseJSON.errors;
                 var msg = '';
-                $.each(errors, function(key, val) {
-                    msg += val[0] + '<br>';
-                });
+                if (errors) {
+                    $.each(errors, function(key, val) { msg += val[0] + '<br>'; });
+                }
+                msg = msg || xhr.responseJSON.message || '{{ __('Something went wrong.') }}';
+                if (isOpeningBalanceAdjustment()) {
+                    $('#adjustment_reason').addClass('is-invalid');
+                    $('#adjustment_reason_error').text(xhr.responseJSON.message || '{{ __('Please provide a reason for the opening balance change.') }}');
+                }
                 showErrorToast(msg);
             } else {
                 showErrorToast('{{ __('Something went wrong.') }}');

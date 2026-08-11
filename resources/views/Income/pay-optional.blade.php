@@ -291,5 +291,42 @@
                 window.location.reload();
             }, 1000);
         }
+
+        // Override optional fee delete to collect reason
+        $('.optional-fees-content').on('click', '.remove-paid-optional-fees', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var id = $(this).data('id');
+            if (!id) return;
+            var url = baseUrl + '/fees/paid/remove-optional-fee/' + id;
+            Swal.fire({
+                title: '{{ __('Delete Payment') }}',
+                html: '<label class="d-block text-left">{{ __('Deletion Reason') }} <span class="text-danger">*</span></label>' +
+                      '<input id="swal-fee-delete-reason" class="swal2-input" placeholder="{{ __('Reason for deleting this payment...') }}">',
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: '{{ __('Delete') }}',
+                confirmButtonColor: '#d33',
+                preConfirm: function () {
+                    var reason = $('#swal-fee-delete-reason').val();
+                    if (!reason || !reason.trim()) {
+                        Swal.showValidationMessage('{{ __('Please provide a reason.') }}');
+                        return false;
+                    }
+                    return reason.trim();
+                }
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: url, type: 'DELETE',
+                        data: { _token: '{{ csrf_token() }}', delete_reason: result.value },
+                        success: function () { window.location.reload(); },
+                        error: function (xhr) {
+                            showErrorToast(xhr.responseJSON?.message || '{{ __('Error') }}');
+                        }
+                    });
+                }
+            });
+        });
     </script>
 @endsection
