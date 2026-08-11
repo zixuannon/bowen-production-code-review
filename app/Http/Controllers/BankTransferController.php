@@ -6,6 +6,7 @@ use App\Models\BankAccount;
 use App\Models\BankTransfer;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
+use App\Services\FinanceAccountAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -18,9 +19,7 @@ class BankTransferController extends Controller
         ResponseService::noFeatureThenRedirect('Expense Management');
         ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
 
-        $schoolId = Auth::user()->school_id;
-
-        $bankAccounts = BankAccount::where('school_id', $schoolId)
+        $bankAccounts = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())
             ->where('is_active', true)
             ->orderBy('account_name')
             ->get();
@@ -39,7 +38,10 @@ class BankTransferController extends Controller
         $order  = $request->input('order', 'DESC');
         $search = $request->input('search');
 
-        $sql = BankTransfer::owner()->with(['from_account:id,account_name', 'to_account:id,account_name']);
+        $accountIds = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())->pluck('id');
+        $sql = BankTransfer::owner()->where(function ($query) use ($accountIds) {
+            $query->whereIn('from_account_id', $accountIds)->orWhereIn('to_account_id', $accountIds);
+        })->with(['from_account:id,account_name', 'to_account:id,account_name']);
 
         if ($search) {
             $sql->where(function ($q) use ($search) {
@@ -105,10 +107,9 @@ class BankTransferController extends Controller
             DB::beginTransaction();
 
             $schoolId = Auth::user()->school_id;
-
-            // Ensure both accounts belong to the same school
-            $fromAccount = BankAccount::where('school_id', $schoolId)->findOrFail($request->from_account_id);
-            $toAccount   = BankAccount::where('school_id', $schoolId)->findOrFail($request->to_account_id);
+            $access = app(FinanceAccountAccessService::class);
+            $fromAccount = $access->authorize(Auth::user(), (int) $request->from_account_id);
+            $toAccount   = $access->authorize(Auth::user(), (int) $request->to_account_id);
 
             // Same currency check: only allow transfers between same-currency accounts
             if ($fromAccount->currency !== $toAccount->currency) {
@@ -167,7 +168,10 @@ class BankTransferController extends Controller
         ResponseService::noPermissionThenSendJson('expense-create');
 
         try {
-            $transfer = BankTransfer::owner()->findOrFail($id);
+            $accountIds = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())->pluck('id');
+            $transfer = BankTransfer::owner()->where(function ($query) use ($accountIds) {
+                $query->whereIn('from_account_id', $accountIds)->orWhereIn('to_account_id', $accountIds);
+            })->findOrFail($id);
 
             if ($transfer->status !== 'completed') {
                 return response()->json([

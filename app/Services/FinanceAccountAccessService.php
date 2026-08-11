@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\BankAccount;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+
+class FinanceAccountAccessService
+{
+    public function canManageAll(User $user): bool
+    {
+        return $user->hasAnyRole(['Super Admin', 'School Admin', 'Head Finance']);
+    }
+
+    public function scope(User $user): Builder
+    {
+        $query = BankAccount::query()->where('school_id', $user->school_id);
+        if (!$this->canManageAll($user)) {
+            $query->whereHas('authorized_users', fn (Builder $users) => $users->whereKey($user->id));
+        }
+        return $query;
+    }
+
+    public function accessibleAccounts(User $user): Builder
+    {
+        return $this->scope($user);
+    }
+
+    public function authorize(User $user, int $accountId): BankAccount
+    {
+        return $this->scope($user)->whereKey($accountId)->firstOrFail();
+    }
+
+    public function canAccessAccount(User $user, BankAccount $account): bool
+    {
+        return $account->school_id === $user->school_id && $this->scope($user)->whereKey($account->id)->exists();
+    }
+
+    public function canManageAccountAssignments(User $user): bool
+    {
+        return $user->hasAnyRole(['Super Admin', 'School Admin', 'Head Finance']);
+    }
+
+    public function canModifyOpeningBalance(User $user): bool
+    {
+        return $this->mayChangeOpeningBalance($user);
+    }
+
+    public function mayChangeOpeningBalance(User $user): bool
+    {
+        return $this->canManageAll($user);
+    }
+}

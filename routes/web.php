@@ -78,6 +78,7 @@ use App\Http\Controllers\ContactInquiryController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\AssignElectiveSubjectController;
 use App\Http\Controllers\BankAccountController;
+use App\Http\Controllers\BankAccountAssignmentController;
 use App\Http\Controllers\BankAccountReportController;
 use App\Http\Controllers\BankTransferController;
 use App\Http\Controllers\DiaryCategoryController;
@@ -830,6 +831,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         // Bank Accounts
         Route::get('bank-accounts/list', [BankAccountController::class, 'list'])->name('bank-accounts.list');
+        Route::put('bank-accounts/{bankAccount}/assignments', [BankAccountAssignmentController::class, 'update'])->name('bank-accounts.assignments.update');
         Route::resource('bank-accounts', BankAccountController::class);
 
         // Bank Transfers
@@ -1168,4 +1170,3 @@ Route::get('/js/lang', function () {
         ['Content-Type' => 'application/javascript; charset=utf-8']
     );
 });
-

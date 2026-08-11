@@ -143,6 +143,9 @@ class LocalBowenQa extends Command
             ['qa_teacher@bowen-qa.test', 'QA', 'Teacher'],
             ['qa_guardian@bowen-qa.test', 'QA', 'Guardian'],
             ['qa_student@bowen-qa.test', 'QA', 'Student'],
+            ['qa_head_finance@bowen-qa.test', 'QA', 'Head Finance'],
+            ['qa_cashier_a@bowen-qa.test', 'QA', 'Cashier A'],
+            ['qa_cashier_b@bowen-qa.test', 'QA', 'Cashier B'],
         ] as [$email, $first, $last]) {
             $centralUser = DB::connection('mysql')->table('users')->where('email', $email)->first();
             $school->table('users')->updateOrInsert(['id' => $centralUser->id], [
@@ -176,6 +179,7 @@ class LocalBowenQa extends Command
         $schoolService->createTeacherRole($tenantSchool);
         $schoolService->defaultRoles($tenantSchool);
         $this->assignFixtureRoles($centralSchool->id);
+        $this->seedFinanceRoleAssignments($centralSchool->id, $now);
         DB::setDefaultConnection('mysql');
     }
 
@@ -186,6 +190,9 @@ class LocalBowenQa extends Command
             ['qa_teacher@bowen-qa.test', 'QA', 'Teacher'],
             ['qa_guardian@bowen-qa.test', 'QA', 'Guardian'],
             ['qa_student@bowen-qa.test', 'QA', 'Student'],
+            ['qa_head_finance@bowen-qa.test', 'QA', 'Head Finance'],
+            ['qa_cashier_a@bowen-qa.test', 'QA', 'Cashier A'],
+            ['qa_cashier_b@bowen-qa.test', 'QA', 'Cashier B'],
         ];
         foreach ($users as [$email, $first, $last]) {
             DB::connection('mysql')->table('users')->updateOrInsert(['email' => $email], [
@@ -265,6 +272,9 @@ class LocalBowenQa extends Command
         foreach ([
             ['BOWEN_QA_P1_BANK', 'Bowen QA P1 Bank', 'bank', 5000, 1],
             ['BOWEN_QA_P1_CASH', 'Bowen QA P1 Cash', 'cash', 1000, 0],
+            ['QA_P2_CASH_A', 'QA P2 Cash A', 'cash', 100, 0],
+            ['QA_P2_CASH_B', 'QA P2 Cash B', 'cash', 200, 0],
+            ['QA_P2_BANK', 'QA P2 Bank', 'bank', 300, 0],
         ] as [$number, $name, $type, $opening, $default]) {
             $school->table('bank_accounts')->updateOrInsert(['school_id' => $schoolId, 'account_number' => $number], [
                 'account_name' => $name, 'bank_name' => 'TEST ONLY', 'account_type' => $type, 'currency' => 'MMK',
@@ -328,6 +338,31 @@ class LocalBowenQa extends Command
         ] as [$email, $roleId]) {
             $userId = $school->table('users')->where('email', $email)->value('id');
             $school->table('model_has_roles')->updateOrInsert(['role_id' => $roleId, 'model_id' => $userId, 'model_type' => 'App\\Models\\User'], []);
+        }
+    }
+
+    private function seedFinanceRoleAssignments(int $schoolId, $now): void
+    {
+        $school = DB::connection('school');
+        $adminRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'School Admin')->first();
+        foreach (['Head Finance', 'Cashier'] as $roleName) {
+            $school->table('roles')->updateOrInsert(['school_id' => $schoolId, 'name' => $roleName, 'guard_name' => 'web'], ['updated_at' => $now, 'created_at' => $now]);
+        }
+        $headRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'Head Finance')->value('id');
+        $cashierRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'Cashier')->value('id');
+        foreach ($school->table('role_has_permissions')->where('role_id', $adminRole->id)->get() as $permission) {
+            $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permission->permission_id, 'role_id' => $headRole], []);
+            $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permission->permission_id, 'role_id' => $cashierRole], []);
+        }
+        foreach ([['qa_head_finance@bowen-qa.test', $headRole], ['qa_cashier_a@bowen-qa.test', $cashierRole], ['qa_cashier_b@bowen-qa.test', $cashierRole]] as [$email, $role]) {
+            $id = $school->table('users')->where('email', $email)->value('id');
+            $school->table('model_has_roles')->updateOrInsert(['role_id' => $role, 'model_id' => $id, 'model_type' => 'App\\Models\\User'], []);
+        }
+        foreach ([['qa_cashier_a@bowen-qa.test', 'QA_P2_CASH_A'], ['qa_cashier_b@bowen-qa.test', 'QA_P2_CASH_B']] as [$email, $account]) {
+            $school->table('bank_account_user')->updateOrInsert([
+                'user_id' => $school->table('users')->where('email', $email)->value('id'),
+                'bank_account_id' => $school->table('bank_accounts')->where('school_id', $schoolId)->where('account_number', $account)->value('id'),
+            ], ['updated_at' => $now, 'created_at' => $now]);
         }
     }
 

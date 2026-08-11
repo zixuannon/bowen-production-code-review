@@ -105,14 +105,15 @@ class FeesPaymentService
         if (empty($bankAccountId)) {
             throw new \InvalidArgumentException('Fund account (bank_account_id) is required for fee payment.');
         }
-        $bankAccount = BankAccount::where('id', $bankAccountId)
+        $bankAccount = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())
+            ->where('id', $bankAccountId)
             ->where('school_id', $schoolId)
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->first();
         if (!$bankAccount) {
             throw new \InvalidArgumentException(
-                'Fund account is not valid, not active, or does not belong to this school.'
+                'Fund account is not authorized, valid, active, or school-owned.'
             );
         }
 

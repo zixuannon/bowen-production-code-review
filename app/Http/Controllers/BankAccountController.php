@@ -9,6 +9,7 @@ use App\Models\Expense;
 use App\Models\OptionalFee;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
+use App\Services\FinanceAccountAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +43,7 @@ class BankAccountController extends Controller
         $order  = $request->input('order', 'DESC');
         $search = $request->input('search');
 
-        $sql = BankAccount::owner()->withTrashed();
+        $sql = app(FinanceAccountAccessService::class)->scope(Auth::user())->withTrashed();
 
         if ($search) {
             $sql->where(function ($q) use ($search) {
@@ -211,7 +212,7 @@ class BankAccountController extends Controller
         ResponseService::noFeatureThenRedirect('Expense Management');
         ResponseService::noPermissionThenRedirect('expense-list');
 
-        $bankAccount = BankAccount::owner()->withTrashed()->findOrFail($id);
+        $bankAccount = app(FinanceAccountAccessService::class)->scope(Auth::user())->withTrashed()->findOrFail($id);
 
         $schoolId = Auth::user()->school_id;
 
@@ -462,7 +463,7 @@ class BankAccountController extends Controller
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
 
-        $bankAccount = BankAccount::owner()->findOrFail($id);
+        $bankAccount = app(FinanceAccountAccessService::class)->scope(Auth::user())->findOrFail($id);
 
         return response()->json([
             'error' => false,
@@ -491,7 +492,11 @@ class BankAccountController extends Controller
         try {
             DB::beginTransaction();
 
-            $bankAccount = BankAccount::owner()->findOrFail($id);
+        $access = app(FinanceAccountAccessService::class);
+        $bankAccount = $access->scope(Auth::user())->findOrFail($id);
+        if (!$access->mayChangeOpeningBalance(Auth::user()) && ((float) $request->opening_balance !== (float) $bankAccount->opening_balance || ($request->opening_balance_date ?: null) !== $bankAccount->opening_balance_date?->toDateString())) {
+            abort(403, 'Cashiers cannot change opening balances.');
+        }
             $schoolId    = Auth::user()->school_id;
 
             // If set as default, unset other defaults
@@ -558,7 +563,7 @@ class BankAccountController extends Controller
         ResponseService::noPermissionThenSendJson('expense-create');
 
         try {
-            $bankAccount = BankAccount::owner()->findOrFail($id);
+            $bankAccount = app(FinanceAccountAccessService::class)->scope(Auth::user())->findOrFail($id);
 
             if ($bankAccount->is_default) {
                 return response()->json([

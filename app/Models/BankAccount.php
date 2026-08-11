@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class BankAccount extends Model
 {
@@ -99,6 +100,11 @@ class BankAccount extends Model
     public function transfers_in()
     {
         return $this->hasMany(BankTransfer::class, 'to_account_id');
+    }
+
+    public function authorized_users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'bank_account_user')->withTimestamps();
     }
 
     public function getCreatedAtAttribute()

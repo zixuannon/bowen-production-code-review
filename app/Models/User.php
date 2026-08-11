@@ -9,6 +9,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -426,6 +427,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function notifications()
     {
         return $this->belongsToMany(Notification::class, 'user_notifications', 'user_id', 'notification_id')->withTimestamps();
+    }
+
+    public function authorized_bank_accounts(): BelongsToMany
+    {
+        return $this->belongsToMany(BankAccount::class, 'bank_account_user')->withTimestamps();
     }
 
     public function getDobDateAttribute()
