@@ -13,10 +13,12 @@ use App\Models\SessionYear;
 use App\Models\Students;
 use App\Services\FeesPaidImportService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -53,6 +55,7 @@ class FeesPaidImportServiceTest extends TestCase
         $this->ensureClassesTable();
         $this->ensureStudentsTable();
         $this->ensureBankAccountsTable();
+        $this->ensureBankAccountUserTable();
 
         // Create class
         $this->className = 'Grade-Test-' . Str::random(4);
@@ -86,6 +89,7 @@ class FeesPaidImportServiceTest extends TestCase
 
         // Create test users
         $this->authUserId = $this->createUser('Import', 'Admin', $this->schoolId);
+        $this->assignSchoolAdminRole($this->authUserId, $this->schoolId);
 
         $this->admissionNo1 = 'ADM-' . strtoupper(Str::random(6));
         $this->admissionNo2 = 'ADM-' . strtoupper(Str::random(6));
@@ -95,7 +99,13 @@ class FeesPaidImportServiceTest extends TestCase
 
         // Create default bank account for import tests
         $this->bankAccountName = 'Import Test Bank ' . Str::random(4);
-        $this->createTestBankAccount($this->bankAccountName);
+        $bankAccountId = $this->createTestBankAccount($this->bankAccountName);
+        DB::table('bank_account_user')->insertOrIgnore([
+            'bank_account_id' => $bankAccountId,
+            'user_id' => $this->authUserId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         Auth::loginUsingId($this->authUserId);
     }
@@ -222,6 +232,19 @@ class FeesPaidImportServiceTest extends TestCase
         }
     }
 
+    private function ensureBankAccountUserTable(): void
+    {
+        if (!Schema::hasTable('bank_account_user')) {
+            Schema::create('bank_account_user', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('bank_account_id');
+                $table->unsignedBigInteger('user_id');
+                $table->timestamps();
+                $table->unique(['bank_account_id', 'user_id']);
+            });
+        }
+    }
+
     private function createUser(string $first, string $last, int $schoolId): int
     {
         $email = strtolower($first) . '.' . strtolower($last) . uniqid() . '@test.local';
@@ -230,6 +253,16 @@ class FeesPaidImportServiceTest extends TestCase
             'password' => bcrypt('password'), 'school_id' => $schoolId, 'status' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    private function assignSchoolAdminRole(int $userId, int $schoolId): void
+    {
+        $roleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $schoolId)->value('id');
+        DB::table('model_has_roles')->updateOrInsert([
+            'role_id' => $roleId,
+            'model_type' => User::class,
+            'model_id' => $userId,
+        ], []);
     }
 
     private function createStudentUser(string $first, string $last, int $schoolId, string $admissionNo, int $classId, int $sessionYearId): int
@@ -407,6 +440,63 @@ class FeesPaidImportServiceTest extends TestCase
         $this->assertEquals(1, $result['summary']['total']);
         $this->assertEquals(1, $result['summary']['valid']);
         $this->assertEquals('valid', $result['rows'][0]['status']);
+    }
+
+    /** @test */
+    public function preview_rejects_a_fund_account_not_assigned_to_the_uploader(): void
+    {
+        $this->createTestFee(1000.00);
+        $unassignedName = 'Unassigned Import Account ' . Str::random(4);
+        $this->createTestBankAccount($unassignedName);
+        $row = $this->validRow($this->admissionNo1, 'INV-UNASSIGNED-' . Str::random(6), 1000, $this->feeStructureName);
+        $row[4] = $unassignedName;
+
+        $result = app(FeesPaidImportService::class)->preview(
+            $this->createCsvFile($this->defaultHeader(), [$row]),
+            $this->schoolId,
+            $this->authUserId,
+        );
+
+        $this->assertSame(0, $result['summary']['valid']);
+        $this->assertSame(1, $result['summary']['error']);
+        $this->assertStringContainsString('not found', implode(' ', $result['rows'][0]['errors']));
+    }
+
+    /** @test */
+    public function confirm_rechecks_fund_account_access_after_preview_and_rolls_back(): void
+    {
+        $fee = $this->createTestFee(1000.00);
+        $reference = 'INV-ACCESS-REVOKED-' . Str::uuid()->toString();
+        $service = app(FeesPaidImportService::class);
+        $preview = $service->preview(
+            $this->createCsvFile($this->defaultHeader(), [
+                $this->validRow($this->admissionNo1, $reference, 1000, $this->feeStructureName),
+            ]),
+            $this->schoolId,
+            $this->authUserId,
+        );
+
+        $bankAccountId = (int) DB::table('bank_accounts')->where('account_name', $this->bankAccountName)->value('id');
+        DB::table('bank_account_user')
+            ->where('bank_account_id', $bankAccountId)
+            ->where('user_id', $this->authUserId)
+            ->delete();
+
+        try {
+            $service->confirm($preview['token'], $this->schoolId, $this->authUserId);
+            $this->fail('Confirmation must reject a Fund Account assignment revoked after preview.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('authorized', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('fees_paids', [
+            'fees_id' => $fee->id,
+            'student_id' => $this->studentId,
+        ], 'school');
+        $this->assertDatabaseMissing('compulsory_fees', [
+            'school_id' => $this->schoolId,
+            'reference_no' => $reference,
+        ], 'school');
     }
 
     /** @test */
@@ -1153,6 +1243,12 @@ class FeesPaidImportServiceTest extends TestCase
         $fee = $this->createTestFee(1000.00);
         $bankName = 'Test Bank Account ' . Str::random(4);
         $bankId = $this->createTestBankAccount($bankName);
+        DB::table('bank_account_user')->insertOrIgnore([
+            'bank_account_id' => $bankId,
+            'user_id' => $this->authUserId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $refNo = 'INV-BANK-NAME-' . Str::uuid()->toString();
         $file = $this->createCsvFile(

@@ -55,14 +55,15 @@
 - [x] Deterministic BOWEN_QA Head Finance/Cashier users, three P2 accounts, and A/B assignments
 - [x] Targeted PHPUnit and local Playwright authorization verification
 
-## P2-B — Apply Fund Account Scope to Finance Workflows
+## P2-B / P2-C — Apply Fund Account Scope to Finance Workflows
 
-Pending approval/implementation:
-
-- Fee payment and Excel import Fund Account choices and write-path validation
-- Expense Fund Account choices and write-path validation
-- Bank Transfer visibility and direct-request authorization
-- Bank Account reports/ledger filtering and direct-request authorization
+- [x] Fee payment Fund Account choices and server-side write-path validation
+- [x] Excel paid-fee import preview/confirm account authorization, including recheck after preview
+- [x] Expense Fund Account choices and server-side write-path validation
+- [x] Bank Transfer visibility, dual-account cancellation guard, and direct-request authorization
+- [x] Fund Account list/detail/ledger and Bank Account report filtering/direct-request authorization
+- [x] General finance-report account scoping; school-wide outstanding hidden from account-scoped Cashiers
+- [x] BOWEN_QA fixture, targeted PHPUnit, malicious/direct-request coverage, authenticated local Playwright, and broader finance regression
 
 Do not start Branch Finance, transfer handover, daily closing, reconciliation, refund/void/reversal, or a production release as part of P2-B.
 

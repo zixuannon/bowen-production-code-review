@@ -30,7 +30,7 @@ Local development is the only active implementation/test environment. Use local/
 
 ## Current phase
 
-Finance P2-A Roles + Fund Account Ownership Foundation — **LOCAL QA VERIFIED**. Production remains read-only. P2-A adds only the tenant-local role, ownership, and centralized authorization foundation; applying account scope to fee/expense dropdowns, transfers, and reports remains a later phase.
+Finance P2 Roles + Fund Account Access Control — **LOCAL QA VERIFIED**. Production remains read-only; no production deployment or migration is prepared.
 
 P2-A local evidence:
 
@@ -41,7 +41,14 @@ P2-A local evidence:
 - Targeted PHPUnit: 3 tests / 21 assertions pass (the current PHP runtime reports known vendor deprecation notices only).
 - Local Playwright: 4/4 pass — Cashier A isolation, Head Finance all-account visibility, direct unassigned-account rejection, and Cashier edit/opening-balance rejection (HTTP 403).
 
-P2-A intentionally does **not** yet apply the foundation to fee/expense selectors, transfer flows, or reporting. No production deployment or migration is prepared.
+P2-B/P2-C local evidence:
+
+- The centralized scope now protects compulsory/optional payment selectors and writes, Excel paid-fee preview and confirmation, Expense selectors and writes, Bank Transfers, Fund Account reports, account detail/ledger, and the finance report.
+- A Cashier sees and may use only assigned active current-school Fund Accounts. Direct unassigned report and transfer requests are rejected before a financial write; transfer cancellation requires access to both accounts.
+- General finance-report totals are account-scoped. The school-wide outstanding figure is deliberately hidden from account-scoped Cashiers rather than shown as a misleading partial total.
+- Excel confirmation rechecks uploader account authorization after preview; revoking an assignment invalidates the confirmation and rolls back without fees/payment writes.
+- BOWEN_QA local Playwright: 7/7 pass, covering Head Finance all-account access, Cashier A/B inverse isolation, payment/expense/transfer/report selectors, direct unauthorized account/report/transfer requests, and Cashier opening-balance restriction.
+- Broader local Finance regression: 103 tests / 354 assertions pass. The PHP 8.5 PDO SSL constant deprecation warnings are pre-existing and non-functional.
 
 Finance P1 Financial Audit Safety remains **LOCAL ACCEPTANCE VERIFIED**. Production remains deployed (with its historical non-mutating browser coverage noted below); all destructive-path acceptance evidence was completed only in deterministic BOWEN_QA local synthetic data.
 

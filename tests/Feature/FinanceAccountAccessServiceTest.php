@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\BankAccount;
+use App\Models\Fee;
 use App\Models\User;
 use App\Http\Controllers\BankAccountAssignmentController;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FeesPaymentService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -125,6 +127,24 @@ class FinanceAccountAccessServiceTest extends TestCase
             $account,
             app(FinanceAccountAccessService::class),
         );
+    }
+
+    public function test_cashier_payment_service_rejects_an_unassigned_fund_account_before_any_financial_write(): void
+    {
+        $this->ensurePivotTable();
+
+        $cashier = $this->createUser('payment-cashier', 1);
+        $this->assignRole($cashier, 'Cashier', 1);
+        $allowed = $this->createAccount('Payment allowed', 1);
+        $forbidden = $this->createAccount('Payment forbidden', 1);
+        $cashier->authorized_bank_accounts()->sync([$allowed->id]);
+        Auth::login($cashier);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('not authorized');
+        app(FeesPaymentService::class)->processPayment([
+            'bank_account_id' => $forbidden->id,
+        ], new Fee());
     }
 
     private function ensurePivotTable(): void

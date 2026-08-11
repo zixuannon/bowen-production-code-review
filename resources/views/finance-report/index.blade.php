@@ -161,17 +161,29 @@
             <div class="col-md-4 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body text-center">
-                        <h4 class="{{ $currentOutstanding > 0 ? 'text-warning' : 'text-success' }}">
-                            {{ number_format($currentOutstanding) }} MMK
-                        </h4>
+                        @if ($hasSchoolWideOutstandingAccess)
+                            <h4 class="{{ $currentOutstanding > 0 ? 'text-warning' : 'text-success' }}">
+                                {{ number_format($currentOutstanding) }} MMK
+                            </h4>
+                        @else
+                            <h4 class="text-muted">{{ __('Not available') }}</h4>
+                        @endif
                         <small class="text-muted">
                             {{ __('Current Outstanding') }}
                             <span class="badge badge-secondary">{{ __('Reference') }}</span>
-                            @if ($hasFilter)
+                            @if (! $hasSchoolWideOutstandingAccess)
+                                <span class="badge badge-light">{{ __('account-scoped role') }}</span>
+                            @elseif ($hasFilter)
                                 <span class="badge badge-light">{{ __('all students') }}</span>
                             @endif
                         </small>
-                        @if ($hasFilter)
+                        @if (! $hasSchoolWideOutstandingAccess)
+                            <div class="mt-1">
+                                <small class="text-muted font-italic">
+                                    {{ __('Outstanding is school-wide and is not available to account-scoped roles.') }}
+                                </small>
+                            </div>
+                        @elseif ($hasFilter)
                             <div class="mt-1">
                                 <small class="text-muted font-italic">
                                     {{ __('Outstanding is school-wide reference, not affected by filters.') }}

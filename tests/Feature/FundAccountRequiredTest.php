@@ -47,6 +47,7 @@ class FundAccountRequiredTest extends TestCase
         // Ensure role
         $this->ensureRole('Super Admin');
         $this->ensureRole('Student');
+        $this->assignRole($this->authUserId, 'Super Admin');
 
         Auth::loginUsingId($this->authUserId);
 
@@ -491,6 +492,20 @@ class FundAccountRequiredTest extends TestCase
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
+    }
+
+    private function assignRole(int $userId, string $name): void
+    {
+        $roleId = DB::table('roles')
+            ->where('name', $name)
+            ->where('school_id', $this->schoolId)
+            ->value('id');
+
+        DB::table('model_has_roles')->updateOrInsert([
+            'role_id' => $roleId,
+            'model_type' => User::class,
+            'model_id' => $userId,
+        ], []);
     }
 
     private function createUser(string $first, string $last, int $schoolId): int

@@ -57,8 +57,16 @@ class FinanceReportExport implements FromArray, WithHeadings, ShouldAutoSize, Wi
         $rows[] = [__('Net Income (MMK)'), $this->data['netIncome']];
         $rows[] = [__('Compulsory Income (MMK)'), $this->data['totalCompulsoryIncome']];
         $rows[] = [__('Optional Income (MMK)'), $this->data['totalOptionalIncome']];
-        $rows[] = [__('Current Outstanding (MMK)'), $this->data['currentOutstanding']];
-        $rows[] = [__('Note'), __('Outstanding is reference only and is not included in Total Income or Net Income.')];
+        $rows[] = [
+            __('Current Outstanding (MMK)'),
+            $this->data['currentOutstanding'] ?? __('Not available for account-scoped roles'),
+        ];
+        $rows[] = [
+            __('Note'),
+            isset($this->data['currentOutstanding'])
+                ? __('Outstanding is reference only and is not included in Total Income or Net Income.')
+                : __('Outstanding is school-wide and is not available to account-scoped roles.'),
+        ];
 
         // ── Section 2: Category Breakdown ──
         $rows[] = [''];

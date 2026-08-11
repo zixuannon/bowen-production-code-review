@@ -13,6 +13,7 @@ use App\Models\School;
 use App\Models\SessionYear;
 use App\Models\Students;
 use App\Services\CachingService;
+use App\Services\FinanceAccountAccessService;
 use App\Services\ResponseService;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
@@ -90,6 +91,8 @@ class FinanceReportController extends Controller
     private function buildReportData(string $from, string $to, string $typeFilter, ?string $categoryFilter): array
     {
         $schoolId = Auth::user()->school_id;
+        $access = app(FinanceAccountAccessService::class);
+        $accountIds = $access->accessibleAccounts(Auth::user())->pluck('id');
 
         // ---- 1. Build safe fees_id → category map (compulsory) ----
         $feeIdCategoryMap = $this->buildCompulsoryCategoryMap();
@@ -97,6 +100,7 @@ class FinanceReportController extends Controller
         // ---- 2. Compulsory Income (status=Success) ----
         $compulsoryQuery = CompulsoryFee::where('compulsory_fees.status', 'Success')
             ->where('compulsory_fees.school_id', $schoolId)
+            ->whereIn('compulsory_fees.bank_account_id', $accountIds)
             ->whereBetween('compulsory_fees.date', [$from, $to])
             ->join('fees_paids', 'compulsory_fees.fees_paid_id', '=', 'fees_paids.id');
 
@@ -110,6 +114,7 @@ class FinanceReportController extends Controller
         // ---- 3. Optional Income (status=Success) ----
         $optionalQuery = OptionalFee::where('optional_fees.status', 'Success')
             ->where('optional_fees.school_id', $schoolId)
+            ->whereIn('optional_fees.bank_account_id', $accountIds)
             ->whereBetween('optional_fees.date', [$from, $to]);
 
         $optionalRows = $optionalQuery->get(['optional_fees.amount', 'optional_fees.id', 'optional_fees.fees_class_id']);
@@ -133,6 +138,7 @@ class FinanceReportController extends Controller
 
         // ---- 4. Expenses ----
         $expenseQuery = Expense::where('school_id', $schoolId)
+            ->whereIn('bank_account_id', $accountIds)
             ->whereBetween('date', [$from, $to]);
 
         $expenseRows = $expenseQuery->get(['id', 'amount', 'amount_mmk', 'finance_category_id']);
@@ -246,7 +252,12 @@ class FinanceReportController extends Controller
         }
 
         // ---- 8. Current Outstanding (reference only, NOT affected by income/expense filters) ----
-        $currentOutstanding = $this->computeOutstandingReference($schoolId);
+        // Outstanding is school-wide and has no Fund Account allocation. Do not
+        // present a misleading partial figure to account-scoped Cashiers.
+        $hasSchoolWideOutstandingAccess = $access->canManageAll(Auth::user());
+        $currentOutstanding = $hasSchoolWideOutstandingAccess
+            ? $this->computeOutstandingReference($schoolId)
+            : null;
 
         // ---- 9. Calculate percentages ----
         $grandTotal = $totalIncome + $totalExpense;
@@ -263,6 +274,7 @@ class FinanceReportController extends Controller
             'totalCompulsoryIncome',
             'totalOptionalIncome',
             'currentOutstanding',
+            'hasSchoolWideOutstandingAccess',
         );
     }
 

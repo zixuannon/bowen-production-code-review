@@ -41,6 +41,7 @@ class FeesPaymentCharacterizationTest extends TestCase
 
         // Create test users directly (no factory - avoids 'name' column issue)
         $this->authUserId = $this->createUser('Admin', 'User', 1);
+        $this->assignSchoolAdminRole($this->authUserId, 1);
         $this->studentId = $this->createUser('Test', 'Student', 1);
 
         Auth::loginUsingId($this->authUserId);
@@ -109,6 +110,18 @@ class FeesPaymentCharacterizationTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function assignSchoolAdminRole(int $userId, int $schoolId): void
+    {
+        DB::table('roles')->updateOrInsert(
+            ['name' => 'School Admin', 'school_id' => $schoolId],
+            ['guard_name' => 'web', 'custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()]
+        );
+        $roleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $schoolId)->value('id');
+        DB::table('model_has_roles')->updateOrInsert(
+            ['role_id' => $roleId, 'model_type' => User::class, 'model_id' => $userId], []
+        );
     }
 
     // ================================================================

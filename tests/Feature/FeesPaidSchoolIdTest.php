@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CompulsoryFee;
 use App\Models\Fee;
 use App\Models\FeesPaid;
+use App\Models\User;
 use App\Services\FeesPaidImportService;
 use App\Services\FeesPaymentService;
 use Illuminate\Http\UploadedFile;
@@ -69,6 +70,12 @@ class FeesPaidSchoolIdTest extends TestCase
 
         // Create admin user (logged in)
         $this->authUserId = $this->createUser('FppSchoolId', 'Admin', $this->schoolId);
+        $schoolAdminRoleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $this->schoolId)->value('id');
+        DB::table('model_has_roles')->insertOrIgnore([
+            'role_id' => $schoolAdminRoleId,
+            'model_type' => User::class,
+            'model_id' => $this->authUserId,
+        ]);
 
         // Create student user WITH Student role and students table record
         $this->admissionNo = 'FPPS-' . strtoupper(Str::random(6));
@@ -90,6 +97,12 @@ class FeesPaidSchoolIdTest extends TestCase
             'is_active'          => 1,
             'created_at'         => now(),
             'updated_at'         => now(),
+        ]);
+        DB::table('bank_account_user')->insertOrIgnore([
+            'bank_account_id' => $this->bankAccountId,
+            'user_id' => $this->authUserId,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
@@ -685,6 +698,27 @@ class FeesPaidSchoolIdTest extends TestCase
 
         // ---- Switch to School 2 ----
         $school2Admin = $this->createUser('School2', 'Admin', $school2Id);
+        $school2RoleId = DB::table('roles')->updateOrInsert(
+            ['name' => 'School Admin', 'school_id' => $school2Id],
+            ['guard_name' => 'web', 'custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()],
+        );
+        $school2RoleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $school2Id)->value('id');
+        DB::table('model_has_roles')->insertOrIgnore([
+            'role_id' => $school2RoleId,
+            'model_type' => User::class,
+            'model_id' => $school2Admin,
+        ]);
+        $this->bankAccountId = DB::table('bank_accounts')->insertGetId([
+            'school_id' => $school2Id, 'account_name' => 'School 2 Fund Account',
+            'account_type' => 'cash', 'currency' => 'MMK', 'opening_balance' => 0,
+            'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('bank_account_user')->insertOrIgnore([
+            'bank_account_id' => $this->bankAccountId,
+            'user_id' => $school2Admin,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         Auth::loginUsingId($school2Admin);
         $this->studentUserId = $this->createUser('School2Student', 'Two', $school2Id);
 

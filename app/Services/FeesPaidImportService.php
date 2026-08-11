@@ -85,6 +85,8 @@ class FeesPaidImportService
      */
     public function preview(UploadedFile $file, int $schoolId, int $userId): array
     {
+        $actor = User::whereKey($userId)->where('school_id', $schoolId)->firstOrFail();
+
         // ---- 1. File validation ----
         $this->validateFile($file);
 
@@ -109,7 +111,7 @@ class FeesPaidImportService
 
         foreach ($rows as $idx => $row) {
             $rowNum = $idx + 2; // +2 for header row + 1-indexed
-            $result = $this->validatePreviewRow($row, $rowNum, $schoolId, $excelRefNos);
+            $result = $this->validatePreviewRow($row, $rowNum, $schoolId, $excelRefNos, $actor);
 
             $previewRows[] = $result;
 
@@ -186,6 +188,8 @@ class FeesPaidImportService
                     );
                 }
 
+                $actor = User::whereKey($userId)->where('school_id', $schoolId)->firstOrFail();
+
                 // ---- 2. Mark as processing (inside transaction) ----
                 $batch->status = FeeImportBatch::STATUS_PROCESSING;
                 $batch->save();
@@ -207,7 +211,7 @@ class FeesPaidImportService
                         }
 
                         // Re-validate ALL business conditions against CURRENT DB state
-                        $fee = $this->revalidateRow($pRow, $schoolId);
+                        $fee = $this->revalidateRow($pRow, $schoolId, $actor);
 
                         // Inject import_batch_id so compulsory_fees records link back to the batch
                         $pRow['payment_data']['import_batch_id'] = $batch->id;
@@ -398,7 +402,7 @@ class FeesPaidImportService
      * Business-field matching: each field maps to exactly 1 DB record.
      * 0 or >1 results → error.
      */
-    private function validatePreviewRow(array $row, int $rowNum, int $schoolId, array &$excelRefNos): array
+    private function validatePreviewRow(array $row, int $rowNum, int $schoolId, array &$excelRefNos, User $actor): array
     {
         $base = [
             'row_number' => $rowNum,
@@ -519,8 +523,8 @@ class FeesPaidImportService
             $base['errors'][] = 'Bank Account Name is required';
             $base['status'] = 'error';
         } else {
-            $bankQuery = BankAccount::where('account_name', $bankAccountName)
-                ->where('school_id', $schoolId)
+            $bankQuery = app(FinanceAccountAccessService::class)->accessibleAccounts($actor)
+                ->where('account_name', $bankAccountName)
                 ->active();
             $match = $this->matchOne('Bank Account Name', $bankQuery, $bankAccountName);
 
@@ -705,7 +709,7 @@ class FeesPaidImportService
     /**
      * Re-validate a row during confirm.
      */
-    private function revalidateRow(array $pRow, int $schoolId): Fee
+    private function revalidateRow(array $pRow, int $schoolId, User $actor): Fee
     {
         $pd        = $pRow['payment_data'];
         $studentId = $pd['student_id'];
@@ -788,15 +792,19 @@ class FeesPaidImportService
             }
         }
 
-        // 7. Bank Account still exists
+        // 7. Bank Account must still be accessible to the uploader. A preview is
+        // not a durable authorization grant: assignments may change before
+        // confirmation, and a revoked Cashier must not be able to write through
+        // an old preview token.
         $bankId = $pd['bank_account_id'] ?? null;
         if ($bankId) {
-            $bankAccount = BankAccount::where('id', $bankId)
-                ->where('school_id', $schoolId)
+            $bankAccount = app(FinanceAccountAccessService::class)
+                ->accessibleAccounts($actor)
+                ->whereKey($bankId)
                 ->active()
                 ->first();
             if (!$bankAccount) {
-                throw new \InvalidArgumentException("Bank account {$bankId} no longer available");
+                throw new \InvalidArgumentException("Bank account {$bankId} is no longer available or authorized");
             }
         }
 

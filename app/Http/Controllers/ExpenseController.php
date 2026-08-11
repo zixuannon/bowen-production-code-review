@@ -10,6 +10,7 @@ use App\Repositories\ExpenseCategory\ExpenseCategoryInterface;
 use App\Repositories\SessionYear\SessionYearInterface;
 use App\Services\BootstrapTableService;
 use App\Services\CachingService;
+use App\Services\FinanceAccountAccessService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
 use Illuminate\Http\Request;
@@ -53,7 +54,12 @@ class ExpenseController extends Controller
             ->pluck('name', 'id')
             ->toArray();
 
-        $bankAccounts = BankAccount::owner()->active()->orderBy('account_name')->pluck('account_name', 'id')->toArray();
+        $bankAccounts = app(FinanceAccountAccessService::class)
+            ->accessibleAccounts(Auth::user())
+            ->active()
+            ->orderBy('account_name')
+            ->pluck('account_name', 'id')
+            ->toArray();
 
         $months = sessionYearWiseMonth();
 
@@ -99,6 +105,7 @@ class ExpenseController extends Controller
             'bank_account_id.required' => 'Please select a fund account for this expense.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
+        app(FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
         try {
             DB::beginTransaction();
             $schoolSettings = $this->cache->getSchoolSettings();
@@ -272,6 +279,7 @@ class ExpenseController extends Controller
             'bank_account_id.required' => 'Please select a fund account for this expense.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
+        app(FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
         try {
             DB::beginTransaction();
             $schoolSettings = $this->cache->getSchoolSettings();

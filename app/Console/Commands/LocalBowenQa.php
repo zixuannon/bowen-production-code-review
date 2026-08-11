@@ -265,8 +265,15 @@ class LocalBowenQa extends Command
             'class_id' => $classId, 'session_year_id' => $sessionId, 'created_at' => $now, 'updated_at' => $now,
         ]);
         $feeId = (int) $school->table('fees')->where('school_id', $schoolId)->where('name', 'Bowen QA P1 Fee')->value('id');
+        $school->table('fees')->updateOrInsert(['school_id' => $schoolId, 'name' => 'Bowen QA P2 Access Fee'], [
+            'currency' => 'MMK', 'due_date' => '2026-12-31', 'due_charges' => 0, 'due_charges_amount' => 0,
+            'class_id' => $classId, 'session_year_id' => $sessionId, 'created_at' => $now, 'updated_at' => $now,
+        ]);
+        $p2FeeId = (int) $school->table('fees')->where('school_id', $schoolId)->where('name', 'Bowen QA P2 Access Fee')->value('id');
         $school->table('fees_class_types')->updateOrInsert(['school_id' => $schoolId, 'class_id' => $classId, 'fees_id' => $feeId, 'fees_type_id' => $compulsoryTypeId], ['amount' => 1000, 'optional' => 0, 'created_at' => $now, 'updated_at' => $now]);
         $school->table('fees_class_types')->updateOrInsert(['school_id' => $schoolId, 'class_id' => $classId, 'fees_id' => $feeId, 'fees_type_id' => $optionalTypeId], ['amount' => 300, 'optional' => 1, 'created_at' => $now, 'updated_at' => $now]);
+        $school->table('fees_class_types')->updateOrInsert(['school_id' => $schoolId, 'class_id' => $classId, 'fees_id' => $p2FeeId, 'fees_type_id' => $compulsoryTypeId], ['amount' => 500, 'optional' => 0, 'created_at' => $now, 'updated_at' => $now]);
+        $school->table('fees_class_types')->updateOrInsert(['school_id' => $schoolId, 'class_id' => $classId, 'fees_id' => $p2FeeId, 'fees_type_id' => $optionalTypeId], ['amount' => 100, 'optional' => 1, 'created_at' => $now, 'updated_at' => $now]);
 
         $adminId = (int) $school->table('users')->where('email', 'qa_admin@bowen-qa.test')->value('id');
         foreach ([
@@ -359,7 +366,12 @@ class LocalBowenQa extends Command
         foreach ($permissionIds as $permissionId) {
             $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permissionId, 'role_id' => $headRole], []);
         }
-        $school->table('role_has_permissions')->updateOrInsert(['permission_id' => $permissionIds['expense-list'], 'role_id' => $cashierRole], []);
+        foreach (['expense-list', 'expense-create', 'fees-paid'] as $permissionName) {
+            $school->table('role_has_permissions')->updateOrInsert([
+                'permission_id' => $permissionIds[$permissionName],
+                'role_id' => $cashierRole,
+            ], []);
+        }
         foreach ([['qa_head_finance@bowen-qa.test', $headRole], ['qa_cashier_a@bowen-qa.test', $cashierRole], ['qa_cashier_b@bowen-qa.test', $cashierRole]] as [$email, $role]) {
             $id = $school->table('users')->where('email', $email)->value('id');
             $school->table('model_has_roles')->updateOrInsert(['role_id' => $role, 'model_id' => $id, 'model_type' => 'App\\Models\\User'], []);

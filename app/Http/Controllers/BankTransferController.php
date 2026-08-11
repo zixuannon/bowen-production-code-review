@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BankAccount;
 use App\Models\BankTransfer;
 use App\Services\BootstrapTableService;
+use App\Services\FinanceAccountAccessService;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,9 +19,8 @@ class BankTransferController extends Controller
         ResponseService::noFeatureThenRedirect('Expense Management');
         ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
 
-        $schoolId = Auth::user()->school_id;
-
-        $bankAccounts = BankAccount::where('school_id', $schoolId)
+        $bankAccounts = app(FinanceAccountAccessService::class)
+            ->accessibleAccounts(Auth::user())
             ->where('is_active', true)
             ->orderBy('account_name')
             ->get();
@@ -39,7 +39,12 @@ class BankTransferController extends Controller
         $order  = $request->input('order', 'DESC');
         $search = $request->input('search');
 
-        $sql = BankTransfer::owner()->with(['from_account:id,account_name', 'to_account:id,account_name']);
+        $accountIds = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())->pluck('id');
+        $sql = BankTransfer::owner()
+            ->where(function ($query) use ($accountIds) {
+                $query->whereIn('from_account_id', $accountIds)->orWhereIn('to_account_id', $accountIds);
+            })
+            ->with(['from_account:id,account_name', 'to_account:id,account_name']);
 
         if ($search) {
             $sql->where(function ($q) use ($search) {
@@ -66,7 +71,12 @@ class BankTransferController extends Controller
 
         foreach ($rows as $row) {
             $operate = '';
-            if ($row->status === 'completed') {
+            // A Cashier may see a transfer touching an assigned account, but
+            // cancellation changes both sides. Do not present an action that
+            // the server must reject unless the user controls both accounts.
+            if ($row->status === 'completed'
+                && $accountIds->contains($row->from_account_id)
+                && $accountIds->contains($row->to_account_id)) {
                 $operate .= BootstrapTableService::deleteButton(route('bank-transfers.destroy', $row->id));
             }
 
@@ -101,14 +111,14 @@ class BankTransferController extends Controller
             'notes'           => 'nullable|string|max:1000',
         ]);
 
+        $access = app(FinanceAccountAccessService::class);
+        $fromAccount = $access->authorize(Auth::user(), (int) $request->from_account_id);
+        $toAccount   = $access->authorize(Auth::user(), (int) $request->to_account_id);
+
         try {
             DB::beginTransaction();
 
             $schoolId = Auth::user()->school_id;
-
-            // Ensure both accounts belong to the same school
-            $fromAccount = BankAccount::where('school_id', $schoolId)->findOrFail($request->from_account_id);
-            $toAccount   = BankAccount::where('school_id', $schoolId)->findOrFail($request->to_account_id);
 
             // Same currency check: only allow transfers between same-currency accounts
             if ($fromAccount->currency !== $toAccount->currency) {
@@ -166,9 +176,15 @@ class BankTransferController extends Controller
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
 
-        try {
-            $transfer = BankTransfer::owner()->findOrFail($id);
+        $access = app(FinanceAccountAccessService::class);
+        $transfer = BankTransfer::owner()->findOrFail($id);
+        abort_unless(
+            $access->canAccessAccount(Auth::user(), $transfer->from_account)
+            && $access->canAccessAccount(Auth::user(), $transfer->to_account),
+            403,
+        );
 
+        try {
             if ($transfer->status !== 'completed') {
                 return response()->json([
                     'error'   => true,

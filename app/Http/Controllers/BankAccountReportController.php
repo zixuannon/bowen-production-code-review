@@ -9,6 +9,7 @@ use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
 use App\Services\ResponseService;
+use App\Services\FinanceAccountAccessService;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -26,8 +27,7 @@ class BankAccountReportController extends Controller
         $dateTo      = $request->get('date_to', now()->toDateString());
         $bankAccountId = $request->get('bank_account_id');
 
-        $schoolId     = Auth::user()->school_id;
-        $bankAccounts = BankAccount::where('school_id', $schoolId)
+        $bankAccounts = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())
             ->orderBy('account_name')
             ->get();
 
@@ -106,7 +106,12 @@ class BankAccountReportController extends Controller
     {
         $schoolId = Auth::user()->school_id;
 
-        $query = BankAccount::where('school_id', $schoolId);
+        $access = app(FinanceAccountAccessService::class);
+        if ($bankAccountId) {
+            $access->authorize(Auth::user(), (int) $bankAccountId);
+        }
+
+        $query = $access->accessibleAccounts(Auth::user());
         if ($bankAccountId) {
             $query->where('id', $bankAccountId);
         }
