@@ -71,6 +71,20 @@ class FundHandoverServiceTest extends TestCase
         $service->assertParticipant($this->schoolAdmin);
     }
 
+    public function test_participant_roles_are_authorized_without_generic_expense_permissions(): void
+    {
+        $service = app(FundHandoverService::class);
+
+        // Fund Handover must use the dedicated custody roles, not generic
+        // Expense permissions that a valid Head Finance/Cashier may not hold.
+        $this->assertFalse($this->head->can('expense-create'));
+        $this->assertFalse($this->cashierA->can('expense-list'));
+        $this->assertTrue($service->canViewRegister($this->head));
+        $this->assertTrue($service->canViewRegister($this->cashierA));
+        $this->assertTrue($service->isParticipant($this->head));
+        $this->assertTrue($service->isParticipant($this->cashierA));
+    }
+
     public function test_receiver_confirmation_atomically_creates_one_completed_transfer_and_updates_balances_once(): void
     {
         $service = app(FundHandoverService::class);

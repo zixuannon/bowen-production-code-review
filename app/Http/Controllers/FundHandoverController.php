@@ -16,9 +16,10 @@ class FundHandoverController extends Controller
     public function index()
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
 
         $actor = Auth::user();
+        // Fund Handover has its own custody roles. A Head Finance or Cashier
+        // must not be gated by unrelated generic Expense permissions.
         $this->handovers->assertCanViewRegister($actor);
         $canParticipate = $this->handovers->isParticipant($actor);
         $recipients = collect();
@@ -45,7 +46,6 @@ class FundHandoverController extends Controller
     public function list(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noAnyPermissionThenSendJson(['expense-create', 'expense-list']);
 
         $actor = Auth::user();
         $this->handovers->assertCanViewRegister($actor);
@@ -88,7 +88,6 @@ class FundHandoverController extends Controller
     public function store(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
         $this->handovers->assertParticipant(Auth::user());
         $data = $request->validate([
             'receiver_id' => ['required', 'integer'],
@@ -110,7 +109,6 @@ class FundHandoverController extends Controller
     public function confirm($id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
         $this->handovers->assertParticipant(Auth::user());
         try {
             $handover = $this->handovers->confirm(Auth::user(), (int) $id);
@@ -123,7 +121,6 @@ class FundHandoverController extends Controller
     public function reject(Request $request, $id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
         $this->handovers->assertParticipant(Auth::user());
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
         try {
@@ -137,7 +134,6 @@ class FundHandoverController extends Controller
     public function cancel(Request $request, $id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
         $this->handovers->assertParticipant(Auth::user());
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
         try {

@@ -698,8 +698,8 @@
         @endcan
 
         {{-- Expense --}}
-        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
-            'expense-create', 'expense-list', 'expense-edit', 'expense-delete'])
+        @if (Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
+            'expense-create', 'expense-list', 'expense-edit', 'expense-delete']) || Auth::user()->hasAnyRole(['School Admin', 'Head Finance', 'Cashier']))
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
                     aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">

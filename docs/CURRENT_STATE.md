@@ -38,6 +38,8 @@ Finance P3 School Admin Handover Oversight — **LOCAL QA VERIFIED**: School Adm
 
 Tenant role-context lifecycle fix — **LOCAL QA VERIFIED**: the web group now establishes the selected tenant database immediately after session startup and clears any already resolved guard user before LanguageManager/WizardSettings can evaluate Spatie roles. This prevents an empty central-connection `roles` relation from surviving into the tenant request. Local characterization reproduces central-role absence followed by tenant School Admin/HR role visibility after context establishment, while confirming the central path remains mysql-only. Finance Staff, School Admin Handover oversight, Head Finance/Cashier handover flow, and Cashier account isolation pass after the lifecycle change. No schema or role-data change is required.
 
+Fund Handover role-gate follow-up — **LOCAL QA VERIFIED**: the menu container and handover routes now use the dedicated `School Admin` / `Head Finance` / `Cashier` custody roles rather than unrelated generic Expense permissions. The Expense Management feature entitlement remains required. School Admin stays register-only and forged actions remain 403; Head Finance/Cashier regain participant access without broadening Cashier Fund Account scope. Targeted P2/P3 regression (22 tests / 83 assertions) and authenticated BOWEN_QA Playwright (P2 3/3, P3 1/1) pass. A runtime-only hotfix is prepared; production is untouched.
+
 P2/P3 release prerequisite is locally verified: `finance:p2-p3-migration-safety`
 has the fixed eight-tenant and two-file allowlists, verification-only default,
 partial-state refusal, isolated-batch verification, canary selection, and

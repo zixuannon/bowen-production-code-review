@@ -83,6 +83,7 @@ Do not start Branch Finance, transfer handover, daily closing, reconciliation, r
 - [x] Receiver confirmation atomically creates one canonical completed `BankTransfer`
 - [x] Head Finance ↔ Cashier authorization, tenant/account scope, insufficient-balance recheck, direct-request protection, and immutable confirmation
 - [x] School Admin current-school register/audit oversight without participant or action authority
+- [x] Fund Handover menu and route access use dedicated School Admin / Head Finance / Cashier roles, not generic Expense permissions
 - [x] Deterministic BOWEN_QA PHPUnit and local Playwright acceptance
 
 Balances move only on designated receiver confirmation.

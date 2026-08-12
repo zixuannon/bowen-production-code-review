@@ -64,6 +64,7 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     try {
       const pageResponse = await headPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
       expect(pageResponse?.status()).toBe(200);
+      await expect(headPage.locator('a[href$="/fund-handovers"]')).toBeVisible();
       await expect(headPage.getByText('New Pending Handover')).toBeVisible();
       await headPage.locator('#receiver_id').selectOption({ label: 'QA Cashier A' });
       await headPage.locator('#from_account_id').selectOption(String(source.id));
@@ -130,6 +131,7 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     try {
       const response = await cashierPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
       expect(response?.status()).toBe(200);
+      await expect(cashierPage.locator('a[href$="/fund-handovers"]')).toBeVisible();
       const row = cashierPage.locator('#handover-table tbody tr', { hasText: reference });
       await expect(row).toBeVisible();
       const confirmation = cashierPage.waitForResponse((candidate) => candidate.url().endsWith(`/fund-handovers/${pendingRow.id}/confirm`) && candidate.request().method() === 'POST');
