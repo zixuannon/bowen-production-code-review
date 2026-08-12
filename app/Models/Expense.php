@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Storage;
 class Expense extends Model
 {
     use HasFactory, SoftDeletes, DateFormatTrait;
-    protected $fillable = ['category_id', 'finance_category_id', 'ref_no', 'staff_id', 'month', 'year', 'title', 'description', 'amount', 'date', 'school_id', 'session_year_id', 'basic_salary', 'paid_leaves', 'vehicle_id', 'file', 'created_by', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk', 'bank_account_id', 'deleted_by', 'delete_reason', 'updated_by'];
+    protected $fillable = ['category_id', 'finance_category_id', 'ref_no', 'staff_id', 'month', 'year', 'title', 'description', 'amount', 'date', 'school_id', 'session_year_id', 'basic_salary', 'paid_leaves', 'vehicle_id', 'file', 'created_by', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk', 'bank_account_id', 'payment_method', 'deleted_by', 'delete_reason', 'updated_by'];
 
     protected $appends = ['taken_leaves'];
 

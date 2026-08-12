@@ -11,6 +11,8 @@ use App\Repositories\SessionYear\SessionYearInterface;
 use App\Services\BootstrapTableService;
 use App\Services\CachingService;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
+use App\Services\ExpenseImportService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
 use Illuminate\Http\Request;
@@ -19,6 +21,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Throwable;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\ExpenseImportTemplateExport;
 
 class ExpenseController extends Controller
 {
@@ -41,7 +45,7 @@ class ExpenseController extends Controller
     public function index()
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-view');
 
         $expenseCategory = $this->expenseCategory->builder()->pluck('name', 'id')->toArray();
         $sessionYear = $this->sessionYear->builder()->pluck('name', 'id');
@@ -77,7 +81,7 @@ class ExpenseController extends Controller
     public function store(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-create');
         $request->validate([
             'ref_no' => [
                 'nullable',
@@ -163,7 +167,7 @@ class ExpenseController extends Controller
     public function show($id)
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noPermissionThenRedirect('expense-list');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-view');
         $offset = request('offset', 0);
         $limit = request('limit', 10);
         $sort = request('sort', 'date');
@@ -379,7 +383,7 @@ class ExpenseController extends Controller
     public function filter_graph($session_year_id)
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noAnyPermissionThenSendJson(['expense-create', 'expense-list']);
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-view');
 
         try {
             $expense_months = [];
@@ -435,5 +439,37 @@ class ExpenseController extends Controller
             'changed_by' => $changedBy,
             'reason'     => $reason,
         ]);
+    }
+
+    public function importTemplate()
+    {
+        ResponseService::noFeatureThenRedirect('Expense Management');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-create');
+        return Excel::download(new ExpenseImportTemplateExport(), 'expense_import_template.xlsx');
+    }
+
+    public function importPreview(Request $request, ExpenseImportService $imports)
+    {
+        ResponseService::noFeatureThenSendJson('Expense Management');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-create');
+        $request->validate(['file' => ['required', 'file', 'max:5120']]);
+        try {
+            return response()->json(['error' => false, 'message' => __('Expense import preview ready.'), 'data' => $imports->preview($request->file('file'), Auth::user()->school_id, Auth::id())]);
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['error' => true, 'message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function importConfirm(Request $request, ExpenseImportService $imports)
+    {
+        ResponseService::noFeatureThenSendJson('Expense Management');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-create');
+        $data = $request->validate(['token' => ['required', 'uuid']]);
+        try {
+            $result = $imports->confirm($data['token'], Auth::user()->school_id, Auth::id());
+            return response()->json(['error' => false, 'message' => __('Expense import completed.'), 'data' => $result]);
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['error' => true, 'message' => $exception->getMessage()], 422);
+        }
     }
 }

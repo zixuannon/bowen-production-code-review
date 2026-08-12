@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
+use App\Models\Role;
+use Spatie\Permission\Models\Permission;
 
 class FinanceAccountAccessServiceTest extends TestCase
 {
@@ -182,6 +184,10 @@ class FinanceAccountAccessServiceTest extends TestCase
         DB::table('model_has_roles')->updateOrInsert(
             ['role_id' => $roleId, 'model_id' => $user->id, 'model_type' => User::class], []
         );
+        if (in_array($name, ['School Admin', 'Head Finance'], true)) {
+            Permission::findOrCreate('finance-fund-account-manage', 'web');
+            Role::withoutGlobalScope('school')->find($roleId)->givePermissionTo('finance-fund-account-manage');
+        }
     }
 
     private function createAccount(string $name, int $schoolId): BankAccount

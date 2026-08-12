@@ -608,7 +608,7 @@
 
         {{-- Fees --}}
 
-        @canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'fees-paid'])
+        @canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'finance-dashboard-view', 'finance-payment-view'])
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#fees-menu" aria-expanded="false"
                     aria-controls="fees-menu" data-access="@hasFeatureAccess('Fees Management')">
@@ -619,7 +619,7 @@
                 <div class="collapse" id="fees-menu">
                     <ul class="nav flex-column sub-menu">
                         {{-- === Overview / 财务总览 === --}}
-                        @can('fees-paid')
+                        @can('finance-dashboard-view')
                             <li class="nav-item menu-group-label">
                                 <span class="menu-group-text">{{ __('Overview / Financial Overview') }}</span>
                             </li>
@@ -631,7 +631,7 @@
                         @endcan
 
                         {{-- === Student Finance / 学生收费 === --}}
-                        @can('fees-paid')
+                        @can('finance-payment-view')
                             <li class="nav-item menu-group-label">
                                 <span class="menu-group-text">{{ __('Student Finance') }}</span>
                             </li>
@@ -657,7 +657,7 @@
                         @endcan
 
                         {{-- === Reports / 财务报表 === --}}
-                        @can('fees-paid')
+                        @can('finance-payment-view')
                             <li class="nav-item menu-group-label">
                                 <span class="menu-group-text">{{ __('Reports / Finance Reports') }}</span>
                             </li>
@@ -699,7 +699,7 @@
 
         {{-- Expense --}}
         @if (Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
-            'expense-create', 'expense-list', 'expense-edit', 'expense-delete', 'finance-handover-view', 'finance-staff-manage']))
+            'finance-expense-view', 'finance-expense-create', 'finance-fund-account-view', 'finance-transfer-view', 'finance-handover-view', 'finance-staff-manage']))
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
                     aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">
@@ -731,7 +731,7 @@
                             </li>
                         @endcanany
 
-                        @canany(['expense-create', 'expense-list', 'expense-edit', 'expense-delete'])
+                        @canany(['finance-expense-view', 'finance-expense-create'])
                             <li class="nav-item">
                                 <a href="{{ route('expense.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
@@ -745,7 +745,7 @@
                             <span class="menu-group-text">{{ __('Bank Accounts') }}</span>
                         </li>
 
-                        @canany(['expense-create', 'expense-list'])
+                        @can('finance-fund-account-view')
                             <li class="nav-item">
                                 <a href="{{ route('bank-accounts.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
@@ -754,7 +754,7 @@
                             </li>
                         @endcanany
 
-                        @canany(['expense-create', 'expense-list'])
+                        @can('finance-transfer-view')
                             <li class="nav-item">
                                 <a href="{{ route('bank-transfers.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
@@ -775,7 +775,7 @@
                             <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link">{{ __('Finance Staff') }}</a></li>
                         @endcan
 
-                        @canany(['expense-list'])
+                        @can('finance-fund-account-view')
                             <li class="nav-item">
                                 <a href="{{ route('bank-account-report.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">

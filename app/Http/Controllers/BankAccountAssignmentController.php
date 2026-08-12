@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BankAccount;
 use App\Models\User;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -12,6 +13,7 @@ class BankAccountAssignmentController extends Controller
 {
     public function update(Request $request, BankAccount $bankAccount, FinanceAccountAccessService $access)
     {
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
         abort_unless($access->canManageAccountAssignments(Auth::user()) && $bankAccount->school_id === Auth::user()->school_id, 403);
         $data = $request->validate(['user_ids' => ['array'], 'user_ids.*' => ['integer']]);
         $ids = User::where('school_id', Auth::user()->school_id)->whereIn('id', $data['user_ids'] ?? [])->role('Cashier')->pluck('id')->all();

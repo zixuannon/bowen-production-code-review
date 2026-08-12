@@ -829,6 +829,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         // Expense
         Route::get('expense/filter/{session_year_id?}', [ExpenseController::class, 'filter_graph']);
+        Route::get('expense/import/template', [ExpenseController::class, 'importTemplate'])->name('expense.import.template');
+        Route::post('expense/import/preview', [ExpenseController::class, 'importPreview'])->name('expense.import.preview');
+        Route::post('expense/import/confirm', [ExpenseController::class, 'importConfirm'])->name('expense.import.confirm');
         Route::resource('expense', ExpenseController::class);
 
         // Bank Accounts

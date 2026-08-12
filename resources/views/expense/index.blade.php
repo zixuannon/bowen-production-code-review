@@ -25,6 +25,11 @@
                         <h4 class="card-title">
                             {{ __('create') . ' ' . __('expense') }}
                         </h4>
+                        @can('finance-expense-create')
+                            <button type="button" class="btn btn-outline-theme btn-sm float-right" data-toggle="modal" data-target="#expenseImportModal">
+                                <i class="fa fa-file-excel-o"></i> {{ __('Import Expenses') }}
+                            </button>
+                        @endcan
                         <form class="pt-3" id="create-form" action="{{ route('expense.store') }}" method="POST"
                             novalidate="novalidate" enctype="multipart/form-data">
                             <div class="row">
@@ -180,6 +185,19 @@
                         </table>
                     </div>
                 </div>
+            </div>
+
+            <!-- Modal -->
+            <div class="modal fade" id="expenseImportModal" tabindex="-1" role="dialog" aria-labelledby="expenseImportTitle" aria-hidden="true">
+                <div class="modal-dialog modal-lg" role="document"><div class="modal-content">
+                    <div class="modal-header"><h5 class="modal-title" id="expenseImportTitle">{{ __('Expense Excel Import') }}</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div>
+                    <div class="modal-body">
+                        <p class="small text-muted">{{ __('Upload only for preview. No expense is created until you confirm a valid preview.') }}</p>
+                        <a class="btn btn-link p-0 mb-3" href="{{ route('expense.import.template') }}">{{ __('Download business-field template') }}</a>
+                        <form id="expense-import-upload"><div class="form-group"><label>{{ __('Excel file') }}</label><input type="file" name="file" class="form-control" accept=".csv,.xls,.xlsx" required></div><button class="btn btn-theme" type="submit">{{ __('Preview') }}</button></form>
+                        <div id="expense-import-result" class="mt-3 d-none"><div id="expense-import-summary" class="alert alert-info"></div><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Row</th><th>Reference</th><th>Status</th><th>Errors</th></tr></thead><tbody></tbody></table></div><div id="expense-import-errors" class="alert alert-warning d-none"></div><button id="expense-import-confirm" class="btn btn-success d-none" type="button">{{ __('Confirm and create Expenses') }}</button></div>
+                    </div>
+                </div></div>
             </div>
 
             <!-- Modal -->
@@ -602,6 +620,38 @@
                     });
                 }
             });
+        });
+
+        // Expense Excel: preview is intentionally separate from confirmation.
+        let expenseImportToken = null;
+        $('#expense-import-upload').on('submit', function (event) {
+            event.preventDefault();
+            const form = new FormData(this);
+            $('#expense-import-result').addClass('d-none');
+            $.ajax({url: '{{ route('expense.import.preview') }}', method: 'POST', data: form, processData: false, contentType: false,
+                headers: {'X-CSRF-TOKEN': '{{ csrf_token() }}'},
+                success: function (response) {
+                    const data = response.data;
+                    expenseImportToken = data.token;
+                    const valid = data.summary.valid;
+                    $('#expense-import-summary').text(data.summary.total + ' rows: ' + valid + ' valid, ' + data.summary.error + ' invalid.');
+                    const body = $('#expense-import-result tbody').empty();
+                    data.rows.forEach(function (row) {
+                        body.append('<tr><td>' + row.row_number + '</td><td>' + $('<div>').text(row.data.reference_no || '').html() + '</td><td>' + row.status + '</td><td>' + $('<div>').text((row.errors || []).join('; ')).html() + '</td></tr>');
+                    });
+                    $('#expense-import-confirm').toggleClass('d-none', valid !== data.summary.total);
+                    $('#expense-import-result').removeClass('d-none');
+                },
+                error: function (xhr) { showErrorToast(xhr.responseJSON?.message || '{{ __('Preview failed.') }}'); }
+            });
+        });
+        $('#expense-import-confirm').on('click', function () {
+            if (!expenseImportToken) return;
+            $(this).prop('disabled', true);
+            $.post('{{ route('expense.import.confirm') }}', {_token: '{{ csrf_token() }}', token: expenseImportToken})
+                .done(function (response) { showSuccessToast(response.message); $('#expenseImportModal').modal('hide'); $('#table_list').bootstrapTable('refresh'); })
+                .fail(function (xhr) { showErrorToast(xhr.responseJSON?.message || '{{ __('Confirmation failed.') }}'); })
+                .always(function () { $('#expense-import-confirm').prop('disabled', false); });
         });
     </script>
 @endsection
