@@ -67,18 +67,17 @@
 
 Do not start Branch Finance, transfer handover, daily closing, reconciliation, refund/void/reversal, or a production release as part of P2-B.
 
-## P1 — Transfer Handover
+## P3 — Transfer Handover + Receiver Confirmation
 
-Extend internal transfers into custody-aware handover:
+ - [x] Extend internal transfers into custody-aware handover
 
-- sender
-- receiver
-- source/destination account
-- pending/accepted/rejected state
-- receiver confirmation
-- audit trail
+- [x] Sender/receiver, source/destination, pending/confirmed/rejected/cancelled state, and audit trail
+- [x] Pending records have no balance or ledger impact
+- [x] Receiver confirmation atomically creates one canonical completed `BankTransfer`
+- [x] Head Finance ↔ Cashier authorization, tenant/account scope, insufficient-balance recheck, direct-request protection, and immutable confirmation
+- [x] Deterministic BOWEN_QA PHPUnit and local Playwright acceptance
 
-Business decision required for when balances legally/operationally move.
+Balances move only on designated receiver confirmation.
 
 ## P2
 

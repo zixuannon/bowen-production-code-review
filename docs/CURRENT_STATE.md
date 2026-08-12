@@ -30,7 +30,16 @@ Local development is the only active implementation/test environment. Use local/
 
 ## Current phase
 
-Finance P2 Roles + Fund Account Access Control — **LOCAL QA VERIFIED**. Production remains read-only; no production deployment or migration is prepared.
+Finance P3 Fund Handover + Receiver Confirmation — **LOCAL QA VERIFIED**. Production remains read-only; no production deployment or migration is prepared.
+
+P3 local evidence:
+
+- Tenant migration: `2026_08_12_000001_create_fund_handovers_table.php` adds tenant-local pending/confirmed/rejected/cancelled handover audit records and their underlying `bank_transfer_id` link.
+- A pending handover has no balance or ledger effect. Only the designated receiver can confirm it; confirmation is transactional and creates exactly one normal completed `BankTransfer`, reusing the shared transfer balance calculation.
+- Head Finance ↔ Cashier is supported; Cashier ↔ Cashier, cross-school, inactive/unassigned accounts, insufficient source balance, unauthorized confirmation, and repeated confirmation are rejected server-side.
+- Confirmed handovers are immutable: their completed transfer cannot be cancelled through the immediate-transfer endpoint. Rejection and cancellation retain actor, timestamp, and mandatory reason without a transfer.
+- BOWEN_QA Playwright passed the actual Head Finance request → Cashier confirmation flow, pending/no-ledger state, balance and ledger movement, direct-request rejection, exactly-once confirmation, and immutability.
+- Targeted Finance regression: 25 tests / 113 assertions passed; local P2/P3 browser regressions passed. PHP 8.5 vendor deprecation notices remain non-functional.
 
 P2-A local evidence:
 
@@ -144,7 +153,7 @@ Historical same-host staging work is retained for future reference only. It is n
 
 ## Next task
 
-Finance P2-B, if approved: apply the tested centralized account scope to fee/expense account selectors, transfers, and account reports, with direct-request authorization tests. Do not start Branch Finance, transfer handover, daily closing, reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
+Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
 ## Backlog
 

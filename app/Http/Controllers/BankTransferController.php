@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
 use App\Models\BankTransfer;
+use App\Models\FundHandover;
 use App\Services\BootstrapTableService;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FundAccountBalanceService;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -128,20 +130,9 @@ class BankTransferController extends Controller
                 ], 422);
             }
 
-            // Negative balance check: ensure from_account has sufficient funds
-            $compulsoryIncome = (float) \App\Models\CompulsoryFee::where('bank_account_id', $fromAccount->id)
-                ->where('school_id', $schoolId)->sum('amount');
-            $optionalIncome = (float) \App\Models\OptionalFee::where('bank_account_id', $fromAccount->id)
-                ->where('school_id', $schoolId)->sum('amount');
-            $expenses = (float) \App\Models\Expense::where('bank_account_id', $fromAccount->id)
-                ->where('school_id', $schoolId)->sum('amount');
-            $transferIn = (float) BankTransfer::where('to_account_id', $fromAccount->id)
-                ->where('school_id', $schoolId)->where('status', 'completed')->sum('amount');
-            $transferOut = (float) BankTransfer::where('from_account_id', $fromAccount->id)
-                ->where('school_id', $schoolId)->where('status', 'completed')->sum('amount');
-
-            $currentBalance = (float)$fromAccount->opening_balance + $compulsoryIncome + $optionalIncome
-                            + $transferIn - $expenses - $transferOut;
+            // Shared with FundHandover confirmation so every completed
+            // transfer uses one canonical balance calculation.
+            $currentBalance = app(FundAccountBalanceService::class)->currentBalance($fromAccount);
 
             if ($currentBalance < $request->amount) {
                 return response()->json([
@@ -178,6 +169,11 @@ class BankTransferController extends Controller
 
         $access = app(FinanceAccountAccessService::class);
         $transfer = BankTransfer::owner()->findOrFail($id);
+        abort_if(
+            FundHandover::where('bank_transfer_id', $transfer->id)->where('status', FundHandover::STATUS_CONFIRMED)->exists(),
+            422,
+            'A confirmed fund handover is immutable and cannot be cancelled as an immediate transfer.',
+        );
         abort_unless(
             $access->canAccessAccount(Auth::user(), $transfer->from_account)
             && $access->canAccessAccount(Auth::user(), $transfer->to_account),

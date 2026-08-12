@@ -763,6 +763,15 @@
                             </li>
                         @endcanany
 
+                        @hasanyrole('Head Finance|Cashier')
+                            <li class="nav-item">
+                                <a href="{{ route('fund-handovers.index') }}" class="nav-link"
+                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Fund Handover') }}
+                                </a>
+                            </li>
+                        @endhasanyrole
+
                         @canany(['expense-list'])
                             <li class="nav-item">
                                 <a href="{{ route('bank-account-report.index') }}" class="nav-link"

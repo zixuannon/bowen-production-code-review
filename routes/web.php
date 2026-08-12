@@ -81,6 +81,7 @@ use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\BankAccountAssignmentController;
 use App\Http\Controllers\BankAccountReportController;
 use App\Http\Controllers\BankTransferController;
+use App\Http\Controllers\FundHandoverController;
 use App\Http\Controllers\DiaryCategoryController;
 use App\Http\Controllers\DiaryController;
 use App\Http\Controllers\VehicleController;
@@ -837,6 +838,14 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Bank Transfers
         Route::get('bank-transfers/list', [BankTransferController::class, 'list'])->name('bank-transfers.list');
         Route::resource('bank-transfers', BankTransferController::class)->only(['index', 'store', 'destroy']);
+
+        // Fund handovers are separate from immediate Bank Transfers: pending
+        // handovers do not affect any balance until receiver confirmation.
+        Route::get('fund-handovers/list', [FundHandoverController::class, 'list'])->name('fund-handovers.list');
+        Route::post('fund-handovers/{id}/confirm', [FundHandoverController::class, 'confirm'])->name('fund-handovers.confirm');
+        Route::post('fund-handovers/{id}/reject', [FundHandoverController::class, 'reject'])->name('fund-handovers.reject');
+        Route::post('fund-handovers/{id}/cancel', [FundHandoverController::class, 'cancel'])->name('fund-handovers.cancel');
+        Route::resource('fund-handovers', FundHandoverController::class)->only(['index', 'store']);
 
         // Finance Category
         Route::get('finance-category/list', [FinanceCategoryController::class, 'list'])->name('finance-category.list');
