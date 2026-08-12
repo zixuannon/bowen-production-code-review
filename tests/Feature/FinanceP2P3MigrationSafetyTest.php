@@ -24,4 +24,9 @@ class FinanceP2P3MigrationSafetyTest extends TestCase
         $this->assertSame('partial', FinanceP2P3MigrationSafety::classify([FinanceP2P3MigrationSafety::MIGRATIONS[0], 'unrelated_migration']));
         $this->assertSame('both', FinanceP2P3MigrationSafety::classify([FinanceP2P3MigrationSafety::MIGRATIONS[0], FinanceP2P3MigrationSafety::MIGRATIONS[1], 'unrelated_migration']));
     }
+
+    public function test_clean_none_state_is_a_valid_verification_state_before_cutover(): void
+    {
+        $this->assertSame('none', FinanceP2P3MigrationSafety::classify([]));
+    }
 }

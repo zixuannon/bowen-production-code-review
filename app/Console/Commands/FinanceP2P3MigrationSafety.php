@@ -33,6 +33,13 @@ class FinanceP2P3MigrationSafety extends Command
                 if (!$this->rollback((int) $this->option('rollback-batch'), $tenant)) return self::FAILURE;
                 continue;
             }
+            // Verification-only mode intentionally accepts a clean `none`
+            // state before the approved cutover, and confirms `both` only
+            // after a completed cutover. A partial state is always fatal.
+            if (!$this->option('execute')) {
+                if ($state === 'both' && !$this->schemaComplete()) return $this->fail("[$tenant] P2/P3 schema verification failed.");
+                continue;
+            }
             if ($this->option('execute') && $state === 'none') {
                 $code = Artisan::call('migrate', ['--database' => 'school', '--path' => $this->paths(), '--realpath' => true, '--force' => true]);
                 $this->output->write(Artisan::output());
@@ -84,7 +91,9 @@ class FinanceP2P3MigrationSafety extends Command
         if ($batch < 1 || $actual !== $expected) return $this->fail("[$tenant] rollback batch is not exactly P2/P3; refused.");
         if (DB::connection('school')->table('bank_account_user')->exists() || DB::connection('school')->table('fund_handovers')->exists()) return $this->fail("[$tenant] P2/P3 activity exists; schema rollback is unsafe. Forward-fix only.");
         $code = Artisan::call('migrate:rollback', ['--database' => 'school', '--path' => self::paths(), '--realpath' => true, '--batch' => $batch, '--force' => true]); $this->output->write(Artisan::output());
-        return $code === self::SUCCESS && $this->state() === 'none' ?: $this->fail("[$tenant] rollback did not complete.");
+        return ($code === self::SUCCESS && $this->state() === 'none')
+            ? true
+            : $this->fail("[$tenant] rollback did not complete.");
     }
     private function fail(string $message): int { $this->error($message); return self::FAILURE; }
 }
