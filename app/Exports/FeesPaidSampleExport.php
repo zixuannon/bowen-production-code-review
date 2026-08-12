@@ -2,6 +2,8 @@
 
 namespace App\Exports;
 
+use App\Support\FeesPaidImportTemplate;
+
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
@@ -34,19 +36,7 @@ class FeesPaidSampleExport implements FromArray, WithHeadings, WithColumnWidths,
      */
     public function headings(): array
     {
-        return [
-            'Student Admission No',  // A
-            'Academic Year',         // B
-            'Class Name',            // C
-            'Fee Structure Name',    // D
-            'Bank Account Name',     // E
-            'Installment Name',      // F
-            'Payment Date',          // G  — YYYY-MM-DD
-            'Amount (MMK)',          // H
-            'Payment Mode',          // I  — Cash/Cheque/KBZ Pay/etc.
-            'Cheque No',             // J  — only if mode is Cheque
-            'Reference No',          // K
-        ];
+        return FeesPaidImportTemplate::HEADINGS;
     }
 
     /**
