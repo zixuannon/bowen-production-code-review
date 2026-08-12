@@ -4,7 +4,8 @@ const { authenticateLocalBowenQa } = require('./bowen-qa-auth.cjs');
 const baseURL = process.env.LOCAL_QA_BASE_URL || 'http://127.0.0.1:8000';
 
 function csrfToken(html) {
-  const match = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/i);
+  const match = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/i);
   if (!match) throw new Error('Expected a local CSRF token.');
   return match[1];
 }
@@ -42,7 +43,8 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
   const headApi = await apiFor('qa_head_finance@bowen-qa.test');
   const cashierApi = await apiFor('qa_cashier_a@bowen-qa.test');
   const cashierBApi = await apiFor('qa_cashier_b@bowen-qa.test');
-  const reference = 'BOWEN_QA_P3_HEAD_TO_CASH_A_001';
+  const adminApi = await apiFor('qa_admin@bowen-qa.test');
+  const reference = `BOWEN_QA_P3_HEAD_TO_CASH_A_${Date.now()}`;
 
   try {
     const headAccounts = await accountRows(headApi);
@@ -86,6 +88,38 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     const transfersBefore = await headApi.get('/bank-transfers/list');
     expect((await transfersBefore.json()).rows.some((row) => row.reference_no === reference)).toBeFalsy();
 
+    const adminPage = await adminApi.get('/fund-handovers');
+    expect(adminPage.status()).toBe(200);
+    const adminHtml = await adminPage.text();
+    expect(adminHtml).toContain('Read-only oversight');
+    expect(adminHtml).not.toContain('New Pending Handover');
+    const adminRows = await adminApi.get('/fund-handovers/list');
+    expect(adminRows.status()).toBe(200);
+    expect((await adminRows.json()).rows.some((row) => row.reference_no === reference)).toBeTruthy();
+
+    const adminContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_admin@bowen-qa.test') });
+    const adminBrowserPage = await adminContext.newPage();
+    try {
+      const response = await adminBrowserPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
+      expect(response?.status()).toBe(200);
+      await expect(adminBrowserPage.locator('a[href$="/fund-handovers"]')).toBeVisible();
+      await expect(adminBrowserPage.getByText('Read-only oversight')).toBeVisible();
+      await expect(adminBrowserPage.getByText('New Pending Handover')).toHaveCount(0);
+    } finally {
+      await adminContext.close();
+    }
+
+    const adminCannotCreate = await adminApi.post('/fund-handovers', {
+      form: { _token: csrfToken(adminHtml), receiver_id: cashierBId, from_account_id: String(source.id), to_account_id: String(destination.id), amount: '1.00', handover_date: '2026-03-01' }, maxRedirects: 0,
+    });
+    expect(adminCannotCreate.status()).toBe(403);
+    for (const action of ['confirm', 'reject', 'cancel']) {
+      const response = await adminApi.post(`/fund-handovers/${pendingRow.id}/${action}`, {
+        form: { _token: csrfToken(adminHtml), reason: 'Forged School Admin action must be rejected' }, maxRedirects: 0,
+      });
+      expect(response.status()).toBe(403);
+    }
+
     const headCannotConfirm = await headApi.post(`/fund-handovers/${pendingRow.id}/confirm`, {
       form: { _token: await handoverToken(headApi) }, maxRedirects: 0,
     });
@@ -111,6 +145,9 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     const transfersAfter = await headApi.get('/bank-transfers/list');
     const transfer = (await transfersAfter.json()).rows.find((row) => row.reference_no === reference);
     expect(transfer?.status).toBe('completed');
+    const adminHistory = await adminApi.get('/fund-handovers/list');
+    const adminHistoryRow = (await adminHistory.json()).rows.find((row) => row.reference_no === reference);
+    expect(adminHistoryRow?.audit).toContain('Confirmed by');
     expect((await headApi.get(`/bank-accounts/${source.id}`)).status()).toBe(200);
     expect(await (await headApi.get(`/bank-accounts/${source.id}`)).text()).toContain(reference);
 
@@ -135,5 +172,6 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     await headApi.dispose();
     await cashierApi.dispose();
     await cashierBApi.dispose();
+    await adminApi.dispose();
   }
 });

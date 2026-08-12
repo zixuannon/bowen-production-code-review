@@ -23,6 +23,7 @@ class FundHandoverServiceTest extends TestCase
     protected $connectionsToTransact = ['school'];
 
     private User $head;
+    private User $schoolAdmin;
     private User $cashierA;
     private User $cashierB;
     private BankAccount $headAccount;
@@ -34,6 +35,7 @@ class FundHandoverServiceTest extends TestCase
         $this->ensureHandoverTable();
         $this->ensurePivotTable();
         $this->head = $this->user('head', 1, 'Head Finance');
+        $this->schoolAdmin = $this->user('school-admin', 1, 'School Admin');
         $this->cashierA = $this->user('cashier-a', 1, 'Cashier');
         $this->cashierB = $this->user('cashier-b', 1, 'Cashier');
         $this->headAccount = $this->account('Head source', 1, 1000);
@@ -56,6 +58,17 @@ class FundHandoverServiceTest extends TestCase
         $this->assertSame($transferCount, BankTransfer::where('school_id', 1)->count());
         $this->assertSame($fromBefore, $balances->currentBalance($this->headAccount));
         $this->assertSame($toBefore, $balances->currentBalance($this->cashierAccount));
+    }
+
+    public function test_school_admin_has_read_only_oversight_but_is_not_a_handover_participant(): void
+    {
+        $service = app(FundHandoverService::class);
+
+        $this->assertTrue($service->canViewRegister($this->schoolAdmin));
+        $this->assertFalse($service->isParticipant($this->schoolAdmin));
+
+        $this->expectException(AccessDeniedHttpException::class);
+        $service->assertParticipant($this->schoolAdmin);
     }
 
     public function test_receiver_confirmation_atomically_creates_one_completed_transfer_and_updates_balances_once(): void

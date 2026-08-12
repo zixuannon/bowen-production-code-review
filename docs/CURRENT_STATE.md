@@ -34,6 +34,8 @@ Finance P3 Fund Handover + Receiver Confirmation — **LOCAL QA VERIFIED**. Prod
 
 Finance P2-D Finance Staff Management — **LOCAL QA VERIFIED**: School Admin may assign/remove only Finance roles and manages Cashier account assignments; Head Finance may manage active current-school Cashier assignments but cannot change roles; Cashiers are denied staff-management access. Removing Cashier detaches assignments immediately. Targeted authorization/P1-P3 regression (28 tests / 118 assertions), authenticated local Playwright, and two BOWEN_QA reset/verify cycles pass. Production remains untouched.
 
+Finance P3 School Admin Handover Oversight — **LOCAL QA VERIFIED**: School Admin may open the Fund Handover register, inspect all current-school handovers and their recorded confirmation/rejection/cancellation audit detail, but remains a non-participant. Participant-only recipient/account discovery is never evaluated for a School Admin session; forged create/confirm/reject/cancel requests are rejected server-side before any finance write. Head Finance/Cashier P3 flows and Cashier Fund Account isolation remain unchanged. Focused P1/P2/P3/P2-D regression (29 tests / 121 assertions) and authenticated local Playwright pass. No schema, migration, role, account, or production data change is included.
+
 P2/P3 release prerequisite is locally verified: `finance:p2-p3-migration-safety`
 has the fixed eight-tenant and two-file allowlists, verification-only default,
 partial-state refusal, isolated-batch verification, canary selection, and

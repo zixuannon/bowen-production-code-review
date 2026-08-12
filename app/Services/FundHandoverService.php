@@ -24,6 +24,34 @@ class FundHandoverService
         return User::query()->where('school_id', $actor->school_id)->role($required);
     }
 
+    /**
+     * School Admin is an oversight role: it may inspect the school handover
+     * register but it must never participate in custody operations.
+     */
+    public function canViewRegister(User $user): bool
+    {
+        return $user->hasAnyRole(['School Admin', 'Head Finance', 'Cashier']);
+    }
+
+    public function isParticipant(User $user): bool
+    {
+        return $user->hasAnyRole(['Head Finance', 'Cashier']);
+    }
+
+    public function assertCanViewRegister(User $user): void
+    {
+        if (!$this->canViewRegister($user)) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('You are not authorized to view fund handovers.');
+        }
+    }
+
+    public function assertParticipant(User $user): void
+    {
+        if (!$this->isParticipant($user)) {
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers require Head Finance or Cashier role.');
+        }
+    }
+
     public function eligibleDestinationAccounts(User $sender, User $receiver): Builder
     {
         $this->assertValidParties($sender, $receiver);

@@ -763,7 +763,7 @@
                             </li>
                         @endcanany
 
-                        @hasanyrole('Head Finance|Cashier')
+                        @hasanyrole('School Admin|Head Finance|Cashier')
                             <li class="nav-item">
                                 <a href="{{ route('fund-handovers.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">

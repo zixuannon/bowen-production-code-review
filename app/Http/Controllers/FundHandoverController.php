@@ -19,20 +19,27 @@ class FundHandoverController extends Controller
         ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
 
         $actor = Auth::user();
-        $access = app(FinanceAccountAccessService::class);
-        // This call deliberately rejects School Admin-only sessions: P3 is a
-        // controlled two-party Head Finance/Cashier custody workflow.
-        $recipients = $this->handovers->recipientCandidates($actor)->orderBy('first_name')->get(['id', 'school_id', 'first_name', 'last_name', 'email']);
-        $senderAccounts = $access->accessibleAccounts($actor)->active()->orderBy('account_name')->get(['id', 'account_name', 'account_number', 'currency']);
+        $this->handovers->assertCanViewRegister($actor);
+        $canParticipate = $this->handovers->isParticipant($actor);
+        $recipients = collect();
+        $senderAccounts = collect();
         $recipientAccounts = [];
-        foreach ($recipients as $recipient) {
-            $recipientAccounts[$recipient->id] = $this->handovers->eligibleDestinationAccounts($actor, $recipient)
-                ->orderBy('account_name')
-                ->get(['id', 'account_name', 'account_number', 'currency'])
-                ->values();
+
+        // Oversight is deliberately read-only. Do not call participant-only
+        // candidate/account logic for School Admin sessions.
+        if ($canParticipate) {
+            $access = app(FinanceAccountAccessService::class);
+            $recipients = $this->handovers->recipientCandidates($actor)->orderBy('first_name')->get(['id', 'school_id', 'first_name', 'last_name', 'email']);
+            $senderAccounts = $access->accessibleAccounts($actor)->active()->orderBy('account_name')->get(['id', 'account_name', 'account_number', 'currency']);
+            foreach ($recipients as $recipient) {
+                $recipientAccounts[$recipient->id] = $this->handovers->eligibleDestinationAccounts($actor, $recipient)
+                    ->orderBy('account_name')
+                    ->get(['id', 'account_name', 'account_number', 'currency'])
+                    ->values();
+            }
         }
 
-        return view('bank-account.handover.index', compact('recipients', 'senderAccounts', 'recipientAccounts'));
+        return view('bank-account.handover.index', compact('recipients', 'senderAccounts', 'recipientAccounts', 'canParticipate'));
     }
 
     public function list(Request $request)
@@ -41,9 +48,12 @@ class FundHandoverController extends Controller
         ResponseService::noAnyPermissionThenSendJson(['expense-create', 'expense-list']);
 
         $actor = Auth::user();
+        $this->handovers->assertCanViewRegister($actor);
         $query = FundHandover::where('school_id', $actor->school_id)
-            ->where(fn ($q) => $q->where('sender_id', $actor->id)->orWhere('receiver_id', $actor->id))
             ->with(['from_account:id,account_name', 'to_account:id,account_name', 'sender:id,first_name,last_name', 'receiver:id,first_name,last_name']);
+        if (!$actor->hasRole('School Admin')) {
+            $query->where(fn ($q) => $q->where('sender_id', $actor->id)->orWhere('receiver_id', $actor->id));
+        }
         $total = $query->count();
         $rows = $query->orderByDesc('id')->paginate((int) $request->input('limit', 20), ['*'], 'page', (int) floor(((int) $request->input('offset', 0)) / max(1, (int) $request->input('limit', 20)) + 1));
 
@@ -61,6 +71,12 @@ class FundHandoverController extends Controller
                     'reference_no' => $handover->reference_no,
                     'notes' => $handover->notes,
                     'status' => $handover->status,
+                    'audit' => match ($handover->status) {
+                        FundHandover::STATUS_CONFIRMED => __('Confirmed by :name at :time', ['name' => trim(($handover->receiver?->first_name ?? '') . ' ' . ($handover->receiver?->last_name ?? '')), 'time' => optional($handover->confirmed_at)->toDateTimeString()]),
+                        FundHandover::STATUS_REJECTED => __('Rejected by :name at :time — :reason', ['name' => trim(($handover->receiver?->first_name ?? '') . ' ' . ($handover->receiver?->last_name ?? '')), 'time' => optional($handover->rejected_at)->toDateTimeString(), 'reason' => $handover->rejection_reason]),
+                        FundHandover::STATUS_CANCELLED => __('Cancelled by :name at :time — :reason', ['name' => trim(($handover->sender?->first_name ?? '') . ' ' . ($handover->sender?->last_name ?? '')), 'time' => optional($handover->cancelled_at)->toDateTimeString(), 'reason' => $handover->cancellation_reason]),
+                        default => __('Pending confirmation'),
+                    },
                     'can_confirm' => $handover->status === FundHandover::STATUS_PENDING && $handover->receiver_id === $actor->id,
                     'can_reject' => $handover->status === FundHandover::STATUS_PENDING && $handover->receiver_id === $actor->id,
                     'can_cancel' => $handover->status === FundHandover::STATUS_PENDING && $handover->sender_id === $actor->id,
@@ -73,6 +89,7 @@ class FundHandoverController extends Controller
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
+        $this->handovers->assertParticipant(Auth::user());
         $data = $request->validate([
             'receiver_id' => ['required', 'integer'],
             'from_account_id' => ['required', 'integer'],
@@ -94,6 +111,7 @@ class FundHandoverController extends Controller
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
+        $this->handovers->assertParticipant(Auth::user());
         try {
             $handover = $this->handovers->confirm(Auth::user(), (int) $id);
         } catch (\DomainException | \InvalidArgumentException $exception) {
@@ -106,6 +124,7 @@ class FundHandoverController extends Controller
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
+        $this->handovers->assertParticipant(Auth::user());
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
         try {
             $this->handovers->reject(Auth::user(), (int) $id, $data['reason']);
@@ -119,6 +138,7 @@ class FundHandoverController extends Controller
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         ResponseService::noPermissionThenSendJson('expense-create');
+        $this->handovers->assertParticipant(Auth::user());
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
         try {
             $this->handovers->cancel(Auth::user(), (int) $id, $data['reason']);

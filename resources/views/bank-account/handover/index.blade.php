@@ -5,6 +5,7 @@
 @section('content')
 <div class="content-wrapper">
     <div class="page-header"><h3 class="page-title">{{ __('Fund Handover') }}</h3></div>
+    @if($canParticipate)
     <div class="row"><div class="col-12 grid-margin stretch-card"><div class="card"><div class="card-body">
         <h4 class="card-title">{{ __('New Pending Handover') }}</h4>
         <p class="text-muted">{{ __('A pending handover does not change balances. The designated receiver must confirm before a transfer is recorded.') }}</p>
@@ -21,9 +22,12 @@
             <button class="btn btn-theme" type="submit">{{ __('Request Handover') }}</button>
         </form>
     </div></div></div></div>
+    @else
+    <div class="alert alert-info">{{ __('Read-only oversight: School Admin can review current-school Fund Handovers and their audit history.') }}</div>
+    @endif
     <div class="row"><div class="col-12 grid-margin stretch-card"><div class="card"><div class="card-body">
-        <h4 class="card-title">{{ __('My Fund Handovers') }}</h4>
-        <table class="table" id="handover-table"><thead><tr><th>{{ __('Date') }}</th><th>{{ __('Reference') }}</th><th>{{ __('From') }}</th><th>{{ __('To') }}</th><th>{{ __('Sender') }}</th><th>{{ __('Receiver') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody></tbody></table>
+        <h4 class="card-title">{{ $canParticipate ? __('My Fund Handovers') : __('Fund Handover Register') }}</h4>
+        <table class="table" id="handover-table"><thead><tr><th>{{ __('Date') }}</th><th>{{ __('Reference') }}</th><th>{{ __('From') }}</th><th>{{ __('To') }}</th><th>{{ __('Sender') }}</th><th>{{ __('Receiver') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Audit') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody></tbody></table>
     </div></div></div></div>
 </div>
 @endsection
@@ -44,14 +48,17 @@ async function loadHandovers() {
     const response = await fetch('{{ route('fund-handovers.list') }}'); const data = await response.json();
     document.querySelector('#handover-table tbody').innerHTML = data.rows.map(row => {
         let actions = ''; if (row.can_confirm) actions += actionButton(row, '{{ __('Confirm') }}', 'confirm') + ' ' + actionButton(row, '{{ __('Reject') }}', 'reject'); if (row.can_cancel) actions += actionButton(row, '{{ __('Cancel') }}', 'cancel');
-        return `<tr><td>${row.handover_date}</td><td>${row.reference_no || '-'}</td><td>${row.from_account_name || '-'}</td><td>${row.to_account_name || '-'}</td><td>${row.sender_name}</td><td>${row.receiver_name}</td><td>${row.amount}</td><td>${row.status}</td><td>${actions}</td></tr>`;
+        return `<tr><td>${row.handover_date}</td><td>${row.reference_no || '-'}</td><td>${row.from_account_name || '-'}</td><td>${row.to_account_name || '-'}</td><td>${row.sender_name}</td><td>${row.receiver_name}</td><td>${row.amount}</td><td>${row.status}</td><td>${row.audit || '-'}</td><td>${actions}</td></tr>`;
     }).join('');
 }
+const canParticipate = @json($canParticipate);
+if (canParticipate) {
 document.getElementById('receiver_id').addEventListener('change', loadRecipientAccounts);
 document.getElementById('fund-handover-form').addEventListener('submit', async event => {
     event.preventDefault(); const response = await fetch('{{ route('fund-handovers.store') }}', {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}, body: new FormData(event.target)}); const data = await response.json();
     if (response.ok && !data.error) { toast(data.message, true); event.target.reset(); loadRecipientAccounts(); loadHandovers(); } else toast(data.message || '{{ __('Something went wrong.') }}');
 });
+}
 document.querySelector('#handover-table tbody').addEventListener('click', async event => {
     const button = event.target.closest('.handover-action'); if (!button) return;
     let body = new FormData(); body.append('_token', csrf);
