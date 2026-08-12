@@ -99,11 +99,13 @@ class BootstrapFinanceRoles extends Command
         $names = DB::connection('school')->table('roles')
             ->where('school_id', $schoolId)
             ->where('guard_name', 'web')
-            ->whereIn('name', ['Head Finance', 'Cashier'])
+            ->whereIn('name', SchoolDataService::FINANCE_ROLE_NAMES)
             ->pluck('name')
             ->all();
 
-        return ['Head Finance' => in_array('Head Finance', $names, true), 'Cashier' => in_array('Cashier', $names, true)];
+        return collect(SchoolDataService::FINANCE_ROLE_NAMES)
+            ->mapWithKeys(fn (string $name) => [$name => in_array($name, $names, true)])
+            ->all();
     }
 
     /** @param array<string, bool> $status */

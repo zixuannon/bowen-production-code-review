@@ -21,6 +21,9 @@ use Illuminate\Support\Facades\Log;
 
 class SchoolDataService
 {
+    /** @var array<int, string> Tenant-local Finance custody role definitions. */
+    public const FINANCE_ROLE_NAMES = ['Head Finance', 'Cashier'];
+
 
     public function preSettingsSetup($schoolData)
     {
@@ -272,7 +275,7 @@ class SchoolDataService
     public function ensureFinanceRoles($school): array
     {
         $roles = [];
-        foreach (['Head Finance', 'Cashier'] as $name) {
+        foreach (self::FINANCE_ROLE_NAMES as $name) {
             $roles[$name] = Role::withoutGlobalScope('school')->firstOrCreate(
                 ['name' => $name, 'guard_name' => 'web', 'school_id' => $school->id],
                 ['custom_role' => 1, 'editable' => 1],
