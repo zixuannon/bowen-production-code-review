@@ -67,6 +67,13 @@
 
 Do not start Branch Finance, transfer handover, daily closing, reconciliation, refund/void/reversal, or a production release as part of P2-B.
 
+## P2-D — Finance Staff Management
+
+- [x] School Admin role lifecycle for Head Finance and Cashier
+- [x] Head Finance active current-school Cashier account assignment only
+- [x] Cashier assignment removal on role removal; server-side forged/cross-school/inactive rejection
+- [x] BOWEN_QA PHPUnit and authenticated local browser acceptance
+
 ## P3 — Transfer Handover + Receiver Confirmation
 
  - [x] Extend internal transfers into custody-aware handover
