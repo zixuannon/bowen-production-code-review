@@ -699,7 +699,7 @@
 
         {{-- Expense --}}
         @if (Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
-            'expense-create', 'expense-list', 'expense-edit', 'expense-delete']) || Auth::user()->hasAnyRole(['School Admin', 'Head Finance', 'Cashier']))
+            'expense-create', 'expense-list', 'expense-edit', 'expense-delete', 'finance-handover-view', 'finance-staff-manage']))
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
                     aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">
@@ -763,17 +763,17 @@
                             </li>
                         @endcanany
 
-                        @hasanyrole('School Admin|Head Finance|Cashier')
+                        @can('finance-handover-view')
                             <li class="nav-item">
                                 <a href="{{ route('fund-handovers.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Fund Handover') }}
                                 </a>
                             </li>
-                        @endhasanyrole
-                        @hasanyrole('School Admin|Head Finance')
+                        @endcan
+                        @can('finance-staff-manage')
                             <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link">{{ __('Finance Staff') }}</a></li>
-                        @endhasanyrole
+                        @endcan
 
                         @canany(['expense-list'])
                             <li class="nav-item">

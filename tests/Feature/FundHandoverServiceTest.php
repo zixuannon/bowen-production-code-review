@@ -172,7 +172,23 @@ class FundHandoverServiceTest extends TestCase
         DB::table('roles')->updateOrInsert(['name' => $role, 'school_id' => $schoolId], ['guard_name' => 'web', 'custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()]);
         $roleId = DB::table('roles')->where('name', $role)->where('school_id', $schoolId)->value('id');
         DB::table('model_has_roles')->updateOrInsert(['role_id' => $roleId, 'model_id' => $user->id, 'model_type' => User::class], []);
+        foreach ($this->handoverPermissionsFor($role) as $permission) {
+            DB::table('permissions')->updateOrInsert(['name' => $permission], ['guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('role_has_permissions')->updateOrInsert([
+                'permission_id' => DB::table('permissions')->where('name', $permission)->value('id'),
+                'role_id' => $roleId,
+            ], []);
+        }
         return $user;
+    }
+
+    private function handoverPermissionsFor(string $role): array
+    {
+        if ($role === 'School Admin') return ['finance-handover-view'];
+        if (in_array($role, ['Head Finance', 'Cashier'], true)) {
+            return ['finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel'];
+        }
+        return [];
     }
 
     private function account(string $name, int $schoolId, float $opening): BankAccount

@@ -32,6 +32,8 @@ class FundHandoverController extends Controller
             $access = app(FinanceAccountAccessService::class);
             $recipients = $this->handovers->recipientCandidates($actor)->orderBy('first_name')->get(['id', 'school_id', 'first_name', 'last_name', 'email']);
             $senderAccounts = $access->accessibleAccounts($actor)->active()->orderBy('account_name')->get(['id', 'account_name', 'account_number', 'currency']);
+            $balances = app(\App\Services\FundAccountBalanceService::class);
+            $senderAccounts->each(fn ($account) => $account->setAttribute('current_balance', $balances->currentBalance($account)));
             foreach ($recipients as $recipient) {
                 $recipientAccounts[$recipient->id] = $this->handovers->eligibleDestinationAccounts($actor, $recipient)
                     ->orderBy('account_name')
@@ -88,7 +90,7 @@ class FundHandoverController extends Controller
     public function store(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        $this->handovers->assertParticipant(Auth::user());
+        $this->handovers->assertCanCreate(Auth::user());
         $data = $request->validate([
             'receiver_id' => ['required', 'integer'],
             'from_account_id' => ['required', 'integer'],
@@ -109,7 +111,7 @@ class FundHandoverController extends Controller
     public function confirm($id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        $this->handovers->assertParticipant(Auth::user());
+        $this->handovers->assertCanConfirm(Auth::user());
         try {
             $handover = $this->handovers->confirm(Auth::user(), (int) $id);
         } catch (\DomainException | \InvalidArgumentException $exception) {
@@ -121,7 +123,7 @@ class FundHandoverController extends Controller
     public function reject(Request $request, $id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        $this->handovers->assertParticipant(Auth::user());
+        $this->handovers->assertCanReject(Auth::user());
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
         try {
             $this->handovers->reject(Auth::user(), (int) $id, $data['reason']);
@@ -134,7 +136,7 @@ class FundHandoverController extends Controller
     public function cancel(Request $request, $id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        $this->handovers->assertParticipant(Auth::user());
+        $this->handovers->assertCanCancel(Auth::user());
         $data = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
         try {
             $this->handovers->cancel(Auth::user(), (int) $id, $data['reason']);

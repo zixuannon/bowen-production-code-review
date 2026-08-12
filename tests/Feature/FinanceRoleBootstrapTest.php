@@ -45,11 +45,14 @@ class FinanceRoleBootstrapTest extends TestCase
 
         $service = app(SchoolDataService::class);
         $school = (object) ['id' => $schoolId];
-        $service->ensureFinanceRoles($school);
-        $service->ensureFinanceRoles($school);
+        $service->createPermissions();
+        $service->ensureFinanceRoleDefaultPermissions($school);
+        $service->ensureFinanceRoleDefaultPermissions($school);
 
         $roles = Role::withoutGlobalScope('school')->where('school_id', $schoolId)->where('guard_name', 'web')->pluck('name')->sort()->values()->all();
         $this->assertSame(['Cashier', 'Head Finance', 'Teacher'], $roles);
+        $this->assertTrue(Role::withoutGlobalScope('school')->where('school_id', $schoolId)->where('name', 'Head Finance')->firstOrFail()->hasPermissionTo('finance-handover-create'));
+        $this->assertTrue(Role::withoutGlobalScope('school')->where('school_id', $schoolId)->where('name', 'Cashier')->firstOrFail()->hasPermissionTo('finance-handover-confirm'));
         $this->assertSame($beforeAssignments, DB::connection('school')->table('model_has_roles')->count());
         $this->assertSame([], DB::connection('school')->table('model_has_roles')->where('model_id', $userId)->get()->all());
         $this->assertSame($beforeFinance, $this->transactionalCounts());

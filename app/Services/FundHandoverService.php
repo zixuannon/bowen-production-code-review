@@ -30,7 +30,7 @@ class FundHandoverService
      */
     public function canViewRegister(User $user): bool
     {
-        return $user->hasAnyRole(['School Admin', 'Head Finance', 'Cashier']);
+        return app(FinanceAuthorizationService::class)->can($user, 'finance-handover-view');
     }
 
     public function isParticipant(User $user): bool
@@ -50,6 +50,30 @@ class FundHandoverService
         if (!$this->isParticipant($user)) {
             throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers require Head Finance or Cashier role.');
         }
+    }
+
+    public function assertCanCreate(User $user): void
+    {
+        app(FinanceAuthorizationService::class)->assert($user, 'finance-handover-create');
+        $this->assertParticipant($user);
+    }
+
+    public function assertCanConfirm(User $user): void
+    {
+        app(FinanceAuthorizationService::class)->assert($user, 'finance-handover-confirm');
+        $this->assertParticipant($user);
+    }
+
+    public function assertCanReject(User $user): void
+    {
+        app(FinanceAuthorizationService::class)->assert($user, 'finance-handover-reject');
+        $this->assertParticipant($user);
+    }
+
+    public function assertCanCancel(User $user): void
+    {
+        app(FinanceAuthorizationService::class)->assert($user, 'finance-handover-cancel');
+        $this->assertParticipant($user);
     }
 
     public function eligibleDestinationAccounts(User $sender, User $receiver): Builder

@@ -134,8 +134,11 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
       await expect(cashierPage.locator('a[href$="/fund-handovers"]')).toBeVisible();
       const row = cashierPage.locator('#handover-table tbody tr', { hasText: reference });
       await expect(row).toBeVisible();
-      const confirmation = cashierPage.waitForResponse((candidate) => candidate.url().endsWith(`/fund-handovers/${pendingRow.id}/confirm`) && candidate.request().method() === 'POST');
       await row.getByRole('button', { name: 'Confirm' }).click();
+      const modal = cashierPage.getByRole('dialog', { name: 'Confirm Receipt' });
+      await expect(modal).toContainText('will create the actual Fund Transfer / BankTransfer');
+      const confirmation = cashierPage.waitForResponse((candidate) => candidate.url().endsWith(`/fund-handovers/${pendingRow.id}/confirm`) && candidate.request().method() === 'POST');
+      await modal.getByRole('button', { name: 'Confirm Receipt' }).click();
       expect((await confirmation).status()).toBe(200);
       await expect(row).toContainText('confirmed');
     } finally {

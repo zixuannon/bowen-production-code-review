@@ -237,7 +237,7 @@ class SchoolDataService
 
         // Finance custody roles are tenant-local definitions. They are
         // intentionally created during provisioning but never assigned here.
-        $this->ensureFinanceRoles($school);
+        $this->ensureFinanceRoleDefaultPermissions($school);
 
         $schoolAdminUser = User::on('school')->where('id', $school->admin_id)->first();
         $user = $schoolAdminUser->setConnection('school');
@@ -280,6 +280,40 @@ class SchoolDataService
         }
 
         return $roles;
+    }
+
+    /**
+     * Apply the default permission bundles for a freshly provisioned tenant.
+     * Existing tenants use an explicit administration action; this method
+     * never assigns roles to users.
+     */
+    public function ensureFinanceRoleDefaultPermissions($school): void
+    {
+        $roles = $this->ensureFinanceRoles($school);
+        foreach ($this->financeRoleDefaultPermissions() as $role => $permissions) {
+            $roles[$role]->givePermissionTo($permissions);
+        }
+    }
+
+    /** @return array<int, string> */
+    public static function financePermissionNames(): array
+    {
+        return array_column(self::financePermissions(), 'name');
+    }
+
+    /** @return array<string, array<int, string>> */
+    public function financeRoleDefaultPermissions(): array
+    {
+        return [
+            'Head Finance' => self::financePermissionNames(),
+            'Cashier' => [
+                'finance-dashboard-view', 'finance-payment-view', 'finance-payment-create',
+                'finance-expense-view', 'finance-expense-create', 'finance-fund-account-view',
+                'finance-transfer-view', 'finance-transfer-create', 'finance-handover-view',
+                'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject',
+                'finance-handover-cancel',
+            ],
+        ];
     }
 
     public function createDatabaseMigration($schoolData)
@@ -363,6 +397,8 @@ class SchoolDataService
             ['name' => 'fees-classes'],
             ['name' => 'fees-paid'],
             ['name' => 'fees-config'],
+
+            ...self::financePermissions(),
 
             ['name' => 'school-setting-manage'],
             ['name' => 'app-settings'],
@@ -470,6 +506,28 @@ class SchoolDataService
         return $finalArray;
     }
 
+    /** @return array<int, array{name: string}> */
+    public static function financePermissions(): array
+    {
+        return array_map(static fn (string $name) => ['name' => $name], [
+            'finance-dashboard-view',
+            'finance-payment-view',
+            'finance-payment-create',
+            'finance-expense-view',
+            'finance-expense-create',
+            'finance-fund-account-view',
+            'finance-fund-account-manage',
+            'finance-transfer-view',
+            'finance-transfer-create',
+            'finance-handover-view',
+            'finance-handover-create',
+            'finance-handover-confirm',
+            'finance-handover-reject',
+            'finance-handover-cancel',
+            'finance-staff-manage',
+        ]);
+    }
+
     public function createSchoolAdminRole($school)
     {
         $role = Role::withoutGlobalScope('school')->updateOrCreate(['name' => 'School Admin', 'custom_role' => 0, 'editable' => 0, 'school_id' => $school->id]);
@@ -574,6 +632,8 @@ class SchoolDataService
 
             'fees-paid',
             'fees-config',
+
+            ...self::financePermissionNames(),
 
             'form-fields-list',
             'form-fields-create',

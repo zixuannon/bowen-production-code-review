@@ -180,6 +180,7 @@ class LocalBowenQa extends Command
         $schoolService->defaultRoles($tenantSchool);
         $this->assignFixtureRoles($centralSchool->id);
         $this->seedFinanceRoleAssignments($centralSchool->id, $now);
+        $schoolService->ensureFinanceRoleDefaultPermissions($tenantSchool);
         DB::setDefaultConnection('mysql');
     }
 
