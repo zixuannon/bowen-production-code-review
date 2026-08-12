@@ -36,6 +36,8 @@ Finance P2-D Finance Staff Management — **LOCAL QA VERIFIED**: School Admin ma
 
 Finance P3 School Admin Handover Oversight — **LOCAL QA VERIFIED**: School Admin may open the Fund Handover register, inspect all current-school handovers and their recorded confirmation/rejection/cancellation audit detail, but remains a non-participant. Participant-only recipient/account discovery is never evaluated for a School Admin session; forged create/confirm/reject/cancel requests are rejected server-side before any finance write. Head Finance/Cashier P3 flows and Cashier Fund Account isolation remain unchanged. Focused P1/P2/P3/P2-D regression (29 tests / 121 assertions) and authenticated local Playwright pass. No schema, migration, role, account, or production data change is included.
 
+Tenant role-context lifecycle fix — **LOCAL QA VERIFIED**: the web group now establishes the selected tenant database immediately after session startup and clears any already resolved guard user before LanguageManager/WizardSettings can evaluate Spatie roles. This prevents an empty central-connection `roles` relation from surviving into the tenant request. Local characterization reproduces central-role absence followed by tenant School Admin/HR role visibility after context establishment, while confirming the central path remains mysql-only. Finance Staff, School Admin Handover oversight, Head Finance/Cashier handover flow, and Cashier account isolation pass after the lifecycle change. No schema or role-data change is required.
+
 P2/P3 release prerequisite is locally verified: `finance:p2-p3-migration-safety`
 has the fixed eight-tenant and two-file allowlists, verification-only default,
 partial-state refusal, isolated-batch verification, canary selection, and
