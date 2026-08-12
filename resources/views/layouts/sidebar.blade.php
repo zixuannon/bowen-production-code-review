@@ -771,6 +771,9 @@
                                 </a>
                             </li>
                         @endhasanyrole
+                        @hasanyrole('School Admin|Head Finance')
+                            <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link">{{ __('Finance Staff') }}</a></li>
+                        @endhasanyrole
 
                         @canany(['expense-list'])
                             <li class="nav-item">

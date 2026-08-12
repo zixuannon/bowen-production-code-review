@@ -82,6 +82,7 @@ use App\Http\Controllers\BankAccountAssignmentController;
 use App\Http\Controllers\BankAccountReportController;
 use App\Http\Controllers\BankTransferController;
 use App\Http\Controllers\FundHandoverController;
+use App\Http\Controllers\FinanceStaffController;
 use App\Http\Controllers\DiaryCategoryController;
 use App\Http\Controllers\DiaryController;
 use App\Http\Controllers\VehicleController;
@@ -846,6 +847,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('fund-handovers/{id}/reject', [FundHandoverController::class, 'reject'])->name('fund-handovers.reject');
         Route::post('fund-handovers/{id}/cancel', [FundHandoverController::class, 'cancel'])->name('fund-handovers.cancel');
         Route::resource('fund-handovers', FundHandoverController::class)->only(['index', 'store']);
+        Route::get('finance-staff',[FinanceStaffController::class,'index'])->name('finance-staff.index');
+        Route::post('finance-staff/{user}/role',[FinanceStaffController::class,'role'])->name('finance-staff.role');
+        Route::put('finance-staff/{user}/accounts',[FinanceStaffController::class,'accounts'])->name('finance-staff.accounts');
 
         // Finance Category
         Route::get('finance-category/list', [FinanceCategoryController::class, 'list'])->name('finance-category.list');

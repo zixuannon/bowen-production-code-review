@@ -14,7 +14,7 @@ class BankAccountAssignmentController extends Controller
     {
         abort_unless($access->canManageAccountAssignments(Auth::user()) && $bankAccount->school_id === Auth::user()->school_id, 403);
         $data = $request->validate(['user_ids' => ['array'], 'user_ids.*' => ['integer']]);
-        $ids = User::where('school_id', Auth::user()->school_id)->whereIn('id', $data['user_ids'] ?? [])->pluck('id')->all();
+        $ids = User::where('school_id', Auth::user()->school_id)->whereIn('id', $data['user_ids'] ?? [])->role('Cashier')->pluck('id')->all();
         abort_unless(count($ids) === count($data['user_ids'] ?? []), 422, 'Assigned users must belong to this school.');
         $bankAccount->authorized_users()->sync($ids);
         return response()->json(['error' => false, 'message' => __('Fund Account access updated.')]);
