@@ -235,6 +235,10 @@ class SchoolDataService
 
         $this->createSchoolAdminRole($school);
 
+        // Finance custody roles are tenant-local definitions. They are
+        // intentionally created during provisioning but never assigned here.
+        $this->ensureFinanceRoles($school);
+
         $schoolAdminUser = User::on('school')->where('id', $school->admin_id)->first();
         $user = $schoolAdminUser->setConnection('school');
         $user->assignRole('School Admin');
@@ -255,6 +259,27 @@ class SchoolDataService
     {
         Role::updateOrCreate(['name' => 'Guardian', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 0]);
         Role::updateOrCreate(['name' => 'Student', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 0]);
+    }
+
+    /**
+     * Ensure the P2/P3 role definitions exist for one tenant.
+     *
+     * This deliberately does not grant permissions or assign any user. Role
+     * assignment remains an explicit School Admin business action.
+     *
+     * @return array<string, Role>
+     */
+    public function ensureFinanceRoles($school): array
+    {
+        $roles = [];
+        foreach (['Head Finance', 'Cashier'] as $name) {
+            $roles[$name] = Role::withoutGlobalScope('school')->firstOrCreate(
+                ['name' => $name, 'guard_name' => 'web', 'school_id' => $school->id],
+                ['custom_role' => 1, 'editable' => 1],
+            );
+        }
+
+        return $roles;
     }
 
     public function createDatabaseMigration($schoolData)
@@ -861,4 +886,3 @@ class SchoolDataService
     }
 
 }
-
