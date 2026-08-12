@@ -32,6 +32,11 @@ Local development is the only active implementation/test environment. Use local/
 
 Finance P3 Fund Handover + Receiver Confirmation — **LOCAL QA VERIFIED**. Production remains read-only; no production deployment or migration is prepared.
 
+P2/P3 release prerequisite is locally verified: `finance:p2-p3-migration-safety`
+has the fixed eight-tenant and two-file allowlists, verification-only default,
+partial-state refusal, isolated-batch verification, canary selection, and
+data-aware rollback refusal. It is not deployed or executed on production.
+
 P3 local evidence:
 
 - Tenant migration: `2026_08_12_000001_create_fund_handovers_table.php` adds tenant-local pending/confirmed/rejected/cancelled handover audit records and their underlying `bank_transfer_id` link.

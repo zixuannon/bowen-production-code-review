@@ -50,6 +50,19 @@ When unrelated pending migrations exist, use targeted migration paths rather tha
 
 Verify each tenant after migration.
 
+### Finance P2/P3 targeted runner
+
+`finance:p2-p3-migration-safety` is the only approved runner for the P2/P3
+release migrations. It has a fixed allowlist of the eight verified tenant
+databases and a fixed migration-path allowlist containing only
+`2026_08_11_000001_create_bank_account_user_table` and
+`2026_08_12_000001_create_fund_handovers_table`.
+
+Its default is verification-only. It refuses unknown/duplicate tenants and
+partial migration state. `--execute` is still a production Human Gate. Capture
+the isolated two-migration batch number per tenant; after pivot assignment or
+handover activity, use a forward fix rather than schema rollback.
+
 ## Safe cutover principle
 
 When new application code requires new columns/tables, prefer:
