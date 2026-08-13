@@ -13,6 +13,7 @@ use App\Repositories\StaffPayroll\StaffPayrollInterface;
 use App\Repositories\StaffSalary\StaffSalaryInterface;
 use App\Services\BootstrapTableService;
 use App\Services\CachingService;
+use App\Services\PayrollCalculationService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
 use Illuminate\Support\Facades\Auth;
@@ -37,8 +38,9 @@ class PayrollController extends Controller
     private StaffSalaryInterface $staffSalary;
     private StaffPayrollInterface $staffPayroll;
     private SessionYearsTrackingsService $sessionYearsTrackingsService;
+    private PayrollCalculationService $payrollCalculation;
 
-    public function __construct(SessionYearInterface $sessionYear, StaffInterface $staff, ExpenseInterface $expense, LeaveMasterInterface $leaveMaster, CachingService $cache, SchoolSettingInterface $schoolSetting, LeaveInterface $leave, SessionYearInterface $sessionYearInterface, StaffSalaryInterface $staffSalary, StaffPayrollInterface $staffPayroll, SessionYearsTrackingsService $sessionYearsTrackingsService)
+    public function __construct(SessionYearInterface $sessionYear, StaffInterface $staff, ExpenseInterface $expense, LeaveMasterInterface $leaveMaster, CachingService $cache, SchoolSettingInterface $schoolSetting, LeaveInterface $leave, SessionYearInterface $sessionYearInterface, StaffSalaryInterface $staffSalary, StaffPayrollInterface $staffPayroll, SessionYearsTrackingsService $sessionYearsTrackingsService, PayrollCalculationService $payrollCalculation)
     {
         $this->sessionYear = $sessionYear;
         $this->staff = $staff;
@@ -51,6 +53,7 @@ class PayrollController extends Controller
         $this->staffSalary = $staffSalary;
         $this->staffPayroll = $staffPayroll;
         $this->sessionYearsTrackingsService = $sessionYearsTrackingsService;
+        $this->payrollCalculation = $payrollCalculation;
     }
 
     public function index()
@@ -324,10 +327,8 @@ class PayrollController extends Controller
                     $tempRow['status'] = $status;
                     $tempRow['paid_leaves'] = $expense->paid_leaves;
                     if ($expense->paid_leaves < $total_leave && $expense->paid_leaves !== null) {
-                        $unpaid_leave = $total_leave - $expense->paid_leaves;
-                        $daysInMonth = Carbon::create($year, $month)->daysInMonth;
-                        $per_day_salary = $daysInMonth > 0 ? $salary / $daysInMonth : 0;
-                        $salary_deduction = $unpaid_leave * $per_day_salary;
+                        $unpaid_leave = $this->payrollCalculation->unpaidLeaveDays((float) $total_leave, (float) $expense->paid_leaves);
+                        $salary_deduction = $this->payrollCalculation->lwpDeduction((float) $salary, (int) $year, (int) $month, $unpaid_leave);
                         $tempRow['salary_deduction'] = $salary_deduction;
                     }
                     $tempRow['net_salary'] = $expense->amount;
@@ -395,16 +396,14 @@ class PayrollController extends Controller
                     $tempRow['paid_leaves'] = $leaveMaster->leaves;
                     if ($leaveMaster->leaves < $total_leave) {
                         if ($leaveMaster->leaves !== null) {
-                            $unpaid_leave = $total_leave - $leaveMaster->leaves;
-                            $daysInMonth = Carbon::create($year, $month)->daysInMonth;
-                            $per_day_salary = $daysInMonth > 0 ? $salary / $daysInMonth : 0;
-                            $salary_deduction = $unpaid_leave * $per_day_salary;
+                            $unpaid_leave = $this->payrollCalculation->unpaidLeaveDays((float) $total_leave, (float) $leaveMaster->leaves);
+                            $salary_deduction = $this->payrollCalculation->lwpDeduction((float) $salary, (int) $year, (int) $month, $unpaid_leave);
                         }
                         $tempRow['salary_deduction'] = $salary_deduction;
                     }
-                    $tempRow['net_salary'] = $salary - $salary_deduction + $totalAllowanceAmount - $totalDeductionAmount;
+                    $tempRow['net_salary'] = $this->payrollCalculation->netSalary((float) $salary, $totalAllowanceAmount, $totalDeductionAmount, $salary_deduction);
                 } else {
-                    $tempRow['net_salary'] = $salary + $totalAllowanceAmount - $totalDeductionAmount;
+                    $tempRow['net_salary'] = $this->payrollCalculation->netSalary((float) $salary, $totalAllowanceAmount, $totalDeductionAmount, 0);
                 }
             }
 
@@ -527,10 +526,11 @@ class PayrollController extends Controller
             }
 
             $total_leaves = $leaves->sum('full_leave') + ($leaves->sum('half_leave') / 2);
-            // Total days
-            $days = Carbon::now()->year($salary->year)->month($salary->month)->daysInMonth;
+            $workingDays = $this->payrollCalculation->workingDaysInMonth((int) $salary->year, (int) $salary->month);
+            $lwp = $this->payrollCalculation->unpaidLeaveDays((float) $total_leaves, $allow_leaves === null ? null : (float) $allow_leaves);
+            $lwpAmount = $this->payrollCalculation->lwpDeduction((float) $salary->basic_salary, (int) $salary->year, (int) $salary->month, $lwp);
 
-            $pdf = PDF::loadView('payroll.slip', compact('schoolSetting', 'salary', 'total_leaves', 'days', 'allow_leaves'));
+            $pdf = PDF::loadView('payroll.slip', compact('schoolSetting', 'salary', 'total_leaves', 'workingDays', 'allow_leaves', 'lwp', 'lwpAmount'));
             return $pdf->stream($salary->title . '-' . $salary->staff->user->full_name . '.pdf');
         } catch (\Throwable $th) {
             ResponseService::logErrorResponse($th);

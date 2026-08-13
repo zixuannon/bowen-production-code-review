@@ -182,8 +182,8 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 ## Integration release validation
 
-- Final local integration validation passed: `php artisan test` reports 282 passed / 849 assertions; the guarded BOWEN_QA Playwright suite reports 18/18 passed. The generic root-route fixture now supplies its server-level host value and the isolated two-stage leave characterization uses Laravel's application test case; neither changes runtime behavior.
-- Payroll reconciliation remains deliberately unresolved: the LWP divisor (fixed 30 days versus calendar days) and transportation deduction source (Payroll Settings versus the undefined transportation-payment path) require a business decision before a full production deployment may include the integration Payroll behavior.
+- Final local integration validation passed: `php artisan test` reports 291 passed / 870 assertions; the guarded BOWEN_QA Playwright suite reports 18/18 passed. The generic root-route fixture now supplies its server-level host value and the isolated two-stage leave characterization uses Laravel's application test case; neither changes runtime behavior.
+- Payroll reconciliation is resolved and locally verified: LWP uses the actual count of non-Sunday dates in the payroll month (not a fixed 30-day or calendar-day divisor). Full approved unpaid leave counts as 1.0 day and approved half leave as 0.5 day under the existing leave semantics. Transportation remains solely on the established Payroll Settings deduction path; the incomplete Production-only `transportationPayments` block is intentionally absent.
 
 ## Backlog
 

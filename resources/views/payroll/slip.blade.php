@@ -303,17 +303,9 @@
         <hr class="end-header">
 
         @php
-            $lwp = 0;
-            $lwp_amount = 0;
             $allowance = 0;
             $deduction = 0;
         @endphp
-
-        @if ($salary->paid_leaves < $total_leaves && $allow_leaves !== null)
-            @php
-                $lwp = number_format($total_leaves - $salary->paid_leaves, 2);
-            @endphp
-        @endif
         
         <div class="row">
             <div class="col-md-6 employee-detail">
@@ -377,7 +369,7 @@
                             出勤天数 <span class="en-small">/ Paid Days</span>
                         </th>
                         <td>
-                            : {{ $days - $lwp }}
+                            : {{ $workingDays - $lwp }}
                         </td>
                     </tr>
                     <tr>
@@ -422,14 +414,7 @@
                         <span class="paid-leaves">带薪假 <span class="en-small">/ Paid Leaves</span> : {{ $salary->paid_leaves }}</span>
                     </td>
                     <td class="amount-col">
-                        @if ($lwp)
-                            @php
-                                $lwp_amount = $days > 0 ? ($salary->basic_salary / $days) * $lwp : 0;
-                            @endphp
-                            <span class="money-text">{{ format_money($lwp_amount) }}</span>
-                        @else
-                            <span class="money-text">{{ format_money(0) }}</span>
-                        @endif
+                        <span class="money-text">{{ format_money($lwpAmount) }}</span>
                     </td>
                 </tr>
                 <tr>
@@ -498,10 +483,10 @@
                         其他补贴 <span class="en-small">/ Other Allowances</span>
                     </td>
                     <td class="text-right">
-                        @if ($salary->amount > ($salary->basic_salary + $allowance - $lwp_amount - $deduction))
-                            <span class="money-text">{{ format_money($salary->amount - ($salary->basic_salary + $allowance - $deduction - $lwp_amount)) }}</span>
+                        @if ($salary->amount > ($salary->basic_salary + $allowance - $lwpAmount - $deduction))
+                            <span class="money-text">{{ format_money($salary->amount - ($salary->basic_salary + $allowance - $deduction - $lwpAmount)) }}</span>
                             @php
-                                $allowance += $salary->amount - ($salary->basic_salary + $allowance - $deduction - $lwp_amount);
+                                $allowance += $salary->amount - ($salary->basic_salary + $allowance - $deduction - $lwpAmount);
                             @endphp
                         @else
                             <span class="money-text">{{ format_money(0) }}</span>
@@ -512,10 +497,10 @@
                         其他扣款 <span class="en-small">/ Other Deductions</span>
                     </td>
                     <td class="text-right">
-                        @if ($salary->amount < ($salary->basic_salary + $allowance - $lwp_amount - $deduction))
-                            <span class="money-text">{{ format_money(($salary->basic_salary + $allowance - $deduction - $lwp_amount) - $salary->amount) }}</span>
+                        @if ($salary->amount < ($salary->basic_salary + $allowance - $lwpAmount - $deduction))
+                            <span class="money-text">{{ format_money(($salary->basic_salary + $allowance - $deduction - $lwpAmount) - $salary->amount) }}</span>
                             @php
-                                $deduction += ($salary->basic_salary + $allowance - $deduction - $lwp_amount) - $salary->amount;
+                                $deduction += ($salary->basic_salary + $allowance - $deduction - $lwpAmount) - $salary->amount;
                             @endphp
                         @else
                             <span class="money-text">{{ format_money(0) }}</span>
@@ -534,7 +519,7 @@
                         扣款合计 <span class="en-small">/ Total Deductions</span>
                     </th>
                     <td class="text-right table-footer" style="border-bottom-right-radius: 8px">
-                        <span class="money-text">{{ format_money($lwp_amount + $deduction) }}</span>
+                        <span class="money-text">{{ format_money($lwpAmount + $deduction) }}</span>
                     </td>
                 </tr>
             </table>
