@@ -14,15 +14,29 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  */
 class FinanceAuthorizationService
 {
+    /**
+     * The legacy paid-fee permission is the established equivalent for these
+     * read/create payment entry points. This preserves existing tenant role
+     * grants while new tenants receive the named Finance permissions.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const LEGACY_EQUIVALENTS = [
+        'finance-dashboard-view' => ['fees-paid'],
+        'finance-payment-view' => ['fees-paid'],
+        'finance-payment-create' => ['fees-paid'],
+    ];
+
     public function assert(User $user, string $permission): void
     {
-        if (!$user->can($permission)) {
+        if (!$this->can($user, $permission)) {
             throw new AccessDeniedHttpException('You are not authorized for this finance operation.');
         }
     }
 
     public function can(User $user, string $permission): bool
     {
-        return $user->can($permission);
+        return $user->can($permission)
+            || $user->canany(self::LEGACY_EQUIVALENTS[$permission] ?? []);
     }
 }

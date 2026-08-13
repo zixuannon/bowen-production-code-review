@@ -7,6 +7,8 @@ use App\Models\Fee;
 use App\Services\FeesPaymentService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
 use Tests\TestCase;
 
 class CompulsoryFeeSchoolIdTest extends TestCase
@@ -22,12 +24,15 @@ class CompulsoryFeeSchoolIdTest extends TestCase
 
         $this->authUserId = $this->createUser('School', 'Admin', $this->schoolId);
         $this->studentId  = $this->createUser('Test', 'Student', $this->schoolId);
+        $this->ensureBankAccountUserTable();
+        $this->assignSchoolAdmin($this->authUserId);
 
         Auth::loginUsingId($this->authUserId);
 
         // Ensure bank_accounts table exists
         $this->ensureBankAccountsTable();
         $this->bankAccountId = $this->createBankAccount($this->schoolId);
+        DB::table('bank_account_user')->insertOrIgnore(['bank_account_id' => $this->bankAccountId, 'user_id' => $this->authUserId]);
 
         try {
             DB::table('session_years')->insertOrIgnore([
@@ -112,6 +117,27 @@ class CompulsoryFeeSchoolIdTest extends TestCase
         ]);
     }
 
+    private function ensureBankAccountUserTable(): void
+    {
+        if (!Schema::hasTable('bank_account_user')) {
+            Schema::create('bank_account_user', function (Blueprint $table) {
+                $table->unsignedBigInteger('bank_account_id');
+                $table->unsignedBigInteger('user_id');
+                $table->unique(['bank_account_id', 'user_id']);
+            });
+        }
+    }
+
+    private function assignSchoolAdmin(int $userId): void
+    {
+        DB::table('roles')->updateOrInsert(
+            ['name' => 'School Admin', 'guard_name' => 'web', 'school_id' => $this->schoolId],
+            ['custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()],
+        );
+        $roleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $this->schoolId)->value('id');
+        DB::table('model_has_roles')->insertOrIgnore(['role_id' => $roleId, 'model_type' => \App\Models\User::class, 'model_id' => $userId]);
+    }
+
     private function createTestFee(float $total): Fee
     {
         $fee = new Fee();
@@ -133,6 +159,7 @@ class CompulsoryFeeSchoolIdTest extends TestCase
         // Get or create a bank account for the current auth user's school
         $schoolId = Auth::user()->school_id ?? $this->schoolId;
         $bankId = $this->createBankAccount($schoolId);
+        DB::table('bank_account_user')->insertOrIgnore(['bank_account_id' => $bankId, 'user_id' => Auth::id()]);
 
         $service = app(FeesPaymentService::class);
         return $service->processPayment(array_merge([
