@@ -65,13 +65,9 @@ class FeesPaidImportService
         'reference_no'       => 10, // K: Reference No
     ];
 
-    // Allowed payment modes (same as frontend)
-    const ALLOWED_MODES = [
-        'Cash', 'Cheque', 'Online',
-        'KBZ Pay', 'Quick Pay', 'KBZ Bank',
-        'AYA Bank', 'YOMA BANK', 'CB Bank',
-        'Wechat Pay', 'Ali Pay',
-    ];
+    // Reuse the write-path allowlist; an Excel row must never introduce a
+    // payment method that manual payments would reject.
+    const ALLOWED_MODES = FeesPaymentService::PAYMENT_METHODS;
 
     private FeesPaymentService $paymentService;
 

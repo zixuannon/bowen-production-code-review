@@ -25,11 +25,11 @@
                         <h4 class="card-title">
                             {{ __('create') . ' ' . __('expense') }}
                         </h4>
-                        @can('finance-expense-create')
+                        @canany(['finance-expense-create', 'expense-create'])
                             <button type="button" class="btn btn-outline-theme btn-sm float-right" data-toggle="modal" data-target="#expenseImportModal">
                                 <i class="fa fa-file-excel-o"></i> {{ __('Import Expenses') }}
                             </button>
-                        @endcan
+                        @endcanany
                         <form class="pt-3" id="create-form" action="{{ route('expense.store') }}" method="POST"
                             novalidate="novalidate" enctype="multipart/form-data">
                             <div class="row">

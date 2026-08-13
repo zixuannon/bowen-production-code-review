@@ -101,16 +101,70 @@ class ExpenseImportServiceTest extends TestCase
         $this->assertStringContainsString('Fund Account', implode('; ', $result['rows'][0]['errors']));
     }
 
+    public function test_preview_rejects_wrong_headings_and_invalid_rows_without_financial_writes(): void
+    {
+        $before = Expense::count();
+        $beforeBatches = ExpenseImportBatch::count();
+        $wrongHeadings = $this->file([$this->row('Wrong headings', 'EXP-HEAD-' . Str::random(6))], ['Wrong column']);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('headings do not match');
+        try {
+            app(ExpenseImportService::class)->preview($wrongHeadings, $this->schoolId, $this->admin->id);
+        } finally {
+            $this->assertSame($before, Expense::count());
+            $this->assertSame($beforeBatches, ExpenseImportBatch::count());
+        }
+    }
+
+    public function test_invalid_rows_and_revalidation_failure_are_whole_batch_atomic(): void
+    {
+        $duplicateReference = 'EXP-DUP-' . Str::random(6);
+        $badAmount = $this->row('Bad amount', 'EXP-AMOUNT-' . Str::random(6));
+        $badAmount[5] = '0';
+        $badCategory = $this->row('Bad category', 'EXP-CATEGORY-' . Str::random(6));
+        $badCategory[1] = 'No such category';
+        $firstDuplicate = $this->row('First duplicate', $duplicateReference);
+        $secondDuplicate = $this->row('Second duplicate', $duplicateReference);
+        $before = Expense::count();
+
+        $preview = app(ExpenseImportService::class)->preview($this->file([$badAmount, $badCategory, $firstDuplicate, $secondDuplicate]), $this->schoolId, $this->admin->id);
+        $this->assertSame(1, $preview['summary']['valid']);
+        $this->assertSame(3, $preview['summary']['error']);
+        $this->assertSame($before, Expense::count());
+        $this->expectException(\InvalidArgumentException::class);
+        try {
+            app(ExpenseImportService::class)->confirm($preview['token'], $this->schoolId, $this->admin->id);
+        } finally {
+            $this->assertSame($before, Expense::count());
+        }
+    }
+
+    public function test_confirm_revalidation_rolls_back_the_whole_batch_when_a_reference_is_claimed_after_preview(): void
+    {
+        $reference = 'EXP-RACE-' . Str::random(6);
+        $preview = app(ExpenseImportService::class)->preview($this->file([$this->row('Will be blocked', $reference)]), $this->schoolId, $this->admin->id);
+        Expense::create($this->expenseData('Existing after preview', $reference));
+        $beforeConfirm = Expense::count();
+
+        $this->expectException(\InvalidArgumentException::class);
+        try {
+            app(ExpenseImportService::class)->confirm($preview['token'], $this->schoolId, $this->admin->id);
+        } finally {
+            $this->assertSame($beforeConfirm, Expense::count());
+            $this->assertSame(ExpenseImportBatch::STATUS_FAILED, ExpenseImportBatch::where('token', $preview['token'])->value('status'));
+        }
+    }
+
     /** @return array<int,string> */
     private function row(string $title, string $reference): array
     {
         return ['2026-08-13', $this->category->name, '', $title, $reference, '1250.00', 'Cash', $this->account->account_name, 'Synthetic import', $this->year->name];
     }
 
-    private function file(array $rows): UploadedFile
+    private function file(array $rows, ?array $headings = null): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'expense-import-') . '.csv';
-        $content = implode(',', \App\Support\ExpenseImportTemplate::HEADINGS) . "\n";
+        $content = implode(',', $headings ?? \App\Support\ExpenseImportTemplate::HEADINGS) . "\n";
         foreach ($rows as $row) $content .= implode(',', $row) . "\n";
         file_put_contents($path, $content);
         return new UploadedFile($path, 'expense-import.csv', 'text/csv', null, true);

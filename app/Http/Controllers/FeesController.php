@@ -1392,6 +1392,8 @@ class FeesController extends Controller
         $request->validate([
             'fees_id'              => 'required|numeric',
             'student_id'           => 'required|numeric',
+            'date'                 => 'required|date',
+            'mode'                 => ['required', Rule::in(FeesPaymentService::PAYMENT_METHODS)],
             'installment_mode'     => 'required|boolean',
             'installment_fees'     => 'required_if:installment_mode,1|array',
             // 多货币字段：暂时不要求，付款默认使用 MMK
@@ -1603,6 +1605,12 @@ class FeesController extends Controller
         $request->validate([
             'fees_id' => 'required|numeric',
             'student_id' => 'required|numeric',
+            'date' => 'required|date',
+            'mode' => ['required', Rule::in(FeesPaymentService::PAYMENT_METHODS)],
+            'total_amount' => 'required|numeric|gt:0',
+            'fees_class_type' => 'required|array|min:1',
+            'fees_class_type.*.id' => 'required|numeric',
+            'fees_class_type.*.amount' => 'required|numeric|gt:0',
             'bank_account_id' => [
                 'required',
                 Rule::exists('bank_accounts', 'id')->where(function ($query) {

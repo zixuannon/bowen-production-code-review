@@ -224,6 +224,33 @@ class FundAccountRequiredTest extends TestCase
     }
 
     /** @test */
+    public function service_rejects_missing_or_forged_payment_method_before_creating_money_in(): void
+    {
+        $this->skipIfNoFeeTable();
+        $fee = $this->createTestFee(500);
+        $beforeFeesPaid = FeesPaid::count();
+        $beforeCompulsory = CompulsoryFee::count();
+
+        foreach ([null, 'Forged Method'] as $mode) {
+            try {
+                app(FeesPaymentService::class)->processPayment([
+                    'fees_id' => $fee->id, 'student_id' => $this->studentId,
+                    'bank_account_id' => $this->validBankAccountId, 'installment_mode' => false,
+                    'installment_fees' => [], 'mode' => $mode, 'date' => now()->format('Y-m-d'),
+                    'total_amount' => 500, 'enter_amount' => 500, 'due_charges_amount' => 0,
+                    'advance' => 0, 'parent_id' => null, 'transaction_currency' => 'MMK', 'reference_no' => null,
+                ], $fee);
+                $this->fail('A missing or forged payment method must be rejected.');
+            } catch (\InvalidArgumentException $exception) {
+                $this->assertStringContainsString('payment method', $exception->getMessage());
+            }
+        }
+
+        $this->assertSame($beforeFeesPaid, FeesPaid::count());
+        $this->assertSame($beforeCompulsory, CompulsoryFee::count());
+    }
+
+    /** @test */
     public function service_rejects_soft_deleted_bank_account(): void
     {
         $this->skipIfNoFeeTable();

@@ -143,7 +143,11 @@ class ExpenseImportService
     private function parse(UploadedFile $file): array
     {
         $rows = Excel::toArray([], $file)[0] ?? [];
-        array_shift($rows);
+        $headings = array_shift($rows) ?? [];
+        $headings = array_map(static fn ($value) => trim((string) $value), array_slice($headings, 0, count(ExpenseImportTemplate::HEADINGS)));
+        if ($headings !== ExpenseImportTemplate::HEADINGS) {
+            throw new \InvalidArgumentException('Expense import headings do not match the downloadable template.');
+        }
         return array_values(array_filter($rows, static fn (array $row) => collect($row)->contains(static fn ($value) => trim((string) $value) !== '')));
     }
 

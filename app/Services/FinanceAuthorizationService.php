@@ -25,6 +25,8 @@ class FinanceAuthorizationService
         'finance-dashboard-view' => ['fees-paid'],
         'finance-payment-view' => ['fees-paid'],
         'finance-payment-create' => ['fees-paid'],
+        'finance-expense-view' => ['expense-list'],
+        'finance-expense-create' => ['expense-create'],
     ];
 
     public function assert(User $user, string $permission): void

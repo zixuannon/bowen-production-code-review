@@ -56,6 +56,14 @@ use Illuminate\Support\Facades\Auth;
  */
 class FeesPaymentService
 {
+    /** Payment methods exposed by the local compulsory/optional fee forms. */
+    public const PAYMENT_METHODS = [
+        'Cash', 'Cheque', 'Online',
+        'KBZ Pay', 'Quick Pay', 'KBZ Bank',
+        'AYA Bank', 'YOMA BANK', 'CB Bank',
+        'Wechat Pay', 'Ali Pay',
+    ];
+
     /**
      * Process a single compulsory fee payment.
      *
@@ -114,6 +122,13 @@ class FeesPaymentService
             throw new \InvalidArgumentException(
                 'Fund account is not valid, not authorized, active, or school-owned.'
             );
+        }
+
+        // Validate the payment method before reading or writing payment
+        // aggregates. This is a money-in invariant, not merely UI input.
+        $paymentMode = trim((string) ($data['mode'] ?? ''));
+        if (!in_array($paymentMode, self::PAYMENT_METHODS, true)) {
+            throw new \InvalidArgumentException('A valid payment method is required for fee payment.');
         }
 
         // ---- 1. Load existing FeesPaid ----
@@ -193,7 +208,6 @@ class FeesPaymentService
 
         // ---- 6. Create CompulsoryFee records ----
         $compulsoryFees = [];
-        $paymentMode = $data['mode'] ?? 'Cash';
         $chequeNo = null;
         if ($paymentMode == '2' || $paymentMode === 'Cheque') {
             $chequeNo = $data['cheque_no'] ?? null;

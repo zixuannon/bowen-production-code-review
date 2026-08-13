@@ -74,7 +74,7 @@ class ExpenseController extends Controller
     public function create()
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noPermissionThenRedirect('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-create');
     }
 
 
