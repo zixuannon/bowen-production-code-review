@@ -184,6 +184,7 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 - Final local integration validation passed: `php artisan test` reports 291 passed / 870 assertions; the guarded BOWEN_QA Playwright suite reports 18/18 passed. The generic root-route fixture now supplies its server-level host value and the isolated two-stage leave characterization uses Laravel's application test case; neither changes runtime behavior.
 - Payroll reconciliation is resolved and locally verified: LWP uses the actual count of non-Sunday dates in the payroll month (not a fixed 30-day or calendar-day divisor). Full approved unpaid leave counts as 1.0 day and approved half leave as 0.5 day under the existing leave semantics. Transportation remains solely on the established Payroll Settings deduction path; the incomplete Production-only `transportationPayments` block is intentionally absent.
+- Phase 9 production read-only schema preflight: all eight registry tenants have complete P1/P2/P3 schema; both new P3.1/P3.2 schemas are absent everywhere. Legacy fee-import schema is applied on the seven active tenants and absent on inactive Demo; that divergence remains intentionally out of scope. `finance:migrate-p31-p32` is locally tested only, defaults to zero-write verification, and has an exact allowlist of the Expense Import Batch and Other Income migrations. It is not deployed or executed on Production.
 
 ## Backlog
 

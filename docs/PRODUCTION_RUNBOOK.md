@@ -63,6 +63,30 @@ partial migration state. `--execute` is still a production Human Gate. Capture
 the isolated two-migration batch number per tenant; after pivot assignment or
 handover activity, use a forward fix rather than schema rollback.
 
+### Finance P3.1/P3.2 targeted runner
+
+`finance:migrate-p31-p32` is the only candidate runner for the additive
+Expense Import and Other Income schema release. Its fixed allowlist is exactly:
+
+- `2026_08_12_000002_create_expense_import_batches_table`
+- `2026_08_13_000001_create_other_incomes_table`
+
+It accepts only trusted central-registry school codes, never raw database
+names. Default invocation is read-only verification:
+
+```sh
+php artisan finance:migrate-p31-p32
+```
+
+After a new Human Gate, a canary would use
+`php artisan finance:migrate-p31-p32 --tenant=SCH202615 --execute`; all known
+tenants require a separately approved `--execute` invocation. The runner
+refuses partial, history/schema-inconsistent, or one-applied/one-absent states,
+and verifies migration 000002 completely before it can run 000001. It restores
+the tenant connection on success or failure. Do not add legacy fee-import or
+P1/P2/P3 migrations to this runner. After any new-schema Finance activity,
+prefer a forward fix rather than rollback.
+
 ## Safe cutover principle
 
 When new application code requires new columns/tables, prefer:

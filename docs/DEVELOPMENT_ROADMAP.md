@@ -109,6 +109,7 @@ Balances move only on designated receiver confirmation.
 - [x] Transaction page links to existing Expense and Expense Excel Import workflows rather than duplicating their writes/audit rules.
 - [x] Final authenticated BOWEN_QA Playwright acceptance passed 17/17 guarded scenarios: role-scoped register access/filtering, forged account rejection, Receive Money exactly once through `OtherIncome`, account balance/ledger/register/report integration, pending/confirmed handover representation, and reuse of the Expense/Import workflows.
 - [x] Final broader P1–P3.2 Finance regression passes (143 tests / 516 assertions).
+- [x] Guarded release runner prepared locally for only `expense_import_batches` and `other_incomes`; Phase 9 confirms both schemas are absent on all current production tenants. Legacy fee-import divergence is explicitly excluded.
 
 ## P2
 
