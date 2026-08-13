@@ -180,9 +180,14 @@ Historical same-host staging work is retained for future reference only. It is n
 
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
+## Integration release validation
+
+- Final local integration validation passed: `php artisan test` reports 282 passed / 849 assertions; the guarded BOWEN_QA Playwright suite reports 18/18 passed. The generic root-route fixture now supplies its server-level host value and the isolated two-stage leave characterization uses Laravel's application test case; neither changes runtime behavior.
+- Payroll reconciliation remains deliberately unresolved: the LWP divisor (fixed 30 days versus calendar days) and transportation deduction source (Payroll Settings versus the undefined transportation-payment path) require a business decision before a full production deployment may include the integration Payroll behavior.
+
 ## Backlog
 
-- Repair the isolated `TwoStageLeaveServiceIsEnabledTest` bootstrap (`Target class [config] does not exist`) and the generic `ExampleTest` HTTP host fixture (`HTTP_HOST` is absent). These caused 16 unrelated failures in the full local suite and are outside Finance P1 scope.
+- No active local test-bootstrap blocker. PHP 8.5's `PDO::MYSQL_ATTR_SSL_CA` and PHPUnit XML-schema notices remain non-functional compatibility debt.
 
 ## Roadmap after P1 production verification
 

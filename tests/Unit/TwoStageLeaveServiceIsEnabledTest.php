@@ -4,7 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\StaffLeave\TwoStageLeaveService;
 use Mockery;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * Comprehensive integration tests for TwoStageLeaveService::isEnabled()
@@ -15,14 +15,13 @@ use PHPUnit\Framework\TestCase;
  *  2. school allowlist (config features.staff_leave_enabled_school_databases)
  *  3. schema completeness (10 columns via Schema facade)
  *
- * Uses a custom bootstrap (tests/bootstrap_two_stage_leave.php) that sets
- * up a minimal Laravel Container so config() works.
+ * Uses the application's test case so config() and Schema resolve through the
+ * same Laravel container used by the feature suite.
  *
  * Schema::connection() internally calls $app['db']->connection()->getSchemaBuilder(),
  * so tests mock the 'db' container binding directly.
  *
- * Run with:
- *   php vendor/bin/phpunit --bootstrap tests/bootstrap_two_stage_leave.php tests/Unit/TwoStageLeaveServiceIsEnabledTest.php
+ * Run with: php artisan test tests/Unit/TwoStageLeaveServiceIsEnabledTest.php
  */
 class TwoStageLeaveServiceIsEnabledTest extends TestCase
 {
