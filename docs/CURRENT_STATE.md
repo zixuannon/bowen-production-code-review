@@ -28,6 +28,8 @@ Transportation expiry reminders now use the trusted central School registry to p
 
 Installer reconciliation retains only the custom source required by the optional installer flow: purchase-code and PHP symlink capability steps, the folders-to-purchase-code transition, and valid installer asset/finish links. The normal application remains unaffected while `INSTALLER_ENABLED` is disabled. Published installer components and unchanged steps remain package-owned; Production's database troubleshooting copy is intentionally excluded. Production and staging remain untouched.
 
+Release asset portability now has a versioned, checksum-verified contract in `release/required-assets.tsv`. It defines the two PDF fonts, shared Font Awesome 4.7 dependency set, and CKEditor Promise fallback required to reproduce the authoritative release without importing unknown binary assets into Git. `sh scripts/release/verify_required_assets.sh` is read-only and offline; it fails release preflight on missing or mismatched assets. Duplicate, temporary, and unreferenced Production assets are excluded. Production and staging remain untouched.
+
 ## Completed and production-verified
 
 - P0: Income and Expense require a valid Fund Account.
