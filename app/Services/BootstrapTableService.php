@@ -66,6 +66,19 @@ class BootstrapTableService
     }
 
     /**
+     * Generates the expense-specific delete trigger consumed by the
+     * delete-reason dialog in the Expense view. Keeping the marker here
+     * preserves the normal Bootstrap-table action contract while ensuring
+     * the listing endpoint cannot fail before the audited delete UI renders.
+     */
+    public static function deleteButtonWithReason($url)
+    {
+        return self::button('fa fa-trash', $url, ['delete-form-reason', 'btn-gradient-dark'], [
+            'title' => trans('Delete'),
+        ]);
+    }
+
+    /**
      * @param $url
      * @param string $title
      * @return string

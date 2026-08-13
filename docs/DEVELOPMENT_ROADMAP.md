@@ -96,8 +96,8 @@ Balances move only on designated receiver confirmation.
 - [x] Paid-fee template keeps its business-facing headers and excludes database identifiers.
 - [x] Expense Excel import supports template, upload, validation, preview, confirm, and batch audit; preview has no `Expense` writes and confirmation is whole-batch atomic create-only.
 - [x] Expense import protects against duplicate files, duplicate rows/references, repeated confirmation, cross-school or unauthorized accounts, and overwriting existing expenses.
-- [x] Focused PHPUnit (39 tests / 134 assertions) and broader P1/P2/P3/P3.1 regression (128 tests / 468 assertions) pass.
-- [ ] Authenticated BOWEN_QA Playwright acceptance is pending a safe local database credential/availability fix and local Playwright dependency installation; no environment guard was bypassed.
+- [x] Final authenticated BOWEN_QA Playwright acceptance passed: permission grant/revoke, Cashier scope, Fund Handover create/confirm/reject/cancel application-modal behavior with no native dialogs, paid-fee protection, and Expense Import preview/confirm/duplicate/invalid/unauthorized paths.
+- [x] Browser acceptance exposed and corrected the missing audited Expense delete-button helper; broader P1–P3.2 finance regression passes (143 tests / 516 assertions).
 
 ## P3.2 — Unified Finance Transactions
 
@@ -107,8 +107,8 @@ Balances move only on designated receiver confirmation.
 - [x] Receive Money is a tenant-local, non-fee `OtherIncome` source. It requires a valid payment method and active authorized Fund Account, preserves reference reservation (including soft-deleted history), and is transactional.
 - [x] Account balances, account ledger, account report, Finance Dashboard, and Finance Report include Other Income. Internal BankTransfers remain excluded from operating income/expense summaries.
 - [x] Transaction page links to existing Expense and Expense Excel Import workflows rather than duplicating their writes/audit rules.
-- [x] Focused P3.2/P1/P3.1 verification (25 tests / 108 assertions) and broader P1–P3.2 Finance regression (131 tests / 481 assertions) pass.
-- [ ] Authenticated BOWEN_QA Playwright is pending safe local database credentials, a local server, and the local `@playwright/test` dependency; guards were not bypassed.
+- [x] Final authenticated BOWEN_QA Playwright acceptance passed 17/17 guarded scenarios: role-scoped register access/filtering, forged account rejection, Receive Money exactly once through `OtherIncome`, account balance/ledger/register/report integration, pending/confirmed handover representation, and reuse of the Expense/Import workflows.
+- [x] Final broader P1–P3.2 Finance regression passes (143 tests / 516 assertions).
 
 ## P2
 

@@ -45,6 +45,7 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
   const cashierBApi = await apiFor('qa_cashier_b@bowen-qa.test');
   const adminApi = await apiFor('qa_admin@bowen-qa.test');
   const reference = `BOWEN_QA_P3_HEAD_TO_CASH_A_${Date.now()}`;
+  const nativeDialogs = [];
 
   try {
     const headAccounts = await accountRows(headApi);
@@ -61,6 +62,7 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     const destinationBefore = Number(destination.current_balance);
     const headPageContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_head_finance@bowen-qa.test') });
     const headPage = await headPageContext.newPage();
+    headPage.on('dialog', (dialog) => { nativeDialogs.push(dialog.type()); dialog.dismiss(); });
     try {
       const pageResponse = await headPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
       expect(pageResponse?.status()).toBe(200);
@@ -88,6 +90,9 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     expect((await accountRows(cashierApi)).find((row) => row.id === destination.id).current_balance).toBe(destinationBefore);
     const transfersBefore = await headApi.get('/bank-transfers/list');
     expect((await transfersBefore.json()).rows.some((row) => row.reference_no === reference)).toBeFalsy();
+    const pendingRegister = await headApi.get('/finance/transactions', { params: { reference, type: 'bank_transfer' } });
+    expect(pendingRegister.status()).toBe(200);
+    expect(await pendingRegister.text()).not.toContain(`<td>${reference}</td>`);
 
     const adminPage = await adminApi.get('/fund-handovers');
     expect(adminPage.status()).toBe(200);
@@ -128,12 +133,14 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
 
     const cashierContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_cashier_a@bowen-qa.test') });
     const cashierPage = await cashierContext.newPage();
+    cashierPage.on('dialog', (dialog) => { nativeDialogs.push(dialog.type()); dialog.dismiss(); });
     try {
       const response = await cashierPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
       expect(response?.status()).toBe(200);
       await expect(cashierPage.locator('a[href$="/fund-handovers"]')).toBeVisible();
       const row = cashierPage.locator('#handover-table tbody tr', { hasText: reference });
       await expect(row).toBeVisible();
+      await expect(row).toContainText('pending');
       await row.getByRole('button', { name: 'Confirm' }).click();
       const modal = cashierPage.getByRole('dialog', { name: 'Confirm Receipt' });
       await expect(modal).toContainText('will create the actual Fund Transfer / BankTransfer');
@@ -150,6 +157,10 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
     const transfersAfter = await headApi.get('/bank-transfers/list');
     const transfer = (await transfersAfter.json()).rows.find((row) => row.reference_no === reference);
     expect(transfer?.status).toBe('completed');
+    const confirmedRegister = await headApi.get('/finance/transactions', { params: { reference, type: 'bank_transfer' } });
+    const confirmedHtml = await confirmedRegister.text();
+    expect((confirmedHtml.match(new RegExp(`<td>${reference}</td>`, 'g')) || []).length).toBe(1);
+    expect(confirmedHtml).toContain('Operating income: 0.00 | Operating expense: 0.00');
     const adminHistory = await adminApi.get('/fund-handovers/list');
     const adminHistoryRow = (await adminHistory.json()).rows.find((row) => row.reference_no === reference);
     expect(adminHistoryRow?.audit).toContain('Confirmed by');
@@ -173,10 +184,85 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
       }, maxRedirects: 0,
     });
     expect(cashierToCashier.status()).toBe(403);
+    expect(nativeDialogs).toEqual([]);
   } finally {
     await headApi.dispose();
     await cashierApi.dispose();
     await cashierBApi.dispose();
     await adminApi.dispose();
+  }
+});
+
+test('BOWEN_QA handover rejection and cancellation use application reason dialogs, never browser prompts', async ({ browser }) => {
+  const headApi = await apiFor('qa_head_finance@bowen-qa.test');
+  const cashierApi = await apiFor('qa_cashier_a@bowen-qa.test');
+  const reference = `BOWEN_QA_P3_REASON_MODAL_${Date.now()}`;
+  const dialogs = [];
+
+  try {
+    const source = (await accountRows(headApi)).find((row) => row.account_number === 'QA_P2_BANK');
+    const destination = (await accountRows(cashierApi)).find((row) => row.account_number === 'QA_P2_CASH_A');
+    const receiver = await recipientId(headApi, 'QA Cashier A');
+    expect(source).toBeTruthy();
+    expect(destination).toBeTruthy();
+
+    for (const suffix of ['REJECT', 'CANCEL']) {
+      const response = await headApi.post('/fund-handovers', {
+        form: {
+          _token: await handoverToken(headApi), receiver_id: receiver, from_account_id: String(source.id),
+          to_account_id: String(destination.id), amount: '1.00', handover_date: '2026-03-01',
+          reference_no: `${reference}_${suffix}`, notes: 'BOWEN_QA reason-modal acceptance',
+        }, maxRedirects: 0,
+      });
+      expect(response.status()).toBe(200);
+    }
+    const rows = (await (await headApi.get('/fund-handovers/list')).json()).rows;
+    const rejected = rows.find((row) => row.reference_no === `${reference}_REJECT`);
+    const cancelled = rows.find((row) => row.reference_no === `${reference}_CANCEL`);
+    expect(rejected?.status).toBe('pending');
+    expect(cancelled?.status).toBe('pending');
+
+    const cashierContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_cashier_a@bowen-qa.test') });
+    try {
+      const page = await cashierContext.newPage();
+      page.on('dialog', (dialog) => { dialogs.push(dialog.type()); dialog.dismiss(); });
+      await page.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
+      const row = page.locator('#handover-table tbody tr', { hasText: rejected.reference_no });
+      await expect(row).toContainText('pending');
+      await row.getByRole('button', { name: 'Reject' }).click();
+      const modal = page.getByRole('dialog', { name: 'Reject Handover' });
+      await expect(modal.locator('#handover_reason')).toBeVisible();
+      await modal.getByRole('button', { name: 'Reject', exact: true }).click();
+      await expect(modal.locator('#handover_reason')).toHaveClass(/is-invalid/);
+      await modal.locator('#handover_reason').fill('BOWEN_QA receiver rejection reason');
+      const result = page.waitForResponse((response) => response.url().endsWith(`/fund-handovers/${rejected.id}/reject`) && response.request().method() === 'POST');
+      await modal.getByRole('button', { name: 'Reject', exact: true }).click();
+      expect((await result).status()).toBe(200);
+      await expect(row).toContainText('rejected');
+    } finally { await cashierContext.close(); }
+
+    const headContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_head_finance@bowen-qa.test') });
+    try {
+      const page = await headContext.newPage();
+      page.on('dialog', (dialog) => { dialogs.push(dialog.type()); dialog.dismiss(); });
+      await page.goto('/fund-handovers', { waitUntil: 'domcontentloaded' });
+      const row = page.locator('#handover-table tbody tr', { hasText: cancelled.reference_no });
+      await expect(row).toContainText('pending');
+      await row.getByRole('button', { name: 'Cancel' }).click();
+      const modal = page.getByRole('dialog', { name: 'Cancel Handover' });
+      await expect(modal.locator('#handover_reason')).toBeVisible();
+      await modal.getByRole('button', { name: 'Cancel Handover' }).click();
+      await expect(modal.locator('#handover_reason')).toHaveClass(/is-invalid/);
+      await modal.locator('#handover_reason').fill('BOWEN_QA sender cancellation reason');
+      const result = page.waitForResponse((response) => response.url().endsWith(`/fund-handovers/${cancelled.id}/cancel`) && response.request().method() === 'POST');
+      await modal.getByRole('button', { name: 'Cancel Handover' }).click();
+      expect((await result).status()).toBe(200);
+      await expect(row).toContainText('cancelled');
+    } finally { await headContext.close(); }
+
+    expect(dialogs).toEqual([]);
+  } finally {
+    await headApi.dispose();
+    await cashierApi.dispose();
   }
 });

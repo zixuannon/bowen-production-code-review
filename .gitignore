@@ -5,6 +5,7 @@
 .env.*
 auth.json
 qa/playwright/.auth/
+test-results/
 
 .DS_Store
 **/.DS_Store
