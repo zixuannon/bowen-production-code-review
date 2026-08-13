@@ -73,6 +73,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\WebSettingsController;
 use App\Http\Controllers\WizardSettingsController;
+use App\Http\Controllers\XiaobailongController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ContactInquiryController;
 use App\Http\Controllers\ReportsController;
@@ -375,6 +376,12 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         /*** Dashboard ***/
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('home', [DashboardController::class, 'index'])->name('home');
+
+        // XIAOBAILONG-INTEGRATION: authenticated teachers with the explicit permission only.
+        Route::middleware('permission:xiaobailong-use')->group(static function () {
+            Route::get('teacher/xiaobailong', [XiaobailongController::class, 'index'])->name('xiaobailong.index');
+            Route::get('teacher/xiaobailong/launch', [XiaobailongController::class, 'launch'])->name('xiaobailong.launch');
+        });
 
         /*** Auth ***/
         Route::group(['prefix' => 'auth'], static function () {

@@ -90,5 +90,6 @@ class Kernel extends HttpKernel {
         '2fa' => \App\Http\Middleware\CheckTwoFactorAuthenticated::class,
         'wizardSettings' => \App\Http\Middleware\WizardSettings::class,
         'DifyToken' => \App\Http\Middleware\DifyTokenMiddleware::class,
+        'XiaobailongServiceAuth' => \App\Http\Middleware\XiaobailongServiceAuth::class,
     ];
 }

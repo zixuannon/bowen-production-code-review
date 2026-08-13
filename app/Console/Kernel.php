@@ -25,6 +25,8 @@ class Kernel extends ConsoleKernel
         $schedule->command('subscriptionBill:cron')->daily();
         $schedule->command('notifications:delete')->monthly();
         $schedule->command('transport:expiry-reminder')->daily();
+        // XIAOBAILONG-INTEGRATION: repair missing teacher permission links in every tenant.
+        $schedule->command('xiaobailong:reconcile-permissions')->dailyAt('02:15')->withoutOverlapping();
     }
 
     /**

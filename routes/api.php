@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\StaffApiController;
 use App\Http\Controllers\Api\StudentApiController;
 use App\Http\Controllers\Api\TeacherApiController;
 use App\Http\Controllers\Api\TrasportationApiController;
+use App\Http\Controllers\Api\XiaobailongExchangeController;
 use App\Http\Controllers\SubscriptionWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,6 +27,9 @@ use Illuminate\Support\Facades\Route;
  **/
 Route::post('subscription/webhook/stripe', [SubscriptionWebhookController::class, 'stripe']);
 Route::post('subscription/webhook/razorpay', [SubscriptionWebhookController::class, 'razorpay']);
+
+Route::post('integrations/xiaobailong/exchange', [XiaobailongExchangeController::class, 'exchange'])
+    ->middleware(['XiaobailongServiceAuth', 'throttle:30,1']);
 
 // Route::group(['middleware' => 'auth:sanctum'], static function () {
 //     Route::post('logout', [ApiController::class, 'logout']);

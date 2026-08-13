@@ -483,6 +483,9 @@ class SchoolDataService
             ['name' => 'staff-attendance-list'],
             ['name' => 'staff-attendance-edit'],
 
+            // Xiaobailong is part of the Teacher workspace for every school.
+            ['name' => 'xiaobailong-use'],
+
 
         ];
         $permissions = array_map(static function ($data) {
@@ -818,6 +821,7 @@ class SchoolDataService
         //Add Teacher Role
         $teacher_role = Role::updateOrCreate(['name' => 'Teacher', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 1]);
         $TeacherHasAccessTo = [
+            'xiaobailong-use',
             'student-list',
             'timetable-list',
             'holiday-list',

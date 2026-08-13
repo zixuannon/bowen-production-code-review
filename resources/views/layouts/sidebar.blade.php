@@ -19,6 +19,16 @@
                 <span class="menu-title">{{ __('dashboard') }}</span>
             </a>
         </li>
+        {{-- XIAOBAILONG-INTEGRATION: keep this teacher workspace entry during deployments. --}}
+        @if (config('xiaobailong.enabled') && Auth::check() && Auth::user()->hasRole('Teacher') && Auth::user()->can('xiaobailong-use'))
+            <li class="nav-item {{ request()->routeIs('xiaobailong.*') ? 'active' : '' }}">
+                <a href="{{ route('xiaobailong.index') }}" class="nav-link">
+                    <i class="fa fa-magic menu-icon"></i>
+                    <span class="menu-title">晓白龍 AI 助教</span>
+                </a>
+            </li>
+        @endif
+        {{-- /XIAOBAILONG-INTEGRATION --}}
         {{-- Academics --}}
         @canany(['medium-list', 'section-list', 'subject-list', 'class-list', 'subject-list'])
             <li class="nav-item">
