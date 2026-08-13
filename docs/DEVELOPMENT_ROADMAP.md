@@ -88,6 +88,17 @@ Do not start Branch Finance, transfer handover, daily closing, reconciliation, r
 
 Balances move only on designated receiver confirmation.
 
+## P3.1 — Permission, Money-In, and Expense Import Hardening
+
+- [x] Finance permission migration uses role defaults plus named functional permissions; legacy compatibility is limited to semantically identical paid-fee/expense permissions.
+- [x] Cashier account scope, tenant isolation, forged-account rejection, custody rules, and School Admin handover read-only oversight remain server-side invariants.
+- [x] Compulsory/optional payments and paid-fee import validate both payment method and authorized active Fund Account before any financial write.
+- [x] Paid-fee template keeps its business-facing headers and excludes database identifiers.
+- [x] Expense Excel import supports template, upload, validation, preview, confirm, and batch audit; preview has no `Expense` writes and confirmation is whole-batch atomic create-only.
+- [x] Expense import protects against duplicate files, duplicate rows/references, repeated confirmation, cross-school or unauthorized accounts, and overwriting existing expenses.
+- [x] Focused PHPUnit (39 tests / 134 assertions) and broader P1/P2/P3/P3.1 regression (128 tests / 468 assertions) pass.
+- [ ] Authenticated BOWEN_QA Playwright acceptance is pending a safe local database credential/availability fix and local Playwright dependency installation; no environment guard was bypassed.
+
 ## P2
 
 - Daily Cash Closing
