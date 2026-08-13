@@ -74,11 +74,7 @@ class CachingService {
      * @return mixed
      */
     public function schoolLevelCaching($key, callable $callback, $schoolId = null, int $time = 900) {
-        if($schoolId){
-            $key .= "_" . $schoolId;
-        }else{
-            $key .= "_" . Auth::user()->school_id;
-        }
+        $key .= "_" . $this->resolveSchoolId($schoolId);
 
         return Cache::remember($key, $time, $callback);
     }
@@ -90,7 +86,7 @@ class CachingService {
      */
     public function getSchoolSettings(array|string $key = '*', $schoolID = null) {
         $schoolSettings = app(SchoolSettingInterface::class);
-        $schoolID = (!empty($schoolID)) ? $schoolID : Auth::user()->school_id;
+        $schoolID = $this->resolveSchoolId($schoolID);
         $settings = $this->schoolLevelCaching(config('constants.CACHE.SCHOOL.SETTINGS'), function () use ($schoolSettings, $schoolID) {
             return $schoolSettings->builder()->where('school_id', $schoolID)->get()->pluck('data', 'name');
         },$schoolID);
@@ -122,17 +118,37 @@ class CachingService {
     }
 
     public function removeSchoolCache($key, $schoolID = null) {
-        if ($schoolID) {
-            $key .= "_" . $schoolID;
-        } else {
-            $key .= "_" . Auth::user()->school_id;
-        }
-
-        Cache::forget($key);
+        Cache::forget($key . "_" . $this->resolveSchoolId($schoolID));
     }
 
     public function removeSystemCache($key) {
         Cache::forget($key);
+    }
+
+    /**
+     * Resolve the trusted tenant context for school-scoped cache entries.
+     *
+     * Dify requests are unauthenticated by design. DifyTokenMiddleware has
+     * already validated its token-to-school binding and placed the resolved
+     * school id in the server-side request attributes before this fallback is
+     * used. Request input is deliberately never consulted here.
+     */
+    private function resolveSchoolId($schoolId = null): int {
+        if (!empty($schoolId)) {
+            return (int) $schoolId;
+        }
+
+        $authenticatedSchoolId = optional(Auth::user())->school_id;
+        if (!empty($authenticatedSchoolId)) {
+            return (int) $authenticatedSchoolId;
+        }
+
+        $difySchoolId = request()->attributes->get('dify_school_id');
+        if (filter_var($difySchoolId, FILTER_VALIDATE_INT) !== false && (int) $difySchoolId > 0) {
+            return (int) $difySchoolId;
+        }
+
+        throw new \LogicException('A trusted school context is required for school-level caching.');
     }
 
     /**
