@@ -78,6 +78,12 @@ class BankAccount extends Model
         return $this->hasMany(OptionalFee::class, 'bank_account_id');
     }
 
+    /** Non-fee receipts into this account. */
+    public function other_incomes()
+    {
+        return $this->hasMany(OtherIncome::class, 'bank_account_id');
+    }
+
     /**
      * Expenses paid from this account.
      */

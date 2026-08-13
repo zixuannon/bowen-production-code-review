@@ -628,6 +628,11 @@
                                     {{ __('Finance Dashboard') }}
                                 </a>
                             </li>
+                            <li class="nav-item">
+                                <a href="{{ route('finance-transactions.index') }}" class="nav-link" data-access="@hasFeatureAccess('Expense Management')">
+                                    {{ __('Transactions') }}
+                                </a>
+                            </li>
                         @endcanany
 
                         {{-- === Student Finance / 学生收费 === --}}

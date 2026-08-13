@@ -9,6 +9,7 @@ use App\Models\Fee;
 use App\Models\FeesClassType;
 use App\Models\FinanceCategory;
 use App\Models\OptionalFee;
+use App\Models\OtherIncome;
 use App\Models\School;
 use App\Models\SessionYear;
 use App\Models\Students;
@@ -137,7 +138,14 @@ class FinanceReportController extends Controller
             $row->_category = $optionalCategoryMap[$row->fees_class_id] ?? __('Uncategorized');
         });
 
-        // ---- 4. Expenses ----
+        // ---- 4. Other Income (a non-fee, operating money-in source) ----
+        $otherIncomeRows = OtherIncome::where('school_id', $schoolId)
+            ->whereIn('bank_account_id', $accountIds)
+            ->whereBetween('date', [$from, $to])
+            ->get(['id', 'amount']);
+        $otherIncomeRows->each(fn ($row) => $row->_category = __('Other Income'));
+
+        // ---- 5. Expenses ----
         $expenseQuery = Expense::where('school_id', $schoolId)
             ->whereIn('bank_account_id', $accountIds)
             ->whereBetween('date', [$from, $to]);
@@ -165,6 +173,7 @@ class FinanceReportController extends Controller
         // ---- 5. Apply filters to raw rows BEFORE computing summary totals ----
         $filteredCompulsory = $compulsoryRows;
         $filteredOptional   = $optionalRows;
+        $filteredOtherIncome = $otherIncomeRows;
         $filteredExpense    = $expenseRows;
 
         if ($typeFilter === 'income') {
@@ -172,18 +181,21 @@ class FinanceReportController extends Controller
         } elseif ($typeFilter === 'expense') {
             $filteredCompulsory = collect();
             $filteredOptional   = collect();
+            $filteredOtherIncome = collect();
         }
 
         if ($categoryFilter) {
             $filteredCompulsory = $filteredCompulsory->filter(fn($r) => $r->_category === $categoryFilter);
             $filteredOptional   = $filteredOptional->filter(fn($r) => $r->_category === $categoryFilter);
+            $filteredOtherIncome = $filteredOtherIncome->filter(fn($r) => $r->_category === $categoryFilter);
             $filteredExpense    = $filteredExpense->filter(fn($r) => $r->_category === $categoryFilter);
         }
 
         // ---- 6. Summary totals from FILTERED rows (P2-2: cards follow filters) ----
         $totalCompulsoryIncome = $filteredCompulsory->sum('amount');
         $totalOptionalIncome   = $filteredOptional->sum('amount');
-        $totalIncome           = $totalCompulsoryIncome + $totalOptionalIncome;
+        $totalOtherIncome      = $filteredOtherIncome->sum('amount');
+        $totalIncome           = $totalCompulsoryIncome + $totalOptionalIncome + $totalOtherIncome;
 
         $totalExpense = $filteredExpense->sum(fn($r) => $r->_mmk_amount ?? 0);
 
@@ -232,6 +244,10 @@ class FinanceReportController extends Controller
             ]);
         }
 
+        if ($totalOtherIncome > 0) {
+            $categoryRows->push(['category' => __('Other Income'), 'type' => 'Income', 'source' => 'Other Income', 'amount' => $totalOtherIncome, 'count' => $filteredOtherIncome->count()]);
+        }
+
         // Expense by category
         $expenseByCat = [];
         foreach ($filteredExpense as $row) {
@@ -274,6 +290,7 @@ class FinanceReportController extends Controller
             'netIncome',
             'totalCompulsoryIncome',
             'totalOptionalIncome',
+            'totalOtherIncome',
             'currentOutstanding',
             'hasSchoolWideOutstandingAccess',
         );

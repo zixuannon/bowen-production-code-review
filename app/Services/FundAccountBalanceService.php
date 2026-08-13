@@ -7,6 +7,7 @@ use App\Models\BankTransfer;
 use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
+use App\Models\OtherIncome;
 
 class FundAccountBalanceService
 {
@@ -20,7 +21,8 @@ class FundAccountBalanceService
     {
         $schoolId = $account->school_id;
         $income = (float) CompulsoryFee::where('school_id', $schoolId)->where('bank_account_id', $account->id)->sum('amount')
-            + (float) OptionalFee::where('school_id', $schoolId)->where('bank_account_id', $account->id)->sum('amount');
+            + (float) OptionalFee::where('school_id', $schoolId)->where('bank_account_id', $account->id)->sum('amount')
+            + (float) OtherIncome::where('school_id', $schoolId)->where('bank_account_id', $account->id)->sum('amount');
         $expenses = (float) Expense::where('school_id', $schoolId)->where('bank_account_id', $account->id)->sum('amount');
         $in = (float) BankTransfer::completed()->where('school_id', $schoolId)->where('to_account_id', $account->id)->sum('amount');
         $out = (float) BankTransfer::completed()->where('school_id', $schoolId)->where('from_account_id', $account->id)->sum('amount');

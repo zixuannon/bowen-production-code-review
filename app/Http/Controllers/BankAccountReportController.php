@@ -8,6 +8,7 @@ use App\Models\BankTransfer;
 use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
+use App\Models\OtherIncome;
 use App\Services\ResponseService;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
@@ -81,6 +82,7 @@ class BankAccountReportController extends Controller
      *     = bank_account.opening_balance
      *     + SUM(compulsory_fees.amount before dateFrom)
      *     + SUM(optional_fees.amount   before dateFrom)
+     *     + SUM(other_incomes.amount   before dateFrom)
      *     + SUM(transfer_in            before dateFrom)
      *     - SUM(expenses.amount        before dateFrom)
      *     - SUM(transfer_out           before dateFrom)
@@ -88,6 +90,7 @@ class BankAccountReportController extends Controller
      *   period_income
      *     = SUM(compulsory_fees.amount in [dateFrom, dateTo])
      *     + SUM(optional_fees.amount   in [dateFrom, dateTo])
+     *     + SUM(other_incomes.amount   in [dateFrom, dateTo])
      *     (Transfer In NOT included)
      *
      *   period_expense
@@ -132,6 +135,9 @@ class BankAccountReportController extends Controller
                 ->where('date', '<', $dateFrom)
                 ->sum('amount');
 
+            $otherIncomeBefore = (float) OtherIncome::where('bank_account_id', $account->id)
+                ->where('school_id', $schoolId)->where('date', '<', $dateFrom)->sum('amount');
+
             $expenseBefore = (float) Expense::where('bank_account_id', $account->id)
                 ->where('school_id', $schoolId)
                 ->where('date', '<', $dateFrom)
@@ -154,6 +160,7 @@ class BankAccountReportController extends Controller
             $periodOpening = (float) $account->opening_balance
                            + $compulsoryBefore
                            + $optionalBefore
+                           + $otherIncomeBefore
                            + $transferInBefore
                            - $expenseBefore
                            - $transferOutBefore;
@@ -168,6 +175,9 @@ class BankAccountReportController extends Controller
                 ->where('school_id', $schoolId)
                 ->whereBetween('date', [$dateFrom, $dateTo])
                 ->sum('amount');
+
+            $otherIncomeDuring = (float) OtherIncome::where('bank_account_id', $account->id)
+                ->where('school_id', $schoolId)->whereBetween('date', [$dateFrom, $dateTo])->sum('amount');
 
             $expenseDuring = (float) Expense::where('bank_account_id', $account->id)
                 ->where('school_id', $schoolId)
@@ -187,7 +197,7 @@ class BankAccountReportController extends Controller
                 ->whereBetween('transfer_date', [$dateFrom, $dateTo])
                 ->sum('amount');
 
-            $periodIncome  = $compulsoryDuring + $optionalDuring;
+            $periodIncome  = $compulsoryDuring + $optionalDuring + $otherIncomeDuring;
             $periodExpense = $expenseDuring;
             $netTransfer   = $transferInDuring - $transferOutDuring;
             $closingBalance = $periodOpening + $periodIncome - $periodExpense + $netTransfer;

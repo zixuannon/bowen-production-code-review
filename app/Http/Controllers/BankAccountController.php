@@ -7,6 +7,7 @@ use App\Models\BankTransfer;
 use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
+use App\Models\OtherIncome;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
 use App\Services\FinanceAccountAccessService;
@@ -89,6 +90,12 @@ class BankAccountController extends Controller
             ->groupBy('bank_account_id')
             ->pluck('total', 'bank_account_id');
 
+        $otherIncome = OtherIncome::whereIn('bank_account_id', $bankAccountIds)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->selectRaw('bank_account_id, SUM(amount) as total')
+            ->groupBy('bank_account_id')
+            ->pluck('total', 'bank_account_id');
+
         // Expense sums
         $expenseSums = Expense::whereIn('bank_account_id', $bankAccountIds)
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
@@ -120,10 +127,11 @@ class BankAccountController extends Controller
         foreach ($rows as $row) {
             $compulsory  = (float)($compulsoryIncome[$row->id] ?? 0);
             $optional    = (float)($optionalIncome[$row->id] ?? 0);
+            $other       = (float)($otherIncome[$row->id] ?? 0);
             $expenses    = (float)($expenseSums[$row->id] ?? 0);
             $transferIn  = (float)($transferInSums[$row->id] ?? 0);
             $transferOut = (float)($transferOutSums[$row->id] ?? 0);
-            $income      = $compulsory + $optional;
+            $income      = $compulsory + $optional + $other;
             $balance     = (float)$row->opening_balance + $income + $transferIn - $expenses - $transferOut;
 
             $operate = '';
@@ -236,6 +244,10 @@ class BankAccountController extends Controller
             ->limit(100)
             ->get();
 
+        $otherIncomes = OtherIncome::with('creator:id,first_name,last_name')
+            ->where('bank_account_id', $id)->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->orderByDesc('date')->limit(100)->get();
+
         // Expenses for this account
         $expenses = Expense::with('category:id,name', 'staff:id,id')
             ->where('bank_account_id', $id)
@@ -253,6 +265,9 @@ class BankAccountController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->sum('amount') ?? 0;
 
+        $totalOtherIncome = OtherIncome::where('bank_account_id', $id)
+            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))->sum('amount') ?? 0;
+
         $totalExpenses = Expense::where('bank_account_id', $id)
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->sum('amount') ?? 0;
@@ -267,7 +282,7 @@ class BankAccountController extends Controller
             ->where('status', 'completed')
             ->sum('amount') ?? 0;
 
-        $totalIncome = (float)$totalCompulsory + (float)$totalOptional;
+        $totalIncome = (float)$totalCompulsory + (float)$totalOptional + (float)$totalOtherIncome;
         $currentBalance = (float)$bankAccount->opening_balance + $totalIncome + (float)$totalTransferIn - (float)$totalExpenses - (float)$totalTransferOut;
 
         // ================ Transaction Ledger ================
@@ -285,6 +300,10 @@ class BankAccountController extends Controller
             ->orderBy('date', 'asc')
             ->orderBy('id', 'asc')
             ->get();
+
+        $ledgerOtherIncome = OtherIncome::with('creator:id,first_name,last_name')
+            ->where('bank_account_id', $id)->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
+            ->orderBy('date', 'asc')->orderBy('id', 'asc')->get();
 
         $ledgerExpenses = Expense::with('category:id,name')
             ->where('bank_account_id', $id)
@@ -310,7 +329,7 @@ class BankAccountController extends Controller
             ->get();
 
         // Count total records (excl. opening) to decide display limit
-        $ledgerTotalCount = $ledgerCompulsory->count() + $ledgerOptional->count() + $ledgerExpenses->count()
+        $ledgerTotalCount = $ledgerCompulsory->count() + $ledgerOptional->count() + $ledgerOtherIncome->count() + $ledgerExpenses->count()
                           + $ledgerTransfersIn->count() + $ledgerTransfersOut->count();
 
         $ledgerRows = collect();
@@ -377,6 +396,17 @@ class BankAccountController extends Controller
             ]);
         }
 
+        // 5. Other Income
+        foreach ($ledgerOtherIncome as $income) {
+            $ledgerRows->push([
+                'raw_date' => $income->getRawOriginal('date') ?? '', 'date' => $income->date,
+                'type' => __('Other Income'), 'type_key' => 'other_income',
+                'description' => $income->description, 'payee' => $income->payer,
+                'ref_id' => $income->reference_no ?: ('OI-' . $income->id),
+                'income' => (float) $income->amount, 'expense' => 0,
+            ]);
+        }
+
         // 5. Expenses
         foreach ($ledgerExpenses as $expense) {
             $ledgerRows->push([
@@ -410,7 +440,7 @@ class BankAccountController extends Controller
         }
 
         // Sort: raw_date ASC, type_key order ensures stable same-day ordering
-        $typeOrder = ['opening' => 0, 'compulsory' => 1, 'transfer_in' => 2, 'optional' => 3, 'expense' => 4, 'transfer_out' => 5];
+        $typeOrder = ['opening' => 0, 'compulsory' => 1, 'transfer_in' => 2, 'optional' => 3, 'other_income' => 4, 'expense' => 5, 'transfer_out' => 6];
         $ledgerRows = $ledgerRows->sort(function ($a, $b) use ($typeOrder) {
             $dateCmp = strcmp($a['raw_date'], $b['raw_date']);
             if ($dateCmp !== 0) return $dateCmp;
@@ -447,9 +477,11 @@ class BankAccountController extends Controller
             'bankAccount',
             'compulsoryFees',
             'optionalFees',
+            'otherIncomes',
             'expenses',
             'totalCompulsory',
             'totalOptional',
+            'totalOtherIncome',
             'totalIncome',
             'totalExpenses',
             'totalTransferIn',

@@ -99,6 +99,17 @@ Balances move only on designated receiver confirmation.
 - [x] Focused PHPUnit (39 tests / 134 assertions) and broader P1/P2/P3/P3.1 regression (128 tests / 468 assertions) pass.
 - [ ] Authenticated BOWEN_QA Playwright acceptance is pending a safe local database credential/availability fix and local Playwright dependency installation; no environment guard was bypassed.
 
+## P3.2 — Unified Finance Transactions
+
+- [x] Finance → Transactions provides a unified query/register over existing source records, not a duplicate transaction or ledger source of truth.
+- [x] Sources: compulsory payment, optional payment, non-fee `OtherIncome`, Expense, and completed BankTransfer. Pending handovers are not money movement; confirmed handovers appear only through their canonical BankTransfer.
+- [x] Register filters date, transaction type, Fund Account, reference, and keyword. All source queries apply current-school and accessible-Fund-Account scope; forged account filters are rejected.
+- [x] Receive Money is a tenant-local, non-fee `OtherIncome` source. It requires a valid payment method and active authorized Fund Account, preserves reference reservation (including soft-deleted history), and is transactional.
+- [x] Account balances, account ledger, account report, Finance Dashboard, and Finance Report include Other Income. Internal BankTransfers remain excluded from operating income/expense summaries.
+- [x] Transaction page links to existing Expense and Expense Excel Import workflows rather than duplicating their writes/audit rules.
+- [x] Focused P3.2/P1/P3.1 verification (25 tests / 108 assertions) and broader P1–P3.2 Finance regression (131 tests / 481 assertions) pass.
+- [ ] Authenticated BOWEN_QA Playwright is pending safe local database credentials, a local server, and the local `@playwright/test` dependency; guards were not bypassed.
+
 ## P2
 
 - Daily Cash Closing

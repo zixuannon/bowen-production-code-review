@@ -83,6 +83,7 @@ use App\Http\Controllers\BankAccountReportController;
 use App\Http\Controllers\BankTransferController;
 use App\Http\Controllers\FundHandoverController;
 use App\Http\Controllers\FinanceStaffController;
+use App\Http\Controllers\FinanceTransactionController;
 use App\Http\Controllers\DiaryCategoryController;
 use App\Http\Controllers\DiaryController;
 use App\Http\Controllers\VehicleController;
@@ -833,6 +834,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('expense/import/preview', [ExpenseController::class, 'importPreview'])->name('expense.import.preview');
         Route::post('expense/import/confirm', [ExpenseController::class, 'importConfirm'])->name('expense.import.confirm');
         Route::resource('expense', ExpenseController::class);
+
+        // Unified Finance register: adapters over source records, not a second ledger.
+        Route::get('finance/transactions', [FinanceTransactionController::class, 'transactions'])->name('finance-transactions.index');
+        Route::post('finance/transactions/receive', [FinanceTransactionController::class, 'receive'])->name('finance-transactions.receive');
 
         // Bank Accounts
         Route::get('bank-accounts/list', [BankAccountController::class, 'list'])->name('bank-accounts.list');

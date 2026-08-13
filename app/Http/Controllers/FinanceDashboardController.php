@@ -9,6 +9,7 @@ use App\Models\FeesClassType;
 use App\Models\FinanceCategory;
 use App\Models\FeesPaid;
 use App\Models\OptionalFee;
+use App\Models\OtherIncome;
 use App\Models\Students;
 use App\Services\CachingService;
 use App\Services\ResponseService;
@@ -54,7 +55,11 @@ class FinanceDashboardController extends Controller
             ->whereBetween('date', [$from, $to])
             ->sum('amount');
 
-        $totalIncome = $compulsoryIncome + $optionalIncome;
+        $otherIncome = OtherIncome::where('school_id', $schoolId)
+            ->whereBetween('date', [$from, $to])
+            ->sum('amount');
+
+        $totalIncome = $compulsoryIncome + $optionalIncome + $otherIncome;
 
         // ── Expense (date-filtered) ──
         $expenses = Expense::owner()
@@ -95,7 +100,7 @@ class FinanceDashboardController extends Controller
 
         return view('finance-dashboard.index', compact(
             'from', 'to', 'hasFilter',
-            'totalIncome', 'compulsoryIncome', 'optionalIncome',
+            'totalIncome', 'compulsoryIncome', 'optionalIncome', 'otherIncome',
             'totalExpense', 'netIncome',
             'totalExpected', 'allCompulsoryPaid', 'collectionRate',
             'outstandingOverview',

@@ -5,9 +5,13 @@ namespace Tests\Feature;
 use App\Models\BankAccount;
 use App\Models\BankTransfer;
 use App\Models\FundHandover;
+use App\Models\Expense;
+use App\Models\OtherIncome;
 use App\Models\User;
 use App\Services\FundAccountBalanceService;
 use App\Services\FundHandoverService;
+use App\Services\FinanceTransactionRegisterService;
+use App\Services\OtherIncomeService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -32,6 +36,7 @@ class FundHandoverServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->ensureOtherIncomesTable();
         $this->ensureHandoverTable();
         $this->ensurePivotTable();
         $this->head = $this->user('head', 1, 'Head Finance');
@@ -161,6 +166,75 @@ class FundHandoverServiceTest extends TestCase
         $service->confirm($this->cashierA, $handover->id);
     }
 
+    public function test_unified_register_counts_source_records_once_and_excludes_pending_handover(): void
+    {
+        $register = app(FinanceTransactionRegisterService::class);
+        $before = $register->register($this->head);
+        $beforeTransferRows = $before['rows']->where('transaction_type', 'bank_transfer')->count();
+        OtherIncome::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'payer' => 'QA donor', 'description' => 'QA receipt', 'amount' => 200, 'payment_method' => 'Cash', 'reference_no' => 'OI-REGISTER', 'created_by' => $this->head->id]);
+        Expense::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'title' => 'QA expense', 'amount' => 50, 'created_by' => $this->head->id]);
+        $transfer = BankTransfer::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'amount' => 100, 'transfer_date' => '2026-01-02', 'reference_no' => 'TR-REGISTER', 'status' => 'completed', 'created_by' => $this->head->id]);
+        FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 100, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_CONFIRMED, 'bank_transfer_id' => $transfer->id]);
+        FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 99, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_PENDING]);
+
+        $result = $register->register($this->head);
+        $this->assertSame(200.0, $result['summary']['operating_income'] - $before['summary']['operating_income']);
+        $this->assertSame(50.0, $result['summary']['operating_expense'] - $before['summary']['operating_expense']);
+        $this->assertSame(100.0, $result['summary']['internal_in'] - $before['summary']['internal_in']);
+        $this->assertSame(100.0, $result['summary']['internal_out'] - $before['summary']['internal_out']);
+        $this->assertSame(150.0, $result['summary']['operating_net'] - $before['summary']['operating_net']);
+        $this->assertSame(150.0, $result['summary']['net_movement'] - $before['summary']['net_movement']);
+        $this->assertSame($beforeTransferRows + 1, $result['rows']->where('transaction_type', 'bank_transfer')->count());
+    }
+
+    public function test_receive_money_reuses_account_scope_and_reference_reservation(): void
+    {
+        $data = ['bank_account_id' => $this->cashierAccount->id, 'date' => '2026-01-03', 'payer' => 'QA source', 'description' => 'QA non-fee receipt', 'amount' => 75, 'payment_method' => 'Cash', 'reference_no' => 'OI-' . uniqid()];
+        $income = app(OtherIncomeService::class)->receive($this->cashierA, $data);
+        $this->assertSame($this->cashierA->id, $income->created_by);
+        $this->assertEqualsWithDelta(175.0, app(FundAccountBalanceService::class)->currentBalance($this->cashierAccount), 0.001);
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(OtherIncomeService::class)->receive($this->cashierA, $data);
+    }
+
+    public function test_receive_money_rejects_missing_or_unassigned_fund_account_and_forged_filter(): void
+    {
+        $service = app(OtherIncomeService::class);
+        $data = ['date' => '2026-01-03', 'payer' => 'QA', 'description' => 'QA', 'amount' => 1, 'payment_method' => 'Cash'];
+        try { $service->receive($this->cashierA, $data); $this->fail('A fund account is mandatory.'); }
+        catch (\Illuminate\Validation\ValidationException) { $this->assertTrue(true); }
+        $data['bank_account_id'] = $this->headAccount->id;
+        try { $service->receive($this->cashierA, $data); $this->fail('An unassigned fund account must be rejected.'); }
+        catch (ModelNotFoundException) { $this->assertTrue(true); }
+        $this->expectException(ModelNotFoundException::class);
+        app(FinanceTransactionRegisterService::class)->register($this->cashierA, ['bank_account_id' => $this->headAccount->id]);
+    }
+
+    public function test_transaction_register_and_receive_money_enforce_cashier_scope_cross_school_and_active_account_rules(): void
+    {
+        $cashReference = 'OI-CASH-' . uniqid();
+        $headReference = 'OI-HEAD-' . uniqid();
+        OtherIncome::create(['school_id' => 1, 'bank_account_id' => $this->cashierAccount->id, 'date' => '2026-01-04', 'payer' => 'Cash QA', 'description' => 'Cash scoped receipt', 'amount' => 10, 'payment_method' => 'Cash', 'reference_no' => $cashReference, 'created_by' => $this->cashierA->id]);
+        OtherIncome::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-04', 'payer' => 'Head QA', 'description' => 'Head-only receipt', 'amount' => 20, 'payment_method' => 'Cash', 'reference_no' => $headReference, 'created_by' => $this->head->id]);
+        $cashierRows = app(FinanceTransactionRegisterService::class)->register($this->cashierA)['rows'];
+        $this->assertTrue($cashierRows->contains(fn (array $row) => $row['reference'] === $cashReference));
+        $this->assertFalse($cashierRows->contains(fn (array $row) => $row['reference'] === $headReference));
+
+        $foreign = $this->account('Foreign income account', 2, 0);
+        $inactive = $this->account('Inactive income account', 1, 0);
+        $inactive->update(['is_active' => false]);
+        $base = ['date' => '2026-01-04', 'payer' => 'QA', 'description' => 'Scoped receipt', 'amount' => 1, 'payment_method' => 'Cash'];
+        foreach ([$foreign->id, $inactive->id] as $id) {
+            try {
+                app(OtherIncomeService::class)->receive($this->head, $base + ['bank_account_id' => $id]);
+                $this->fail('Cross-school and inactive accounts must be rejected.');
+            } catch (ModelNotFoundException | \Illuminate\Validation\ValidationException) {
+                $this->assertTrue(true);
+            }
+        }
+    }
+
     private function payload(User $receiver, float $amount = 100, ?BankAccount $from = null, ?BankAccount $to = null): array
     {
         return ['receiver_id' => $receiver->id, 'from_account_id' => ($from ?? $this->headAccount)->id, 'to_account_id' => ($to ?? $this->cashierAccount)->id, 'amount' => $amount, 'handover_date' => '2026-01-02', 'reference_no' => 'P3-' . uniqid(), 'notes' => 'Synthetic P3 handover'];
@@ -214,6 +288,19 @@ class FundHandoverServiceTest extends TestCase
         if (!Schema::hasTable('fund_handovers')) {
             Schema::create('fund_handovers', function (Blueprint $table) {
                 $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('from_account_id'); $table->unsignedBigInteger('to_account_id'); $table->unsignedBigInteger('sender_id'); $table->unsignedBigInteger('receiver_id'); $table->decimal('amount', 14, 2); $table->date('handover_date'); $table->string('reference_no', 100)->nullable(); $table->text('notes')->nullable(); $table->string('status', 20); $table->unsignedBigInteger('bank_transfer_id')->nullable(); $table->timestamp('confirmed_at')->nullable(); $table->unsignedBigInteger('confirmed_by')->nullable(); $table->timestamp('rejected_at')->nullable(); $table->unsignedBigInteger('rejected_by')->nullable(); $table->text('rejection_reason')->nullable(); $table->timestamp('cancelled_at')->nullable(); $table->unsignedBigInteger('cancelled_by')->nullable(); $table->text('cancellation_reason')->nullable(); $table->timestamps();
+            });
+        }
+    }
+
+    private function ensureOtherIncomesTable(): void
+    {
+        if (!Schema::hasTable('other_incomes')) {
+            Schema::create('other_incomes', function (Blueprint $table) {
+                $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('bank_account_id');
+                $table->date('date'); $table->string('payer'); $table->string('description', 1000);
+                $table->decimal('amount', 15, 2); $table->string('payment_method', 50);
+                $table->string('reference_no', 100)->nullable(); $table->text('remark')->nullable();
+                $table->unsignedBigInteger('created_by')->nullable(); $table->timestamps(); $table->softDeletes();
             });
         }
     }
