@@ -14,6 +14,7 @@ use App\Models\SessionYear;
 use App\Models\Students;
 use App\Services\CachingService;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
 use App\Services\ResponseService;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
@@ -34,7 +35,7 @@ class FinanceReportController extends Controller
      */
     public function index()
     {
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-dashboard-view');
 
         $request = request();
 
@@ -60,7 +61,7 @@ class FinanceReportController extends Controller
      */
     public function export()
     {
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-dashboard-view');
 
         $request = request();
 

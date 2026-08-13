@@ -10,6 +10,7 @@ use App\Models\Expense;
 use App\Models\OptionalFee;
 use App\Services\ResponseService;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -20,7 +21,7 @@ class BankAccountReportController extends Controller
      */
     public function index()
     {
-        ResponseService::noPermissionThenRedirect('expense-list');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-view');
 
         $request     = request();
         $dateFrom    = $request->get('date_from', now()->startOfMonth()->toDateString());
@@ -54,7 +55,7 @@ class BankAccountReportController extends Controller
      */
     public function export()
     {
-        ResponseService::noPermissionThenRedirect('expense-list');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-view');
 
         $request     = request();
         $dateFrom    = $request->get('date_from', now()->startOfMonth()->toDateString());

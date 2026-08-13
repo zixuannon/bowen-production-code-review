@@ -12,13 +12,14 @@ use App\Models\OptionalFee;
 use App\Models\Students;
 use App\Services\CachingService;
 use App\Services\ResponseService;
+use App\Services\FinanceAuthorizationService;
 use Illuminate\Support\Facades\Auth;
 
 class FinanceDashboardController extends Controller
 {
     public function index()
     {
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-dashboard-view');
 
         $request   = request();
         $schoolId  = Auth::user()->school_id;

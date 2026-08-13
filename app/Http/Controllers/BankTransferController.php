@@ -7,6 +7,7 @@ use App\Models\BankTransfer;
 use App\Models\FundHandover;
 use App\Services\BootstrapTableService;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
 use App\Services\FundAccountBalanceService;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class BankTransferController extends Controller
     public function index()
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-view');
 
         $bankAccounts = app(FinanceAccountAccessService::class)
             ->accessibleAccounts(Auth::user())
@@ -33,7 +34,7 @@ class BankTransferController extends Controller
     public function list(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noAnyPermissionThenSendJson(['expense-create', 'expense-list']);
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-view');
 
         $offset = $request->input('offset', 0);
         $limit  = $request->input('limit', 10);
@@ -102,7 +103,7 @@ class BankTransferController extends Controller
     public function store(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-create');
 
         $request->validate([
             'from_account_id' => 'required|exists:bank_accounts,id',
@@ -165,7 +166,7 @@ class BankTransferController extends Controller
     public function destroy($id)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-create');
 
         $access = app(FinanceAccountAccessService::class);
         $transfer = BankTransfer::owner()->findOrFail($id);

@@ -29,6 +29,7 @@ use App\Services\CachingService;
 use App\Services\ResponseService;
 use App\Services\FeesPaymentService;
 use App\Services\FeesPaidImportService;
+use App\Services\FinanceAuthorizationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use DateTime;
@@ -998,7 +999,7 @@ class FeesController extends Controller
     public function feesPaidListIndex()
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-view');
 
         // Fees Data With Few Selected Data
         $fees = $this->fees->builder()->select(['id', 'name', 'class_id'])->get();
@@ -1013,7 +1014,7 @@ class FeesController extends Controller
     public function feesPaidList(Request $request)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-view');
         $offset = request('offset', 0);
         $limit = request('limit', 10);
         $sort = request('sort', 'id');
@@ -1386,7 +1387,7 @@ class FeesController extends Controller
     public function payCompulsoryFeesStore(Request $request, FeesPaymentService $paymentService)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-create');
 
         $request->validate([
             'fees_id'              => 'required|numeric',
@@ -1460,7 +1461,7 @@ class FeesController extends Controller
     public function feesPaidImportTemplate()
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-create');
 
         return \Maatwebsite\Excel\Facades\Excel::download(
             new \App\Exports\FeesPaidSampleExport(),
@@ -1476,7 +1477,7 @@ class FeesController extends Controller
     public function feesPaidImportPreview(Request $request, FeesPaidImportService $importService)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-create');
 
         $request->validate([
             'file' => 'required|file|max:5120',
@@ -1516,7 +1517,7 @@ class FeesController extends Controller
     public function feesPaidImportConfirm(Request $request, FeesPaidImportService $importService)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-create');
 
         $request->validate([
             'token' => 'required|string',
@@ -1598,7 +1599,7 @@ class FeesController extends Controller
     public function payOptionalFeesStore(Request $request)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-create');
         $request->validate([
             'fees_id' => 'required|numeric',
             'student_id' => 'required|numeric',
@@ -1716,7 +1717,7 @@ class FeesController extends Controller
     public function optionalFees(Request $request)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-view');
 
         $session_year_all = $this->sessionYear->all(['id', 'name', 'default']);
         $class_section = $this->classSection->builder()->with('class', 'class.stream', 'section', 'medium')->get();
@@ -1733,7 +1734,7 @@ class FeesController extends Controller
     public function optionalFeesList(Request $request)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-paid');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-view');
         $offset = request('offset', 0);
         $limit = request('limit', 10);
         $sort = request('sort', 'id');

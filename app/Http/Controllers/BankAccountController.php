@@ -10,6 +10,7 @@ use App\Models\OptionalFee;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,7 @@ class BankAccountController extends Controller
     public function index()
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noAnyPermissionThenRedirect(['expense-create', 'expense-list']);
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-view');
 
         $accountTypes = [
             'bank'          => __('Bank'),
@@ -35,7 +36,7 @@ class BankAccountController extends Controller
     public function list(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noAnyPermissionThenSendJson(['expense-create', 'expense-list']);
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-view');
 
         $offset = $request->input('offset', 0);
         $limit  = $request->input('limit', 10);
@@ -161,7 +162,7 @@ class BankAccountController extends Controller
     {
         abort_unless(app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
 
         $request->validate([
             'account_name'        => 'required|string|max:255',
@@ -213,7 +214,7 @@ class BankAccountController extends Controller
     public function show($id)
     {
         ResponseService::noFeatureThenRedirect('Expense Management');
-        ResponseService::noPermissionThenRedirect('expense-list');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-view');
 
         $bankAccount = app(FinanceAccountAccessService::class)->scope(Auth::user())->withTrashed()->findOrFail($id);
 
@@ -466,7 +467,7 @@ class BankAccountController extends Controller
         $access = app(FinanceAccountAccessService::class);
         abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
 
         $bankAccount = $access->scope(Auth::user())->findOrFail($id);
 
@@ -481,7 +482,7 @@ class BankAccountController extends Controller
         $access = app(FinanceAccountAccessService::class);
         abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
 
         $request->validate([
             'account_name'        => 'required|string|max:255',
@@ -566,7 +567,7 @@ class BankAccountController extends Controller
         $access = app(FinanceAccountAccessService::class);
         abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
-        ResponseService::noPermissionThenSendJson('expense-create');
+        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
 
         $bankAccount = $access->scope(Auth::user())->findOrFail($id);
 
