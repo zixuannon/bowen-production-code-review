@@ -22,6 +22,10 @@ Local development is the only active implementation/test environment. Use local/
 
 `staging.school.mmbowen.com` is **PAUSED / NOT PART OF ACTIVE PIPELINE**. Do not authenticate to, test, debug, deploy to, delete, or otherwise modify staging without separate authorization.
 
+## eSchool source reconciliation
+
+Transportation expiry reminders now use the trusted central School registry to process each active tenant independently. The scheduled `transport:expiry-reminder` command accepts no tenant/database input, switches only to a registered tenant database, skips tenants without the transportation schema, isolates a tenant failure, supports a zero-write `--dry-run`, and restores the original school configuration plus the central default connection after each tenant and at completion. Local SQLite characterization covers two-tenant isolation, inactive/schema-missing tenants, a failed tenant followed by a valid tenant, repeatable dry runs, and connection restoration. Production and staging remain untouched.
+
 ## Completed and production-verified
 
 - P0: Income and Expense require a valid Fund Account.
