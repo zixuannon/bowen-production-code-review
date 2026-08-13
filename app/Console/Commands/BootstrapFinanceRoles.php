@@ -31,39 +31,51 @@ class BootstrapFinanceRoles extends Command
             return self::FAILURE;
         }
 
-        foreach ($tenants as $tenant) {
-            if (!$this->connect($tenant)) {
-                return self::FAILURE;
+        // This command deliberately switches the default connection while it
+        // evaluates tenant-local Spatie models. Restore the caller's
+        // connection even if a tenant preflight or verification fails.
+        $previousConnection = DB::getDefaultConnection();
+
+        try {
+            foreach ($tenants as $tenant) {
+                if (!$this->connect($tenant)) {
+                    return self::FAILURE;
+                }
+
+                $school = School::on('school')->where('database_name', $tenant)->first();
+                if (!$school) {
+                    $this->error("[$tenant] tenant school record is missing; refused.");
+
+                    return self::FAILURE;
+                }
+
+                $before = $this->roleStatus($school->id);
+                $this->line("[$tenant] before: " . $this->format($before));
+
+                if (!$this->option('execute')) {
+                    $this->info("[$tenant] dry-run only; no role definitions changed.");
+                    continue;
+                }
+
+                // Do not call the provisioning permission bundle here: this
+                // one-time command is definition-only and must never assign
+                // permissions or roles to existing users.
+                $schools->ensureFinanceRoles($school);
+                app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+                $after = $this->roleStatus($school->id);
+                if (!$after['Head Finance'] || !$after['Cashier']) {
+                    $this->error("[$tenant] Finance role bootstrap verification failed.");
+
+                    return self::FAILURE;
+                }
+                $this->info("[$tenant] after: " . $this->format($after));
             }
 
-            $school = School::on('school')->where('database_name', $tenant)->first();
-            if (!$school) {
-                $this->error("[$tenant] tenant school record is missing; refused.");
-
-                return self::FAILURE;
-            }
-
-            $before = $this->roleStatus($school->id);
-            $this->line("[$tenant] before: " . $this->format($before));
-
-            if (!$this->option('execute')) {
-                $this->info("[$tenant] dry-run only; no role definitions changed.");
-                continue;
-            }
-
-            $schools->ensureFinanceRoles($school);
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
-
-            $after = $this->roleStatus($school->id);
-            if (!$after['Head Finance'] || !$after['Cashier']) {
-                $this->error("[$tenant] Finance role bootstrap verification failed.");
-
-                return self::FAILURE;
-            }
-            $this->info("[$tenant] after: " . $this->format($after));
+            return self::SUCCESS;
+        } finally {
+            DB::setDefaultConnection($previousConnection);
         }
-
-        return self::SUCCESS;
     }
 
     public static function validTenantSelection(array $tenants): bool

@@ -61,6 +61,40 @@ class FinanceRoleBootstrapTest extends TestCase
         $this->assertSame($beforeFinance, $this->transactionalCounts());
     }
 
+    public function test_definition_only_bootstrap_preserves_existing_roles_assignments_permissions_and_finance_tables(): void
+    {
+        $schoolId = $this->createSchool();
+        $this->ensureSpatiePivots();
+        $userId = DB::connection('school')->table('users')->insertGetId([
+            'first_name' => 'Existing', 'last_name' => 'Teacher', 'email' => uniqid('finance-role-', true) . '@test.local',
+            'password' => bcrypt('local-only'), 'school_id' => $schoolId, 'status' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $teacher = Role::withoutGlobalScope('school')->create([
+            'name' => 'Teacher', 'guard_name' => 'web', 'school_id' => $schoolId, 'custom_role' => 0, 'editable' => 1,
+        ]);
+        DB::connection('school')->table('model_has_roles')->insert([
+            'role_id' => $teacher->id, 'model_type' => \App\Models\User::class, 'model_id' => $userId,
+        ]);
+
+        $beforeAssignments = DB::connection('school')->table('model_has_roles')->get()->map(fn ($row) => (array) $row)->all();
+        $beforePermissions = Schema::connection('school')->hasTable('role_has_permissions')
+            ? DB::connection('school')->table('role_has_permissions')->count()
+            : null;
+        $beforeFinance = $this->transactionalCounts();
+        $school = (object) ['id' => $schoolId];
+
+        app(SchoolDataService::class)->ensureFinanceRoles($school);
+        app(SchoolDataService::class)->ensureFinanceRoles($school);
+
+        $this->assertSame(['Cashier', 'Head Finance', 'Teacher'], Role::withoutGlobalScope('school')
+            ->where('school_id', $schoolId)->where('guard_name', 'web')->pluck('name')->sort()->values()->all());
+        $this->assertSame($beforeAssignments, DB::connection('school')->table('model_has_roles')->get()->map(fn ($row) => (array) $row)->all());
+        if ($beforePermissions !== null) {
+            $this->assertSame($beforePermissions, DB::connection('school')->table('role_has_permissions')->count());
+        }
+        $this->assertSame($beforeFinance, $this->transactionalCounts());
+    }
+
     public function test_bootstrap_command_accepts_only_the_existing_fixed_tenant_allowlist(): void
     {
         $this->assertTrue(BootstrapFinanceRoles::validTenantSelection(['eschool_saas_15_zixuan']));
