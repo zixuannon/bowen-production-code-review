@@ -2,12 +2,23 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\UploadValidationException;
+use App\Http\Controllers\StaffController;
+use App\Models\User;
+use App\Repositories\User\UserRepository;
+use App\Services\UploadService;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
 
 class StaffImageValidationTest extends TestCase
 {
+    use DatabaseTransactions;
+
     /**
      * Staff 创建时上传正常 JPG 成功。
      */
@@ -127,43 +138,16 @@ class StaffImageValidationTest extends TestCase
      */
     public function test_upload_service_strips_jpeg_polyglot_payload(): void
     {
-        // Create a file with JPEG header followed by PHP code
-        $jpegHeader = "\xFF\xD8\xFF\xE0" . str_repeat("\x00", 100);
         $phpPayload = "<?php system(\$_GET['cmd']); ?>";
-        $fakeJpeg = $jpegHeader . $phpPayload;
+        $file = UploadedFile::fake()->image('avatar.jpg', 100, 100);
+        file_put_contents($file->getPathname(), $phpPayload, FILE_APPEND);
+        $this->assertStringContainsString($phpPayload, file_get_contents($file->getPathname()));
 
-        $tempPath = tempnam(sys_get_temp_dir(), 'test_polyglot_');
-        file_put_contents($tempPath, $fakeJpeg);
+        Storage::fake('public');
+        $storedPath = UploadService::upload($file, 'staff', 'image');
 
-        $file = new UploadedFile(
-            $tempPath,
-            'avatar.jpg',
-            'image/jpeg',
-            null,
-            true
-        );
-
-        // The file content should contain the PHP payload
-        $content = file_get_contents($tempPath);
-        $this->assertStringContainsString('<?php system', $content);
-
-        // Now test via UploadService with Storage::fake
-        \Illuminate\Support\Facades\Storage::fake('public');
-
-        // Since Auth::user() is called inside UploadService, we need to mock it.
-        // For unit-level security, the key defense is:
-        // 1. StaffController's 'image' rule blocks non-jpeg/jpg/png/webp/non-image
-        // 2. UploadService re-encodes all images, stripping appended payloads
-        // 3. UploadService blocks dangerous extensions/names
-        //
-        // All of these are tested separately. This test confirms the payload
-        // exists in the raw file but would be stripped when processed by
-        // UploadService::upload() which calls Image::make()->encode().
-
-        // Mock Intervention Image to verify re-encoding
-        $this->assertTrue(true, 'JPEG polyglot defense is via re-encoding in UploadService');
-
-        unlink($tempPath);
+        Storage::disk('public')->assertExists($storedPath);
+        $this->assertStringNotContainsString($phpPayload, Storage::disk('public')->get($storedPath));
     }
 
     /**
@@ -362,6 +346,35 @@ class StaffImageValidationTest extends TestCase
         $this->assertStringNotContainsStringIgnoringCase('/app/', $webContent);
     }
 
+    public function test_valid_staff_image_replacement_updates_the_record_and_cleans_up_the_old_file(): void
+    {
+        [$user, $oldPath] = $this->staffUserWithExistingImage();
+
+        $updated = app(UserRepository::class)->update(
+            $user->id,
+            ['image' => UploadedFile::fake()->image('replacement.png', 80, 80)]
+        );
+
+        $this->assertSame($user->id, $updated->id);
+        $this->assertNotSame($oldPath, $updated->getRawOriginal('image'));
+        Storage::disk('public')->assertMissing($oldPath);
+        Storage::disk('public')->assertExists($updated->getRawOriginal('image'));
+    }
+
+    public function test_invalid_staff_image_replacement_keeps_the_existing_file_and_record_intact(): void
+    {
+        [$user, $oldPath] = $this->staffUserWithExistingImage();
+        $invalid = UploadedFile::fake()->create('spoofed.jpg', 10, 'text/plain');
+
+        try {
+            app(UserRepository::class)->update($user->id, ['image' => $invalid]);
+            $this->fail('An invalid image must not be accepted by UploadService.');
+        } catch (UploadValidationException) {
+            $this->assertSame($oldPath, User::findOrFail($user->id)->getRawOriginal('image'));
+            Storage::disk('public')->assertExists($oldPath);
+        }
+    }
+
     /**
      * Create a Validator instance with store() rules.
      */
@@ -384,7 +397,7 @@ class StaffImageValidationTest extends TestCase
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
                 'role_id' => 'required|numeric',
                 'dob' => 'required',
-                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+                'image' => StaffController::STAFF_IMAGE_RULES,
             ]
         );
     }
@@ -412,8 +425,31 @@ class StaffImageValidationTest extends TestCase
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $userId,
                 'role_id' => 'required|numeric',
                 'dob' => 'required',
-                'image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+                'image' => StaffController::STAFF_IMAGE_RULES,
             ]
         );
+    }
+
+    private function staffUserWithExistingImage(): array
+    {
+        Storage::fake('public');
+        $oldPath = '1/user/staff-image-old-' . bin2hex(random_bytes(6)) . '.jpg';
+        Storage::disk('public')->put($oldPath, 'synthetic-old-image');
+        $userId = DB::table('users')->insertGetId([
+            'first_name' => 'Staff',
+            'last_name' => 'Upload Test',
+            'email' => 'staff-upload-' . bin2hex(random_bytes(6)) . '@local.test',
+            'mobile' => '1234567890',
+            'password' => bcrypt('local-only'),
+            'school_id' => 1,
+            'image' => $oldPath,
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $user = User::findOrFail($userId);
+        Auth::login($user);
+
+        return [$user, $oldPath];
     }
 }

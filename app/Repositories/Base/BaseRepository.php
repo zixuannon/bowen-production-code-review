@@ -130,16 +130,33 @@ class BaseRepository implements BaseInterface {
      */
     public function update(int $modelId, array $payload): ?Model {
         $model = $this->findById($modelId);
+        $oldUploads = [];
+        $newUploads = [];
 
-        foreach ($payload as $column => $value) {
-            if ($value instanceof UploadedFile) {
-                if ($model->getAttributes()[$column]) {
-                    UploadService::delete($model->getAttributes()[$column]);
+        try {
+            foreach ($payload as $column => $value) {
+                if ($value instanceof UploadedFile) {
+                    $oldUploads[] = $model->getRawOriginal($column);
+                    $payload[$column] = UploadService::upload($value, $this->uploadFolder, $column);
+                    $newUploads[] = $payload[$column];
                 }
-                $payload[$column] = UploadService::upload($value, $this->uploadFolder, $column);
             }
+
+            if (!$model->update($payload)) {
+                throw new \RuntimeException('Unable to update the uploaded file record.');
+            }
+        } catch (\Throwable $exception) {
+            foreach ($newUploads as $newUpload) {
+                UploadService::delete($newUpload);
+            }
+
+            throw $exception;
         }
-        $model->update($payload);
+
+        foreach (array_filter($oldUploads) as $oldUpload) {
+            UploadService::delete($oldUpload);
+        }
+
         return $model;
     }
 

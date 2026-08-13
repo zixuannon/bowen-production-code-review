@@ -42,6 +42,12 @@ use Illuminate\Support\Facades\Storage;
 
 class StaffController extends Controller
 {
+    /**
+     * Staff profile images are deliberately narrower than the generic
+     * UploadService image support. The service still validates real MIME,
+     * filenames, and re-encodes accepted image content.
+     */
+    public const STAFF_IMAGE_RULES = ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'];
 
     private UserInterface $user;
     private StaffInterface $staff;
@@ -171,6 +177,7 @@ class StaffController extends Controller
                 'role_id' => 'required|numeric',
                 'status' => 'nullable|in:0,1',
                 'dob' => 'required',
+                'image' => self::STAFF_IMAGE_RULES,
             ];
 
             if ($this->isSupervisorFeatureEnabled()) {
@@ -529,6 +536,7 @@ class StaffController extends Controller
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $id,
                 'role_id' => 'required|numeric',
                 'dob' => 'required',
+                'image' => self::STAFF_IMAGE_RULES,
             ];
 
             if ($this->isSupervisorFeatureEnabled()) {
