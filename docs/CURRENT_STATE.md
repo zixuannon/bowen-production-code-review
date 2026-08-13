@@ -26,6 +26,8 @@ Local development is the only active implementation/test environment. Use local/
 
 Transportation expiry reminders now use the trusted central School registry to process each active tenant independently. The scheduled `transport:expiry-reminder` command accepts no tenant/database input, switches only to a registered tenant database, skips tenants without the transportation schema, isolates a tenant failure, supports a zero-write `--dry-run`, and restores the original school configuration plus the central default connection after each tenant and at completion. Local SQLite characterization covers two-tenant isolation, inactive/schema-missing tenants, a failed tenant followed by a valid tenant, repeatable dry runs, and connection restoration. Production and staging remain untouched.
 
+Installer reconciliation retains only the custom source required by the optional installer flow: purchase-code and PHP symlink capability steps, the folders-to-purchase-code transition, and valid installer asset/finish links. The normal application remains unaffected while `INSTALLER_ENABLED` is disabled. Published installer components and unchanged steps remain package-owned; Production's database troubleshooting copy is intentionally excluded. Production and staging remain untouched.
+
 ## Completed and production-verified
 
 - P0: Income and Expense require a valid Fund Account.
