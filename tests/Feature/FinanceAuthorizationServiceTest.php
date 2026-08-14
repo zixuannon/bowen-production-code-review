@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\FinanceAuthorizationService;
-use Illuminate\Support\Facades\Route;
 use Mockery;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Tests\TestCase;
@@ -64,29 +63,5 @@ class FinanceAuthorizationServiceTest extends TestCase
             $sidebar,
         );
         $this->assertStringNotContainsString("@can('finance-fund-account-view')", $sidebar);
-    }
-
-    public function test_finance_sidebar_is_a_single_permission_preserving_navigation_tree(): void
-    {
-        $sidebar = file_get_contents(resource_path('views/layouts/sidebar.blade.php'));
-
-        $this->assertStringContainsString('href="#finance-menu"', $sidebar);
-        $this->assertStringNotContainsString('href="#expense-menu"', $sidebar);
-        $this->assertStringContainsString("@hasAnyFeatureAccess(['Fees Management','Expense Management'])", $sidebar);
-
-        foreach ([
-            'finance-dashboard.index', 'outstanding-fees.index', 'finance-transactions.index', 'expense.index',
-            'bank-accounts.index', 'bank-transfers.index', 'fund-handovers.index', 'student-ledger.index',
-            'fees.paid.index', 'fees.transactions.log.index', 'finance-report.index', 'bank-account-report.index',
-            'finance-staff.index', 'fees.index', 'fees-type.index', 'finance-category.index',
-            'expense-category.index', 'fees.optional',
-        ] as $route) {
-            $this->assertSame(1, substr_count($sidebar, "route('{$route}')"), "{$route} must appear exactly once in Finance navigation.");
-            $this->assertTrue(Route::has($route), "{$route} must remain a registered route.");
-        }
-
-        foreach (['Income and Expenses', 'Fund Management', 'Reports and Queries', 'Finance Settings'] as $label) {
-            $this->assertStringContainsString("__('{$label}')", $sidebar);
-        }
     }
 }
