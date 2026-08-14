@@ -70,13 +70,14 @@ class ExistingTenantFinancePermissionBootstrapTest extends TestCase
         $this->assertSame(1, DB::connection('school')->table('model_has_roles')->where('model_id', $userId)->count());
     }
 
-    public function test_command_accepts_only_fixed_active_tenant_names_and_refuses_demo(): void
+    public function test_command_accepts_only_fixed_active_school_codes_and_refuses_demo_or_database_names(): void
     {
-        $this->assertTrue(BootstrapExistingTenantFinancePermissions::validTenantSelection(['eschool_saas_15_zixuan']));
+        $this->assertTrue(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH202615']));
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection([]));
-        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['eschool_saas_1_demo']));
+        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH20261']));
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['mysql']));
-        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['eschool_saas_15_zixuan', 'eschool_saas_15_zixuan']));
+        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['eschool_saas_15_zixuan']));
+        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH202615', 'SCH202615']));
     }
 
     /** @return array<string, Role> */
