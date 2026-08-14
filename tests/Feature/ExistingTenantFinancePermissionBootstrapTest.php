@@ -70,6 +70,54 @@ class ExistingTenantFinancePermissionBootstrapTest extends TestCase
         $this->assertSame(1, DB::connection('school')->table('model_has_roles')->where('model_id', $userId)->count());
     }
 
+    public function test_unique_legacy_null_scoped_finance_roles_are_accepted_without_being_changed(): void
+    {
+        $schoolId = $this->createSchool();
+        $this->roles($schoolId, ['Head Finance', 'Cashier']);
+
+        $bootstrap = app(ExistingTenantFinancePermissionBootstrap::class);
+        $bootstrap->apply($schoolId);
+
+        foreach (ExistingTenantFinancePermissionBootstrap::ROLE_PERMISSIONS as $role => $permissions) {
+            sort($permissions);
+            $this->assertSame($permissions, $bootstrap->status($schoolId)[$role]);
+        }
+        $this->assertNull(Role::withoutGlobalScope('school')->where('name', 'Head Finance')->sole()->school_id);
+        $this->assertNull(Role::withoutGlobalScope('school')->where('name', 'Cashier')->sole()->school_id);
+    }
+
+    public function test_duplicate_legacy_or_mixed_tenant_role_definitions_are_rejected(): void
+    {
+        $schoolId = $this->createSchool();
+        $this->roles($schoolId, ['Head Finance']);
+        $this->createRole('Head Finance', null);
+
+        $this->expectException(\LogicException::class);
+        app(ExistingTenantFinancePermissionBootstrap::class)->preflight($schoolId);
+    }
+
+    public function test_duplicate_null_legacy_role_definitions_are_rejected(): void
+    {
+        $schoolId = $this->createSchool();
+        $this->roles($schoolId, ['Cashier']);
+        $this->createRole('Cashier', null);
+
+        $this->expectException(\LogicException::class);
+        app(ExistingTenantFinancePermissionBootstrap::class)->preflight($schoolId);
+    }
+
+    public function test_role_belonging_to_another_tenant_is_rejected(): void
+    {
+        $schoolId = $this->createSchool();
+        $otherSchoolId = $this->createSchool();
+        $this->roles($schoolId);
+        Role::withoutGlobalScope('school')->where('name', 'Cashier')->where('school_id', $schoolId)->delete();
+        $this->createRole('Cashier', $otherSchoolId);
+
+        $this->expectException(\LogicException::class);
+        app(ExistingTenantFinancePermissionBootstrap::class)->preflight($schoolId);
+    }
+
     public function test_command_accepts_only_fixed_active_school_codes_and_refuses_demo_or_database_names(): void
     {
         $this->assertTrue(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH202615']));
@@ -80,15 +128,17 @@ class ExistingTenantFinancePermissionBootstrapTest extends TestCase
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH202615', 'SCH202615']));
     }
 
-    /** @return array<string, Role> */
-    private function roles(int $schoolId): array
+    /** @param array<int, string> $legacyNames
+     *  @return array<string, Role>
+     */
+    private function roles(int $schoolId, array $legacyNames = []): array
     {
         return collect(['School Admin', 'Head Finance', 'Cashier'])
-            ->mapWithKeys(fn (string $role) => [$role => $this->createRole($role, $schoolId)])
+            ->mapWithKeys(fn (string $role) => [$role => $this->createRole($role, in_array($role, $legacyNames, true) ? null : $schoolId)])
             ->all();
     }
 
-    private function createRole(string $name, int $schoolId): Role
+    private function createRole(string $name, ?int $schoolId): Role
     {
         return Role::withoutGlobalScope('school')->create([
             'name' => $name,

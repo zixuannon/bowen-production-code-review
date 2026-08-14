@@ -89,18 +89,28 @@ class ExistingTenantFinancePermissionBootstrap
     /** @return array<string, Role> */
     private function roles(int $schoolId): array
     {
-        $roles = Role::withoutGlobalScope('school')
-            ->where('school_id', $schoolId)
+        $matchingRoles = Role::withoutGlobalScope('school')
             ->where('guard_name', 'web')
             ->whereIn('name', array_keys(self::ROLE_PERMISSIONS))
             ->get()
-            ->keyBy('name');
+            ->groupBy('name');
 
-        $missing = array_diff(array_keys(self::ROLE_PERMISSIONS), $roles->keys()->all());
-        if ($missing !== []) {
-            throw new \LogicException('Required Finance role definitions are missing: ' . implode(', ', $missing));
+        $roles = [];
+        foreach (array_keys(self::ROLE_PERMISSIONS) as $name) {
+            $candidates = $matchingRoles->get($name, collect());
+            if ($candidates->count() !== 1) {
+                throw new \LogicException("Required Finance role definition is not unique: {$name}");
+            }
+
+            /** @var Role $role */
+            $role = $candidates->first();
+            if ($role->school_id !== null && (int) $role->school_id !== $schoolId) {
+                throw new \LogicException("Required Finance role definition belongs to another tenant: {$name}");
+            }
+
+            $roles[$name] = $role;
         }
 
-        return $roles->all();
+        return $roles;
     }
 }
