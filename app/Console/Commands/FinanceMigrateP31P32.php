@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class FinanceMigrateP31P32 extends Command
 {
+    private const ACTIVE_PRODUCTION_ROOT = '/www/wwwroot/43.160.241.126';
+    private const PRODUCTION_RELEASES_ROOT = '/www/wwwroot/releases';
+
     public const MIGRATIONS = [
         '2026_08_12_000002_create_expense_import_batches_table',
         '2026_08_13_000001_create_other_incomes_table',
@@ -143,12 +146,39 @@ class FinanceMigrateP31P32 extends Command
     private function executionEnvironmentIsTrusted(array $trusted): bool
     {
         if (app()->environment('production')) {
-            return base_path() === '/www/wwwroot/43.160.241.126'
+            return self::isAllowedProductionExecutionPath(base_path())
                 && $trusted === self::PRODUCTION_TENANTS;
         }
 
         // Test/local execution must still use a declared synthetic registry.
         return app()->environment(['local', 'testing']);
+    }
+
+    public static function isAllowedProductionExecutionPath(string $basePath): bool
+    {
+        return $basePath === self::ACTIVE_PRODUCTION_ROOT
+            || self::isVettedReleaseDirectory($basePath, self::PRODUCTION_RELEASES_ROOT);
+    }
+
+    /** Runtime always supplies the fixed releases root; parameters support local characterization only. */
+    public static function isVettedReleaseDirectory(string $basePath, string $releasesRoot): bool
+    {
+        $resolvedBasePath = realpath($basePath);
+        $resolvedReleasesRoot = realpath($releasesRoot);
+
+        if ($resolvedBasePath === false || $resolvedReleasesRoot === false
+            || !str_starts_with($resolvedBasePath, $resolvedReleasesRoot . DIRECTORY_SEPARATOR)) {
+            return false;
+        }
+
+        $marker = $resolvedBasePath . DIRECTORY_SEPARATOR . '.release-commit';
+        if (!is_file($marker) || is_link($marker) || !is_readable($marker)) {
+            return false;
+        }
+
+        $commit = file_get_contents($marker);
+
+        return $commit !== false && preg_match('/\\A[0-9a-f]{40}\\n?\\z/', $commit) === 1;
     }
 
     private function connect(string $database): bool

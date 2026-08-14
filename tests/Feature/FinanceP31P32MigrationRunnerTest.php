@@ -168,6 +168,68 @@ class FinanceP31P32MigrationRunnerTest extends TestCase
         $this->assertSame('inconsistent', FinanceMigrateP31P32::pairState(['expense_import' => 'inconsistent', 'other_income' => 'absent']));
     }
 
+    public function test_active_production_root_is_an_allowed_production_execution_location(): void
+    {
+        $this->assertTrue(FinanceMigrateP31P32::isAllowedProductionExecutionPath('/www/wwwroot/43.160.241.126'));
+    }
+
+    public function test_valid_release_candidate_with_a_commit_marker_is_allowed(): void
+    {
+        [$releasesRoot, $candidate] = $this->releaseCandidate('9b46ed744453a277bd25d06f670f5a4495313107');
+        try {
+            $this->assertTrue(FinanceMigrateP31P32::isVettedReleaseDirectory($candidate, $releasesRoot));
+        } finally {
+            $this->removeReleaseCandidate($candidate, $releasesRoot);
+        }
+    }
+
+    public function test_release_candidate_without_a_valid_commit_marker_is_refused(): void
+    {
+        [$releasesRoot, $candidate] = $this->releaseCandidate();
+        try {
+            $this->assertFalse(FinanceMigrateP31P32::isVettedReleaseDirectory($candidate, $releasesRoot));
+            file_put_contents($candidate . DIRECTORY_SEPARATOR . '.release-commit', "not-a-commit\n");
+            $this->assertFalse(FinanceMigrateP31P32::isVettedReleaseDirectory($candidate, $releasesRoot));
+        } finally {
+            $this->removeReleaseCandidate($candidate, $releasesRoot);
+        }
+    }
+
+    public function test_arbitrary_path_outside_the_release_root_is_refused(): void
+    {
+        [$releasesRoot, $candidate] = $this->releaseCandidate();
+        $arbitrary = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'eschool-p31p32-arbitrary-' . bin2hex(random_bytes(6));
+        mkdir($arbitrary, 0700);
+        file_put_contents($arbitrary . DIRECTORY_SEPARATOR . '.release-commit', "9b46ed744453a277bd25d06f670f5a4495313107\n");
+        try {
+            $this->assertFalse(FinanceMigrateP31P32::isVettedReleaseDirectory($arbitrary, $releasesRoot));
+        } finally {
+            @unlink($arbitrary . DIRECTORY_SEPARATOR . '.release-commit');
+            @rmdir($arbitrary);
+            $this->removeReleaseCandidate($candidate, $releasesRoot);
+        }
+    }
+
+    /** @return array{string, string} */
+    private function releaseCandidate(?string $commit = null): array
+    {
+        $releasesRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'eschool-p31p32-releases-' . bin2hex(random_bytes(6));
+        $candidate = $releasesRoot . DIRECTORY_SEPARATOR . 'candidate';
+        mkdir($candidate, 0700, true);
+        if ($commit !== null) {
+            file_put_contents($candidate . DIRECTORY_SEPARATOR . '.release-commit', $commit . "\n");
+        }
+
+        return [$releasesRoot, $candidate];
+    }
+
+    private function removeReleaseCandidate(string $candidate, string $releasesRoot): void
+    {
+        @unlink($candidate . DIRECTORY_SEPARATOR . '.release-commit');
+        @rmdir($candidate);
+        @rmdir($releasesRoot);
+    }
+
     private function createTenantBaseSchema(string $database): void
     {
         Config::set('database.connections.school.database', $database);
