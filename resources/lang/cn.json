@@ -42,6 +42,8 @@
     "Transaction Records": "交易记录",
     "Fund Handover": "资金交接",
     "Finance Staff": "财务人员",
+    "This finance staff member has no assigned Fund Account. Please assign one in Finance Staff first.": "该财务人员尚未分配资金账户，请先到「财务人员」中分配账户。",
+    "Go to Finance Staff": "前往财务人员",
     "Expense Categories": "支出分类",
     "Manage Expenses": "支出记录",
 

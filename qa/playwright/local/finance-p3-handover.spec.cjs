@@ -266,3 +266,59 @@ test('BOWEN_QA handover rejection and cancellation use application reason dialog
     await cashierApi.dispose();
   }
 });
+
+test('receiver without an assigned Fund Account gets a clear handover empty state without a management-link leak', async ({ browser }) => {
+  const adminContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_admin@bowen-qa.test') });
+  const headContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_head_finance@bowen-qa.test') });
+  const cashierContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_cashier_a@bowen-qa.test') });
+  let adminPage;
+  let cashierAccountsCleared = false;
+
+  async function saveCashierAccounts(page, accountName = null) {
+    const modal = page.getByRole('dialog', { name: 'Manage Finance Staff' });
+    while (await modal.locator('.finance-staff-account:checked').count()) {
+      await modal.locator('.finance-staff-account:checked').first().uncheck();
+    }
+    if (accountName) await modal.getByLabel(accountName).check();
+    const response = page.waitForResponse(candidate => candidate.url().includes('/finance-staff/') && candidate.url().endsWith('/accounts') && candidate.request().method() === 'PUT');
+    const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+    await modal.getByRole('button', { name: 'Save Fund Accounts' }).click();
+    expect((await response).status()).toBe(200);
+    await navigation;
+  }
+
+  try {
+    adminPage = await adminContext.newPage();
+    await adminPage.goto('/finance-staff', { waitUntil: 'domcontentloaded' });
+    const cashierB = adminPage.locator('#finance-staff-table tbody tr', { hasText: 'QA Cashier B' });
+    await cashierB.getByRole('button', { name: 'Manage' }).click();
+    await saveCashierAccounts(adminPage);
+    cashierAccountsCleared = true;
+
+    const headPage = await headContext.newPage();
+    const dialogs = [];
+    headPage.on('dialog', dialog => { dialogs.push(dialog.type()); dialog.dismiss(); });
+    expect((await headPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' }))?.status()).toBe(200);
+    await headPage.locator('#receiver_id').selectOption({ label: 'QA Cashier B' });
+    await expect(headPage.locator('#to_account_id')).toBeDisabled();
+    await expect(headPage.locator('#request-handover-submit')).toBeDisabled();
+    await expect(headPage.locator('#receiver-account-empty-state')).toBeVisible();
+    await expect(headPage.locator('#receiver-account-empty-state')).toContainText('no assigned Fund Account');
+    await expect(headPage.locator('#receiver-account-empty-state a[href*="/finance-staff"]')).toHaveCount(1);
+    expect(dialogs).toEqual([]);
+
+    const cashierPage = await cashierContext.newPage();
+    expect((await cashierPage.goto('/fund-handovers', { waitUntil: 'domcontentloaded' }))?.status()).toBe(200);
+    await expect(cashierPage.locator('#receiver-account-empty-state a[href*="/finance-staff"]')).toHaveCount(0);
+
+  } finally {
+    if (cashierAccountsCleared && adminPage && !adminPage.isClosed()) {
+      await adminPage.goto('/finance-staff', { waitUntil: 'domcontentloaded' });
+      await adminPage.locator('#finance-staff-table tbody tr', { hasText: 'QA Cashier B' }).getByRole('button', { name: 'Manage' }).click();
+      await saveCashierAccounts(adminPage, 'QA P2 Cash B');
+    }
+    await adminContext.close();
+    await headContext.close();
+    await cashierContext.close();
+  }
+});

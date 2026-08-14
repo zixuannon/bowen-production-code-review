@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FundHandover;
 use App\Services\FinanceAccountAccessService;
+use App\Services\FinanceAuthorizationService;
 use App\Services\FundHandoverService;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
@@ -42,7 +43,10 @@ class FundHandoverController extends Controller
             }
         }
 
-        return view('bank-account.handover.index', compact('recipients', 'senderAccounts', 'recipientAccounts', 'canParticipate'));
+        $canManageFinanceStaff = app(FinanceAuthorizationService::class)->can($actor, 'finance-staff-manage')
+            && $actor->hasAnyRole(['School Admin', 'Head Finance']);
+
+        return view('bank-account.handover.index', compact('recipients', 'senderAccounts', 'recipientAccounts', 'canParticipate', 'canManageFinanceStaff'));
     }
 
     public function list(Request $request)

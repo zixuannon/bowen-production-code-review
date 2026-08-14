@@ -13,13 +13,24 @@
             <div class="row">
                 <div class="form-group col-md-3"><label>{{ __('Receiver') }}</label><select class="form-control" name="receiver_id" id="receiver_id" required><option value="">{{ __('Select receiver') }}</option>@foreach($recipients as $user)<option value="{{ $user->id }}">{{ $user->first_name }} {{ $user->last_name }}</option>@endforeach</select></div>
                 <div class="form-group col-md-3"><label>{{ __('From / Sender Fund Account') }}</label><select class="form-control" name="from_account_id" id="from_account_id" required><option value="">{{ __('Select account') }}</option>@foreach($senderAccounts as $account)<option value="{{ $account->id }}" data-balance="{{ $account->current_balance }}">{{ $account->account_name }} ({{ $account->currency }})</option>@endforeach</select><small class="text-muted" id="available-balance">{{ __('Select a Fund Account to view its available balance.') }}</small></div>
-                <div class="form-group col-md-3"><label>{{ __('Receiver Account') }}</label><select class="form-control" name="to_account_id" id="to_account_id" required><option value="">{{ __('Select receiver first') }}</option></select></div>
+                <div class="form-group col-md-3">
+                    <label>{{ __('Receiver Account') }}</label>
+                    <select class="form-control" name="to_account_id" id="to_account_id" required disabled>
+                        <option value="">{{ __('Select receiver first') }}</option>
+                    </select>
+                    <small class="form-text text-danger d-none" id="receiver-account-empty-state" role="status">
+                        {{ __('This finance staff member has no assigned Fund Account. Please assign one in Finance Staff first.') }}
+                        @if($canManageFinanceStaff)
+                            <a href="{{ route('finance-staff.index') }}" class="d-inline-block ml-1">{{ __('Go to Finance Staff') }}</a>
+                        @endif
+                    </small>
+                </div>
                 <div class="form-group col-md-3"><label>{{ __('Amount') }}</label><input class="form-control" name="amount" type="number" step="0.01" min="0.01" required></div>
                 <div class="form-group col-md-3"><label>{{ __('Handover Date') }}</label><input class="form-control" name="handover_date" type="date" value="{{ now()->toDateString() }}" required></div>
                 <div class="form-group col-md-3"><label>{{ __('Reference No.') }}</label><input class="form-control" name="reference_no" maxlength="100"></div>
                 <div class="form-group col-md-6"><label>{{ __('Notes') }}</label><input class="form-control" name="notes" maxlength="1000"></div>
             </div>
-            <button class="btn btn-theme" type="submit">{{ __('Request Handover') }}</button>
+            <button class="btn btn-theme" type="submit" id="request-handover-submit" disabled>{{ __('Request Handover') }}</button>
         </form>
     </div></div></div></div>
     @else
@@ -48,8 +59,19 @@ function toast(message, ok = false) { ok ? showSuccessToast(message) : showError
 function loadRecipientAccounts() {
     const receiver = document.getElementById('receiver_id').value;
     const target = document.getElementById('to_account_id');
+    const emptyState = document.getElementById('receiver-account-empty-state');
+    const submit = document.getElementById('request-handover-submit');
+    const accounts = recipientAccounts[receiver] || [];
     target.innerHTML = '<option value="">{{ __('Select account') }}</option>';
-    (recipientAccounts[receiver] || []).forEach(account => target.add(new Option(`${account.account_name} (${account.currency})`, account.id)));
+    accounts.forEach(account => target.add(new Option(`${account.account_name} (${account.currency})`, account.id)));
+    const unavailable = !receiver || accounts.length === 0;
+    target.disabled = unavailable;
+    emptyState.classList.toggle('d-none', !receiver || accounts.length > 0);
+    submit.disabled = true;
+}
+function updateHandoverSubmitState() {
+    const target = document.getElementById('to_account_id');
+    document.getElementById('request-handover-submit').disabled = target.disabled || !target.value;
 }
 function loadAvailableBalance() {
     const option = document.querySelector('#from_account_id option:checked');
@@ -69,6 +91,7 @@ async function loadHandovers() {
 const canParticipate = @json($canParticipate);
 if (canParticipate) {
 document.getElementById('receiver_id').addEventListener('change', loadRecipientAccounts);
+document.getElementById('to_account_id').addEventListener('change', updateHandoverSubmitState);
 document.getElementById('from_account_id').addEventListener('change', loadAvailableBalance);
 document.getElementById('fund-handover-form').addEventListener('submit', async event => {
     event.preventDefault(); const response = await fetch('{{ route('fund-handovers.store') }}', {method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}, body: new FormData(event.target)}); const data = await response.json();

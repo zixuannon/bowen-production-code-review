@@ -135,6 +135,21 @@ class FundHandoverServiceTest extends TestCase
         }
     }
 
+    public function test_receiver_without_an_assigned_fund_account_has_no_destination_and_cannot_create_a_handover(): void
+    {
+        $service = app(FundHandoverService::class);
+
+        $this->assertCount(0, $service->eligibleDestinationAccounts($this->head, $this->cashierB)->get());
+        $handoverCount = FundHandover::where('school_id', 1)->count();
+
+        $this->expectException(ModelNotFoundException::class);
+        try {
+            $service->create($this->head, $this->payload($this->cashierB));
+        } finally {
+            $this->assertSame($handoverCount, FundHandover::where('school_id', 1)->count());
+        }
+    }
+
     public function test_rejection_and_cancellation_require_the_correct_party_and_audit_reason_without_transfer(): void
     {
         $service = app(FundHandoverService::class);

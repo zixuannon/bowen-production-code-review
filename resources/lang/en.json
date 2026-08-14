@@ -41,6 +41,8 @@
     "Transaction Records": "Transaction Records",
     "Fund Handover": "Fund Handover",
     "Finance Staff": "Finance Staff",
+    "This finance staff member has no assigned Fund Account. Please assign one in Finance Staff first.": "This finance staff member has no assigned Fund Account. Please assign one in Finance Staff first.",
+    "Go to Finance Staff": "Go to Finance Staff",
     "Expense Categories": "Expense Categories",
     "Manage Expenses": "Manage Expenses",
     "Total Income": "Total Income",
