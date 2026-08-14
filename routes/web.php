@@ -863,6 +863,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('fund-handovers/{id}/cancel', [FundHandoverController::class, 'cancel'])->name('fund-handovers.cancel');
         Route::resource('fund-handovers', FundHandoverController::class)->only(['index', 'store']);
         Route::get('finance-staff',[FinanceStaffController::class,'index'])->name('finance-staff.index');
+        Route::post('finance-staff',[FinanceStaffController::class,'store'])->name('finance-staff.store');
         Route::post('finance-staff/{user}/role',[FinanceStaffController::class,'role'])->name('finance-staff.role');
         Route::put('finance-staff/{user}/accounts',[FinanceStaffController::class,'accounts'])->name('finance-staff.accounts');
 

@@ -6,6 +6,7 @@
 <div class="content-wrapper">
     <div class="page-header"><h3 class="page-title">{{ __('Finance Staff') }}</h3></div>
     <div class="card"><div class="card-body">
+        <button type="button" class="btn btn-theme float-right" data-toggle="modal" data-target="#addAccountantModal"><i class="fa fa-plus"></i> {{ __('Add Accountant') }}</button>
         <p class="text-muted">{{ __('Manage Finance roles and Cashier Fund Account access for the current school.') }}</p>
         <div class="table-responsive"><table class="table table-striped" id="finance-staff-table">
             <thead><tr><th>{{ __('User') }}</th><th>{{ __('Finance Role') }}</th><th>{{ __('Fund Accounts') }}</th><th>{{ __('Status') }}</th><th>{{ __('Actions') }}</th></tr></thead>
@@ -13,7 +14,7 @@
                 @php($roles = collect(['Head Finance', 'Cashier'])->filter(fn ($role) => $user->hasRole($role))->values())
                 <tr>
                     <td>{{ $user->full_name }}</td>
-                    <td>{{ $roles->isNotEmpty() ? $roles->implode(', ') : __('No Finance Role') }}</td>
+                    <td>{{ $roles->isNotEmpty() ? $roles->map(fn ($role) => $role === 'Cashier' ? __('Accountant') : $role)->implode(', ') : __('No Finance Role') }}</td>
                     <td>{{ $user->authorized_bank_accounts->pluck('account_name')->implode(', ') ?: __('None assigned') }}</td>
                     <td><span class="badge badge-{{ $user->status ? 'success' : 'secondary' }}">{{ $user->status ? __('Active') : __('Inactive') }}</span></td>
                     <td>
@@ -35,6 +36,8 @@
         </table></div>
     </div></div>
 </div>
+
+<div class="modal fade" id="addAccountantModal" tabindex="-1" role="dialog" aria-labelledby="addAccountantTitle" aria-hidden="true"><div class="modal-dialog modal-lg" role="document"><div class="modal-content"><form id="add-accountant-form"><div class="modal-header"><h5 class="modal-title" id="addAccountantTitle">{{ __('Add Accountant') }}</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><div class="modal-body"><div id="add-accountant-error" class="alert alert-danger d-none"></div><p class="text-muted">{{ __('A secure password setup link will be sent to the new Accountant.') }}</p><div class="row"><div class="form-group col-md-6"><label>{{ __('First Name') }} *</label><input class="form-control" name="first_name" required></div><div class="form-group col-md-6"><label>{{ __('Last Name') }} *</label><input class="form-control" name="last_name" required></div><div class="form-group col-md-6"><label>{{ __('Email') }} *</label><input type="email" class="form-control" name="email" required></div><div class="form-group col-md-6"><label>{{ __('Mobile') }}</label><input class="form-control" name="mobile"></div></div><h6>{{ __('Fund Accounts') }}</h6><p class="text-muted small">{{ __('Optional. An Accountant without an assigned Fund Account can log in but cannot access Fund Accounts until one is assigned.') }}</p>@foreach($accounts as $account)<div class="form-check"><label class="form-check-label"><input class="form-check-input" type="checkbox" name="account_ids[]" value="{{ $account->id }}"> {{ $account->account_name }}</label></div>@endforeach</div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button class="btn btn-theme" type="submit">{{ __('Create Accountant') }}</button></div></form></div></div></div>
 
 <div class="modal fade" id="financeStaffModal" tabindex="-1" role="dialog" aria-labelledby="financeStaffModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document"><div class="modal-content">
@@ -107,5 +110,6 @@ document.getElementById('finance-staff-accounts-form').addEventListener('submit'
     if (!response.ok) return financeStaffError((await response.json().catch(() => ({}))).message || '{{ __('Unable to update Fund Accounts.') }}');
     financeStaffRefresh();
 });
+document.getElementById('add-accountant-form').addEventListener('submit', async event => { event.preventDefault(); const form=event.currentTarget; const error=document.getElementById('add-accountant-error'); error.classList.add('d-none'); const response=await fetch('{{ route('finance-staff.store') }}',{method:'POST',headers:{'X-CSRF-TOKEN':financeStaffToken,'Accept':'application/json'},body:new FormData(form)}); if(!response.ok){const body=await response.json().catch(()=>({})); error.textContent=body.message||'{{ __('Unable to create Accountant.') }}'; error.classList.remove('d-none'); return;} financeStaffRefresh(); });
 </script>
 @endsection
