@@ -53,7 +53,7 @@ class FinanceTransactionRegisterService
         if (!$type || $type === 'bank_transfer') {
             // Confirmed handovers are represented by their canonical transfer
             // only. Pending handovers never become a money-movement row.
-            $rows = $rows->concat($this->transferRows($actor, $accountIds, $from, $to));
+            $rows = $rows->concat($this->transferRows($actor, $accountIds, $accountId, $from, $to));
         }
 
         $rows = $rows->filter(function (array $row) use ($reference, $keyword) {
@@ -118,18 +118,21 @@ class FinanceTransactionRegisterService
                 0, $row->amount_mmk > 0 ? $row->amount_mmk : $row->amount, 'expense', $row->creator));
     }
 
-    private function transferRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
+    private function transferRows(User $actor, Collection $accounts, ?int $selectedAccountId, ?string $from, ?string $to): Collection
     {
         return $this->between(BankTransfer::query()->with(['from_account:id,account_name', 'to_account:id,account_name'])
             ->where('school_id', $actor->school_id)->completed()
             ->where(fn ($query) => $query->whereIn('from_account_id', $accounts)->orWhereIn('to_account_id', $accounts)), $from, $to, 'transfer_date')
-            ->get()->map(function (BankTransfer $row) use ($accounts) {
-                $out = $accounts->contains($row->from_account_id) ? (float) $row->amount : 0;
-                $in = $accounts->contains($row->to_account_id) ? (float) $row->amount : 0;
+            ->get()->map(function (BankTransfer $row) use ($accounts, $selectedAccountId) {
+                // An all-account view is an internal movement, not a receipt
+                // plus payment. Render it once and keep Money In/Out neutral.
+                // A selected account retains its genuine directional view.
+                $out = $selectedAccountId && $accounts->contains($row->from_account_id) ? (float) $row->amount : 0;
+                $in = $selectedAccountId && $accounts->contains($row->to_account_id) ? (float) $row->amount : 0;
                 return $this->row($row->transfer_date, 'bank_transfer', $row->id, $row->reference_no,
                     trim(($row->from_account?->account_name ?? '') . ' → ' . ($row->to_account?->account_name ?? '')),
                     $row->notes, null, trim(($row->from_account?->account_name ?? '') . ' → ' . ($row->to_account?->account_name ?? '')),
-                    $in, $out, 'internal');
+                    $in, $out, 'internal', null, __('Internal Transfer'));
             });
     }
 
@@ -139,11 +142,12 @@ class FinanceTransactionRegisterService
             ->when($to, fn ($q) => $q->whereDate($column, '<=', $to));
     }
 
-    private function row($date, string $type, int $sourceId, ?string $reference, ?string $counterparty, ?string $description, ?string $method, ?string $account, float $in, float $out, string $operating, $operator = null): array
+    private function row($date, string $type, int $sourceId, ?string $reference, ?string $counterparty, ?string $description, ?string $method, ?string $account, float $in, float $out, string $operating, $operator = null, ?string $displayType = null): array
     {
         return [
             'date' => Carbon::parse($date)->toDateString(),
             'transaction_type' => $type,
+            'display_type' => $displayType,
             'source_id' => $sourceId,
             'reference' => $reference,
             'counterparty' => $counterparty ?: '-',

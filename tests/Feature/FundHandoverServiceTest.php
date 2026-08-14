@@ -10,6 +10,7 @@ use App\Models\OtherIncome;
 use App\Models\User;
 use App\Services\FundAccountBalanceService;
 use App\Services\FundHandoverService;
+use App\Services\BankTransferService;
 use App\Services\FinanceTransactionRegisterService;
 use App\Services\OtherIncomeService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -18,6 +19,7 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class FundHandoverServiceTest extends TestCase
@@ -195,11 +197,101 @@ class FundHandoverServiceTest extends TestCase
         $result = $register->register($this->head);
         $this->assertSame(200.0, $result['summary']['operating_income'] - $before['summary']['operating_income']);
         $this->assertSame(50.0, $result['summary']['operating_expense'] - $before['summary']['operating_expense']);
-        $this->assertSame(100.0, $result['summary']['internal_in'] - $before['summary']['internal_in']);
-        $this->assertSame(100.0, $result['summary']['internal_out'] - $before['summary']['internal_out']);
+        // An all-account register renders an internal move once, neutrally.
+        // It must not look like both money received and money paid.
+        $neutralTransfer = $result['rows']->first(fn (array $row) => $row['reference'] === 'TR-REGISTER');
+        $this->assertSame('Internal Transfer', $neutralTransfer['display_type']);
+        $this->assertSame(0.0, $neutralTransfer['money_in']);
+        $this->assertSame(0.0, $neutralTransfer['money_out']);
+        $this->assertSame(0.0, $result['summary']['internal_in'] - $before['summary']['internal_in']);
+        $this->assertSame(0.0, $result['summary']['internal_out'] - $before['summary']['internal_out']);
         $this->assertSame(150.0, $result['summary']['operating_net'] - $before['summary']['operating_net']);
         $this->assertSame(150.0, $result['summary']['net_movement'] - $before['summary']['net_movement']);
         $this->assertSame($beforeTransferRows + 1, $result['rows']->where('transaction_type', 'bank_transfer')->count());
+
+        $sourcePerspective = $register->register($this->head, ['bank_account_id' => $this->headAccount->id, 'reference' => 'TR-REGISTER']);
+        $sourceRow = $sourcePerspective['rows']->sole();
+        $this->assertSame(0.0, $sourceRow['money_in']);
+        $this->assertSame(100.0, $sourceRow['money_out']);
+
+        $destinationPerspective = $register->register($this->head, ['bank_account_id' => $this->cashierAccount->id, 'reference' => 'TR-REGISTER']);
+        $destinationRow = $destinationPerspective['rows']->sole();
+        $this->assertSame(100.0, $destinationRow['money_in']);
+        $this->assertSame(0.0, $destinationRow['money_out']);
+    }
+
+    public function test_direct_transfer_requires_two_active_authorized_distinct_current_school_accounts_and_leaves_no_partial_write(): void
+    {
+        $service = app(BankTransferService::class);
+        $base = [
+            'from_account_id' => $this->headAccount->id,
+            'to_account_id' => $this->cashierAccount->id,
+            'amount' => 125,
+            'transfer_date' => '2026-01-05',
+            'reference_no' => 'P0-DIRECT-' . uniqid(),
+            'notes' => 'Synthetic direct transfer',
+        ];
+        $transfersBefore = BankTransfer::where('school_id', 1)->count();
+        $allTransfersBefore = BankTransfer::withTrashed()->where('school_id', 1)->count();
+        $incomeBefore = OtherIncome::where('school_id', 1)->count();
+        $expensesBefore = Expense::where('school_id', 1)->count();
+        $balances = app(FundAccountBalanceService::class);
+        $fromBefore = $balances->currentBalance($this->headAccount);
+        $toBefore = $balances->currentBalance($this->cashierAccount);
+
+        $transfer = $service->create($this->head, $base);
+        $this->assertSame('completed', $transfer->status);
+        $this->assertEqualsWithDelta($fromBefore - 125, $balances->currentBalance($this->headAccount), 0.001);
+        $this->assertEqualsWithDelta($toBefore + 125, $balances->currentBalance($this->cashierAccount), 0.001);
+        $this->assertSame($incomeBefore, OtherIncome::where('school_id', 1)->count());
+        $this->assertSame($expensesBefore, Expense::where('school_id', 1)->count());
+
+        $service->cancel($this->head, $transfer);
+        $this->assertEqualsWithDelta($fromBefore, $balances->currentBalance($this->headAccount), 0.001);
+        $this->assertEqualsWithDelta($toBefore, $balances->currentBalance($this->cashierAccount), 0.001);
+        $this->assertSame($incomeBefore, OtherIncome::where('school_id', 1)->count());
+        $this->assertSame($expensesBefore, Expense::where('school_id', 1)->count());
+
+        $inactive = $this->account('Inactive direct target', 1, 0);
+        $inactive->update(['is_active' => false]);
+        $softDeleted = $this->account('Deleted direct target', 1, 0);
+        $softDeleted->delete();
+        $foreign = $this->account('Foreign direct target', 2, 0);
+
+        foreach ([$inactive->id, $softDeleted->id, $foreign->id] as $invalidDestination) {
+            try {
+                $service->create($this->head, array_merge($base, ['to_account_id' => $invalidDestination]));
+                $this->fail('Inactive, deleted, and cross-school accounts must be rejected before a transfer is created.');
+            } catch (ModelNotFoundException) {
+                $this->assertTrue(true);
+            }
+        }
+
+        try {
+            $service->create($this->head, array_merge($base, ['to_account_id' => $this->headAccount->id]));
+            $this->fail('A transfer cannot use the same source and destination account.');
+        } catch (ValidationException) {
+            $this->assertTrue(true);
+        }
+
+        try {
+            $service->create($this->cashierA, $base);
+            $this->fail('A Cashier cannot forge an unassigned source account.');
+        } catch (ModelNotFoundException) {
+            $this->assertTrue(true);
+        }
+
+        try {
+            $service->create($this->head, array_merge($base, ['amount' => 100000]));
+            $this->fail('Insufficient balance must roll back without a partial transfer.');
+        } catch (ValidationException) {
+            $this->assertSame(0, DB::transactionLevel());
+        }
+
+        $this->assertSame($transfersBefore, BankTransfer::where('school_id', 1)->count(), 'A cancelled transfer is excluded from current transfer rows.');
+        $this->assertSame($allTransfersBefore + 1, BankTransfer::withTrashed()->where('school_id', 1)->count(), 'The cancelled transfer remains auditable as a soft-deleted record.');
+        $this->assertSame($incomeBefore, OtherIncome::where('school_id', 1)->count());
+        $this->assertSame($expensesBefore, Expense::where('school_id', 1)->count());
     }
 
     public function test_receive_money_reuses_account_scope_and_reference_reservation(): void

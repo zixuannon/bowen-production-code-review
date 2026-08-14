@@ -3,6 +3,13 @@ const { authenticateLocalBowenQa } = require('./bowen-qa-auth.cjs');
 
 const baseURL = process.env.LOCAL_QA_BASE_URL || 'http://127.0.0.1:8000';
 
+function csrfToken(html) {
+  const match = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/i);
+  if (!match) throw new Error('Expected local CSRF token.');
+  return match[1];
+}
+
 async function stateFor(email) {
   const state = `/tmp/finance-p32-${email.replace(/[^a-z]/g, '_')}.json`;
   await authenticateLocalBowenQa(email, state);
@@ -94,5 +101,65 @@ test('Transactions register scopes accounts and Receive Money creates one canoni
     await cashierApi.dispose();
     await headApi.dispose();
     await adminApi.dispose();
+  }
+});
+
+test('Internal transfers are neutral in the all-account register and directional for a selected Fund Account', async () => {
+  const headApi = await apiFor('qa_head_finance@bowen-qa.test');
+  const reference = `BOWEN_QA_P0_TRANSFER_${Date.now()}`;
+  const amount = '25.00';
+
+  try {
+    const accountsBefore = await accountsFor(headApi);
+    const source = accountsBefore.find((account) => account.account_number === 'QA_P2_BANK');
+    const destination = accountsBefore.find((account) => account.account_number === 'QA_P2_CASH_A');
+    expect(source).toBeTruthy();
+    expect(destination).toBeTruthy();
+
+    const transferPage = await headApi.get('/bank-transfers');
+    expect(transferPage.status()).toBe(200);
+    const create = await headApi.post('/bank-transfers', {
+      form: {
+        _token: csrfToken(await transferPage.text()),
+        from_account_id: String(source.id),
+        to_account_id: String(destination.id),
+        amount,
+        transfer_date: '2026-08-14',
+        reference_no: reference,
+        notes: 'BOWEN_QA P0 internal transfer perspective',
+      },
+      maxRedirects: 0,
+    });
+    expect(create.status()).toBe(200);
+    const created = await create.json();
+    expect(created.error).toBeFalsy();
+
+    const allAccounts = await headApi.get('/finance/transactions', { params: { type: 'bank_transfer', reference } });
+    expect(allAccounts.status()).toBe(200);
+    const allHtml = await allAccounts.text();
+    expect((allHtml.match(new RegExp(`<td>${reference}</td>`, 'g')) || [])).toHaveLength(1);
+    const allRow = allHtml.match(new RegExp(`<tr>[^]*?<td>${reference}</td>[^]*?</tr>`))?.[0] || '';
+    expect(allRow).toContain('Internal Transfer');
+    expect(allRow).not.toContain('25.00');
+
+    const sourceView = await headApi.get('/finance/transactions', { params: { type: 'bank_transfer', reference, bank_account_id: source.id } });
+    expect(sourceView.status()).toBe(200);
+    const sourceRow = (await sourceView.text()).match(new RegExp(`<tr>[^]*?<td>${reference}</td>[^]*?</tr>`))?.[0] || '';
+    expect(sourceRow).toContain('25.00');
+
+    const destinationView = await headApi.get('/finance/transactions', { params: { type: 'bank_transfer', reference, bank_account_id: destination.id } });
+    expect(destinationView.status()).toBe(200);
+    const destinationRow = (await destinationView.text()).match(new RegExp(`<tr>[^]*?<td>${reference}</td>[^]*?</tr>`))?.[0] || '';
+    expect(destinationRow).toContain('25.00');
+
+    const cancel = await headApi.delete(`/bank-transfers/${created.id}`, {
+      form: { _token: csrfToken(await transferPage.text()) },
+      maxRedirects: 0,
+    });
+    expect(cancel.status()).toBe(200);
+    const cancelled = await headApi.get('/finance/transactions', { params: { type: 'bank_transfer', reference } });
+    expect(await cancelled.text()).not.toContain(`<td>${reference}</td>`);
+  } finally {
+    await headApi.dispose();
   }
 });

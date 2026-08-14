@@ -2,18 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BankAccount;
 use App\Models\BankTransfer;
-use App\Models\FundHandover;
+use App\Services\BankTransferService;
 use App\Services\BootstrapTableService;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
-use App\Services\FundAccountBalanceService;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\ValidationException;
 use Throwable;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class BankTransferController extends Controller
 {
@@ -100,7 +100,7 @@ class BankTransferController extends Controller
         return response()->json($bulkData);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, BankTransferService $transfers)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-create');
@@ -114,88 +114,47 @@ class BankTransferController extends Controller
             'notes'           => 'nullable|string|max:1000',
         ]);
 
-        $access = app(FinanceAccountAccessService::class);
-        $fromAccount = $access->authorize(Auth::user(), (int) $request->from_account_id);
-        $toAccount   = $access->authorize(Auth::user(), (int) $request->to_account_id);
-
         try {
-            DB::beginTransaction();
-
-            $schoolId = Auth::user()->school_id;
-
-            // Same currency check: only allow transfers between same-currency accounts
-            if ($fromAccount->currency !== $toAccount->currency) {
-                return response()->json([
-                    'error'   => true,
-                    'message' => __('Cannot transfer between accounts with different currencies.'),
-                ], 422);
-            }
-
-            // Shared with FundHandover confirmation so every completed
-            // transfer uses one canonical balance calculation.
-            $currentBalance = app(FundAccountBalanceService::class)->currentBalance($fromAccount);
-
-            if ($currentBalance < $request->amount) {
-                return response()->json([
-                    'error'   => true,
-                    'message' => __('Insufficient balance in source account. Current balance: :balance', [
-                        'balance' => number_format($currentBalance, 2),
-                    ]),
-                ], 422);
-            }
-
-            $data = $request->only([
+            $transfer = $transfers->create(Auth::user(), $request->only([
                 'from_account_id', 'to_account_id', 'amount',
                 'transfer_date', 'reference_no', 'notes',
+            ]));
+
+            return response()->json([
+                'error' => false,
+                'message' => __('Bank transfer created successfully'),
+                'id' => $transfer->id,
             ]);
-            $data['school_id']  = $schoolId;
-            $data['status']     = 'completed';
-            $data['created_by'] = Auth::id();
-
-            BankTransfer::create($data);
-
-            DB::commit();
-            ResponseService::successResponse(__('Bank transfer created successfully'));
-        } catch (Throwable $e) {
-            DB::rollBack();
-            ResponseService::logErrorResponse($e, 'BankTransferController -> Store');
-            ResponseService::errorResponse();
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (ModelNotFoundException | HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            ResponseService::logErrorResponse($exception, 'BankTransferController -> Store');
+            return response()->json(['error' => true, 'message' => __('Error Occurred')], 500);
         }
     }
 
-    public function destroy($id)
+    public function destroy($id, BankTransferService $transfers)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-create');
 
-        $access = app(FinanceAccountAccessService::class);
-        $transfer = BankTransfer::owner()->findOrFail($id);
-        abort_if(
-            FundHandover::where('bank_transfer_id', $transfer->id)->where('status', FundHandover::STATUS_CONFIRMED)->exists(),
-            422,
-            'A confirmed fund handover is immutable and cannot be cancelled as an immediate transfer.',
-        );
-        abort_unless(
-            $access->canAccessAccount(Auth::user(), $transfer->from_account)
-            && $access->canAccessAccount(Auth::user(), $transfer->to_account),
-            403,
-        );
-
         try {
-            if ($transfer->status !== 'completed') {
-                return response()->json([
-                    'error'   => true,
-                    'message' => __('Only completed transfers can be cancelled.'),
-                ], 422);
-            }
+            $transfer = BankTransfer::owner()->findOrFail($id);
+            $transfers->cancel(Auth::user(), $transfer);
 
-            $transfer->update(['status' => 'cancelled']);
-            $transfer->delete(); // soft delete
-
-            ResponseService::successResponse(__('Bank transfer cancelled successfully'));
-        } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e, 'BankTransferController -> Destroy');
-            ResponseService::errorResponse();
+            return response()->json([
+                'error' => false,
+                'message' => __('Bank transfer cancelled successfully'),
+            ]);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (ModelNotFoundException | HttpExceptionInterface $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            ResponseService::logErrorResponse($exception, 'BankTransferController -> Destroy');
+            return response()->json(['error' => true, 'message' => __('Error Occurred')], 500);
         }
     }
 }

@@ -32,6 +32,18 @@ class FinanceAccountAccessService
         return $this->scope($user)->whereKey($accountId)->firstOrFail();
     }
 
+    /**
+     * Resolve an account that may receive a new financial movement.
+     *
+     * The normal Eloquent soft-delete scope is intentionally retained here;
+     * an inactive account is also not a valid source or destination even if a
+     * legacy pivot assignment still exists for it.
+     */
+    public function authorizeActive(User $user, int $accountId): BankAccount
+    {
+        return $this->scope($user)->active()->whereKey($accountId)->firstOrFail();
+    }
+
     public function canAccessAccount(User $user, BankAccount $account): bool
     {
         return $account->school_id === $user->school_id && $this->scope($user)->whereKey($account->id)->exists();

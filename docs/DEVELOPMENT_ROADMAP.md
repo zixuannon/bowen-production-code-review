@@ -109,6 +109,7 @@ Balances move only on designated receiver confirmation.
 - [x] Transaction page links to existing Expense and Expense Excel Import workflows rather than duplicating their writes/audit rules.
 - [x] Final authenticated BOWEN_QA Playwright acceptance passed 17/17 guarded scenarios: role-scoped register access/filtering, forged account rejection, Receive Money exactly once through `OtherIncome`, account balance/ledger/register/report integration, pending/confirmed handover representation, and reuse of the Expense/Import workflows.
 - [x] Final broader P1–P3.2 Finance regression passes (143 tests / 516 assertions).
+- [x] Finance UAT P0 local hardening: all-account Transactions render a completed internal transfer once as neutral `Internal Transfer`; account-filtered views remain directional. Direct BankTransfers now require active, non-deleted, authorized distinct accounts and use exception-safe transactions. Focused coverage verifies handover canonicality, no pending movement, cancellation balance reversal, and no income/expense side rows. Broader local Finance regression: 143 tests / 546 assertions. Guarded BOWEN_QA browser rerun remains pending local MariaDB credentials only.
 - [x] Guarded release runner prepared locally for only `expense_import_batches` and `other_incomes`; Phase 9 confirms both schemas are absent on all current production tenants. Legacy fee-import divergence is explicitly excluded.
 
 ## P2
