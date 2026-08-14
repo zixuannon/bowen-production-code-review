@@ -760,14 +760,14 @@
                             <span class="menu-group-text">{{ __('Bank Accounts') }}</span>
                         </li>
 
-                        @can('finance-fund-account-view')
+                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
                             <li class="nav-item">
                                 <a href="{{ route('bank-accounts.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Bank Accounts') }}
                                 </a>
                             </li>
-                        @endcanany
+                        @endif
 
                         @can('finance-transfer-view')
                             <li class="nav-item">
@@ -790,14 +790,14 @@
                             <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link">{{ __('Finance Staff') }}</a></li>
                         @endcan
 
-                        @can('finance-fund-account-view')
+                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
                             <li class="nav-item">
                                 <a href="{{ route('bank-account-report.index') }}" class="nav-link"
                                     data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Bank Account Report') }}
                                 </a>
                             </li>
-                        @endcanany
+                        @endif
                     </ul>
                 </div>
             </li>

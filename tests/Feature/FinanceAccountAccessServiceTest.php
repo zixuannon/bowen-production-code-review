@@ -91,6 +91,22 @@ class FinanceAccountAccessServiceTest extends TestCase
         $this->assertFalse($access->canModifyOpeningBalance($cashier));
     }
 
+    public function test_cashier_without_pivot_assignments_cannot_access_any_fund_account(): void
+    {
+        $this->ensurePivotTable();
+
+        $cashier = $this->createUser('unassigned-cashier', 1);
+        $this->assignRole($cashier, 'Cashier', 1);
+        $account = $this->createAccount('Unassigned cash account', 1);
+
+        $access = app(FinanceAccountAccessService::class);
+
+        $this->assertSame([], $access->accessibleAccounts($cashier)->pluck('id')->all());
+        $this->assertFalse($access->canAccessAccount($cashier, $account));
+        $this->expectException(ModelNotFoundException::class);
+        $access->authorize($cashier, $account->id);
+    }
+
     public function test_head_finance_can_assign_only_current_school_cashiers_and_cashier_cannot_manage_assignments(): void
     {
         $this->ensurePivotTable();

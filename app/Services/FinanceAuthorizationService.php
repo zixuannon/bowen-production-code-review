@@ -27,6 +27,10 @@ class FinanceAuthorizationService
         'finance-payment-create' => ['fees-paid'],
         'finance-expense-view' => ['expense-list'],
         'finance-expense-create' => ['expense-create'],
+        // Bank Accounts historically used the established expense-list grant.
+        // Retain that read-only compatibility for existing tenant roles while
+        // keeping Fund Account management a separately named capability.
+        'finance-fund-account-view' => ['expense-list'],
     ];
 
     public function assert(User $user, string $permission): void
