@@ -616,188 +616,88 @@
             </li>
         @endcanany
 
-        {{-- Fees --}}
-
-        @canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'finance-dashboard-view', 'finance-payment-view', 'fees-paid'])
+        {{-- Finance --}}
+        @canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'finance-dashboard-view', 'finance-payment-view', 'fees-paid',
+            'expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
+            'finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create', 'finance-fund-account-view',
+            'finance-transfer-view', 'finance-handover-view', 'finance-staff-manage'])
             <li class="nav-item">
-                <a class="nav-link" data-toggle="collapse" href="#fees-menu" aria-expanded="false"
-                    aria-controls="fees-menu" data-access="@hasFeatureAccess('Fees Management')">
+                <a class="nav-link" data-toggle="collapse" href="#finance-menu" aria-expanded="false"
+                    aria-controls="finance-menu" data-access="@hasAnyFeatureAccess(['Fees Management','Expense Management'])">
                     <i class="fa fa-dollar menu-icon"></i>
                     <span class="menu-title">{{ __('Finance') }}</span>
                     <i class="menu-arrow"></i>
                 </a>
-                <div class="collapse" id="fees-menu">
+                <div class="collapse" id="finance-menu">
                     <ul class="nav flex-column sub-menu">
-                        {{-- === Overview / 财务总览 === --}}
+                        {{-- 总览 --}}
                         @canany(['finance-dashboard-view', 'fees-paid'])
-                            <li class="nav-item menu-group-label">
-                                <span class="menu-group-text">{{ __('Overview / Financial Overview') }}</span>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('finance-dashboard.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Finance Dashboard') }}
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('finance-transactions.index') }}" class="nav-link" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Transactions') }}
-                                </a>
-                            </li>
+                            <li class="nav-item menu-group-label"><span class="menu-group-text">{{ __('Overview / Financial Overview') }}</span></li>
+                            <li class="nav-item"><a href="{{ route('finance-dashboard.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Finance Dashboard') }}</a></li>
                         @endcanany
 
-                        {{-- === Student Finance / 学生收费 === --}}
+                        {{-- 收支 --}}
+                        @if (Auth::user()->canany(['finance-dashboard-view', 'fees-paid', 'finance-payment-view', 'finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create']))
+                            <li class="nav-item menu-group-label"><span class="menu-group-text">{{ __('Income and Expenses') }}</span></li>
+                        @endif
                         @canany(['finance-payment-view', 'fees-paid'])
-                            <li class="nav-item menu-group-label">
-                                <span class="menu-group-text">{{ __('Student Finance') }}</span>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('outstanding-fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Student Finance') }}
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('student-ledger.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Student Ledger') }}
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('fees.paid.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Fee Collection') }}
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('fees.optional') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Optional Fees') }}</a>
-                            </li>
+                            <li class="nav-item"><a href="{{ route('outstanding-fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Student Finance') }}</a></li>
+                        @endcanany
+                        @canany(['finance-dashboard-view', 'fees-paid'])
+                            <li class="nav-item"><a href="{{ route('finance-transactions.index') }}" class="nav-link" data-access="@hasFeatureAccess('Expense Management')">{{ __('Other Income') }}</a></li>
+                        @endcanany
+                        @canany(['finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create'])
+                            <li class="nav-item"><a href="{{ route('expense.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Expense Records') }}</a></li>
                         @endcanany
 
-                        {{-- === Reports / 财务报表 === --}}
+                        {{-- 资金管理 --}}
+                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view') || Auth::user()->canany(['finance-transfer-view', 'finance-handover-view']))
+                            <li class="nav-item menu-group-label"><span class="menu-group-text">{{ __('Fund Management') }}</span></li>
+                        @endif
+                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
+                            <li class="nav-item"><a href="{{ route('bank-accounts.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Bank Accounts') }}</a></li>
+                        @endif
+                        @can('finance-transfer-view')
+                            <li class="nav-item"><a href="{{ route('bank-transfers.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Bank Transfer') }}</a></li>
+                        @endcan
+                        @can('finance-handover-view')
+                            <li class="nav-item"><a href="{{ route('fund-handovers.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Fund Handover') }}</a></li>
+                        @endcan
+
+                        {{-- 查询与报表 --}}
+                        @if (Auth::user()->canany(['finance-payment-view', 'fees-paid']) || app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
+                            <li class="nav-item menu-group-label"><span class="menu-group-text">{{ __('Reports and Queries') }}</span></li>
+                        @endif
                         @canany(['finance-payment-view', 'fees-paid'])
-                            <li class="nav-item menu-group-label">
-                                <span class="menu-group-text">{{ __('Reports / Finance Reports') }}</span>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('finance-report.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Finance Report') }}
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="{{ route('fees.transactions.log.index') }}" class="nav-link"
-                                    data-access="@hasFeatureAccess('Fees Management')">{{ __('Transaction Logs') }}
-                                </a>
-                            </li>
+                            <li class="nav-item"><a href="{{ route('student-ledger.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Student Ledger') }}</a></li>
+                            <li class="nav-item"><a href="{{ route('fees.paid.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Fee Collection') }}</a></li>
+                            <li class="nav-item"><a href="{{ route('fees.transactions.log.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Transaction Records') }}</a></li>
+                            <li class="nav-item"><a href="{{ route('finance-report.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Finance Report') }}</a></li>
                         @endcanany
+                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
+                            <li class="nav-item"><a href="{{ route('bank-account-report.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Bank Account Report') }}</a></li>
+                        @endif
 
-                        {{-- === Fee Setup / 收费设置 === --}}
-                        @canany(['fees-list', 'fees-type-list'])
-                            <li class="nav-item menu-group-label">
-                                <span class="menu-group-text">{{ __('Fee Setup / Fee Settings') }}</span>
-                            </li>
-                        @endcanany
+                        {{-- 设置 --}}
+                        @if (Auth::user()->canany(['fees-list', 'fees-type-list', 'finance-payment-view', 'fees-paid', 'expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete', 'finance-staff-manage']))
+                            <li class="nav-item menu-group-label"><span class="menu-group-text">{{ __('Finance Settings') }}</span></li>
+                        @endif
+                        @can('finance-staff-manage')
+                            <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link" data-access="@hasFeatureAccess('Expense Management')">{{ __('Finance Staff') }}</a></li>
+                        @endcan
                         @can('fees-list')
-                            <li class="nav-item">
-                                <a href="{{ route('fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Manage Fees') }}</a>
-                            </li>
+                            <li class="nav-item"><a href="{{ route('fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Fee Items') }}</a></li>
                         @endcan
                         @can('fees-type-list')
-                            <li class="nav-item">
-                                <a href="{{ route('fees-type.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Fee Types') }}
-                                </a>
-                            </li>
+                            <li class="nav-item"><a href="{{ route('fees-type.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Fee Types') }}</a></li>
                         @endcan
-                    </ul>
-                </div>
-            </li>
-        @endcanany
-
-        {{-- Expense --}}
-        @if (Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
-            'finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create', 'finance-fund-account-view', 'finance-transfer-view', 'finance-handover-view', 'finance-staff-manage']))
-            <li class="nav-item">
-                <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
-                    aria-controls="expense-menu" data-access="@hasFeatureAccess('Expense Management')">
-                    <i class="fa fa-money menu-icon"></i>
-                    <span class="menu-title">{{ __('Expenses') }}</span>
-                    <i class="menu-arrow"></i>
-                </a>
-                <div class="collapse" id="expense-menu">
-                    <ul class="nav flex-column sub-menu">
-                        {{-- Expense Management 支出管理 --}}
-                        <li class="nav-item menu-group-label">
-                            <span class="menu-group-text">{{ __('Expense Management') }}</span>
-                        </li>
-                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
-                            'expense-category-delete'])
-                            <li class="nav-item">
-                                <a href="{{ route('finance-category.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
-                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('Finance Categories') }} </a>
-                            </li>
+                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete'])
+                            <li class="nav-item"><a href="{{ route('finance-category.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Finance Categories') }}</a></li>
+                            <li class="nav-item"><a href="{{ route('expense-category.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">{{ __('Expense Categories') }}</a></li>
                         @endcanany
-
-                        @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
-                            'expense-category-delete'])
-                            <li class="nav-item">
-                                <a href="{{ route('expense-category.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
-                                    data-access="@hasFeatureAccess('Expense Management')">{{ __('Expense Categories') }} </a>
-                            </li>
+                        @canany(['finance-payment-view', 'fees-paid'])
+                            <li class="nav-item"><a href="{{ route('fees.optional') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">{{ __('Optional Fees') }}</a></li>
                         @endcanany
-
-                        @canany(['finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create'])
-                            <li class="nav-item">
-                                <a href="{{ route('expense.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Manage Expenses') }}
-                                </a>
-                            </li>
-                        @endcanany
-
-                        {{-- Bank Accounts 银行账户 --}}
-                        <li class="nav-item menu-group-label">
-                            <span class="menu-group-text">{{ __('Bank Accounts') }}</span>
-                        </li>
-
-                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
-                            <li class="nav-item">
-                                <a href="{{ route('bank-accounts.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Accounts') }}
-                                </a>
-                            </li>
-                        @endif
-
-                        @can('finance-transfer-view')
-                            <li class="nav-item">
-                                <a href="{{ route('bank-transfers.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Transfer') }}
-                                </a>
-                            </li>
-                        @endcanany
-
-                        @can('finance-handover-view')
-                            <li class="nav-item">
-                                <a href="{{ route('fund-handovers.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Fund Handover') }}
-                                </a>
-                            </li>
-                        @endcan
-                        @can('finance-staff-manage')
-                            <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link">{{ __('Finance Staff') }}</a></li>
-                        @endcan
-
-                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
-                            <li class="nav-item">
-                                <a href="{{ route('bank-account-report.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Account Report') }}
-                                </a>
-                            </li>
-                        @endif
                     </ul>
                 </div>
             </li>
