@@ -21,7 +21,7 @@ async function apiFor(email) {
 }
 
 async function accountRows(api) {
-  const response = await api.get('/bank-accounts/list');
+  const response = await api.get('/bank-accounts/list', { params: { limit: 100 } });
   expect(response.status()).toBe(200);
   return (await response.json()).rows;
 }

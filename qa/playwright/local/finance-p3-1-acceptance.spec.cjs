@@ -76,7 +76,7 @@ test('School Admin permission UI grants and revokes Finance expense access witho
 
     const cashier = await apiFor('qa_cashier_a@bowen-qa.test');
     try {
-      const accounts = (await (await adminApi.get('/bank-accounts/list')).json()).rows;
+      const accounts = (await (await adminApi.get('/bank-accounts/list', { params: { limit: 100 } })).json()).rows;
       const forbidden = accounts.find((account) => account.account_number === 'QA_P2_CASH_B');
       expect(forbidden).toBeTruthy();
       expect([403, 404]).toContain((await cashier.get(`/bank-accounts/${forbidden.id}`, { maxRedirects: 0 })).status());
@@ -87,12 +87,14 @@ test('School Admin permission UI grants and revokes Finance expense access witho
   }
 });
 
-test('Expense Import UI previews without writes, confirms create-only rows, and rejects invalid or unassigned account data', async ({ page, browser }) => {
+test('Expense Import UI previews without writes, confirms create-only rows, and rejects invalid or unassigned account data', async ({ browser }) => {
   const reference = `BOWEN_QA_P31_EXP_${Date.now()}`;
   const heading = ['Date', 'Expense Category', 'Finance Category', 'Title', 'Reference No', 'Amount (MMK)', 'Payment Method', 'Fund Account Name', 'Remark', 'Academic Year'];
   const nativeDialogs = [];
   const adminApi = await apiFor('qa_admin@bowen-qa.test');
-  const currentP1Bank = (await (await adminApi.get('/bank-accounts/list')).json()).rows
+  const adminContext = await browser.newContext({ baseURL, storageState: await stateFor('qa_admin@bowen-qa.test') });
+  const page = await adminContext.newPage();
+  const currentP1Bank = (await (await adminApi.get('/bank-accounts/list', { params: { limit: 100 } })).json()).rows
     .find((account) => account.account_number === 'BOWEN_QA_P1_BANK');
   expect(currentP1Bank).toBeTruthy();
   const valid = csv([heading, ['2026-08-13', 'Bowen QA Expense Category', '', 'BOWEN_QA P3.1 UI expense', reference, '75', 'Cash', currentP1Bank.account_name, 'browser import', 'Bowen QA 2026']]);
@@ -101,7 +103,7 @@ test('Expense Import UI previews without writes, confirms create-only rows, and 
   page.on('dialog', (dialog) => { nativeDialogs.push(dialog.type()); dialog.dismiss(); });
 
   try {
-    expect((await page.goto('/expense', { waitUntil: 'domcontentloaded' }))?.status()).toBe(200);
+    expect((await page.goto(`${baseURL}/expense`, { waitUntil: 'domcontentloaded' }))?.status()).toBe(200);
     const templateLink = page.getByText('Download business-field template');
     expect(await templateLink.getAttribute('href')).toContain('/expense/import/template');
     const template = await page.request.get(await templateLink.getAttribute('href'));
@@ -147,6 +149,7 @@ test('Expense Import UI previews without writes, confirms create-only rows, and 
 
     expect(nativeDialogs).toEqual([]);
   } finally {
+    await adminContext.close();
     await adminApi.dispose();
   }
 });
