@@ -183,6 +183,12 @@ Spatie `Cashier` role. Role records, permission defaults, participant/custody
 checks, and Fund Account assignment scope continue to use `Cashier`; no
 `Accountant` role exists or is provisioned.
 
+Finance Staff Accountant onboarding now uses Laravel's real tenant-local
+password broker. Its reset notification derives `school_code` from the
+trusted central school registry for the new user's `school_id`; the reset
+endpoint requires that code, reconnects only to that registered tenant, and
+requires the email/user ownership to match before consuming the token.
+
 ## Next task
 
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.

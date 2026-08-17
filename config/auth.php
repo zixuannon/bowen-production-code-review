@@ -102,6 +102,16 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+        // Tenant reset tokens must always use the selected school connection;
+        // they must never fall back to whichever default connection was first
+        // resolved during the request lifecycle.
+        'school_users' => [
+            'provider' => 'school_users',
+            'table' => 'password_resets',
+            'connection' => 'school',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
     ],
 
     /*

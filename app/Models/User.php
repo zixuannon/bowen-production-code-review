@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\TenantResetPassword;
 use App\Repositories\StudentSubject\StudentSubjectInterface;
 use App\Services\CachingService;
 use App\Traits\DateFormatTrait;
@@ -78,6 +79,21 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    /**
+     * Tenant password resets must carry the trusted school context required by
+     * the reset endpoint. Central/global users retain Laravel's default link.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        if (!$this->school_id) {
+            parent::sendPasswordResetNotification($token);
+
+            return;
+        }
+
+        $this->notify(new TenantResetPassword($token, (int) $this->school_id));
+    }
 
     protected $appends = ['full_name', 'school_names', 'role'];
 

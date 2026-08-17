@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\School;
+use App\Services\TenantPasswordBroker;
 use Illuminate\Foundation\Auth\SendsPasswordResetEmails;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
@@ -29,22 +30,27 @@ class ForgotPasswordController extends Controller
     {
         Log::info('Password reset link requested', ['email_hash' => hash('sha256', strtolower($request->email ?? ''))]);
         $request->validate([
-            'email' => 'required|email'
+            'email' => ['required', 'email'],
+            'school_code' => ['required', 'string', 'max:64'],
         ]);
 
-        if ($request->school_code) {
-            $school = School::where('code',$request->school_code)->first();
-            if ($school) {
-                DB::setDefaultConnection('school');
-                Config::set('database.connections.school.database', $school->database_name);
-                DB::purge('school');
-                DB::connection('school')->reconnect();
-                DB::setDefaultConnection('school');    
-            }
+        $school = School::on('mysql')
+            ->where('code', $request->school_code)
+            ->where('installed', 1)
+            ->where('status', 1)
+            ->first();
+
+        if (!$school) {
+            return back()->withErrors(['school_code' => __('Invalid school identifier.')]);
         }
 
+        Config::set('database.connections.school.database', $school->database_name);
+        DB::purge('school');
+        DB::connection('school')->reconnect();
+        DB::setDefaultConnection('school');
+
         try {
-            $response = $this->broker()->sendResetLink(
+            $response = app(TenantPasswordBroker::class)->broker()->sendResetLink(
                 $request->only('email')
             );
            
