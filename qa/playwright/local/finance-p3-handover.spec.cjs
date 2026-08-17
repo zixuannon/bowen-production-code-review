@@ -277,15 +277,21 @@ test('receiver without an assigned Fund Account gets a clear handover empty stat
 
   async function saveCashierAccounts(page, accountName = null) {
     const modal = page.getByRole('dialog', { name: 'Manage Finance Staff' });
+    await expect(modal).toBeVisible();
+    // Bootstrap completes the modal's data initialization after the opener
+    // click; wait for that client-side state before changing checkboxes.
+    await page.waitForTimeout(250);
     while (await modal.locator('.finance-staff-account:checked').count()) {
       await modal.locator('.finance-staff-account:checked').first().uncheck();
     }
+    await expect(modal.locator('.finance-staff-account:checked')).toHaveCount(0);
     if (accountName) await modal.getByLabel(accountName).check();
     const response = page.waitForResponse(candidate => candidate.url().includes('/finance-staff/') && candidate.url().endsWith('/accounts') && candidate.request().method() === 'PUT');
-    const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
     await modal.getByRole('button', { name: 'Save Fund Accounts' }).click();
-    expect((await response).status()).toBe(200);
-    await navigation;
+    const accountUpdate = await response;
+    expect(accountUpdate.status()).toBe(200);
+    if (!accountName) expect(accountUpdate.request().postDataJSON()).toEqual({ account_ids: [] });
+    await page.goto('/finance-staff', { waitUntil: 'domcontentloaded' });
   }
 
   try {

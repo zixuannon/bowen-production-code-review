@@ -60,9 +60,19 @@ class FinanceStaffController extends Controller {
     }
     public function accounts(Request $request, User $user, FinanceAccountAccessService $access) {
         $actor=Auth::user(); app(FinanceAuthorizationService::class)->assert($actor, 'finance-staff-manage'); abort_unless($access->canManageAccountAssignments($actor) && $user->school_id===$actor->school_id && $user->hasRole('Cashier'),403);
-        $data=$request->validate(['account_ids'=>['array'],'account_ids.*'=>['integer']]);
-        $ids=BankAccount::where('school_id',$actor->school_id)->active()->whereIn('id',$data['account_ids']??[])->pluck('id')->all();
-        abort_unless(count($ids)===count($data['account_ids']??[]),422);
-        $user->authorized_bank_accounts()->sync($ids); return response()->json(['error'=>false]);
+        // This endpoint replaces an Accountant's complete account set. An
+        // unchecked final checkbox is intentionally an empty assignment, not
+        // a no-op (and is not a convention for any other form endpoint).
+        $requestedAccountIds = $request->input('account_ids');
+        $request->merge(['account_ids' => $requestedAccountIds === null ? [] : $requestedAccountIds]);
+        $data=$request->validate(['account_ids'=>['present','array'],'account_ids.*'=>['integer']]);
+        $ids=BankAccount::where('school_id',$actor->school_id)->active()->whereIn('id',$data['account_ids'])->pluck('id')->all();
+        abort_unless(count($ids)===count($data['account_ids']),422);
+        if ($ids === []) {
+            $user->authorized_bank_accounts()->detach();
+        } else {
+            $user->authorized_bank_accounts()->sync($ids);
+        }
+        return response()->json(['error'=>false]);
     }
 }

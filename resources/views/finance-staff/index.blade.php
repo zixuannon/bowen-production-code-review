@@ -73,7 +73,7 @@ function financeStaffError(message) { const box = document.getElementById('finan
 function financeStaffClearError() { const box = document.getElementById('finance-staff-error'); box.textContent = ''; box.classList.add('d-none'); }
 function financeStaffRefresh() { window.location.assign('{{ route('finance-staff.index') }}'); }
 function financeStaffRoles() { return financeStaffUser.roles.length ? financeStaffUser.roles.map(role => role === 'Cashier' ? '{{ __('Accountant') }}' : role).join(', ') : '{{ __('No Finance Role') }}'; }
-function financeStaffAccounts() { const selected = [...document.querySelectorAll('.finance-staff-account:checked')].map(input => input.parentElement.textContent.trim()); return selected.length ? selected.join(', ') : '{{ __('None assigned') }}'; }
+function financeStaffAccounts() { const selected = [...document.querySelectorAll('#finance-staff-accounts-form .finance-staff-account:checked')].map(input => input.parentElement.textContent.trim()); return selected.length ? selected.join(', ') : '{{ __('None assigned') }}'; }
 document.querySelectorAll('.finance-staff-manage').forEach(button => button.addEventListener('click', () => {
     const roles = button.dataset.roles.split('|').filter(Boolean);
     const accountIds = button.dataset.accountIds.split(',').filter(Boolean);
@@ -105,7 +105,7 @@ document.querySelectorAll('.finance-role-action').forEach(button => button.addEv
 document.getElementById('finance-staff-accounts-form').addEventListener('submit', async event => {
     event.preventDefault(); if (!financeStaffUser) return;
     financeStaffClearError();
-    const account_ids = [...document.querySelectorAll('.finance-staff-account:checked')].map(input => Number(input.value));
+    const account_ids = [...event.currentTarget.querySelectorAll('.finance-staff-account:checked')].map(input => Number(input.value));
     const response = await fetch(`/finance-staff/${financeStaffUser.id}/accounts`, {method: 'PUT', headers: {'X-CSRF-TOKEN': financeStaffToken, 'Accept': 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify({account_ids})});
     if (!response.ok) return financeStaffError((await response.json().catch(() => ({}))).message || '{{ __('Unable to update Fund Accounts.') }}');
     financeStaffRefresh();
