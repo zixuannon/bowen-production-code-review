@@ -137,6 +137,28 @@ class FundHandoverServiceTest extends TestCase
         }
     }
 
+    public function test_handover_messages_use_accountant_while_participant_checks_keep_the_cashier_role(): void
+    {
+        $service = app(FundHandoverService::class);
+
+        $this->assertTrue($this->cashierA->hasRole('Cashier'));
+        try {
+            $service->create($this->cashierA, $this->payload($this->cashierB, 25, $this->cashierAccount, $this->cashierAccount));
+            $this->fail('Accountant-to-Accountant handovers must be rejected.');
+        } catch (AccessDeniedHttpException $exception) {
+            $this->assertStringContainsString('Head Finance and Accountant', $exception->getMessage());
+            $this->assertStringNotContainsString('Head Finance and Cashier', $exception->getMessage());
+        }
+    }
+
+    public function test_handover_template_uses_accountant_in_its_participant_guidance(): void
+    {
+        $template = file_get_contents(resource_path('views/bank-account/handover/index.blade.php'));
+
+        $this->assertStringContainsString('Head Finance and Accountant', $template);
+        $this->assertStringNotContainsString('Head Finance and Cashier', $template);
+    }
+
     public function test_receiver_without_an_assigned_fund_account_has_no_destination_and_cannot_create_a_handover(): void
     {
         $service = app(FundHandoverService::class);

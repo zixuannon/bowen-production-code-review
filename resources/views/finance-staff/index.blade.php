@@ -7,7 +7,7 @@
     <div class="page-header"><h3 class="page-title">{{ __('Finance Staff') }}</h3></div>
     <div class="card"><div class="card-body">
         <button type="button" class="btn btn-theme float-right" data-toggle="modal" data-target="#addAccountantModal"><i class="fa fa-plus"></i> {{ __('Add Accountant') }}</button>
-        <p class="text-muted">{{ __('Manage Finance roles and Cashier Fund Account access for the current school.') }}</p>
+        <p class="text-muted">{{ __('Manage Finance roles and Accountant Fund Account access for the current school.') }}</p>
         <div class="table-responsive"><table class="table table-striped" id="finance-staff-table">
             <thead><tr><th>{{ __('User') }}</th><th>{{ __('Finance Role') }}</th><th>{{ __('Fund Accounts') }}</th><th>{{ __('Status') }}</th><th>{{ __('Actions') }}</th></tr></thead>
             <tbody>@foreach($users as $user)
@@ -47,15 +47,15 @@
             <dl class="row mb-3"><dt class="col-sm-4">{{ __('User') }}</dt><dd class="col-sm-8" id="finance-staff-user"></dd><dt class="col-sm-4">{{ __('Current Finance Role') }}</dt><dd class="col-sm-8" id="finance-staff-role"></dd><dt class="col-sm-4">{{ __('Assigned Fund Accounts') }}</dt><dd class="col-sm-8" id="finance-staff-current-accounts"></dd></dl>
             @if($actor->hasRole('School Admin'))
                 <div id="finance-staff-role-actions" class="border rounded p-3 mb-3">
-                    <h6>{{ __('Finance Role') }}</h6><p class="text-muted small">{{ __('Choose a clear role action. Removing Cashier also removes that user’s Fund Account assignments.') }}</p>
-                    <button type="button" class="btn btn-sm btn-outline-success finance-role-action" data-role="Cashier" data-action="assign">{{ __('Assign Cashier') }}</button>
+                    <h6>{{ __('Finance Role') }}</h6><p class="text-muted small">{{ __('Choose a clear role action. Removing Accountant also removes that user’s Fund Account assignments.') }}</p>
+                    <button type="button" class="btn btn-sm btn-outline-success finance-role-action" data-role="Cashier" data-action="assign">{{ __('Assign Accountant') }}</button>
                     <button type="button" class="btn btn-sm btn-outline-primary finance-role-action" data-role="Head Finance" data-action="assign">{{ __('Assign Head Finance') }}</button>
-                    <button type="button" class="btn btn-sm btn-outline-danger finance-role-action" data-role="Cashier" data-action="remove">{{ __('Remove Cashier') }}</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger finance-role-action" data-role="Cashier" data-action="remove">{{ __('Remove Accountant') }}</button>
                     <button type="button" class="btn btn-sm btn-outline-danger finance-role-action" data-role="Head Finance" data-action="remove">{{ __('Remove Head Finance') }}</button>
                 </div>
             @endif
             <form id="finance-staff-accounts-form">
-                <h6>{{ __('Cashier Fund Accounts') }}</h6><p class="text-muted small">{{ __('Only active current-school Fund Accounts can be assigned.') }}</p>
+                <h6>{{ __('Accountant Fund Accounts') }}</h6><p class="text-muted small">{{ __('Only active current-school Fund Accounts can be assigned.') }}</p>
                 <div id="finance-staff-account-options" class="row">@foreach($accounts as $account)<div class="col-md-6"><div class="form-check mb-2"><label class="form-check-label"><input class="form-check-input finance-staff-account" type="checkbox" value="{{ $account->id }}"> {{ $account->account_name }}</label></div></div>@endforeach</div>
                 <div class="modal-footer px-0 pb-0"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button type="submit" class="btn btn-theme">{{ __('Save Fund Accounts') }}</button></div>
             </form>
@@ -72,7 +72,7 @@ let financeStaffUser = null;
 function financeStaffError(message) { const box = document.getElementById('finance-staff-error'); box.textContent = message; box.classList.remove('d-none'); }
 function financeStaffClearError() { const box = document.getElementById('finance-staff-error'); box.textContent = ''; box.classList.add('d-none'); }
 function financeStaffRefresh() { window.location.assign('{{ route('finance-staff.index') }}'); }
-function financeStaffRoles() { return financeStaffUser.roles.length ? financeStaffUser.roles.join(', ') : '{{ __('No Finance Role') }}'; }
+function financeStaffRoles() { return financeStaffUser.roles.length ? financeStaffUser.roles.map(role => role === 'Cashier' ? '{{ __('Accountant') }}' : role).join(', ') : '{{ __('No Finance Role') }}'; }
 function financeStaffAccounts() { const selected = [...document.querySelectorAll('.finance-staff-account:checked')].map(input => input.parentElement.textContent.trim()); return selected.length ? selected.join(', ') : '{{ __('None assigned') }}'; }
 document.querySelectorAll('.finance-staff-manage').forEach(button => button.addEventListener('click', () => {
     const roles = button.dataset.roles.split('|').filter(Boolean);

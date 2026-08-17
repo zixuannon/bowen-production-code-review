@@ -48,7 +48,7 @@ class FundHandoverService
     public function assertParticipant(User $user): void
     {
         if (!$this->isParticipant($user)) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers require Head Finance or Cashier role.');
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers require Head Finance or Accountant role.');
         }
     }
 
@@ -181,7 +181,7 @@ class FundHandoverService
     {
         if ($user->hasRole('Head Finance')) return 'head';
         if ($user->hasRole('Cashier')) return 'cashier';
-        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers require Head Finance or Cashier role.');
+        throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers require Head Finance or Accountant role.');
     }
 
     private function assertValidParties(User $sender, User $receiver): void
@@ -190,7 +190,7 @@ class FundHandoverService
             throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Handover participants must be distinct users in the same school.');
         }
         if ($this->handoverRole($sender) === $this->handoverRole($receiver)) {
-            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers must be between Head Finance and Cashier; Cashier-to-Cashier is not allowed.');
+            throw new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException('Fund handovers must be between Head Finance and Accountant; Accountant-to-Accountant is not allowed.');
         }
     }
 

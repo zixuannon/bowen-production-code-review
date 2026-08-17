@@ -176,6 +176,13 @@ Historical same-host staging work is retained for future reference only. It is n
 - Runtime isolation verified: central DB `eschool_staging`, school DB `eschool_staging_finance_qa`, mail `log`, queue `sync`, cache/session `file`. Production project and production databases were not modified.
 - Staging-only visual guard deployed: login and authenticated layouts render `STAGING — FINANCE_QA · TEST DATA ONLY` only when `app()->environment('staging')`. The focused view test confirms it renders for staging and is absent for production; staging login rendering was verified over HTTPS. Staging `APP_NAME` is `STAGING_FINANCE_QA` so the login title cannot be mistaken for production.
 
+## Finance UAT terminology
+
+Finance users see **Accountant** as the user-facing name for the internal
+Spatie `Cashier` role. Role records, permission defaults, participant/custody
+checks, and Fund Account assignment scope continue to use `Cashier`; no
+`Accountant` role exists or is provisioned.
+
 ## Next task
 
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.

@@ -68,6 +68,7 @@ test('BOWEN_QA two-party Fund Handover remains pending until receiver confirmati
       expect(pageResponse?.status()).toBe(200);
       await expect(headPage.locator('a[href$="/fund-handovers"]')).toBeVisible();
       await expect(headPage.getByText('New Pending Handover')).toBeVisible();
+      await expect(headPage.getByText('Head Finance and Accountant')).toBeVisible();
       await headPage.locator('#receiver_id').selectOption({ label: 'QA Cashier A' });
       await headPage.locator('#from_account_id').selectOption(String(source.id));
       await headPage.locator('#to_account_id').selectOption(String(destination.id));

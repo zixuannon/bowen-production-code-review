@@ -8,7 +8,7 @@
     @if($canParticipate)
     <div class="row"><div class="col-12 grid-margin stretch-card"><div class="card"><div class="card-body">
         <h4 class="card-title">{{ __('New Pending Handover') }}</h4>
-        <p class="text-muted">{{ __('A pending handover does not change balances. The designated receiver must confirm before a transfer is recorded.') }}</p>
+        <p class="text-muted">{{ __('A pending handover does not change balances. The designated receiver must confirm before a transfer is recorded. Fund Handovers are between Head Finance and Accountant.') }}</p>
         <form id="fund-handover-form"><input type="hidden" name="_token" value="{{ csrf_token() }}">
             <div class="row">
                 <div class="form-group col-md-3"><label>{{ __('Receiver') }}</label><select class="form-control" name="receiver_id" id="receiver_id" required><option value="">{{ __('Select receiver') }}</option>@foreach($recipients as $user)<option value="{{ $user->id }}">{{ $user->first_name }} {{ $user->last_name }}</option>@endforeach</select></div>
