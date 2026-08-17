@@ -18,7 +18,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h4 class="card-title">{{ __('Add New Bank Account') }}</h4>
-                        <form class="pt-3" id="create-form" novalidate="novalidate">
+                        <form class="pt-3" id="bank-account-create-form" action="{{ route('bank-accounts.store') }}" method="POST" novalidate="novalidate">
                             @csrf
                             <div class="row">
                                 <div class="form-group col-sm-12 col-md-3">
@@ -276,12 +276,12 @@
         }
 
         // ========== Create Form ==========
-        $('#create-form').on('submit', function(e) {
+        $('#bank-account-create-form').on('submit', function(e) {
             e.preventDefault();
             var formData = new FormData(this);
             // Convert checkboxes to boolean
-            formData.set('is_active', $('#create-form input[name="is_active"]').is(':checked') ? '1' : '0');
-            formData.set('is_default', $('#create-form input[name="is_default"]').is(':checked') ? '1' : '0');
+            formData.set('is_active', $('#bank-account-create-form input[name="is_active"]').is(':checked') ? '1' : '0');
+            formData.set('is_default', $('#bank-account-create-form input[name="is_default"]').is(':checked') ? '1' : '0');
 
             $.ajax({
                 type: 'POST',
@@ -292,7 +292,7 @@
                 success: function(response) {
                     if (response.error === false) {
                         showSuccessToast(response.message);
-                        $('#create-form')[0].reset();
+                        $('#bank-account-create-form')[0].reset();
                         $('#table_list').bootstrapTable('refresh');
                     } else {
                         showErrorToast(response.message);
