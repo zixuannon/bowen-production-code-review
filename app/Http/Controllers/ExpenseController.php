@@ -91,7 +91,6 @@ class ExpenseController extends Controller
                     })
             ],
             'amount' => 'required|numeric|min:0',
-            'edit_reason' => 'required|string|max:255',
             'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
             'original_amount' => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0',
@@ -105,7 +104,6 @@ class ExpenseController extends Controller
             ],
         ], [
             'ref_no.unique' => 'Reference number already exists for the selected session year.',
-            'edit_reason.required' => 'Please provide a reason for this expense edit.',
             'bank_account_id.required' => 'Please select a fund account for this expense.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
@@ -267,6 +265,9 @@ class ExpenseController extends Controller
                     }),
             ],
             'amount' => 'required|numeric|min:0',
+            // An expense creation has its own actor/timestamp trail. This is
+            // required only for a later financial modification, logged below.
+            'edit_reason' => 'required|string|max:255',
             'transaction_currency' => 'nullable|string|size:3|in:MMK,USD,CNY',
             'original_amount' => 'nullable|numeric|min:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0',
@@ -280,6 +281,7 @@ class ExpenseController extends Controller
             ],
         ], [
             'ref_no.unique' => 'Reference number already exists for the selected session year.',
+            'edit_reason.required' => 'Please provide a reason for this expense edit.',
             'bank_account_id.required' => 'Please select a fund account for this expense.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
