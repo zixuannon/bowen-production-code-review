@@ -1,7 +1,9 @@
 # Finance Group Phase 1 — Execution Plan and Business Approval Pack
 
-**Status:** Implementation-ready planning package; runtime work is gated on the
-business confirmation in section 5.  
+**Status:** Phase 1-A central Scope foundation is in local implementation.
+Real Group configuration remains empty and administrator-configurable; no
+Bowen Group, School membership, user scope, or account record is seeded by
+this work.
 **Scope:** The smallest reversible local delivery of Group Scope plus Ledger V1
 read-only consolidation.  
 **Environment:** Local synthetic multi-tenant QA only. Production and Staging
@@ -161,10 +163,12 @@ This is an implementation map, not authorization to make all changes now.
 | Fixtures/tests | Synthetic Group QA data and multi-tenant characterization suites | BOWEN_QA production-parity fixtures and real/production identities. |
 | Operational docs | targeted central migration/runbook plus release gate | no production runner until a later explicit deployment phase. |
 
-## 5. Business confirmation sheet — required before Wave 0
+## 5. Runtime configuration sheet — required before activating a real Group
 
-The following values must be supplied/approved. They are configuration facts,
-not assumptions that code may infer.
+The following are configuration facts for an administrator to enter through
+the future Group Settings UI/guarded bootstrap. They are **not prerequisites
+for the reusable central schema or its local tests**, and code must not infer
+them from a role name, database name, or legacy staff-support relation.
 
 ### A. Group and School membership
 
@@ -241,23 +245,43 @@ following:
   and security review pass; and
 - no Production/Staging action has occurred.
 
-## 8. Next action after approval
+## 8. Next implementation action
 
-After section 5 is confirmed, create a dedicated local implementation Goal:
+Phase 1-A owns the additive central configuration foundation:
 
 ```text
 Finance Group Phase 1-A — central Group Scope schema + read-only bootstrap
 ```
 
-That goal will own only Wave 0–2, run local migrations/tests, and stop before
-any Group reporting UI. Phase 1-B will then implement the Ledger/reporting
-read path using the verified scope foundation.
+It owns only Wave 0–2, runs local migrations/tests, and stops before any Group
+reporting UI. A real Group remains a draft until an authorized administrator
+sets its display name/code, member Schools, user scopes, and report policy.
+Phase 1-B will then implement the Ledger/reporting read path using the
+verified scope foundation.
+
+### Phase 1-A foundation delivered locally
+
+- Central-only schema: `finance_groups`, `finance_group_schools`,
+  `finance_group_users`, `finance_group_user_scopes`, and
+  `finance_group_user_tenant_identities`.
+- Explicit `mysql` models and a `FinanceGroupScopeService`; no default tenant
+  connection can receive Group configuration rows.
+- Group code remains nullable for a draft Group and can be configured later;
+  non-null codes are unique.
+- Membership, Group/SCHOOL/HQ scope, central user identity, and tenant-user
+  identity are explicit. Revoking a membership or Group user removes access
+  immediately without deleting historical Scope records.
+- The tenant identity binding verifies the tenant user belongs to the trusted
+  central School registry entry, and restores the prior tenant/default
+  connection on every success or failure path.
+- No real configuration values, tenant migration, Fund Account, ledger,
+  balance, role, permission, or financial source row is created.
 
 ## 9. Technical implementation seam audit
 
-This audit records the currently verified code boundaries so that Phase 1-A
-can make the smallest additive change after the business sheet is approved.
-It does not authorize runtime implementation before that approval.
+This audit records the verified code boundaries used by Phase 1-A. It remains
+the safety contract for the smallest additive implementation; real Group
+configuration is entered later by an authorized administrator.
 
 ### Central control plane
 
