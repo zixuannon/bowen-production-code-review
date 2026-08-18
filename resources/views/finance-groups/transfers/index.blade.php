@@ -1,0 +1,65 @@
+@extends('layouts.master')
+@section('title', __('Group Funding'))
+@section('content')
+<div class="content-wrapper">
+    <div class="page-header"><h3 class="page-title">{{ $financeGroup->name }} — {{ __('HQ / School Funding') }}</h3></div>
+    <div class="alert alert-info">{{ __('A request has no balance or Ledger effect until Group Head Finance confirms it. Confirmed funding is an Internal Transfer, not operating income or expense.') }}</div>
+    @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+    @if($mayControlHq)
+    <div class="card mb-4"><div class="card-body"><h4 class="card-title">{{ __('Create HQ Fund Account') }}</h4>
+        <form method="POST" action="{{ route('finance-groups.hq-accounts.store', $financeGroup) }}" class="row">@csrf
+            <div class="form-group col-md-3"><label>{{ __('Account name') }}</label><input class="form-control" name="account_name" required></div>
+            <div class="form-group col-md-2"><label>{{ __('Number') }}</label><input class="form-control" name="account_number"></div>
+            <div class="form-group col-md-2"><label>{{ __('Type') }}</label><select class="form-control" name="account_type"><option value="cash">{{ __('Cash') }}</option><option value="bank">{{ __('Bank') }}</option><option value="mobile_payment">{{ __('Mobile payment') }}</option></select></div>
+            <div class="form-group col-md-1"><label>{{ __('Currency') }}</label><input class="form-control" name="currency" value="MMK" maxlength="3" required></div>
+            <div class="form-group col-md-2"><label>{{ __('Opening balance') }}</label><input class="form-control" type="number" step="0.01" name="opening_balance" value="0" required></div>
+            <div class="form-group col-md-2"><label>{{ __('Opening date') }}</label><input class="form-control" type="date" name="opening_balance_date" value="{{ now()->toDateString() }}" required></div>
+            <input type="hidden" name="is_active" value="1"><div class="form-group col-md-12"><button class="btn btn-outline-primary" type="submit">{{ __('Create HQ Fund Account') }}</button></div>
+        </form>
+    </div></div>
+    @endif
+    <div class="card mb-4"><div class="card-body">
+        <h4 class="card-title">{{ __('Request funding') }}</h4>
+        <form method="POST" action="{{ route('finance-groups.transfers.store', $financeGroup) }}" class="row">
+            @csrf
+            <div class="form-group col-md-3"><label>{{ __('School') }}</label><select class="form-control" name="school_id" id="group-transfer-school" required><option value="">{{ __('Select School') }}</option>@foreach($schools as $membership)<option value="{{ $membership->school_id }}">{{ $membership->school?->name }}</option>@endforeach</select></div>
+            <div class="form-group col-md-3"><label>{{ __('School Fund Account') }}</label><select class="form-control" name="tenant_bank_account_id" id="group-transfer-account" required disabled><option value="">{{ __('Select School first') }}</option></select></div>
+            @if($hqAccounts->isNotEmpty())<div class="form-group col-md-3"><label>{{ __('Preferred HQ Fund Account') }}</label><select class="form-control" name="hq_account_id"><option value="">{{ __('Head Finance selects at confirmation') }}</option>@foreach($hqAccounts as $account)<option value="{{ $account->id }}">{{ $account->account_name }} ({{ $account->currency }})</option>@endforeach</select></div>@endif
+            <div class="form-group col-md-2"><label>{{ __('Direction') }}</label><select class="form-control" name="direction" required><option value="HQ_TO_SCHOOL">{{ __('HQ funding to School') }}</option><option value="SCHOOL_TO_HQ">{{ __('School remittance to HQ') }}</option></select></div>
+            <div class="form-group col-md-2"><label>{{ __('Purpose') }}</label><select class="form-control" name="purpose" required><option value="HQ_FUNDING">{{ __('HQ funding') }}</option><option value="SCHOOL_REMITTANCE">{{ __('School remittance') }}</option><option value="OPERATIONS">{{ __('Operations') }}</option><option value="PROCUREMENT">{{ __('Procurement') }}</option><option value="ACTIVITY">{{ __('Activity') }}</option><option value="EMERGENCY">{{ __('Emergency') }}</option><option value="OTHER">{{ __('Other') }}</option></select></div>
+            <div class="form-group col-md-2"><label>{{ __('Amount') }}</label><input class="form-control" name="amount" type="number" min="0.01" step="0.01" required></div>
+            <div class="form-group col-md-3"><label>{{ __('Date') }}</label><input class="form-control" name="transfer_date" type="date" value="{{ now()->toDateString() }}" required></div>
+            <div class="form-group col-md-3"><label>{{ __('Reference') }}</label><input class="form-control" name="reference_no" maxlength="128"></div>
+            <div class="form-group col-md-6"><label>{{ __('Notes') }}</label><input class="form-control" name="notes"></div>
+            <div class="form-group col-md-12"><button class="btn btn-primary" type="submit">{{ __('Submit for Head Finance confirmation') }}</button></div>
+        </form>
+    </div></div>
+    <div class="card"><div class="card-body table-responsive"><table class="table"><thead><tr><th>{{ __('Date') }}</th><th>{{ __('School') }}</th><th>{{ __('Direction') }}</th><th>{{ __('School Fund Account') }}</th><th>{{ __('HQ Fund Account') }}</th><th>{{ __('Reference') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
+    @forelse($transfers as $transfer)<tr><td>{{ $transfer->transfer_date?->toDateString() }}</td><td>{{ $transfer->school?->name }}</td><td>{{ $transfer->direction }}</td><td>#{{ $transfer->tenant_bank_account_id }}</td><td>{{ $transfer->hqAccount?->account_name ?? __('Selected by Head Finance on confirmation') }}</td><td>{{ $transfer->reference_no ?: '—' }}</td><td>{{ number_format($transfer->amount,2) }}</td><td>{{ ucfirst($transfer->status) }}</td><td>
+    @if($transfer->status === 'pending' && $mayConfirm)<form class="d-inline" method="POST" action="{{ route('finance-groups.transfers.confirm', [$financeGroup, $transfer])}}">@csrf<select class="form-control form-control-sm d-inline-block w-auto" name="hq_account_id" required><option value="">{{ __('Select HQ account') }}</option>@foreach($hqAccounts as $account)<option value="{{ $account->id }}" @selected($transfer->hq_account_id === $account->id)>{{ $account->account_name }} ({{ $account->currency }})</option>@endforeach</select><button class="btn btn-sm btn-success" type="submit">{{ __('Confirm') }}</button></form>
+    <form class="d-inline" method="POST" action="{{ route('finance-groups.transfers.reject', [$financeGroup, $transfer])}}">@csrf<input name="reason" class="form-control form-control-sm d-inline-block w-auto" placeholder="{{ __('Reason') }}" required><button class="btn btn-sm btn-outline-danger" type="submit">{{ __('Reject') }}</button></form>
+    @elseif($transfer->status === 'pending' && $transfer->requested_by_group_user_id === $groupUser->id)<form class="d-inline" method="POST" action="{{ route('finance-groups.transfers.cancel', [$financeGroup, $transfer])}}">@csrf<input name="reason" class="form-control form-control-sm d-inline-block w-auto" placeholder="{{ __('Reason') }}" required><button class="btn btn-sm btn-outline-secondary" type="submit">{{ __('Cancel') }}</button></form>@endif
+    </td></tr>@empty<tr><td colspan="9">{{ __('No Group funding requests found.') }}</td></tr>@endforelse
+    </tbody></table></div></div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const bySchool = @json($accountsBySchool);
+  const school = document.getElementById('group-transfer-school');
+  const account = document.getElementById('group-transfer-account');
+  school.addEventListener('change', function () {
+    const accounts = bySchool[this.value] || [];
+    account.innerHTML = '<option value="">{{ __('Select Fund Account') }}</option>';
+    accounts.forEach(function (item) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.account_name + ' (' + item.currency + ')'; account.appendChild(option); });
+    account.disabled = accounts.length === 0;
+  });
+});
+</script>
+</div>
+@if($hqAccounts->isNotEmpty())
+<div class="card mt-4"><div class="card-body"><h4 class="card-title">{{ __('Authorized HQ Fund Accounts') }}</h4><div class="table-responsive"><table class="table"><thead><tr><th>{{ __('Account') }}</th><th>{{ __('Currency') }}</th><th>{{ __('Status') }}</th><th>{{ __('Control') }}</th></tr></thead><tbody>@foreach($hqAccounts as $account)<tr><td>{{ $account->account_name }}</td><td>{{ $account->currency }}</td><td>{{ $account->is_active ? __('Active') : __('Inactive') }}</td><td>@if($mayControlHq)
+<form method="POST" action="{{ route('finance-groups.hq-accounts.update', [$financeGroup,$account]) }}" class="d-inline">@csrf @method('PUT')<input class="form-control form-control-sm d-inline-block w-auto" name="account_name" value="{{ $account->account_name }}" required><input class="form-control form-control-sm d-inline-block w-auto" name="account_number" value="{{ $account->account_number }}" placeholder="{{ __('Account number') }}"><select class="form-control form-control-sm d-inline-block w-auto" name="account_type"><option value="cash" @selected($account->account_type === 'cash')>{{ __('Cash') }}</option><option value="bank" @selected($account->account_type === 'bank')>{{ __('Bank') }}</option><option value="mobile_payment" @selected($account->account_type === 'mobile_payment')>{{ __('Mobile payment') }}</option></select><input type="hidden" name="is_active" value="0"><label class="ml-1"><input type="checkbox" name="is_active" value="1" @checked($account->is_active)> {{ __('Active') }}</label><input class="form-control form-control-sm d-inline-block w-auto" name="notes" value="{{ $account->notes }}" placeholder="{{ __('Notes') }}"><button class="btn btn-sm btn-outline-secondary">{{ __('Save account') }}</button></form>
+<form method="POST" action="{{ route('finance-groups.hq-accounts.adjustments.store', [$financeGroup,$account]) }}" class="d-inline">@csrf<input class="form-control form-control-sm d-inline-block w-auto" name="amount" type="number" step="0.01" placeholder="{{ __('Adjustment') }}" required><input class="form-control form-control-sm d-inline-block w-auto" name="adjustment_date" type="date" value="{{ now()->toDateString() }}" required><input class="form-control form-control-sm d-inline-block w-auto" name="reason" placeholder="{{ __('Reason') }}" required><button class="btn btn-sm btn-outline-primary">{{ __('Adjust') }}</button></form>
+<form method="POST" action="{{ route('finance-groups.hq-accounts.users.sync', [$financeGroup,$account]) }}" class="d-inline">@csrf<select name="group_user_ids[]" class="form-control form-control-sm d-inline-block w-auto" multiple>@foreach($groupUsers as $candidate)<option value="{{ $candidate->id }}" @selected($account->authorizedGroupUsers->contains($candidate->id))>{{ $candidate->centralUser?->full_name ?? ('User #'.$candidate->central_user_id) }}</option>@endforeach</select><button class="btn btn-sm btn-outline-secondary">{{ __('Save assignments') }}</button></form>
+@else {{ __('Assigned operation only') }} @endif</td></tr>@endforeach</tbody></table></div></div></div>
+@endif
+@endsection

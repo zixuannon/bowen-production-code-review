@@ -7,9 +7,12 @@ use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
 use App\Models\OtherIncome;
+use App\Models\FinanceGroupTransfer;
+use App\Models\School;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Read-only adapter over the existing financial source records. It never
@@ -54,6 +57,7 @@ class FinanceTransactionRegisterService
             // Confirmed handovers are represented by their canonical transfer
             // only. Pending handovers never become a money-movement row.
             $rows = $rows->concat($this->transferRows($actor, $accountIds, $accountId, $from, $to));
+            $rows = $rows->concat($this->groupTransferRows($actor, $accountIds, $accountId, $from, $to));
         }
 
         $rows = $rows->filter(function (array $row) use ($reference, $keyword) {
@@ -159,6 +163,59 @@ class FinanceTransactionRegisterService
                         'operator_user_id' => $row->created_by,
                     ]);
             });
+    }
+
+    /**
+     * Cross-school funding is not a tenant BankTransfer: its HQ account lives
+     * in the central Group database. It is still a single neutral internal
+     * movement in the all-account register and directional for the selected
+     * tenant Fund Account.
+     */
+    private function groupTransferRows(User $actor, Collection $accounts, ?int $selectedAccountId, ?string $from, ?string $to): Collection
+    {
+        if (!Schema::connection('mysql')->hasTable('finance_group_transfers')
+            || !$this->currentTenantMatchesCentralSchool((int) $actor->school_id)) {
+            return collect();
+        }
+        $query = FinanceGroupTransfer::on('mysql')->with(['hqAccount:id,account_name'])
+            ->confirmed()->where('school_id', $actor->school_id)
+            ->whereIn('tenant_bank_account_id', $accounts)
+            ->when($from, fn ($q) => $q->whereDate('transfer_date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('transfer_date', '<=', $to));
+
+        return $query->get()->map(function (FinanceGroupTransfer $row) use ($accounts, $selectedAccountId) {
+            $isIn = $row->direction === FinanceGroupTransfer::DIRECTION_HQ_TO_SCHOOL;
+            $visible = $selectedAccountId && $accounts->contains($row->tenant_bank_account_id);
+            $in = $visible && $isIn ? (float) $row->amount : 0.0;
+            $out = $visible && !$isIn ? (float) $row->amount : 0.0;
+            $hqName = $row->hqAccount?->account_name ?? __('HQ Fund Account');
+            $tenantName = __('School Fund Account #:id', ['id' => $row->tenant_bank_account_id]);
+            $fromName = $isIn ? $hqName : $tenantName;
+            $toName = $isIn ? $tenantName : $hqName;
+            return $this->row($row->transfer_date, 'bank_transfer', (int) $row->id, $row->reference_no,
+                $fromName . ' → ' . $toName, $row->notes, null, $fromName . ' → ' . $toName,
+                $in, $out, 'internal', null, __('Internal Transfer'), [
+                    'source_type' => 'group_transfer', 'fund_account_id' => $selectedAccountId,
+                    'from_fund_account_id' => $isIn ? null : $row->tenant_bank_account_id,
+                    'to_fund_account_id' => $isIn ? $row->tenant_bank_account_id : null,
+                    'from_fund_account' => $fromName, 'to_fund_account' => $toName,
+                    'source_amount' => (float) $row->amount, 'created_at_raw' => $row->getRawOriginal('created_at'),
+                    'operator_user_id' => null,
+                ]);
+        });
+    }
+
+    /**
+     * A central Group transfer is projected only into the exact tenant
+     * database registered for its School. This prevents an arbitrary local
+     * connection with a coincidental school_id from seeing another tenant's
+     * funding history.
+     */
+    private function currentTenantMatchesCentralSchool(int $schoolId): bool
+    {
+        $database = (string) config('database.connections.school.database');
+        return $schoolId > 0 && $database !== ''
+            && School::on('mysql')->whereKey($schoolId)->where('database_name', $database)->exists();
     }
 
     private function between($query, ?string $from, ?string $to, string $column = 'date')

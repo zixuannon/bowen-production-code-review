@@ -53,12 +53,15 @@ class FinanceLedgerV1Service
             'other_income' => 'OTHER_INCOME',
             'expense' => 'EXPENSE',
             'bank_transfer' => 'INTERNAL_TRANSFER',
+            'group_transfer' => 'INTERNAL_TRANSFER',
             default => throw new LogicException('Unsupported Ledger V1 source type.'),
         };
         $isInternal = $transactionClass === 'INTERNAL_TRANSFER';
 
         return [
-            'ledger_key' => "tenant:{$actor->school_id}:{$sourceType}:{$sourceId}",
+            'ledger_key' => $sourceType === 'group_transfer'
+                ? "group-transfer:{$sourceId}:school:{$actor->school_id}"
+                : "tenant:{$actor->school_id}:{$sourceType}:{$sourceId}",
             'posting_date' => $row['date'],
             'group_id' => null,
             'school_id' => $actor->school_id,
@@ -107,6 +110,7 @@ class FinanceLedgerV1Service
             'other_income' => 'other_income',
             'expense' => 'expense',
             'bank_transfer' => 'bank_transfer',
+            'group_transfer' => 'group_transfer',
             default => throw new LogicException('Unknown transaction-register source type.'),
         };
     }

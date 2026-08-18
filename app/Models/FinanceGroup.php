@@ -33,4 +33,14 @@ class FinanceGroup extends Model
     {
         return $this->hasMany(FinanceGroupUser::class, 'group_id');
     }
+
+    public function hqAccounts(): HasMany
+    {
+        return $this->hasMany(FinanceGroupHqAccount::class, 'group_id');
+    }
+
+    public function transfers(): HasMany
+    {
+        return $this->hasMany(FinanceGroupTransfer::class, 'group_id');
+    }
 }

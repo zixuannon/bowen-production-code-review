@@ -87,6 +87,21 @@ the tenant connection on success or failure. Do not add legacy fee-import or
 P1/P2/P3 migrations to this runner. After any new-schema Finance activity,
 prefer a forward fix rather than rollback.
 
+### Finance Group Phase 2 central schema — not approved for Production
+
+`2026_08_19_000001_create_finance_group_hq_accounts_and_transfers.php` is an
+additive **central `mysql` connection** migration. It must never be executed
+through a tenant migration command. It is locally verified only; no Production
+runner, migration, Group configuration, HQ account, assignment, adjustment, or
+funding record is approved.
+
+A future Production proposal requires a new Human Gate, central-database
+backup, exact Phase 1 prerequisite/schema verification, a targeted invocation
+of only this migration, and post-migration table/foreign-key verification.
+Before any confirmed funding or adjustment exists, targeted rollback may be
+considered if the recorded batch permits it. After financial history exists,
+preserve the central audit/transfer rows and use a forward fix.
+
 ## Safe cutover principle
 
 When new application code requires new columns/tables, prefer:

@@ -12,6 +12,7 @@ use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
+use App\Services\FinanceTransactionRegisterService;
 use App\Services\FundAccountBalanceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -220,18 +221,12 @@ class BankAccountController extends Controller
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->sum('amount') ?? 0;
 
-        $totalTransferIn = BankTransfer::where('to_account_id', $id)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->where('status', 'completed')
-            ->sum('amount') ?? 0;
-
-        $totalTransferOut = BankTransfer::where('from_account_id', $id)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->where('status', 'completed')
-            ->sum('amount') ?? 0;
-
-        $totalIncome = (float)$totalCompulsory + (float)$totalOptional + (float)$totalOtherIncome;
-        $currentBalance = (float)$bankAccount->opening_balance + $totalIncome + (float)$totalTransferIn - (float)$totalExpenses - (float)$totalTransferOut;
+        $cashFlow = app(FundAccountBalanceService::class)->cashFlowSummary($bankAccount);
+        $totalIncome = $cashFlow['operating_income'];
+        $totalExpenses = $cashFlow['operating_expense'];
+        $totalTransferIn = $cashFlow['internal_in'];
+        $totalTransferOut = $cashFlow['internal_out'];
+        $currentBalance = $cashFlow['current_balance'];
 
         // ================ Transaction Ledger ================
         // Load all records (ASC by raw date, then by id for stable ordering)
@@ -276,9 +271,14 @@ class BankAccountController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
+        $ledgerGroupTransfers = app(FinanceTransactionRegisterService::class)
+            ->register(Auth::user(), ['bank_account_id' => $id, 'type' => 'bank_transfer'])['rows']
+            ->where('source_type', 'group_transfer')
+            ->values();
+
         // Count total records (excl. opening) to decide display limit
         $ledgerTotalCount = $ledgerCompulsory->count() + $ledgerOptional->count() + $ledgerOtherIncome->count() + $ledgerExpenses->count()
-                          + $ledgerTransfersIn->count() + $ledgerTransfersOut->count();
+                          + $ledgerTransfersIn->count() + $ledgerTransfersOut->count() + $ledgerGroupTransfers->count();
 
         $ledgerRows = collect();
 
@@ -384,6 +384,22 @@ class BankAccountController extends Controller
                 'ref_id'     => 'TR-' . $transfer->id,
                 'income'     => 0,
                 'expense'    => (float)$transfer->amount,
+            ]);
+        }
+
+        foreach ($ledgerGroupTransfers as $transfer) {
+            $isIn = (float) $transfer['money_in'] > 0;
+            $counterparty = $transfer['counterparty'] ?: __('HQ Fund Account');
+            $ledgerRows->push([
+                'raw_date' => $transfer['date'],
+                'date' => $transfer['date'],
+                'type' => $isIn ? __('Transfer In') : __('Transfer Out'),
+                'type_key' => $isIn ? 'transfer_in' : 'transfer_out',
+                'description' => $transfer['description'],
+                'payee' => $counterparty,
+                'ref_id' => $transfer['reference'] ?: ('GTR-' . $transfer['source_id']),
+                'income' => (float) $transfer['money_in'],
+                'expense' => (float) $transfer['money_out'],
             ]);
         }
 

@@ -29,6 +29,9 @@ class FinanceGroupScopeService
         'view_reports',
         'export_reports',
         'manage_configuration',
+        'manage_hq_accounts',
+        'request_group_transfers',
+        'confirm_group_transfers',
     ];
 
     public const SCOPE_TYPES = [
@@ -263,6 +266,137 @@ class FinanceGroupScopeService
             ['group_user_id' => $groupUser->id, 'school_id' => $schoolId],
             ['tenant_user_id' => $tenantUser->id, 'status' => 'active'],
         );
+    }
+
+    /**
+     * A Group transfer can only name a tenant account after a trusted central
+     * School lookup, an explicit Group scope check, and a re-check through the
+     * mapped tenant user's normal Fund Account scope. It returns scalar data so
+     * callers cannot retain a tenant model after the connection is restored.
+     *
+     * @return array{id:int, school_id:int, account_name:string, currency:string}
+     */
+    public function authorizeActiveTenantAccountForGroupUser(FinanceGroupUser $groupUser, int $schoolId, int $accountId, string $capability = 'request_group_transfers'): array
+    {
+        if (!$this->canAccessSchool($groupUser, $schoolId, $capability)) {
+            throw new AuthorizationException('This Group user is not authorized for the requested School.');
+        }
+
+        $identity = FinanceGroupUserTenantIdentity::query()
+            ->where('group_user_id', $groupUser->id)
+            ->where('school_id', $schoolId)
+            ->where('status', 'active')
+            ->first();
+        if (!$identity) {
+            throw new FinanceGroupTenantUnavailableException('No active tenant identity is configured for this Group School.');
+        }
+
+        $school = $this->centralSchool($schoolId);
+        return $this->inTenant($school, function () use ($identity, $school, $accountId): array {
+            $tenantUser = User::on('school')->whereKey($identity->tenant_user_id)->where('school_id', $school->id)->first();
+            if (!$tenantUser) {
+                throw new FinanceGroupTenantUnavailableException('The configured tenant identity no longer belongs to this School.');
+            }
+            $account = app(FinanceAccountAccessService::class)->authorizeActive($tenantUser, $accountId);
+            return [
+                'id' => (int) $account->id,
+                'school_id' => (int) $account->school_id,
+                'account_name' => (string) $account->account_name,
+                'currency' => (string) $account->currency,
+            ];
+        });
+    }
+
+    /** @return array<int, array{id:int,account_name:string,currency:string}> */
+    public function accessibleActiveTenantAccountsForGroupUser(FinanceGroupUser $groupUser, int $schoolId, string $capability = 'request_group_transfers'): array
+    {
+        if (!$this->canAccessSchool($groupUser, $schoolId, $capability)) {
+            throw new AuthorizationException('This Group user is not authorized for the requested School.');
+        }
+        $identity = FinanceGroupUserTenantIdentity::query()->where('group_user_id', $groupUser->id)->where('school_id', $schoolId)->where('status', 'active')->first();
+        if (!$identity) {
+            throw new FinanceGroupTenantUnavailableException('No active tenant identity is configured for this Group School.');
+        }
+        $school = $this->centralSchool($schoolId);
+        return $this->inTenant($school, function () use ($identity, $school): array {
+            $tenantUser = User::on('school')->whereKey($identity->tenant_user_id)->where('school_id', $school->id)->first();
+            if (!$tenantUser) throw new FinanceGroupTenantUnavailableException('The configured tenant identity no longer belongs to this School.');
+            return app(FinanceAccountAccessService::class)->accessibleAccounts($tenantUser)->active()->orderBy('account_name')
+                ->get(['id', 'account_name', 'currency'])->map(fn ($account) => ['id'=>(int)$account->id, 'account_name'=>(string)$account->account_name, 'currency'=>(string)$account->currency])->all();
+        });
+    }
+
+    /**
+     * Resolve the current balance through the same isolated tenant context
+     * used for Fund Account authorization. This is a read-only precondition
+     * for School-to-HQ confirmation; no central status is changed unless the
+     * School account can actually fund the remittance.
+     */
+    public function tenantAccountHasSufficientBalanceForGroupUser(FinanceGroupUser $groupUser, int $schoolId, int $accountId, float $amount): bool
+    {
+        $this->authorizeActiveTenantAccountForGroupUser($groupUser, $schoolId, $accountId);
+        $identity = FinanceGroupUserTenantIdentity::query()
+            ->where('group_user_id', $groupUser->id)
+            ->where('school_id', $schoolId)
+            ->where('status', 'active')
+            ->firstOrFail();
+        $school = $this->centralSchool($schoolId);
+
+        return $this->inTenant($school, function () use ($identity, $school, $accountId, $amount): bool {
+            $tenantUser = User::on('school')->whereKey($identity->tenant_user_id)->where('school_id', $school->id)->firstOrFail();
+            $account = app(FinanceAccountAccessService::class)->authorizeActive($tenantUser, $accountId);
+            return app(FundAccountBalanceService::class)->currentBalance($account) + 0.0001 >= $amount;
+        });
+    }
+
+    public function canAccessSchool(FinanceGroupUser $groupUser, int $schoolId, string $capability): bool
+    {
+        if ($groupUser->status !== 'active' || !$this->activeMembershipExists($groupUser->group_id, $schoolId)) {
+            return false;
+        }
+        $scopes = $this->activeScopes($groupUser, $capability);
+        return $scopes->contains('scope_type', 'GROUP')
+            || $scopes->where('scope_type', 'SCHOOL')->pluck('school_id')->contains($schoolId);
+    }
+
+    public function canManageAllHqAccounts(FinanceGroupUser $groupUser): bool
+    {
+        if ($groupUser->status !== 'active') {
+            return false;
+        }
+        return $this->activeScopes($groupUser, 'manage_hq_accounts')
+            ->contains(fn (FinanceGroupUserScope $scope) => in_array($scope->scope_type, ['GROUP', 'HQ'], true));
+    }
+
+    /**
+     * HQ account balance/status/assignment control is deliberately stricter
+     * than ordinary HQ-account use: the central user must be Head Finance and
+     * have the explicit Group-level capability. A configured scope by itself
+     * can never elevate an HQ Accountant into this control plane.
+     */
+    public function canControlHqAccounts(FinanceGroupUser $groupUser): bool
+    {
+        if ($groupUser->status !== 'active') return false;
+        $central = User::on('mysql')->find($groupUser->central_user_id);
+        if (!$central || !$central->hasRole('Head Finance')) return false;
+        return $this->activeScopes($groupUser, 'manage_hq_accounts')->contains('scope_type', 'GROUP');
+    }
+
+    public function canConfirmGroupTransfers(FinanceGroupUser $groupUser): bool
+    {
+        if ($groupUser->status !== 'active') {
+            return false;
+        }
+
+        // Confirmation makes a cross-school balance movement effective. A
+        // capability row is necessary but not sufficient: only the central
+        // Head Finance identity may exercise that control-plane action.
+        $central = User::on('mysql')->find($groupUser->central_user_id);
+        if (!$central || !$central->hasRole('Head Finance')) {
+            return false;
+        }
+
+        return $this->activeScopes($groupUser, 'confirm_group_transfers')->contains('scope_type', 'GROUP');
     }
 
     /**

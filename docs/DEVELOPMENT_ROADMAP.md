@@ -128,3 +128,12 @@ Balances move only on designated receiver confirmation.
 - [x] Scoped Group report/CSV authorization, no-write full-row hash verification, neutral internal transfer, and pending-handover exclusion.
 - [x] Local Group Reports Playwright acceptance and canonical Finance regression (222 tests / 844 assertions).
 - [ ] Any real Group configuration, production migration, or cross-school write remains a separate approved phase.
+
+## Finance Group Phase 2 — local-only HQ / School funding
+
+- [x] Central-only HQ Fund Accounts with explicit assignments, immutable opening balance, and reasoned old/new balance adjustments.
+- [x] Pending request plus Head Finance confirmation/rejection and requester cancellation, with exactly-once canonical movement.
+- [x] Tenant membership/identity/Fund Account scope, active-state, currency, source-balance, HQ-assignment, and peer-School isolation checks.
+- [x] Confirmed Group funding projects into School/HQ balances and Ledger V1 as neutral internal transfer; pending funding remains non-financial.
+- [x] Repeatable fixed local Group funding fixture, central-only migration rollback, canonical Finance regression (221 passed plus 2 pre-existing deprecation markers / 858 assertions), and local Playwright funding plus report/CSV acceptance (2/2).
+- [ ] Real Group setup, central Production migration, or any Production funding operation requires a separate explicit Human Gate.

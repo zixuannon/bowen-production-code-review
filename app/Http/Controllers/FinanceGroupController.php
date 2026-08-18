@@ -67,7 +67,7 @@ class FinanceGroupController extends Controller
         $this->assertCentralSuperAdmin();
         $data = $request->validate([
             'central_user_id' => ['required', 'integer'],
-            'capability' => ['required', 'in:view_reports,export_reports,manage_configuration'],
+            'capability' => ['required', 'in:view_reports,export_reports,manage_configuration,manage_hq_accounts,request_group_transfers,confirm_group_transfers'],
             'scope_type' => ['required', 'in:GROUP,SCHOOL,HQ'],
             'school_id' => ['nullable', 'integer'],
         ]);

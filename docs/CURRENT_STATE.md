@@ -38,6 +38,29 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Current phase
 
+Finance Group Phase 2 HQ / School Funding — **LOCAL ACCEPTANCE VERIFIED**.
+The existing Group scope and Ledger V1 foundation now supports central-only HQ
+Fund Accounts, explicit HQ-account assignments, audited balance adjustments,
+and pending HQ-to-School / School-to-HQ funding requests. A request has no
+balance or Ledger effect. Confirmation is restricted to a central Head Finance
+user with the explicit Group capability and an authorized active HQ account;
+it rechecks active Group membership, tenant identity, tenant Fund Account
+scope/status, currency, and the applicable source balance before making one
+canonical central transfer effective. Confirmed funding projects exactly once
+into the HQ and selected School Fund Account balances and Ledger V1 as an
+internal transfer, never as operating Income or Expense. School-scoped users
+cannot inspect peer-School funding records. An HQ Accountant can open and
+operate only explicitly assigned HQ Fund Accounts; account state, account
+assignment, opening balance, and audited balance adjustments remain a central
+Head Finance-only control plane. The fixed local Group fixture is repeatable,
+snapshots all central funding/audit tables during verification, and includes
+one confirmed and one pending funding record. Central-only migration rollback,
+focused Group/cash-flow tests, canonical Finance regression (221 passed plus
+2 pre-existing deprecation markers / 858 assertions), and authenticated local
+Playwright funding plus report/CSV acceptance (2/2) pass. No real Group
+configuration, tenant finance row,
+Production data, or Staging data was changed.
+
 Finance Group Phase 1-A/1-B/1-C Scope + Ledger V1 + read-only Group Reports — **LOCAL
 ACCEPTANCE VERIFIED**. The additive central-only schema and explicit
 models/services support configurable draft Groups, trusted central School
