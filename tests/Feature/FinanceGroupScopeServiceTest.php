@@ -108,13 +108,46 @@ class FinanceGroupScopeServiceTest extends TestCase
             'code' => null,
             'reporting_currency' => 'MMK',
         ]);
-        $group->update(['code' => 'BOWEN_GROUP']);
+        $group = app(FinanceGroupScopeService::class)->updateGroup($group, [
+            'code' => 'BOWEN_GROUP',
+            'name' => 'Configurable Bowen Group',
+            'status' => 'active',
+            'reporting_currency' => 'mmk',
+            'fiscal_year_start_month' => 4,
+        ]);
 
         $this->assertSame('mysql', $group->getConnectionName());
         $this->assertSame('BOWEN_GROUP', FinanceGroup::on('mysql')->findOrFail($group->id)->code);
+        $this->assertSame('MMK', $group->reporting_currency);
+        $this->assertSame(4, $group->fiscal_year_start_month);
         $this->assertTrue(Schema::connection('mysql')->hasTable('finance_groups'));
         $this->assertFalse(Schema::connection('school')->hasTable('finance_groups'));
         $this->assertSame(0, DB::connection('school')->table('bank_accounts')->count());
+
+        $this->expectException(ValidationException::class);
+        app(FinanceGroupScopeService::class)->createGroup(['name' => 'Duplicate', 'code' => 'BOWEN_GROUP']);
+    }
+
+    public function test_group_school_configuration_uses_only_the_central_registry_and_revokes_missing_memberships(): void
+    {
+        $service = app(FinanceGroupScopeService::class);
+        $group = $service->createGroup(['name' => 'Configurable Group']);
+
+        $service->syncSchools($group, [1, 2, 2]);
+        $groupUser = $service->addUser($group, 100);
+        $service->grantScope($groupUser, 'view_reports', 'GROUP');
+        $this->assertSame([1, 2], $service->accessibleSchools($groupUser)->pluck('school_id')->all());
+
+        $service->syncSchools($group, [2]);
+        $this->assertSame('revoked', $group->schools()->where('school_id', 1)->value('status'));
+        $this->assertSame('active', $group->schools()->where('school_id', 2)->value('status'));
+
+        try {
+            $service->syncSchools($group, [2, 999]);
+            $this->fail('An unknown School was accepted from configuration input.');
+        } catch (ValidationException) {
+            $this->assertSame(0, DB::connection('school')->table('bank_accounts')->count());
+        }
     }
 
     public function test_explicit_membership_and_scope_never_infer_cross_school_access(): void

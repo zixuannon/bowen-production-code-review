@@ -51,13 +51,89 @@ class FinanceGroupScopeService
             ]);
         }
 
+        $code = $this->nullableCode($attributes['code'] ?? null);
+        if ($code !== null && FinanceGroup::query()->where('code', $code)->exists()) {
+            throw ValidationException::withMessages([
+                'code' => [__('This Group code is already in use.')],
+            ]);
+        }
+
         return FinanceGroup::query()->create([
-            'code' => $this->nullableCode($attributes['code'] ?? null),
+            'code' => $code,
             'name' => $name,
             'status' => $attributes['status'] ?? 'draft',
             'reporting_currency' => strtoupper((string) ($attributes['reporting_currency'] ?? 'MMK')),
             'fiscal_year_start_month' => $month,
         ]);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public function updateGroup(FinanceGroup $group, array $attributes): FinanceGroup
+    {
+        $month = (int) ($attributes['fiscal_year_start_month'] ?? $group->fiscal_year_start_month);
+        $name = trim((string) ($attributes['name'] ?? $group->name));
+        $code = $this->nullableCode($attributes['code'] ?? $group->code);
+
+        if ($name === '') {
+            throw ValidationException::withMessages([
+                'name' => [__('Group name is required.')],
+            ]);
+        }
+        if ($month < 1 || $month > 12) {
+            throw ValidationException::withMessages([
+                'fiscal_year_start_month' => [__('Fiscal year start month must be between 1 and 12.')],
+            ]);
+        }
+        if ($code !== null && FinanceGroup::query()->where('code', $code)->where('id', '!=', $group->id)->exists()) {
+            throw ValidationException::withMessages([
+                'code' => [__('This Group code is already in use.')],
+            ]);
+        }
+
+        $group->update([
+            'code' => $code,
+            'name' => $name,
+            'status' => $attributes['status'] ?? $group->status,
+            'reporting_currency' => strtoupper((string) ($attributes['reporting_currency'] ?? $group->reporting_currency)),
+            'fiscal_year_start_month' => $month,
+        ]);
+
+        return $group->fresh();
+    }
+
+    /**
+     * Reconcile configuration membership without deleting history. An empty
+     * selection is valid for a draft Group and revokes current membership.
+     *
+     * @param array<int, mixed> $schoolIds
+     * @return Collection<int, FinanceGroupSchool>
+     */
+    public function syncSchools(FinanceGroup $group, array $schoolIds): Collection
+    {
+        $schoolIds = collect($schoolIds)
+            ->map(static fn ($id) => (int) $id)
+            ->filter(static fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $registeredIds = School::on('mysql')->whereIn('id', $schoolIds)->pluck('id')->map(static fn ($id) => (int) $id);
+        if ($registeredIds->count() !== $schoolIds->count()) {
+            throw ValidationException::withMessages([
+                'school_ids' => [__('Every Group School must exist in the trusted School registry.')],
+            ]);
+        }
+
+        foreach ($schoolIds as $schoolId) {
+            $this->addSchool($group, $schoolId);
+        }
+
+        FinanceGroupSchool::query()
+            ->where('group_id', $group->id)
+            ->whereNotIn('school_id', $schoolIds->all())
+            ->where('status', 'active')
+            ->update(['status' => 'revoked', 'active_to' => now()->toDateString()]);
+
+        return FinanceGroupSchool::query()->where('group_id', $group->id)->orderBy('school_id')->get();
     }
 
     public function addSchool(FinanceGroup $group, int $schoolId, ?string $activeFrom = null): FinanceGroupSchool

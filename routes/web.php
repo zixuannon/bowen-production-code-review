@@ -1,5 +1,6 @@
 <?php
 use App\Http\Controllers\FinanceDashboardController;
+use App\Http\Controllers\FinanceGroupController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -211,6 +212,12 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         });
         Route::resource('schools', SchoolController::class);
+
+        // Central-only Finance Group configuration. The controller rechecks
+        // central Super Admin authority and never accepts a database name.
+        Route::get('finance-groups', [FinanceGroupController::class, 'index'])->name('finance-groups.index');
+        Route::post('finance-groups', [FinanceGroupController::class, 'store'])->name('finance-groups.store');
+        Route::put('finance-groups/{financeGroup}', [FinanceGroupController::class, 'update'])->name('finance-groups.update');
 
         /*** Package ***/
         Route::group(['prefix' => 'package'], static function () {

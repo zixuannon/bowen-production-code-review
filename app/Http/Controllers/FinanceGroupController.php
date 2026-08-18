@@ -1,0 +1,88 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\FinanceGroup;
+use App\Models\School;
+use App\Models\User;
+use App\Services\FinanceGroupScopeService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\View\View;
+
+/**
+ * Central control-plane configuration only. Tenant Finance roles do not gain
+ * Group authority by name or by a tenant route request.
+ */
+class FinanceGroupController extends Controller
+{
+    public function __construct(private readonly FinanceGroupScopeService $groups)
+    {
+    }
+
+    public function index(): View
+    {
+        $this->assertCentralSuperAdmin();
+
+        return view('finance-groups.index', [
+            'groups' => FinanceGroup::query()->with(['schools.school'])->orderBy('name')->get(),
+            // Schools come only from the central registry; database names are
+            // deliberately not selected or rendered.
+            'schools' => School::on('mysql')->orderBy('name')->get(['id', 'name', 'code', 'status']),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $attributes = $this->validated($request);
+
+        DB::connection('mysql')->transaction(function () use ($attributes): void {
+            $group = $this->groups->createGroup($attributes);
+            $this->groups->syncSchools($group, $attributes['school_ids'] ?? []);
+        });
+
+        return redirect()->route('finance-groups.index')->with('success', __('Finance Group saved.'));
+    }
+
+    public function update(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $attributes = $this->validated($request);
+
+        DB::connection('mysql')->transaction(function () use ($financeGroup, $attributes): void {
+            $group = $this->groups->updateGroup($financeGroup, $attributes);
+            $this->groups->syncSchools($group, $attributes['school_ids'] ?? []);
+        });
+
+        return redirect()->route('finance-groups.index')->with('success', __('Finance Group updated.'));
+    }
+
+    /** @return array<string, mixed> */
+    private function validated(Request $request): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:191'],
+            'code' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'status' => ['required', 'in:draft,active,inactive'],
+            'reporting_currency' => ['required', 'string', 'size:3', 'alpha'],
+            'fiscal_year_start_month' => ['required', 'integer', 'between:1,12'],
+            'school_ids' => ['nullable', 'array'],
+            'school_ids.*' => ['integer', 'distinct'],
+        ]);
+    }
+
+    private function assertCentralSuperAdmin(): void
+    {
+        $authenticated = Auth::user();
+        abort_unless($authenticated && $authenticated->school_id === null, 403);
+
+        // Re-resolve both identity and roles on mysql. This avoids any tenant
+        // role relation cached by earlier middleware being treated as Group
+        // configuration authority.
+        $centralUser = User::on('mysql')->find($authenticated->id);
+        abort_unless($centralUser && $centralUser->school_id === null && $centralUser->hasRole('Super Admin'), 403);
+    }
+}

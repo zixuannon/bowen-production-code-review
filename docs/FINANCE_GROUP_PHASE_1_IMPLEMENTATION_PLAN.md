@@ -122,7 +122,11 @@ and evidence that tenant tables/data are untouched.
 
 **Delivered locally:** central-only Group membership/scope schema, models, and
 scope service with explicit identity mapping and no inferred cross-school
-access.
+access. The central Super Admin-only Finance Groups configuration page can
+create/update a draft Group and reconcile its existing School memberships;
+every selected School is checked against the central registry and removing a
+membership revokes it in place for audit history. It neither accepts a tenant
+database name nor assigns a Group user, Fund Account, or finance role.
 
 ### Wave 3 — Group authorization and read-only reporting route
 
