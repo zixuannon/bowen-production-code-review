@@ -1,9 +1,9 @@
 # Finance Group Phase 1 — Execution Plan and Business Approval Pack
 
-**Status:** Phase 1-A central Scope foundation is in local implementation.
-Real Group configuration remains empty and administrator-configurable; no
-Bowen Group, School membership, user scope, or account record is seeded by
-this work.
+**Status:** Phase 1-A central Scope foundation and Phase 1-B Ledger V1
+read-only adapter are in local implementation. Real Group configuration
+remains empty and administrator-configurable; no Bowen Group, School
+membership, user scope, or account record is seeded by this work.
 **Scope:** The smallest reversible local delivery of Group Scope plus Ledger V1
 read-only consolidation.  
 **Environment:** Local synthetic multi-tenant QA only. Production and Staging
@@ -87,6 +87,12 @@ justified. This wave reads current canonical sources only.
 **Exit evidence:** source-by-source parity tests; no additional database rows
 after repeated register requests; existing Transactions page/regression green.
 
+**Delivered locally:** `FinanceLedgerV1Service` projects existing canonical
+sources with a stable `tenant:<school>:<source-type>:<source-id>` key, source
+metadata, operating classification, and neutral internal-transfer treatment.
+It performs no financial write and does not replace the current Transactions
+page or its balance source of truth.
+
 ### Wave 2 — central Group Scope foundation (additive)
 
 Add only the central entities required for read-only authorization:
@@ -113,6 +119,10 @@ Required migration posture:
 
 **Exit evidence:** schema assertions, duplicate/ambiguous/revoked scope tests,
 and evidence that tenant tables/data are untouched.
+
+**Delivered locally:** central-only Group membership/scope schema, models, and
+scope service with explicit identity mapping and no inferred cross-school
+access.
 
 ### Wave 3 — Group authorization and read-only reporting route
 

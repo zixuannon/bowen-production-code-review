@@ -12,6 +12,7 @@ use App\Services\FundAccountBalanceService;
 use App\Services\FundHandoverService;
 use App\Services\BankTransferService;
 use App\Services\FinanceTransactionRegisterService;
+use App\Services\FinanceLedgerV1Service;
 use App\Services\OtherIncomeService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Schema\Blueprint;
@@ -210,9 +211,11 @@ class FundHandoverServiceTest extends TestCase
         $register = app(FinanceTransactionRegisterService::class);
         $before = $register->register($this->head);
         $beforeTransferRows = $before['rows']->where('transaction_type', 'bank_transfer')->count();
-        OtherIncome::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'payer' => 'QA donor', 'description' => 'QA receipt', 'amount' => 200, 'payment_method' => 'Cash', 'reference_no' => 'OI-REGISTER', 'created_by' => $this->head->id]);
+        $incomeReference = 'OI-REGISTER-' . $this->head->id;
+        $transferReference = 'TR-REGISTER-' . $this->head->id;
+        OtherIncome::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'payer' => 'QA donor', 'description' => 'QA receipt', 'amount' => 200, 'payment_method' => 'Cash', 'reference_no' => $incomeReference, 'created_by' => $this->head->id]);
         Expense::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'title' => 'QA expense', 'amount' => 50, 'created_by' => $this->head->id]);
-        $transfer = BankTransfer::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'amount' => 100, 'transfer_date' => '2026-01-02', 'reference_no' => 'TR-REGISTER', 'status' => 'completed', 'created_by' => $this->head->id]);
+        $transfer = BankTransfer::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'amount' => 100, 'transfer_date' => '2026-01-02', 'reference_no' => $transferReference, 'status' => 'completed', 'created_by' => $this->head->id]);
         FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 100, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_CONFIRMED, 'bank_transfer_id' => $transfer->id]);
         FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 99, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_PENDING]);
 
@@ -221,7 +224,7 @@ class FundHandoverServiceTest extends TestCase
         $this->assertSame(50.0, $result['summary']['operating_expense'] - $before['summary']['operating_expense']);
         // An all-account register renders an internal move once, neutrally.
         // It must not look like both money received and money paid.
-        $neutralTransfer = $result['rows']->first(fn (array $row) => $row['reference'] === 'TR-REGISTER');
+        $neutralTransfer = $result['rows']->first(fn (array $row) => $row['reference'] === $transferReference);
         $this->assertSame('Internal Transfer', $neutralTransfer['display_type']);
         $this->assertSame(0.0, $neutralTransfer['money_in']);
         $this->assertSame(0.0, $neutralTransfer['money_out']);
@@ -231,15 +234,31 @@ class FundHandoverServiceTest extends TestCase
         $this->assertSame(150.0, $result['summary']['net_movement'] - $before['summary']['net_movement']);
         $this->assertSame($beforeTransferRows + 1, $result['rows']->where('transaction_type', 'bank_transfer')->count());
 
-        $sourcePerspective = $register->register($this->head, ['bank_account_id' => $this->headAccount->id, 'reference' => 'TR-REGISTER']);
+        $sourcePerspective = $register->register($this->head, ['bank_account_id' => $this->headAccount->id, 'reference' => $transferReference]);
         $sourceRow = $sourcePerspective['rows']->sole();
         $this->assertSame(0.0, $sourceRow['money_in']);
         $this->assertSame(100.0, $sourceRow['money_out']);
 
-        $destinationPerspective = $register->register($this->head, ['bank_account_id' => $this->cashierAccount->id, 'reference' => 'TR-REGISTER']);
+        $destinationPerspective = $register->register($this->head, ['bank_account_id' => $this->cashierAccount->id, 'reference' => $transferReference]);
         $destinationRow = $destinationPerspective['rows']->sole();
         $this->assertSame(100.0, $destinationRow['money_in']);
         $this->assertSame(0.0, $destinationRow['money_out']);
+
+        $ledger = app(FinanceLedgerV1Service::class);
+        $neutralLedger = $ledger->register($this->head, ['reference' => $transferReference]);
+        $neutralRow = $neutralLedger['rows']->sole();
+        $this->assertSame("tenant:1:bank_transfer:{$transfer->id}", $neutralRow['ledger_key']);
+        $this->assertSame('INTERNAL_TRANSFER', $neutralRow['transaction_class']);
+        $this->assertSame($this->headAccount->id, $neutralRow['from_fund_account_id']);
+        $this->assertSame($this->cashierAccount->id, $neutralRow['to_fund_account_id']);
+        $this->assertSame(0.0, $neutralRow['operating_income']);
+        $this->assertSame(0.0, $neutralRow['operating_expense']);
+        $this->assertSame(100.0, $neutralRow['internal_transfer_amount']);
+
+        $otherIncomeLedger = $ledger->register($this->head, ['reference' => $incomeReference]);
+        $this->assertSame('tenant:1:other_income:' . OtherIncome::where('reference_no', $incomeReference)->sole()->id, $otherIncomeLedger['rows']->sole()['ledger_key']);
+        $this->assertSame(200.0, $otherIncomeLedger['summary']['operating_income']);
+        $this->assertSame(0.0, $otherIncomeLedger['summary']['operating_expense']);
     }
 
     public function test_direct_transfer_requires_two_active_authorized_distinct_current_school_accounts_and_leaves_no_partial_write(): void

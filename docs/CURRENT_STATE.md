@@ -38,16 +38,22 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Current phase
 
-Finance Group Phase 1-A central Scope foundation — **LOCAL IMPLEMENTATION IN
-PROGRESS**. The additive central-only schema and explicit models/services now
-support configurable draft Groups, trusted central School membership, explicit
-Group user/SCHOOL/HQ scopes, and validated central-to-tenant identity mapping.
-No real Bowen Group, School membership, user scope, account, Ledger row, or
-tenant finance data is seeded or changed. A Group code is optional while a
-Group is draft and must be configured by an authorized administrator before
-activation. Current Finance P0–P3.2/UAT behavior remains untouched. Group
-reporting UI, cross-school finance operations, Group account balances, and
-tenant Finance writes are not implemented in this foundation.
+Finance Group Phase 1-A/1-B central Scope + Ledger V1 foundations — **LOCAL
+IMPLEMENTATION IN PROGRESS**. The additive central-only schema and explicit
+models/services support configurable draft Groups, trusted central School
+membership, explicit Group user/SCHOOL/HQ scopes, and validated
+central-to-tenant identity mapping. `FinanceLedgerV1Service` is a read-only
+projection of the existing canonical transaction register: student fees,
+optional fees, Other Income, Expense, and completed BankTransfer records get a
+stable source key and accounting classification without a new mutable ledger
+or any changed balance calculation. Internal transfers remain neutral for
+operating Income/Expense and are represented once. No real Bowen Group, School
+membership, user scope, account, Ledger row, or tenant finance data is seeded
+or changed. A Group code is optional while a Group is draft and must be
+configured by an authorized administrator before activation. Current Finance
+P0–P3.2/UAT behavior remains untouched. Group reporting UI, cross-school
+finance operations, Group account balances, and tenant Finance writes are not
+implemented in these foundations.
 
 Finance P3.2 Unified Finance Transactions — **LOCAL AUTOMATED VERIFIED**. `Finance → Transactions` is a read-only adapter over compulsory payments, optional payments, non-fee `OtherIncome`, Expense, and canonical completed BankTransfer source records; no duplicate transaction/ledger table exists. Pending handovers are omitted, while confirmed handovers appear exactly once through their linked BankTransfer. The register has date/type/account/reference/keyword filters and rejects forged Fund Account filters server-side. A selected Fund Account renders an internal transfer directionally; an all-account view renders it once as neutral `Internal Transfer`, with no Money In/Out or operating-result contribution. Direct transfers require two distinct active, non-deleted, current-school, authorized accounts and execute through an exception-safe transaction; cancellation removes only the canonical transfer balance effect. Receive Money records a tenant-local non-fee source only after payment-method, active current-school Fund Account, Cashier assignment scope, and reference reservation checks. Expense/Import buttons reuse existing Expense and P3.1 Expense Excel workflows. P0 focused tests and broader finance regression pass (143 tests / 546 assertions). The guarded BOWEN_QA browser rerun is pending local MariaDB credentials in this worktree; no non-local fallback is permitted. Production and staging remain untouched.
 
