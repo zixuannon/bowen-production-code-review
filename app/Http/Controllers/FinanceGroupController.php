@@ -27,10 +27,11 @@ class FinanceGroupController extends Controller
         $this->assertCentralSuperAdmin();
 
         return view('finance-groups.index', [
-            'groups' => FinanceGroup::query()->with(['schools.school'])->orderBy('name')->get(),
+            'groups' => FinanceGroup::query()->with(['schools.school', 'users.centralUser', 'users.scopes.school', 'users.tenantIdentities.school'])->orderBy('name')->get(),
             // Schools come only from the central registry; database names are
             // deliberately not selected or rendered.
             'schools' => School::on('mysql')->orderBy('name')->get(['id', 'name', 'code', 'status']),
+            'centralUsers' => User::on('mysql')->whereNull('school_id')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']),
         ]);
     }
 
@@ -58,6 +59,33 @@ class FinanceGroupController extends Controller
         });
 
         return redirect()->route('finance-groups.index')->with('success', __('Finance Group updated.'));
+    }
+
+    /** Add/update one explicit central Group user scope; no tenant role changes. */
+    public function storeUserScope(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate([
+            'central_user_id' => ['required', 'integer'],
+            'capability' => ['required', 'in:view_reports,export_reports,manage_configuration'],
+            'scope_type' => ['required', 'in:GROUP,SCHOOL,HQ'],
+            'school_id' => ['nullable', 'integer'],
+        ]);
+        DB::connection('mysql')->transaction(function () use ($data, $financeGroup): void {
+            $groupUser = $this->groups->addUser($financeGroup, (int) $data['central_user_id']);
+            $this->groups->grantScope($groupUser, $data['capability'], $data['scope_type'], isset($data['school_id']) ? (int) $data['school_id'] : null);
+        });
+        return redirect()->route('finance-groups.index')->with('success', __('Group user scope saved.'));
+    }
+
+    /** Bind an existing central Group user to an existing tenant user safely. */
+    public function storeTenantIdentity(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate(['group_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
+        $groupUser = $financeGroup->users()->whereKey($data['group_user_id'])->firstOrFail();
+        $this->groups->bindTenantIdentity($groupUser, (int) $data['school_id'], (int) $data['tenant_user_id']);
+        return redirect()->route('finance-groups.index')->with('success', __('Tenant identity saved.'));
     }
 
     /** @return array<string, mixed> */

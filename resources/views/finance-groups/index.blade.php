@@ -24,6 +24,15 @@
                 <div class="card-body">
                     <h4 class="card-title">{{ $group->name }}</h4>
                     @include('finance-groups.partials.form', ['group' => $group, 'action' => route('finance-groups.update', $group), 'method' => 'PUT'])
+                    <hr><h5>{{ __('Group reporting users') }}</h5>
+                    <form class="row" method="POST" action="{{ route('finance-groups.user-scopes.store', $group) }}">@csrf
+                        <div class="form-group col-md-3"><select class="form-control" name="central_user_id" required><option value="">{{ __('Select central user') }}</option>@foreach($centralUsers as $user)<option value="{{ $user->id }}">{{ $user->full_name }} {{ $user->email ? '('.$user->email.')' : '' }}</option>@endforeach</select></div>
+                        <div class="form-group col-md-2"><select class="form-control" name="capability"><option value="view_reports">{{ __('View reports') }}</option><option value="export_reports">{{ __('Export reports') }}</option><option value="manage_configuration">{{ __('Manage configuration') }}</option></select></div>
+                        <div class="form-group col-md-2"><select class="form-control" name="scope_type"><option value="GROUP">{{ __('All Group Schools') }}</option><option value="SCHOOL">{{ __('One School') }}</option><option value="HQ">{{ __('HQ') }}</option></select></div>
+                        <div class="form-group col-md-3"><select class="form-control" name="school_id"><option value="">{{ __('School for School scope') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
+                        <div class="form-group col-md-2"><button class="btn btn-outline-primary" type="submit">{{ __('Save scope') }}</button></div></form>
+                    <ul class="mb-2">@foreach($group->users as $groupUser)<li>{{ $groupUser->centralUser?->full_name ?? ('User #'.$groupUser->central_user_id) }}: {{ $groupUser->scopes->where('status','active')->map(fn($scope) => $scope->capability.' / '.$scope->scope_type.($scope->school ? ' / '.$scope->school->name : ''))->implode(', ') ?: __('No active scope') }}</li>@endforeach</ul>
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('finance-groups.reports.index', $group) }}">{{ __('Open read-only Group reports') }}</a>
                 </div>
             </div>
         @endforeach

@@ -1,6 +1,7 @@
 <?php
 use App\Http\Controllers\FinanceDashboardController;
 use App\Http\Controllers\FinanceGroupController;
+use App\Http\Controllers\FinanceGroupReportController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -218,6 +219,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::get('finance-groups', [FinanceGroupController::class, 'index'])->name('finance-groups.index');
         Route::post('finance-groups', [FinanceGroupController::class, 'store'])->name('finance-groups.store');
         Route::put('finance-groups/{financeGroup}', [FinanceGroupController::class, 'update'])->name('finance-groups.update');
+        Route::post('finance-groups/{financeGroup}/user-scopes', [FinanceGroupController::class, 'storeUserScope'])->name('finance-groups.user-scopes.store');
+        Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
+        Route::get('finance-groups/{financeGroup}/reports', [FinanceGroupReportController::class, 'register'])->name('finance-groups.reports.index');
+        Route::get('finance-groups/{financeGroup}/reports/export', [FinanceGroupReportController::class, 'export'])->name('finance-groups.reports.export');
 
         /*** Package ***/
         Route::group(['prefix' => 'package'], static function () {
