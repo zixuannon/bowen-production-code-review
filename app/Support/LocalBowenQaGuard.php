@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use LogicException;
 
 /**
  * Identity boundary for destructive synthetic QA work.  The database names
@@ -16,34 +15,11 @@ final class LocalBowenQaGuard
 
     public static function assertEnvironment(string $environment, string $appUrl, string $centralDatabase): void
     {
-        if (!in_array($environment, ['local', 'testing'], true)) {
-            throw new LogicException('BOWEN_QA tooling is local/test-only. APP_ENV must be local or testing.');
-        }
-
-        $host = parse_url($appUrl, PHP_URL_HOST);
-        if (!in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
-            throw new LogicException('BOWEN_QA tooling requires an APP_URL on localhost, 127.0.0.1, or ::1.');
-        }
-
-        if (self::isForbiddenDatabase($centralDatabase)) {
-            throw new LogicException('BOWEN_QA tooling refused the configured central database.');
-        }
+        LocalQaTenantGuard::assertEnvironment($environment, $appUrl, $centralDatabase, [self::SCHOOL_CODE => self::TENANT_DATABASE]);
     }
 
     public static function assertTenant(string $schoolCode, string $database): void
     {
-        if ($schoolCode !== self::SCHOOL_CODE || $database !== self::TENANT_DATABASE || self::isForbiddenDatabase($database)) {
-            throw new LogicException('Only the fixed local BOWEN_QA tenant database may be reset or seeded.');
-        }
-    }
-
-    private static function isForbiddenDatabase(string $database): bool
-    {
-        return $database === ''
-            || $database === 'sql_43_160_241_126'
-            || $database === 'eschool_staging'
-            || str_starts_with($database, 'eschool_saas_')
-            || str_starts_with($database, 'eschool_staging_')
-            || str_starts_with($database, 'sql_43_160_241_126_');
+        LocalQaTenantGuard::assertTenant($schoolCode, $database, [self::SCHOOL_CODE => self::TENANT_DATABASE]);
     }
 }

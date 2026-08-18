@@ -1,9 +1,9 @@
 # Finance Group Phase 1 — Execution Plan and Business Approval Pack
 
-**Status:** Phase 1-A central Scope foundation and Phase 1-B Ledger V1
-read-only adapter are in local implementation. Real Group configuration
-remains empty and administrator-configurable; no Bowen Group, School
-membership, user scope, or account record is seeded by this work.
+**Status:** Phase 1-A/1-B/1-C is **locally accepted** with fixed synthetic
+Group QA data. Real Group configuration remains empty and
+administrator-configurable; no real Bowen Group, School membership, user
+scope, or account record is seeded by this work.
 **Scope:** The smallest reversible local delivery of Group Scope plus Ledger V1
 read-only consolidation.  
 **Environment:** Local synthetic multi-tenant QA only. Production and Staging
@@ -160,9 +160,16 @@ Use only synthetic Group QA users:
 6. Operating Income/Expense/Net excludes all internal transfer movement.
 7. Download/export has identical scope to HTML/API view.
 
-**Exit evidence:** targeted PHPUnit, relevant full Finance regression,
-authenticated local Playwright, `git diff --check`, source/data count hashes,
-and manual code/security review.
+**Exit evidence (2026-08-18):** `local:finance-group-qa reset` and repeated
+`verify` passed for exactly `GROUP_QA_SCHOOL_A`, `GROUP_QA_SCHOOL_B`, and
+`GROUP_QA_UNRELATED`; report rows reconcile to operating Income 480, Expense
+60, and neutral Internal Transfer 300. The unrelated tenant and both pending
+handover references are absent. `verify` hashes full row content/counts of
+all fixture financial tables before and after every read-only validation.
+Focused Group/HTTP/CSV/guard PHPUnit and the local authenticated Group Reports
+Playwright/CSV acceptance passed, followed by the canonical Finance regression
+(222 tests / 844 assertions). `git diff --check` and manual security review
+passed. Production and Staging remain untouched.
 
 ## 4. Proposed change inventory
 

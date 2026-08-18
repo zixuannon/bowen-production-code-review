@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-08-13
+Last updated: 2026-08-18
 
 ## Active production target
 
@@ -38,8 +38,8 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Current phase
 
-Finance Group Phase 1-A/1-B central Scope + Ledger V1 foundations — **LOCAL
-IMPLEMENTATION IN PROGRESS**. The additive central-only schema and explicit
+Finance Group Phase 1-A/1-B/1-C Scope + Ledger V1 + read-only Group Reports — **LOCAL
+ACCEPTANCE VERIFIED**. The additive central-only schema and explicit
 models/services support configurable draft Groups, trusted central School
 membership, explicit Group user/SCHOOL/HQ scopes, and validated
 central-to-tenant identity mapping. `FinanceLedgerV1Service` is a read-only
@@ -60,9 +60,22 @@ or create financial records. `FinanceGroupReportService` is now the scoped
 read-only Group aggregation layer: it reads Ledger V1 only through an explicit
 central-to-tenant identity, marks unavailable authorized tenant data as
 incomplete instead of silently lowering totals, and rejects forged School or
-Fund Account filters rather than converting them into partial results. There
-is still no Group report UI, cross-school finance operation, Group account
-balance, or tenant Finance write.
+Fund Account filters rather than converting them into partial results. The
+read-only Group report and CSV export are now present. Local-only
+`local:finance-group-qa reset|verify` is fixed to exactly three
+non-production databases (`eschool_local_group_qa_a`, `_b`, and `_unrelated`)
+and refuses non-local environments, staging/production-style databases, and
+arbitrary tenant input. It rebuilds two member tenants plus an unrelated denial
+tenant, explicit central Group/SCHOOL scopes and tenant identities, Fund
+Account scope, Student Fee, Other Income, Expense, direct internal transfer,
+confirmed canonical-handover transfer, and pending handover. Repeated verify
+hashes full row content/counts before/after its read-only work; A/B reconcile
+to Income 480, Expense 60, Internal Transfer 300, while pending handovers and
+the unrelated tenant are excluded. Focused Group guard/scope/HTTP CSV tests
+and local authenticated Playwright export acceptance passed. Canonical Finance
+regression: 222 tests / 844 assertions. There is still no cross-school finance
+operation, Group account balance, or tenant Finance write. Production and
+Staging remain untouched.
 
 Finance P3.2 Unified Finance Transactions — **LOCAL AUTOMATED VERIFIED**. `Finance → Transactions` is a read-only adapter over compulsory payments, optional payments, non-fee `OtherIncome`, Expense, and canonical completed BankTransfer source records; no duplicate transaction/ledger table exists. Pending handovers are omitted, while confirmed handovers appear exactly once through their linked BankTransfer. The register has date/type/account/reference/keyword filters and rejects forged Fund Account filters server-side. A selected Fund Account renders an internal transfer directionally; an all-account view renders it once as neutral `Internal Transfer`, with no Money In/Out or operating-result contribution. Direct transfers require two distinct active, non-deleted, current-school, authorized accounts and execute through an exception-safe transaction; cancellation removes only the canonical transfer balance effect. Receive Money records a tenant-local non-fee source only after payment-method, active current-school Fund Account, Cashier assignment scope, and reference reservation checks. Expense/Import buttons reuse existing Expense and P3.1 Expense Excel workflows. P0 focused tests and broader finance regression pass (143 tests / 546 assertions). The guarded BOWEN_QA browser rerun is pending local MariaDB credentials in this worktree; no non-local fallback is permitted. Production and staging remain untouched.
 

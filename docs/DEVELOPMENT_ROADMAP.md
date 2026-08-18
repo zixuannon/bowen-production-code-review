@@ -118,3 +118,12 @@ Balances move only on designated receiver confirmation.
 - Bank Reconciliation
 - Refund / Void / Reversal
 - Reporting / Audit workbench
+
+## Finance Group Phase 1 — local-only read model
+
+- [x] Central-only configurable Group/School/user/scope/tenant-identity foundation.
+- [x] Ledger V1 remains a read-only projection of canonical tenant sources.
+- [x] Fixed two-member + unrelated local Group QA fixture, guarded against non-local and production-style databases.
+- [x] Scoped Group report/CSV authorization, no-write full-row hash verification, neutral internal transfer, and pending-handover exclusion.
+- [x] Local Group Reports Playwright acceptance and canonical Finance regression (222 tests / 844 assertions).
+- [ ] Any real Group configuration, production migration, or cross-school write remains a separate approved phase.
