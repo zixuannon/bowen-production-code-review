@@ -128,10 +128,10 @@
                                     <th scope="col" data-field="currency" data-sortable="true">{{ __('Currency') }}</th>
                                     <th scope="col" data-field="opening_balance" data-sortable="true"
                                         data-formatter="balanceFormatter">{{ __('Opening Balance') }}</th>
-                                    <th scope="col" data-field="income_total"
-                                        data-formatter="balanceFormatter">{{ __('Income Total') }}</th>
-                                    <th scope="col" data-field="expense_total"
-                                        data-formatter="balanceFormatter">{{ __('Expense Total') }}</th>
+                                    <th scope="col" data-field="money_in_total"
+                                        data-formatter="balanceFormatter">{{ __('Money In') }}</th>
+                                    <th scope="col" data-field="money_out_total"
+                                        data-formatter="balanceFormatter">{{ __('Money Out') }}</th>
                                     <th scope="col" data-field="current_balance" data-sortable="true"
                                         data-formatter="balanceFormatter">{{ __('Current Balance') }}</th>
                                     <th scope="col" data-field="status_badge" data-escape="false">{{ __('Status') }}</th>

@@ -90,7 +90,7 @@ class FeesPaidImportHttpTest extends TestCase
 
         // Second school for cross-school tests
         try {
-            DB::table('schools')->insertOrIgnore([
+            DB::connection('school')->table('schools')->insertOrIgnore([
                 'id' => $this->otherSchoolId, 'name' => 'Other School', 'code' => 'OS5',
                 'created_at' => now(), 'updated_at' => now(),
             ]);
