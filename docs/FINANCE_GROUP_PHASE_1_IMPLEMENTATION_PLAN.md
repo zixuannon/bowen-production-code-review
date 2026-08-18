@@ -270,8 +270,13 @@ Finance Group Phase 1-A — central Group Scope schema + read-only bootstrap
 It owns only Wave 0–2, runs local migrations/tests, and stops before any Group
 reporting UI. A real Group remains a draft until an authorized administrator
 sets its display name/code, member Schools, user scopes, and report policy.
-Phase 1-B will then implement the Ledger/reporting read path using the
-verified scope foundation.
+Phase 1-B implements the Ledger/reporting read path using the verified scope
+foundation. The local service layer now aggregates only Ledger V1 data from
+explicitly scoped School memberships through an explicit tenant identity; it
+never accepts a database name or exposes a generic tenant callback. A missing
+tenant mapping/schema is marked incomplete instead of silently omitted, while
+forged scope/account filters remain request failures. The Group reporting UI
+and export remain later Phase 1 work.
 
 ### Phase 1-A foundation delivered locally
 

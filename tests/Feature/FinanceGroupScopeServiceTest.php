@@ -3,7 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\FinanceGroup;
+use App\Models\User;
+use App\Services\FinanceLedgerV1Service;
+use App\Services\FinanceGroupReportService;
 use App\Services\FinanceGroupScopeService;
+use App\Services\FinanceTransactionRegisterService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -225,6 +230,80 @@ class FinanceGroupScopeServiceTest extends TestCase
         }
     }
 
+    public function test_group_report_aggregates_only_explicit_scopes_and_marks_missing_tenant_identity_incomplete(): void
+    {
+        $scope = app(FinanceGroupScopeService::class);
+        $group = $scope->createGroup(['name' => 'Read-only Group']);
+        $scope->syncSchools($group, [1, 2]);
+        $groupUser = $scope->addUser($group, 100);
+        $scope->grantScope($groupUser, 'view_reports', 'GROUP');
+        $scope->bindTenantIdentity($groupUser, 1, 201);
+
+        $ledger = $this->fakeLedger([
+            1 => ['income' => 1000, 'expense' => 300, 'internal' => 500],
+            2 => ['income' => 2000, 'expense' => 400, 'internal' => 700],
+        ]);
+        $report = new FinanceGroupReportService($scope, $ledger);
+        $beforeDefault = DB::getDefaultConnection();
+
+        $result = $report->register($groupUser);
+
+        $this->assertSame($beforeDefault, DB::getDefaultConnection());
+        $this->assertCount(1, $result['rows']);
+        $this->assertSame(1, $result['rows']->sole()['school_id']);
+        $this->assertSame('tenant:1:other_income:1', $result['rows']->sole()['ledger_key']);
+        $this->assertSame(1000.0, $result['summary']['operating_income']);
+        $this->assertSame(300.0, $result['summary']['operating_expense']);
+        $this->assertSame(700.0, $result['summary']['operating_net']);
+        $this->assertSame(500.0, $result['summary']['internal_transfer_amount']);
+        $this->assertSame([2], $result['incomplete']->pluck('school_id')->all());
+        $this->assertSame(0, DB::connection('school')->table('bank_accounts')->count());
+    }
+
+    public function test_group_report_rejects_forged_school_and_requires_school_context_for_account_filter(): void
+    {
+        $scope = app(FinanceGroupScopeService::class);
+        $group = $scope->createGroup(['name' => 'Scoped Group']);
+        $scope->addSchool($group, 1);
+        $groupUser = $scope->addUser($group, 100);
+        $scope->grantScope($groupUser, 'view_reports', 'SCHOOL', 1);
+        $scope->bindTenantIdentity($groupUser, 1, 201);
+        $report = new FinanceGroupReportService($scope, $this->fakeLedger([1 => ['income' => 10, 'expense' => 0, 'internal' => 0]]));
+
+        try {
+            $report->register($groupUser, ['school_id' => 2]);
+            $this->fail('A forged School filter was accepted.');
+        } catch (AuthorizationException) {
+            $this->assertTrue(true);
+        }
+
+        $this->expectException(ValidationException::class);
+        $report->register($groupUser, ['bank_account_id' => 1]);
+    }
+
+    public function test_group_report_never_converts_a_forged_account_rejection_into_an_incomplete_tenant(): void
+    {
+        $scope = app(FinanceGroupScopeService::class);
+        $group = $scope->createGroup(['name' => 'Scoped Group']);
+        $scope->addSchool($group, 1);
+        $groupUser = $scope->addUser($group, 100);
+        $scope->grantScope($groupUser, 'view_reports', 'SCHOOL', 1);
+        $scope->bindTenantIdentity($groupUser, 1, 201);
+
+        $ledger = new class(app(FinanceTransactionRegisterService::class)) extends FinanceLedgerV1Service {
+            public function register(User $actor, array $filters = []): array
+            {
+                throw (new ModelNotFoundException())->setModel('App\\Models\\BankAccount', [(int) ($filters['bank_account_id'] ?? 0)]);
+            }
+        };
+
+        $this->expectException(ModelNotFoundException::class);
+        (new FinanceGroupReportService($scope, $ledger))->register($groupUser, [
+            'school_id' => 1,
+            'bank_account_id' => 999,
+        ]);
+    }
+
     public function test_unknown_central_user_and_school_are_rejected_without_tenant_writes(): void
     {
         $service = app(FinanceGroupScopeService::class);
@@ -267,6 +346,42 @@ class FinanceGroupScopeServiceTest extends TestCase
             $table->string('account_name');
         });
         DB::connection('school')->table('users')->insert(['id' => $userId, 'school_id' => $schoolId]);
+    }
+
+    /** @param array<int, array{income: int|float, expense: int|float, internal: int|float}> $fixtures */
+    private function fakeLedger(array $fixtures): FinanceLedgerV1Service
+    {
+        return new class(app(FinanceTransactionRegisterService::class), $fixtures) extends FinanceLedgerV1Service {
+            /** @param array<int, array{income: int|float, expense: int|float, internal: int|float}> $fixtures */
+            public function __construct(FinanceTransactionRegisterService $transactions, private readonly array $fixtures)
+            {
+                parent::__construct($transactions);
+            }
+
+            public function register(User $actor, array $filters = []): array
+            {
+                $fixture = $this->fixtures[$actor->school_id] ?? ['income' => 0, 'expense' => 0, 'internal' => 0];
+
+                return [
+                    'rows' => collect([[
+                        'ledger_key' => "tenant:{$actor->school_id}:other_income:1",
+                        'posting_date' => '2026-08-18',
+                        'school_id' => $actor->school_id,
+                        'source_type' => 'other_income',
+                        'source_id' => 1,
+                        'operating_income' => (float) $fixture['income'],
+                        'operating_expense' => (float) $fixture['expense'],
+                        'internal_transfer_amount' => (float) $fixture['internal'],
+                    ]]),
+                    'summary' => [
+                        'operating_income' => (float) $fixture['income'],
+                        'operating_expense' => (float) $fixture['expense'],
+                        'internal_transfer_amount' => (float) $fixture['internal'],
+                        'operating_net' => (float) $fixture['income'] - (float) $fixture['expense'],
+                    ],
+                ];
+            }
+        };
     }
 
     private function temporaryDatabase(): string

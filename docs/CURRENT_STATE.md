@@ -56,7 +56,13 @@ finance operations, Group account balances, and tenant Finance writes are not
 implemented in these foundations. A central Super Admin-only `Finance Groups`
 configuration page now creates/edits a Group and selects only Schools from the
 trusted central registry; it does not expose database names, provision people,
-or create financial records.
+or create financial records. `FinanceGroupReportService` is now the scoped
+read-only Group aggregation layer: it reads Ledger V1 only through an explicit
+central-to-tenant identity, marks unavailable authorized tenant data as
+incomplete instead of silently lowering totals, and rejects forged School or
+Fund Account filters rather than converting them into partial results. There
+is still no Group report UI, cross-school finance operation, Group account
+balance, or tenant Finance write.
 
 Finance P3.2 Unified Finance Transactions — **LOCAL AUTOMATED VERIFIED**. `Finance → Transactions` is a read-only adapter over compulsory payments, optional payments, non-fee `OtherIncome`, Expense, and canonical completed BankTransfer source records; no duplicate transaction/ledger table exists. Pending handovers are omitted, while confirmed handovers appear exactly once through their linked BankTransfer. The register has date/type/account/reference/keyword filters and rejects forged Fund Account filters server-side. A selected Fund Account renders an internal transfer directionally; an all-account view renders it once as neutral `Internal Transfer`, with no Money In/Out or operating-result contribution. Direct transfers require two distinct active, non-deleted, current-school, authorized accounts and execute through an exception-safe transaction; cancellation removes only the canonical transfer balance effect. Receive Money records a tenant-local non-fee source only after payment-method, active current-school Fund Account, Cashier assignment scope, and reference reservation checks. Expense/Import buttons reuse existing Expense and P3.1 Expense Excel workflows. P0 focused tests and broader finance regression pass (143 tests / 546 assertions). The guarded BOWEN_QA browser rerun is pending local MariaDB credentials in this worktree; no non-local fallback is permitted. Production and staging remain untouched.
 

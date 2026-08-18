@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\FinanceGroupTenantUnavailableException;
 use App\Models\FinanceGroup;
 use App\Models\FinanceGroupSchool;
 use App\Models\FinanceGroupUser;
@@ -12,6 +13,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -261,6 +263,46 @@ class FinanceGroupScopeService
             ['group_user_id' => $groupUser->id, 'school_id' => $schoolId],
             ['tenant_user_id' => $tenantUser->id, 'status' => 'active'],
         );
+    }
+
+    /**
+     * Read Ledger V1 in the selected tenant using the explicit Group-user
+     * identity mapped for that School. This intentionally exposes no generic
+     * tenant callback, so Group-report code cannot turn it into a write path.
+     * Callers never receive a raw database name or choose a connection.
+     *
+     * @param array<string, mixed> $filters
+     * @return array{rows: \Illuminate\Support\Collection<int, array<string, mixed>>, summary: array<string, float>}
+     */
+    public function readLedgerAsTenantIdentity(FinanceGroupUser $groupUser, FinanceGroupSchool $membership, FinanceLedgerV1Service $ledger, array $filters = []): array
+    {
+        $allowed = $this->accessibleSchools($groupUser, 'view_reports');
+        if (!$allowed->contains(fn (FinanceGroupSchool $item) => $item->id === $membership->id)) {
+            throw new AuthorizationException('This Group user is not authorized for the requested School.');
+        }
+
+        $identity = FinanceGroupUserTenantIdentity::query()
+            ->where('group_user_id', $groupUser->id)
+            ->where('school_id', $membership->school_id)
+            ->where('status', 'active')
+            ->first();
+        if (!$identity) {
+            throw new FinanceGroupTenantUnavailableException('No active tenant identity is configured for this Group School.');
+        }
+
+        $school = $this->centralSchool($membership->school_id);
+
+        return $this->inTenant($school, function () use ($identity, $school, $ledger, $filters): array {
+            $tenantUser = User::on('school')
+                ->whereKey($identity->tenant_user_id)
+                ->where('school_id', $school->id)
+                ->first();
+            if (!$tenantUser) {
+                throw new FinanceGroupTenantUnavailableException('The configured tenant identity no longer belongs to this School.');
+            }
+
+            return $ledger->register($tenantUser, $filters);
+        });
     }
 
     private function centralSchool(int $schoolId): School
