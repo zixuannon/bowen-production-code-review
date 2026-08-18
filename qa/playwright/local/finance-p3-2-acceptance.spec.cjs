@@ -104,7 +104,7 @@ test('Transactions register scopes accounts and Receive Money creates one canoni
   }
 });
 
-test('Internal transfers are neutral in the all-account register and directional for a selected Fund Account', async () => {
+test('Internal transfers are neutral in operating results and directional in Fund Account list cash flow', async ({ browser }) => {
   const headApi = await apiFor('qa_head_finance@bowen-qa.test');
   const reference = `BOWEN_QA_P0_TRANSFER_${Date.now()}`;
   const amount = '25.00';
@@ -115,6 +115,16 @@ test('Internal transfers are neutral in the all-account register and directional
     const destination = accountsBefore.find((account) => account.account_number === 'QA_P2_CASH_A');
     expect(source).toBeTruthy();
     expect(destination).toBeTruthy();
+    const sourceMoneyOutBefore = Number(source.money_out_total);
+    const destinationMoneyInBefore = Number(destination.money_in_total);
+
+    const context = await browser.newContext({ baseURL, storageState: await stateFor('qa_head_finance@bowen-qa.test') });
+    try {
+      const page = await context.newPage();
+      expect((await page.goto('/bank-accounts', { waitUntil: 'networkidle' }))?.status()).toBe(200);
+      await expect(page.locator('#table_list th[data-field="money_in_total"]')).toContainText(/Money In|流入合计/);
+      await expect(page.locator('#table_list th[data-field="money_out_total"]')).toContainText(/Money Out|流出合计/);
+    } finally { await context.close(); }
 
     const transferPage = await headApi.get('/bank-transfers');
     expect(transferPage.status()).toBe(200);
@@ -133,6 +143,12 @@ test('Internal transfers are neutral in the all-account register and directional
     expect(create.status()).toBe(200);
     const created = await create.json();
     expect(created.error).toBeFalsy();
+
+    const accountsAfter = await accountsFor(headApi);
+    const sourceAfter = accountsAfter.find((account) => account.id === source.id);
+    const destinationAfter = accountsAfter.find((account) => account.id === destination.id);
+    expect(Number(sourceAfter.money_out_total)).toBeCloseTo(sourceMoneyOutBefore + Number(amount), 2);
+    expect(Number(destinationAfter.money_in_total)).toBeCloseTo(destinationMoneyInBefore + Number(amount), 2);
 
     const allAccounts = await headApi.get('/finance/transactions', { params: { type: 'bank_transfer', reference } });
     expect(allAccounts.status()).toBe(200);
@@ -157,6 +173,9 @@ test('Internal transfers are neutral in the all-account register and directional
       maxRedirects: 0,
     });
     expect(cancel.status()).toBe(200);
+    const accountsCancelled = await accountsFor(headApi);
+    expect(Number(accountsCancelled.find((account) => account.id === source.id).money_out_total)).toBeCloseTo(sourceMoneyOutBefore, 2);
+    expect(Number(accountsCancelled.find((account) => account.id === destination.id).money_in_total)).toBeCloseTo(destinationMoneyInBefore, 2);
     const cancelled = await headApi.get('/finance/transactions', { params: { type: 'bank_transfer', reference } });
     expect(await cancelled.text()).not.toContain(`<td>${reference}</td>`);
   } finally {

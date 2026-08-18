@@ -12,6 +12,7 @@ use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
+use App\Services\FundAccountBalanceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -71,53 +72,7 @@ class BankAccountController extends Controller
             ->take($limit)
             ->get();
 
-        $schoolId = Auth::user()->school_id;
-
-        // Eager-load income/expense sums for each account
-        $bankAccountIds = $rows->pluck('id');
-
-        // Compulsory fee income sums
-        $compulsoryIncome = CompulsoryFee::whereIn('bank_account_id', $bankAccountIds)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->selectRaw('bank_account_id, SUM(amount) as total')
-            ->groupBy('bank_account_id')
-            ->pluck('total', 'bank_account_id');
-
-        // Optional fee income sums
-        $optionalIncome = OptionalFee::whereIn('bank_account_id', $bankAccountIds)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->selectRaw('bank_account_id, SUM(amount) as total')
-            ->groupBy('bank_account_id')
-            ->pluck('total', 'bank_account_id');
-
-        $otherIncome = OtherIncome::whereIn('bank_account_id', $bankAccountIds)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->selectRaw('bank_account_id, SUM(amount) as total')
-            ->groupBy('bank_account_id')
-            ->pluck('total', 'bank_account_id');
-
-        // Expense sums
-        $expenseSums = Expense::whereIn('bank_account_id', $bankAccountIds)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->selectRaw('bank_account_id, SUM(amount) as total')
-            ->groupBy('bank_account_id')
-            ->pluck('total', 'bank_account_id');
-
-        // Transfer In sums
-        $transferInSums = BankTransfer::whereIn('to_account_id', $bankAccountIds)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->where('status', 'completed')
-            ->selectRaw('to_account_id, SUM(amount) as total')
-            ->groupBy('to_account_id')
-            ->pluck('total', 'to_account_id');
-
-        // Transfer Out sums
-        $transferOutSums = BankTransfer::whereIn('from_account_id', $bankAccountIds)
-            ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
-            ->where('status', 'completed')
-            ->selectRaw('from_account_id, SUM(amount) as total')
-            ->groupBy('from_account_id')
-            ->pluck('total', 'from_account_id');
+        $cashFlowSummaries = app(FundAccountBalanceService::class)->cashFlowSummaries($rows);
 
         $bulkData = [];
         $bulkData['total'] = $total;
@@ -125,14 +80,7 @@ class BankAccountController extends Controller
         $no        = 1;
 
         foreach ($rows as $row) {
-            $compulsory  = (float)($compulsoryIncome[$row->id] ?? 0);
-            $optional    = (float)($optionalIncome[$row->id] ?? 0);
-            $other       = (float)($otherIncome[$row->id] ?? 0);
-            $expenses    = (float)($expenseSums[$row->id] ?? 0);
-            $transferIn  = (float)($transferInSums[$row->id] ?? 0);
-            $transferOut = (float)($transferOutSums[$row->id] ?? 0);
-            $income      = $compulsory + $optional + $other;
-            $balance     = (float)$row->opening_balance + $income + $transferIn - $expenses - $transferOut;
+            $cashFlow = $cashFlowSummaries->get($row->id);
 
             $operate = '';
             if (!$row->trashed()) {
@@ -151,9 +99,9 @@ class BankAccountController extends Controller
                 : null;
             $tempRow['no']              = $no++;
             $tempRow['account_type_name'] = $row->account_type;
-            $tempRow['income_total']    = round($income, 2);
-            $tempRow['expense_total']   = round($expenses, 2);
-            $tempRow['current_balance'] = round($balance, 2);
+            $tempRow['money_in_total']  = round($cashFlow['money_in'], 2);
+            $tempRow['money_out_total'] = round($cashFlow['money_out'], 2);
+            $tempRow['current_balance'] = round($cashFlow['current_balance'], 2);
             $tempRow['status_badge']    = $row->is_active ? '<span class="badge badge-success">' . __('Active') . '</span>' : '<span class="badge badge-secondary">' . __('Inactive') . '</span>';
             $tempRow['default_badge']   = $row->is_default ? '<span class="badge badge-info">' . __('Default') . '</span>' : '';
             $tempRow['operate']         = $operate;

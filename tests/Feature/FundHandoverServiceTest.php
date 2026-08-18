@@ -8,15 +8,19 @@ use App\Models\FundHandover;
 use App\Models\Expense;
 use App\Models\OtherIncome;
 use App\Models\User;
+use App\Http\Controllers\BankAccountController;
 use App\Services\FundAccountBalanceService;
 use App\Services\FundHandoverService;
 use App\Services\BankTransferService;
+use App\Services\FeaturesService;
 use App\Services\FinanceTransactionRegisterService;
 use App\Services\FinanceLedgerV1Service;
 use App\Services\OtherIncomeService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -35,6 +39,7 @@ class FundHandoverServiceTest extends TestCase
     private User $cashierB;
     private BankAccount $headAccount;
     private BankAccount $cashierAccount;
+    private string $accountPrefix;
 
     protected function setUp(): void
     {
@@ -46,8 +51,9 @@ class FundHandoverServiceTest extends TestCase
         $this->schoolAdmin = $this->user('school-admin', 1, 'School Admin');
         $this->cashierA = $this->user('cashier-a', 1, 'Cashier');
         $this->cashierB = $this->user('cashier-b', 1, 'Cashier');
-        $this->headAccount = $this->account('Head source', 1, 1000);
-        $this->cashierAccount = $this->account('Cashier destination', 1, 100);
+        $this->accountPrefix = 'P3 list ' . uniqid();
+        $this->headAccount = $this->account($this->accountPrefix . ' head source', 1, 1000);
+        $this->cashierAccount = $this->account($this->accountPrefix . ' cashier destination', 1, 100);
         $this->cashierA->authorized_bank_accounts()->sync([$this->cashierAccount->id]);
     }
 
@@ -335,6 +341,75 @@ class FundHandoverServiceTest extends TestCase
         $this->assertSame($expensesBefore, Expense::where('school_id', 1)->count());
     }
 
+    public function test_bank_account_list_counts_a_direct_transfer_once_in_each_accounts_directional_cash_flow(): void
+    {
+        $before = $this->bankAccountListRows();
+        $this->assertSame(0.0, (float) $before[$this->headAccount->id]['money_out_total']);
+        $this->assertSame(0.0, (float) $before[$this->cashierAccount->id]['money_in_total']);
+
+        $reference = 'P0-LIST-DIRECT-' . uniqid();
+        app(BankTransferService::class)->create($this->head, [
+            'from_account_id' => $this->headAccount->id,
+            'to_account_id' => $this->cashierAccount->id,
+            'amount' => 125,
+            'transfer_date' => '2026-01-05',
+            'reference_no' => $reference,
+        ]);
+
+        $after = $this->bankAccountListRows();
+        $this->assertSame(125.0, (float) $after[$this->headAccount->id]['money_out_total']);
+        $this->assertSame(0.0, (float) $after[$this->headAccount->id]['money_in_total']);
+        $this->assertSame(125.0, (float) $after[$this->cashierAccount->id]['money_in_total']);
+        $this->assertSame(0.0, (float) $after[$this->cashierAccount->id]['money_out_total']);
+        $this->assertSame(1, BankTransfer::where('reference_no', $reference)->completed()->count());
+    }
+
+    public function test_bank_account_list_counts_a_confirmed_handover_only_through_its_canonical_transfer(): void
+    {
+        $handover = app(FundHandoverService::class)->create($this->head, $this->payload($this->cashierA, 75));
+        $confirmed = app(FundHandoverService::class)->confirm($this->cashierA, $handover->id);
+
+        $rows = $this->bankAccountListRows();
+        $this->assertSame(75.0, (float) $rows[$this->headAccount->id]['money_out_total']);
+        $this->assertSame(0.0, (float) $rows[$this->headAccount->id]['money_in_total']);
+        $this->assertSame(75.0, (float) $rows[$this->cashierAccount->id]['money_in_total']);
+        $this->assertSame(0.0, (float) $rows[$this->cashierAccount->id]['money_out_total']);
+        $this->assertSame(1, BankTransfer::whereKey($confirmed->bank_transfer_id)->completed()->count());
+        $this->assertSame(1, FundHandover::whereKey($confirmed->id)->where('bank_transfer_id', $confirmed->bank_transfer_id)->count());
+    }
+
+    public function test_bank_account_list_ignores_a_pending_handover(): void
+    {
+        $handover = app(FundHandoverService::class)->create($this->head, $this->payload($this->cashierA, 90));
+
+        $rows = $this->bankAccountListRows();
+        $this->assertSame(FundHandover::STATUS_PENDING, $handover->status);
+        $this->assertNull($handover->bank_transfer_id);
+        $this->assertSame(0.0, (float) $rows[$this->headAccount->id]['money_out_total']);
+        $this->assertSame(0.0, (float) $rows[$this->cashierAccount->id]['money_in_total']);
+    }
+
+    public function test_internal_transfers_leave_operating_income_expense_and_net_unchanged(): void
+    {
+        $register = app(FinanceTransactionRegisterService::class);
+        $before = $register->register($this->head)['summary'];
+
+        app(BankTransferService::class)->create($this->head, [
+            'from_account_id' => $this->headAccount->id,
+            'to_account_id' => $this->cashierAccount->id,
+            'amount' => 40,
+            'transfer_date' => '2026-01-05',
+            'reference_no' => 'P0-LIST-OPERATING-' . uniqid(),
+        ]);
+        $handover = app(FundHandoverService::class)->create($this->head, $this->payload($this->cashierA, 60));
+        app(FundHandoverService::class)->confirm($this->cashierA, $handover->id);
+
+        $after = $register->register($this->head)['summary'];
+        $this->assertSame($before['operating_income'], $after['operating_income']);
+        $this->assertSame($before['operating_expense'], $after['operating_expense']);
+        $this->assertSame($before['operating_net'], $after['operating_net']);
+    }
+
     public function test_receive_money_reuses_account_scope_and_reference_reservation(): void
     {
         $data = ['bank_account_id' => $this->cashierAccount->id, 'date' => '2026-01-03', 'payer' => 'QA source', 'description' => 'QA non-fee receipt', 'amount' => 75, 'payment_method' => 'Cash', 'reference_no' => 'OI-' . uniqid()];
@@ -407,10 +482,31 @@ class FundHandoverServiceTest extends TestCase
     private function handoverPermissionsFor(string $role): array
     {
         if ($role === 'School Admin') return ['finance-handover-view'];
-        if (in_array($role, ['Head Finance', 'Cashier'], true)) {
-            return ['finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel'];
+        if ($role === 'Head Finance') {
+            return ['finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel', 'finance-fund-account-view'];
         }
+        if ($role === 'Cashier') return ['finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel'];
         return [];
+    }
+
+    private function bankAccountListRows(): Collection
+    {
+        app()->instance(FeaturesService::class, new class extends FeaturesService {
+            public static function hasFeature($argument): bool
+            {
+                return true;
+            }
+        });
+        $this->actingAs($this->head);
+
+        $response = app(BankAccountController::class)->list(Request::create('/bank-accounts/list', 'GET', [
+            'limit' => 10,
+            'search' => $this->accountPrefix,
+            'sort' => 'id',
+            'order' => 'ASC',
+        ]));
+
+        return collect($response->getData(true)['rows'])->keyBy('id');
     }
 
     private function account(string $name, int $schoolId, float $opening): BankAccount
