@@ -32,6 +32,14 @@
                         <div class="form-group col-md-3"><select class="form-control" name="school_id"><option value="">{{ __('School for School scope') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
                         <div class="form-group col-md-2"><button class="btn btn-outline-primary" type="submit">{{ __('Save scope') }}</button></div></form>
                     <ul class="mb-2">@foreach($group->users as $groupUser)<li>{{ $groupUser->centralUser?->full_name ?? ('User #'.$groupUser->central_user_id) }}: {{ $groupUser->scopes->where('status','active')->map(fn($scope) => $scope->capability.' / '.$scope->scope_type.($scope->school ? ' / '.$scope->school->name : ''))->implode(', ') ?: __('No active scope') }}</li>@endforeach</ul>
+                    <form class="row align-items-end" method="POST" action="{{ route('finance-groups.tenant-identities.store', $group) }}">@csrf
+                        <div class="form-group col-md-4"><label>{{ __('Group reporting user') }}</label><select class="form-control" name="group_user_id" required><option value="">{{ __('Select user') }}</option>@foreach($group->users as $groupUser)<option value="{{ $groupUser->id }}">{{ $groupUser->centralUser?->full_name ?? ('User #'.$groupUser->central_user_id) }}</option>@endforeach</select></div>
+                        <div class="form-group col-md-3"><label>{{ __('School') }}</label><select class="form-control" name="school_id" required><option value="">{{ __('Select School') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
+                        <div class="form-group col-md-3"><label>{{ __('Existing School user ID') }}</label><input class="form-control" type="number" min="1" name="tenant_user_id" required></div>
+                        <div class="form-group col-md-2"><button class="btn btn-outline-primary" type="submit">{{ __('Save identity') }}</button></div>
+                    </form>
+                    <small class="text-muted d-block mb-2">{{ __('The selected existing School user is verified server-side in that School before this mapping is saved.') }}</small>
+                    <ul class="mb-2">@foreach($group->users as $groupUser)@foreach($groupUser->tenantIdentities->where('status','active') as $identity)<li>{{ $groupUser->centralUser?->full_name ?? ('User #'.$groupUser->central_user_id) }} → {{ $identity->school?->name }} ({{ __('School user') }} #{{ $identity->tenant_user_id }})</li>@endforeach@endforeach</ul>
                     <a class="btn btn-sm btn-outline-secondary" href="{{ route('finance-groups.reports.index', $group) }}">{{ __('Open read-only Group reports') }}</a>
                 </div>
             </div>
