@@ -252,3 +252,78 @@ Finance Group Phase 1-A — central Group Scope schema + read-only bootstrap
 That goal will own only Wave 0–2, run local migrations/tests, and stop before
 any Group reporting UI. Phase 1-B will then implement the Ledger/reporting
 read path using the verified scope foundation.
+
+## 9. Technical implementation seam audit
+
+This audit records the currently verified code boundaries so that Phase 1-A
+can make the smallest additive change after the business sheet is approved.
+It does not authorize runtime implementation before that approval.
+
+### Central control plane
+
+- `App\\Models\\School` is the trusted central registry for a School code,
+  numeric ID, and tenant database name. Group membership must reference this
+  registry; browser input must never select a database name or a connection.
+- Every new Group model and migration must explicitly use the central `mysql`
+  connection (or an equally explicit central repository). It must not inherit
+  the request's default `school` connection.
+- `staff_support_schools` is an existing tenant-local staff-support relation,
+  not a Group Finance authority source. It must not be repurposed for Group
+  membership, reporting, or custody.
+- User IDs may be copied between the central and tenant representations during
+  provisioning, but that is not a durable cross-tenant identity guarantee.
+  Phase 1 must store an explicit central identity to tenant identity mapping
+  and reject an absent or ambiguous mapping.
+
+### Tenant connection lifecycle
+
+- `InitializeTenantDatabase` establishes the session-selected tenant before
+  web middleware can resolve Spatie roles. Ordinary Finance routes remain
+  bound to exactly that one selected tenant.
+- The existing tenant-aware password reset flow demonstrates the required
+  scoped pattern for exceptional controlled switching: save the previous
+  default connection and school database, switch only after trusted central
+  resolution, then purge and restore both in `finally`.
+- A future Group read service may use that same save/switch/read/restore
+  discipline per approved School. It must never leave a tenant connection or
+  loaded tenant identity active after a Group request, and a failed School
+  read must be reported as partial coverage rather than silently using a
+  previous School connection.
+
+### Finance read-model composition
+
+- `FinanceTransactionRegisterService` is already a read-only source adapter
+  over successful fees, `OtherIncome`, non-deleted `Expense`, and completed
+  `BankTransfer`. It is the parity reference for Ledger V1, not a mutable
+  ledger table or a write-path replacement.
+- Its all-account completed transfer row is neutral (`money_in = money_out =
+  0`), while a selected-account view is directional. Confirmed Fund Handovers
+  are represented only through their canonical completed transfer; pending
+  handovers are absent. Group Ledger V1 must preserve these exact semantics.
+- `FinanceAccountAccessService` and `FinanceAuthorizationService` remain the
+  tenant safety authority. Group scope grants only the right to request an
+  approved School projection; it must compose with, never substitute for,
+  tenant-local permission, active-account, account-pivot, and custody checks.
+
+### First implementation ownership
+
+| Future component | Owner boundary | Explicit non-goal |
+|---|---|---|
+| Central Group migrations/models | `mysql`, trusted `schools` foreign keys, explicit identities/scopes | no tenant-table change, role assignment, or data import |
+| Scope/bootstrap service | preview-first, central registry allowlist, idempotent configuration | no inference from role name or `staff_support_schools` |
+| Ledger parity adapter | source-only reads with stable `tenant:<school>:<type>:<id>` keys | no balance recomputation, source write, or duplicate canonical row |
+| Group report controller/export | separate route namespace and server-side scope enforcement | no reuse of a tenant sidebar guard as Group authorization |
+
+### Implementation tests that must exist before UI work
+
+1. Central Group records always write to `mysql`, even while a tenant is the
+   default request connection.
+2. A Group member resolves only through the central `schools` registry; a
+   forged School code, ID, or database name is rejected.
+3. Every temporary tenant connection is restored after success and exception.
+4. An explicit central-to-tenant identity mapping is required and an
+   ambiguous/missing mapping is denied.
+5. Tenant Ledger V1 parity preserves current source identities, pending
+   handover omission, and internal-transfer neutrality.
+6. Existing P0–P3.2/UAT Finance tests remain green without any change to
+   money-writing services.
