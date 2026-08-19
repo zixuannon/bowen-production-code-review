@@ -6,9 +6,12 @@ use App\Models\BankAccount;
 use App\Models\BankTransfer;
 use App\Models\CompulsoryFee;
 use App\Models\Expense;
+use App\Models\FinanceGroupTransfer;
 use App\Models\OptionalFee;
 use App\Models\OtherIncome;
+use App\Models\School;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class FundAccountBalanceService
 {
@@ -100,6 +103,29 @@ class FundAccountBalanceService
             'from_account_id',
             $accountIds,
         );
+        $groupTransferIn = collect();
+        $groupTransferOut = collect();
+
+        // Group/HQ transfers are canonical central records because their other
+        // side is not in this tenant DB. Project only confirmed records; a
+        // pending request deliberately has no balance effect.
+        if (Schema::connection('mysql')->hasTable('finance_group_transfers')
+            && $this->currentTenantMatchesCentralSchools($schoolIds)) {
+            $groupTransferIn = $this->groupedSum(
+                FinanceGroupTransfer::on('mysql')->confirmed()
+                    ->whereIn('school_id', $schoolIds)
+                    ->where('direction', FinanceGroupTransfer::DIRECTION_HQ_TO_SCHOOL),
+                'tenant_bank_account_id',
+                $accountIds,
+            );
+            $groupTransferOut = $this->groupedSum(
+                FinanceGroupTransfer::on('mysql')->confirmed()
+                    ->whereIn('school_id', $schoolIds)
+                    ->where('direction', FinanceGroupTransfer::DIRECTION_SCHOOL_TO_HQ),
+                'tenant_bank_account_id',
+                $accountIds,
+            );
+        }
 
         return $accounts->mapWithKeys(function (BankAccount $account) use (
             $compulsoryIncome,
@@ -108,13 +134,17 @@ class FundAccountBalanceService
             $expenses,
             $transferIn,
             $transferOut,
+            $groupTransferIn,
+            $groupTransferOut,
         ) {
             $operatingIncome = (float) ($compulsoryIncome[$account->id] ?? 0)
                 + (float) ($optionalIncome[$account->id] ?? 0)
                 + (float) ($otherIncome[$account->id] ?? 0);
             $operatingExpense = (float) ($expenses[$account->id] ?? 0);
-            $internalIn = (float) ($transferIn[$account->id] ?? 0);
-            $internalOut = (float) ($transferOut[$account->id] ?? 0);
+            $internalIn = (float) ($transferIn[$account->id] ?? 0)
+                + (float) ($groupTransferIn[$account->id] ?? 0);
+            $internalOut = (float) ($transferOut[$account->id] ?? 0)
+                + (float) ($groupTransferOut[$account->id] ?? 0);
             $moneyIn = $operatingIncome + $internalIn;
             $moneyOut = $operatingExpense + $internalOut;
 
@@ -130,6 +160,20 @@ class FundAccountBalanceService
                 'current_balance' => (float) $account->opening_balance + $moneyIn - $moneyOut,
             ]];
         });
+    }
+
+    /** @param Collection<int, int> $schoolIds */
+    private function currentTenantMatchesCentralSchools(Collection $schoolIds): bool
+    {
+        $schoolIds = $schoolIds->map(static fn ($id) => (int) $id)->filter()->unique()->values();
+        $database = (string) config('database.connections.school.database');
+        if ($schoolIds->isEmpty() || $database === '') {
+            return false;
+        }
+
+        return School::on('mysql')->whereIn('id', $schoolIds)
+            ->where('database_name', $database)
+            ->count() === $schoolIds->count();
     }
 
     private function groupedSum($query, string $accountColumn, Collection $accountIds): Collection

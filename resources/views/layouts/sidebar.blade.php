@@ -1620,6 +1620,14 @@
             </li>
         @endif
         @if (Auth::user()->hasRole('Super Admin'))
+            @if (!Auth::user()->school_id)
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ route('finance-groups.index') }}">
+                        <i class="fa fa-sitemap menu-icon"></i>
+                        <span class="menu-title">{{ __('Finance Groups') }}</span>
+                    </a>
+                </li>
+            @endif
             <li class="nav-item">
                 <a class="nav-link" href="{{ route('system-update.index') }}">
                     <i class="fa fa-cloud-download menu-icon"></i>

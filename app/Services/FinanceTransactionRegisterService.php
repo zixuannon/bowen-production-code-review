@@ -7,9 +7,12 @@ use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
 use App\Models\OtherIncome;
+use App\Models\FinanceGroupTransfer;
+use App\Models\School;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Read-only adapter over the existing financial source records. It never
@@ -54,6 +57,7 @@ class FinanceTransactionRegisterService
             // Confirmed handovers are represented by their canonical transfer
             // only. Pending handovers never become a money-movement row.
             $rows = $rows->concat($this->transferRows($actor, $accountIds, $accountId, $from, $to));
+            $rows = $rows->concat($this->groupTransferRows($actor, $accountIds, $accountId, $from, $to));
         }
 
         $rows = $rows->filter(function (array $row) use ($reference, $keyword) {
@@ -88,7 +92,11 @@ class FinanceTransactionRegisterService
             ->where('school_id', $actor->school_id)->where('status', 'Success')->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (CompulsoryFee $row) => $this->row($row->date, 'student_fee_payment', $row->id,
                 $row->reference_no, trim(($row->student?->first_name ?? '') . ' ' . ($row->student?->last_name ?? '')),
-                __('Student fee payment'), $row->mode_name, $row->bank_account?->account_name, $row->amount, 0, 'income'));
+                __('Student fee payment'), $row->mode_name, $row->bank_account?->account_name, $row->amount, 0, 'income', null, null, [
+                    'source_type' => 'compulsory_fee', 'fund_account_id' => $row->bank_account_id,
+                    'finance_category_id' => null, 'source_amount' => (float) $row->amount,
+                    'created_at_raw' => $row->getRawOriginal('created_at'),
+                ]));
     }
 
     private function optionalRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
@@ -97,7 +105,11 @@ class FinanceTransactionRegisterService
             ->where('school_id', $actor->school_id)->where('status', 'Success')->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (OptionalFee $row) => $this->row($row->date, 'optional_fee_payment', $row->id,
                 null, trim(($row->student?->first_name ?? '') . ' ' . ($row->student?->last_name ?? '')),
-                __('Optional fee payment'), $row->mode_name, $row->bank_account?->account_name, $row->amount, 0, 'income'));
+                __('Optional fee payment'), $row->mode_name, $row->bank_account?->account_name, $row->amount, 0, 'income', null, null, [
+                    'source_type' => 'optional_fee', 'fund_account_id' => $row->bank_account_id,
+                    'finance_category_id' => null, 'source_amount' => (float) $row->amount,
+                    'created_at_raw' => $row->getRawOriginal('created_at'),
+                ]));
     }
 
     private function otherIncomeRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
@@ -106,7 +118,11 @@ class FinanceTransactionRegisterService
             ->where('school_id', $actor->school_id)->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (OtherIncome $row) => $this->row($row->date, 'other_income', $row->id,
                 $row->reference_no, $row->payer, $row->description, $row->payment_method,
-                $row->bank_account?->account_name, $row->amount, 0, 'income', $row->creator));
+                $row->bank_account?->account_name, $row->amount, 0, 'income', $row->creator, null, [
+                    'source_type' => 'other_income', 'fund_account_id' => $row->bank_account_id,
+                    'finance_category_id' => null, 'source_amount' => (float) $row->amount,
+                    'created_at_raw' => $row->getRawOriginal('created_at'), 'operator_user_id' => $row->created_by,
+                ]));
     }
 
     private function expenseRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
@@ -115,7 +131,13 @@ class FinanceTransactionRegisterService
             ->where('school_id', $actor->school_id)->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (Expense $row) => $this->row($row->date, 'expense', $row->id, $row->ref_no,
                 $row->title, $row->description, $row->payment_method, $row->bank_account?->account_name,
-                0, $row->amount_mmk > 0 ? $row->amount_mmk : $row->amount, 'expense', $row->creator));
+                0, $row->amount_mmk > 0 ? $row->amount_mmk : $row->amount, 'expense', $row->creator, null, [
+                    'source_type' => 'expense', 'fund_account_id' => $row->bank_account_id,
+                    'finance_category_id' => $row->finance_category_id, 'source_amount' => (float) $row->amount,
+                    'transaction_currency' => $row->transaction_currency, 'original_amount' => $row->original_amount,
+                    'exchange_rate_snapshot' => $row->exchange_rate_snapshot, 'reporting_amount_mmk' => $row->amount_mmk,
+                    'created_at_raw' => $row->getRawOriginal('created_at'), 'operator_user_id' => $row->created_by,
+                ]));
     }
 
     private function transferRows(User $actor, Collection $accounts, ?int $selectedAccountId, ?string $from, ?string $to): Collection
@@ -132,8 +154,68 @@ class FinanceTransactionRegisterService
                 return $this->row($row->transfer_date, 'bank_transfer', $row->id, $row->reference_no,
                     trim(($row->from_account?->account_name ?? '') . ' → ' . ($row->to_account?->account_name ?? '')),
                     $row->notes, null, trim(($row->from_account?->account_name ?? '') . ' → ' . ($row->to_account?->account_name ?? '')),
-                    $in, $out, 'internal', null, __('Internal Transfer'));
+                    $in, $out, 'internal', null, __('Internal Transfer'), [
+                        'source_type' => 'bank_transfer', 'fund_account_id' => $selectedAccountId,
+                        'from_fund_account_id' => $row->from_account_id, 'to_fund_account_id' => $row->to_account_id,
+                        'from_fund_account' => $row->from_account?->account_name,
+                        'to_fund_account' => $row->to_account?->account_name,
+                        'source_amount' => (float) $row->amount, 'created_at_raw' => $row->getRawOriginal('created_at'),
+                        'operator_user_id' => $row->created_by,
+                    ]);
             });
+    }
+
+    /**
+     * Cross-school funding is not a tenant BankTransfer: its HQ account lives
+     * in the central Group database. It is still a single neutral internal
+     * movement in the all-account register and directional for the selected
+     * tenant Fund Account.
+     */
+    private function groupTransferRows(User $actor, Collection $accounts, ?int $selectedAccountId, ?string $from, ?string $to): Collection
+    {
+        if (!Schema::connection('mysql')->hasTable('finance_group_transfers')
+            || !$this->currentTenantMatchesCentralSchool((int) $actor->school_id)) {
+            return collect();
+        }
+        $query = FinanceGroupTransfer::on('mysql')->with(['hqAccount:id,account_name'])
+            ->confirmed()->where('school_id', $actor->school_id)
+            ->whereIn('tenant_bank_account_id', $accounts)
+            ->when($from, fn ($q) => $q->whereDate('transfer_date', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('transfer_date', '<=', $to));
+
+        return $query->get()->map(function (FinanceGroupTransfer $row) use ($accounts, $selectedAccountId) {
+            $isIn = $row->direction === FinanceGroupTransfer::DIRECTION_HQ_TO_SCHOOL;
+            $visible = $selectedAccountId && $accounts->contains($row->tenant_bank_account_id);
+            $in = $visible && $isIn ? (float) $row->amount : 0.0;
+            $out = $visible && !$isIn ? (float) $row->amount : 0.0;
+            $hqName = $row->hqAccount?->account_name ?? __('HQ Fund Account');
+            $tenantName = __('School Fund Account #:id', ['id' => $row->tenant_bank_account_id]);
+            $fromName = $isIn ? $hqName : $tenantName;
+            $toName = $isIn ? $tenantName : $hqName;
+            return $this->row($row->transfer_date, 'bank_transfer', (int) $row->id, $row->reference_no,
+                $fromName . ' → ' . $toName, $row->notes, null, $fromName . ' → ' . $toName,
+                $in, $out, 'internal', null, __('Internal Transfer'), [
+                    'source_type' => 'group_transfer', 'fund_account_id' => $selectedAccountId,
+                    'from_fund_account_id' => $isIn ? null : $row->tenant_bank_account_id,
+                    'to_fund_account_id' => $isIn ? $row->tenant_bank_account_id : null,
+                    'from_fund_account' => $fromName, 'to_fund_account' => $toName,
+                    'source_amount' => (float) $row->amount, 'created_at_raw' => $row->getRawOriginal('created_at'),
+                    'operator_user_id' => null,
+                ]);
+        });
+    }
+
+    /**
+     * A central Group transfer is projected only into the exact tenant
+     * database registered for its School. This prevents an arbitrary local
+     * connection with a coincidental school_id from seeing another tenant's
+     * funding history.
+     */
+    private function currentTenantMatchesCentralSchool(int $schoolId): bool
+    {
+        $database = (string) config('database.connections.school.database');
+        return $schoolId > 0 && $database !== ''
+            && School::on('mysql')->whereKey($schoolId)->where('database_name', $database)->exists();
     }
 
     private function between($query, ?string $from, ?string $to, string $column = 'date')
@@ -142,9 +224,10 @@ class FinanceTransactionRegisterService
             ->when($to, fn ($q) => $q->whereDate($column, '<=', $to));
     }
 
-    private function row($date, string $type, int $sourceId, ?string $reference, ?string $counterparty, ?string $description, ?string $method, ?string $account, float $in, float $out, string $operating, $operator = null, ?string $displayType = null): array
+    /** @param array<string, mixed> $metadata */
+    private function row($date, string $type, int $sourceId, ?string $reference, ?string $counterparty, ?string $description, ?string $method, ?string $account, float $in, float $out, string $operating, $operator = null, ?string $displayType = null, array $metadata = []): array
     {
-        return [
+        return array_merge([
             'date' => Carbon::parse($date)->toDateString(),
             'transaction_type' => $type,
             'display_type' => $displayType,
@@ -159,6 +242,6 @@ class FinanceTransactionRegisterService
             'operating' => $operating,
             'operator' => $operator ? trim(($operator->first_name ?? '') . ' ' . ($operator->last_name ?? '')) : '-',
             'status' => 'completed',
-        ];
+        ], $metadata);
     }
 }

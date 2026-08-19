@@ -1,5 +1,9 @@
 <?php
 use App\Http\Controllers\FinanceDashboardController;
+use App\Http\Controllers\FinanceGroupController;
+use App\Http\Controllers\FinanceGroupReportController;
+use App\Http\Controllers\FinanceGroupTransferController;
+use App\Http\Controllers\FinanceGroupHqAccountController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -211,6 +215,25 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         });
         Route::resource('schools', SchoolController::class);
+
+        // Central-only Finance Group configuration. The controller rechecks
+        // central Super Admin authority and never accepts a database name.
+        Route::get('finance-groups', [FinanceGroupController::class, 'index'])->name('finance-groups.index');
+        Route::post('finance-groups', [FinanceGroupController::class, 'store'])->name('finance-groups.store');
+        Route::put('finance-groups/{financeGroup}', [FinanceGroupController::class, 'update'])->name('finance-groups.update');
+        Route::post('finance-groups/{financeGroup}/user-scopes', [FinanceGroupController::class, 'storeUserScope'])->name('finance-groups.user-scopes.store');
+        Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
+        Route::get('finance-groups/{financeGroup}/reports', [FinanceGroupReportController::class, 'register'])->name('finance-groups.reports.index');
+        Route::get('finance-groups/{financeGroup}/reports/export', [FinanceGroupReportController::class, 'export'])->name('finance-groups.reports.export');
+        Route::get('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'funding'])->name('finance-groups.transfers.index');
+        Route::post('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'store'])->name('finance-groups.transfers.store');
+        Route::post('finance-groups/{financeGroup}/funding/{transfer}/confirm', [FinanceGroupTransferController::class, 'confirm'])->name('finance-groups.transfers.confirm');
+        Route::post('finance-groups/{financeGroup}/funding/{transfer}/reject', [FinanceGroupTransferController::class, 'reject'])->name('finance-groups.transfers.reject');
+        Route::post('finance-groups/{financeGroup}/funding/{transfer}/cancel', [FinanceGroupTransferController::class, 'cancel'])->name('finance-groups.transfers.cancel');
+        Route::post('finance-groups/{financeGroup}/hq-accounts', [FinanceGroupHqAccountController::class, 'store'])->name('finance-groups.hq-accounts.store');
+        Route::put('finance-groups/{financeGroup}/hq-accounts/{hqAccount}', [FinanceGroupHqAccountController::class, 'update'])->name('finance-groups.hq-accounts.update');
+        Route::post('finance-groups/{financeGroup}/hq-accounts/{hqAccount}/adjustments', [FinanceGroupHqAccountController::class, 'adjust'])->name('finance-groups.hq-accounts.adjustments.store');
+        Route::post('finance-groups/{financeGroup}/hq-accounts/{hqAccount}/users', [FinanceGroupHqAccountController::class, 'syncUsers'])->name('finance-groups.hq-accounts.users.sync');
 
         /*** Package ***/
         Route::group(['prefix' => 'package'], static function () {
