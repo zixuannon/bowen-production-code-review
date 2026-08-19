@@ -37,8 +37,8 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
 
     const values = await switcher.locator('option').evaluateAll(options => options.map(option => ({ value: option.value, text: option.textContent })));
     expect(values.some(option => /All Schools/.test(option.text || ''))).toBeTruthy();
-    const schoolA = values.find(option => /GROUP QA SCHOOL A/.test(option.text || ''));
-    const schoolB = values.find(option => /GROUP QA SCHOOL B/.test(option.text || ''));
+    const schoolA = values.find(option => /Zixuan QA School/.test(option.text || ''));
+    const schoolB = values.find(option => /Timecity QA School/.test(option.text || ''));
     expect(schoolA?.value).toBeTruthy();
     expect(schoolB?.value).toBeTruthy();
 
@@ -46,8 +46,8 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
     await page.waitForURL(new RegExp(`school_id=${schoolA.value}`));
     await expect(page.getByText('Authorized Fund Accounts')).toBeVisible();
     const accountsCard = page.locator('.card').filter({ hasText: 'Authorized Fund Accounts' });
-    await expect(accountsCard.getByText(/GROUP QA SCHOOL A Cash/).first()).toBeVisible();
-    await expect(accountsCard.getByText(/GROUP QA SCHOOL B Cash/)).toHaveCount(0);
+    await expect(accountsCard.getByText(/Zixuan QA School Cash/).first()).toBeVisible();
+    await expect(accountsCard.getByText(/Timecity QA School Cash/)).toHaveCount(0);
 
     const download = page.waitForEvent('download');
     await page.getByRole('link', { name: 'Export CSV' }).click();
@@ -65,8 +65,8 @@ test('School Accountant cannot switch to the peer or unrelated School', async ({
     const switcher = page.locator('select[name="school_id"]');
     await expect(switcher.locator('option')).toHaveCount(2);
     const values = await switcher.locator('option').evaluateAll(options => options.map(option => option.textContent || ''));
-    expect(values.some(value => /GROUP QA SCHOOL A/.test(value))).toBeTruthy();
-    expect(values.some(value => /GROUP QA SCHOOL B|UNRELATED/.test(value))).toBeFalsy();
+    expect(values.some(value => /Zixuan QA School/.test(value))).toBeTruthy();
+    expect(values.some(value => /Timecity QA School|Unrelated QA School/.test(value))).toBeFalsy();
   } finally {
     await context.close();
   }
