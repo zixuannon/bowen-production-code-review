@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\SystemSetting;
+use App\Models\School;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -52,10 +53,6 @@ class WizardSettings
                 'language*',
                 'system-update*',
                 'web-settings*',
-                // Central-only Finance Group configuration has its own
-                // controller authorization. Keep it reachable while the
-                // legacy global setup wizard is incomplete.
-                'finance-groups*',
                 'faqs*',
                 'notification-setting.update',
                 'auth.logout',
@@ -80,8 +77,12 @@ class WizardSettings
                 }
             }
 
-            // Only redirect if wizard incomplete and route not allowed
-            if ($incompleteWizard && !$isAllowedRoute) {
+            // The settings wizard is initial control-plane onboarding. Once
+            // an installed, enabled School exists, stale legacy checklist
+            // flags must not turn it into a global Super Admin navigation
+            // gate. Destination routes still enforce their own roles and
+            // permissions.
+            if ($incompleteWizard && !$isAllowedRoute && !$this->hasInstalledSchool()) {
                 return redirect()->route('wizard-settings.index');
             }
 
@@ -90,5 +91,17 @@ class WizardSettings
         } catch (\Exception $e) {
             return $next($request);
         }
+    }
+
+    /**
+     * Fresh installs have no completed School installation. Resolve only
+     * against the trusted central registry, never a request tenant/database.
+     */
+    protected function hasInstalledSchool(): bool
+    {
+        return School::on('mysql')
+            ->where('installed', 1)
+            ->where('status', 1)
+            ->exists();
     }
 }

@@ -43,7 +43,7 @@ class FinanceGroupReportRouteTest extends TestCase
         DB::setDefaultConnection('mysql');
 
         Schema::connection('mysql')->create('schools', function ($table): void {
-            $table->id(); $table->string('name'); $table->string('code')->unique(); $table->string('database_name')->unique(); $table->string('status')->default('active'); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+            $table->id(); $table->string('name'); $table->string('code')->unique(); $table->string('database_name')->unique(); $table->unsignedTinyInteger('status')->default(1); $table->boolean('installed')->default(true); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
         });
         Schema::connection('mysql')->create('users', function ($table): void {
             $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
@@ -69,7 +69,7 @@ class FinanceGroupReportRouteTest extends TestCase
         Schema::connection('mysql')->create('languages', function ($table): void {
             $table->id(); $table->string('name'); $table->string('code')->unique(); $table->string('file'); $table->boolean('status')->default(false); $table->boolean('is_rtl')->default(false); $table->timestamps();
         });
-        DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'School A', 'code' => 'GROUP_A', 'database_name' => 'group_a']);
+        DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'School A', 'code' => 'GROUP_A', 'database_name' => 'group_a', 'status' => 1, 'installed' => 1]);
         DB::connection('mysql')->table('users')->insert([
             ['id' => 100, 'first_name' => 'HQ', 'last_name' => 'Reporter', 'email' => 'hq@example.test', 'school_id' => null],
             ['id' => 101, 'first_name' => 'Out', 'last_name' => 'Scope', 'email' => 'out@example.test', 'school_id' => null],

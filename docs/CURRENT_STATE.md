@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Active production target
 
@@ -37,6 +37,18 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 - Existing Excel paid-fee import production regression passed after P0.
 
 ## Current phase
+
+WizardSettings lifecycle correction — **LOCAL ACCEPTANCE VERIFIED, RELEASE
+PENDING**. The legacy Wizard checklist remains the global Super Admin
+navigation gate only while no installed, enabled School exists in the trusted
+central registry (fresh install). Once an installed School exists, stale
+checklist flags do not redirect ordinary Super Admin pages; route/controller
+role and permission checks remain unchanged. Finance Groups now follows this
+same global lifecycle rule rather than a page-specific Wizard exception.
+Focused lifecycle/render tests, authenticated Group QA Playwright navigation
+to Finance Groups and System Update, and the canonical Finance regression pass.
+No migration, Finance data, tenant data, role, or permission change is part of
+this correction.
 
 Finance Group Phase 2 HQ / School Funding — **LOCAL ACCEPTANCE VERIFIED**.
 The existing Group scope and Ledger V1 foundation now supports central-only HQ

@@ -47,3 +47,23 @@ test('GROUP_QA central Super Admin opens the Finance Groups index without Wizard
     await context.close();
   }
 });
+
+test('GROUP_QA central Super Admin reaches another protected control-plane page without Wizard redirect', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL, storageState: await superAdminState() });
+  try {
+    const page = await context.newPage();
+    expect((await page.goto('/finance-groups', { waitUntil: 'domcontentloaded' }))?.status()).toBe(200);
+    const systemUpdate = page.locator('a[href$="/system-update"]');
+    await expect(systemUpdate).toBeVisible();
+    const [response] = await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+      systemUpdate.click(),
+    ]);
+
+    expect(response?.status()).toBe(200);
+    await expect(page).not.toHaveURL(/wizard-settings/);
+    await expect(page).toHaveURL(/\/system-update$/);
+  } finally {
+    await context.close();
+  }
+});

@@ -13,31 +13,41 @@ use Tests\TestCase;
 
 class WizardSettingsFinanceGroupTest extends TestCase
 {
-    public function test_incomplete_wizard_allows_all_finance_group_route_names_for_central_super_admin(): void
+    public function test_incomplete_wizard_allows_all_super_admin_routes_after_a_school_is_installed(): void
     {
-        foreach (['finance-groups.index', 'finance-groups.store', 'finance-groups.update'] as $routeName) {
-            $this->assertSame(200, $this->runMiddleware($routeName, true)->getStatusCode());
+        foreach (['finance-groups.index', 'schools.index', 'subscriptions.index'] as $routeName) {
+            $this->assertSame(200, $this->runMiddleware($routeName, true, true)->getStatusCode());
         }
     }
 
-    public function test_incomplete_wizard_still_redirects_unrelated_super_admin_routes(): void
+    public function test_incomplete_wizard_still_redirects_normal_and_finance_group_routes_on_a_fresh_install(): void
     {
-        $response = $this->runMiddleware('schools.index', true);
+        foreach (['schools.index', 'finance-groups.index'] as $routeName) {
+            $response = $this->runMiddleware($routeName, true, false);
 
-        $this->assertTrue($response->isRedirect(route('wizard-settings.index')));
+            $this->assertTrue($response->isRedirect(route('wizard-settings.index')));
+        }
     }
 
-    public function test_allowlist_does_not_turn_a_normal_user_into_a_finance_group_authority(): void
+    public function test_wizard_bootstrap_route_remains_available_on_a_fresh_install(): void
     {
-        // WizardSettings only removes its own setup redirect. Controller
-        // authorization remains a separate central Super Admin boundary.
-        $response = $this->runMiddleware('finance-groups.index', false);
+        $response = $this->runMiddleware('wizard-settings.index', true, false);
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('NEXT', $response->getContent());
     }
 
-    private function runMiddleware(string $routeName, bool $isSuperAdmin): Response
+    public function test_global_wizard_lifecycle_does_not_turn_a_normal_user_into_a_finance_group_authority(): void
+    {
+        // WizardSettings only removes its own setup redirect. Controller
+        // authorization remains a separate central Super Admin boundary.
+        $response = $this->runMiddleware('finance-groups.index', false, true);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('NEXT', $response->getContent());
+    }
+
+    private function runMiddleware(string $routeName, bool $isSuperAdmin, bool $hasInstalledSchool): Response
     {
         $actor = Mockery::mock();
         $actor->shouldReceive('hasRole')->with('Super Admin')->andReturn($isSuperAdmin);
@@ -62,6 +72,18 @@ class WizardSettingsFinanceGroupTest extends TestCase
             }
         };
 
-        return (new WizardSettings($cache))->handle($request, static fn (): Response => new Response('NEXT'));
+        $middleware = new class($cache, $hasInstalledSchool) extends WizardSettings {
+            public function __construct(CachingService $cache, private readonly bool $hasInstalledSchool)
+            {
+                parent::__construct($cache);
+            }
+
+            protected function hasInstalledSchool(): bool
+            {
+                return $this->hasInstalledSchool;
+            }
+        };
+
+        return $middleware->handle($request, static fn (): Response => new Response('NEXT'));
     }
 }
