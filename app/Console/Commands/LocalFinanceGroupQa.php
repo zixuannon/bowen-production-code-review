@@ -69,10 +69,13 @@ class LocalFinanceGroupQa extends Command
             ['group_hq@group-qa.test', 'Group', 'HQ Accountant'],
             ['group_school_a@group-qa.test', 'Group', 'School A Accountant'],
             ['group_school_b@group-qa.test', 'Group', 'School B Accountant'],
+            ['group_super_admin@group-qa.test', 'Group', 'Super Admin'],
         ] as [$email, $firstName, $lastName]) {
             $central->table('users')->updateOrInsert(['email' => $email], [
                 'first_name' => $firstName, 'last_name' => $lastName, 'password' => bcrypt('local-only'),
-                'school_id' => null, 'status' => 1, 'created_at' => $now, 'updated_at' => $now,
+                'school_id' => null, 'status' => 1, 'two_factor_enabled' => 0,
+                'two_factor_secret' => null, 'two_factor_expires_at' => null,
+                'created_at' => $now, 'updated_at' => $now,
             ]);
         }
         $migration = require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php');
@@ -98,6 +101,7 @@ class LocalFinanceGroupQa extends Command
         $scope->grantScope($hq,'confirm_group_transfers','GROUP');
         $scope->grantScope($hq,'manage_hq_accounts','GROUP');
         $this->ensureCentralHeadFinanceRole($central, (int) $hq->central_user_id, $now);
+        $this->ensureCentralSuperAdminRole($central, (int) $central->table('users')->where('email', 'group_super_admin@group-qa.test')->value('id'), $now);
         $scope->bindTenantIdentity($hq, $a, $this->tenantUserId('GROUP_QA_SCHOOL_A', 'group_hq@group-qa.test'));
         $scope->bindTenantIdentity($hq, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'group_hq@group-qa.test'));
 
@@ -286,6 +290,39 @@ class LocalFinanceGroupQa extends Command
             'model_type' => 'App\\Models\\User',
             'model_id' => $userId,
         ], []);
+    }
+
+    /** Assign only the fixed synthetic central browser identity this role. */
+    private function ensureCentralSuperAdminRole($central, int $userId, $now): void
+    {
+        // Keep the browser-only identity free of unrelated Super Admin
+        // permissions. The exact role name exercises the Group controller and
+        // sidebar gate, while preventing unrelated layout branches from
+        // requiring synthetic academic data.
+        $role = $central->table('roles')
+            ->where('name', 'Super Admin')
+            ->where('guard_name', 'web')
+            ->whereNull('school_id')
+            ->whereNotIn('id', $central->table('role_has_permissions')->select('role_id'))
+            ->first();
+
+        $roleId = $role?->id;
+        if (! $roleId) {
+            $roleId = $central->table('roles')->insertGetId([
+                'name' => 'Super Admin', 'guard_name' => 'web', 'school_id' => null,
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+
+        $central->table('model_has_roles')
+            ->where('model_type', 'App\\Models\\User')
+            ->where('model_id', $userId)
+            ->whereIn('role_id', $central->table('roles')->where('name', 'Super Admin')->pluck('id'))
+            ->delete();
+
+        $central->table('model_has_roles')->updateOrInsert([
+            'role_id' => $roleId, 'model_type' => 'App\\Models\\User', 'model_id' => $userId,
+        ]);
     }
 
     private function tenantUserId(string $code, string $email): int

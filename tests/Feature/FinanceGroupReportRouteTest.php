@@ -15,6 +15,7 @@ use App\Http\Middleware\MustVerifyEmail;
 use App\Http\Middleware\Status;
 use App\Http\Middleware\SwitchDatabase;
 use App\Http\Middleware\WizardSettings;
+use App\Services\CachingService;
 use App\Services\FinanceGroupReportService;
 use App\Services\FinanceGroupScopeService;
 use Illuminate\Support\Facades\Config;
@@ -42,7 +43,7 @@ class FinanceGroupReportRouteTest extends TestCase
         DB::setDefaultConnection('mysql');
 
         Schema::connection('mysql')->create('schools', function ($table): void {
-            $table->id(); $table->string('name'); $table->string('code')->unique(); $table->string('database_name')->unique(); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+            $table->id(); $table->string('name'); $table->string('code')->unique(); $table->string('database_name')->unique(); $table->string('status')->default('active'); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
         });
         Schema::connection('mysql')->create('users', function ($table): void {
             $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
@@ -50,14 +51,31 @@ class FinanceGroupReportRouteTest extends TestCase
         Schema::connection('mysql')->create('roles', function ($table): void {
             $table->id(); $table->string('name'); $table->string('guard_name'); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamps();
         });
+        Schema::connection('mysql')->create('permissions', function ($table): void {
+            $table->id(); $table->string('name'); $table->string('guard_name'); $table->timestamps();
+        });
+        Schema::connection('mysql')->create('role_has_permissions', function ($table): void {
+            $table->unsignedBigInteger('permission_id'); $table->unsignedBigInteger('role_id');
+        });
+        Schema::connection('mysql')->create('model_has_permissions', function ($table): void {
+            $table->unsignedBigInteger('permission_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id');
+        });
         Schema::connection('mysql')->create('model_has_roles', function ($table): void {
             $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id');
+        });
+        Schema::connection('mysql')->create('system_settings', function ($table): void {
+            $table->id(); $table->string('name')->unique(); $table->string('data'); $table->string('type')->nullable();
+        });
+        Schema::connection('mysql')->create('languages', function ($table): void {
+            $table->id(); $table->string('name'); $table->string('code')->unique(); $table->string('file'); $table->boolean('status')->default(false); $table->boolean('is_rtl')->default(false); $table->timestamps();
         });
         DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'School A', 'code' => 'GROUP_A', 'database_name' => 'group_a']);
         DB::connection('mysql')->table('users')->insert([
             ['id' => 100, 'first_name' => 'HQ', 'last_name' => 'Reporter', 'email' => 'hq@example.test', 'school_id' => null],
             ['id' => 101, 'first_name' => 'Out', 'last_name' => 'Scope', 'email' => 'out@example.test', 'school_id' => null],
         ]);
+        DB::connection('mysql')->table('roles')->insert(['id' => 1, 'name' => 'Super Admin', 'guard_name' => 'web']);
+        DB::connection('mysql')->table('model_has_roles')->insert(['role_id' => 1, 'model_type' => User::class, 'model_id' => 100]);
         (require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php'))->up();
 
         $scope = app(FinanceGroupScopeService::class);
@@ -131,6 +149,29 @@ class FinanceGroupReportRouteTest extends TestCase
         }
     }
 
+    public function test_incomplete_wizard_super_admin_renders_finance_group_index_without_writes(): void
+    {
+        app()->instance(CachingService::class, new class extends CachingService {
+            public function removeSystemCache($key): void {}
+
+            public function getSystemSettings(array|string $key = '*')
+            {
+                return ['wizard_checkMark' => 0, 'system_settings_wizard_checkMark' => 0];
+            }
+        });
+
+        $before = $this->centralHash();
+
+        $this->withoutRouteGuards(keepWizard: true)
+            ->actingAs(User::on('mysql')->findOrFail(100))
+            ->get(route('finance-groups.index'))
+            ->assertOk()
+            ->assertSee('Finance Groups')
+            ->assertSee('Create Finance Group');
+
+        $this->assertSame($before, $this->centralHash());
+    }
+
     private function centralHash(): string
     {
         $parts = [];
@@ -141,12 +182,17 @@ class FinanceGroupReportRouteTest extends TestCase
         return hash('sha256', implode('|', $parts));
     }
 
-    private function withoutRouteGuards(): static
+    private function withoutRouteGuards(bool $keepWizard = false): static
     {
-        return $this->withoutMiddleware([
+        $middleware = [
             CheckRole::class, CheckSchoolStatus::class, Status::class, SwitchDatabase::class,
-            MustVerifyEmail::class, CheckForMaintenanceMode::class, CheckTwoFactorAuthenticated::class,
-            WizardSettings::class, LanguageManager::class,
-        ]);
+            MustVerifyEmail::class, CheckForMaintenanceMode::class, CheckTwoFactorAuthenticated::class, LanguageManager::class,
+        ];
+
+        if (! $keepWizard) {
+            $middleware[] = WizardSettings::class;
+        }
+
+        return $this->withoutMiddleware($middleware);
     }
 }
