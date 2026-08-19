@@ -19,7 +19,8 @@ return new class extends Migration
             // The business code is optional until an administrator configures
             // a draft Group. A unique index still protects every configured
             // non-null code without hard-coding a Bowen value.
-            $table->string('code', 64)->nullable()->unique();
+            $table->string('code', 64)->nullable();
+            $table->unique('code', 'fg_code_unique');
             $table->string('name', 191);
             $table->string('status', 32)->default('draft');
             $table->string('reporting_currency', 3)->default('MMK');
@@ -31,8 +32,8 @@ return new class extends Migration
         if (!Schema::connection('mysql')->hasTable('finance_group_schools')) {
             Schema::connection('mysql')->create('finance_group_schools', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('group_id')->constrained('finance_groups')->cascadeOnDelete();
-            $table->foreignId('school_id')->constrained('schools')->restrictOnDelete();
+            $table->foreignId('group_id')->constrained('finance_groups', 'id', 'fgs_group_fk')->cascadeOnDelete();
+            $table->foreignId('school_id')->constrained('schools', 'id', 'fgs_school_fk')->restrictOnDelete();
             $table->string('status', 32)->default('active');
             $table->date('active_from')->nullable();
             $table->date('active_to')->nullable();
@@ -40,27 +41,27 @@ return new class extends Migration
 
             // A membership is updated/revoked in place. This prevents a
             // historical duplicate from becoming a second active authority.
-            $table->unique(['group_id', 'school_id']);
+            $table->unique(['group_id', 'school_id'], 'fgs_group_school_unique');
             });
         }
 
         if (!Schema::connection('mysql')->hasTable('finance_group_users')) {
             Schema::connection('mysql')->create('finance_group_users', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('group_id')->constrained('finance_groups')->cascadeOnDelete();
-            $table->foreignId('central_user_id')->constrained('users')->restrictOnDelete();
+            $table->foreignId('group_id')->constrained('finance_groups', 'id', 'fgu_group_fk')->cascadeOnDelete();
+            $table->foreignId('central_user_id')->constrained('users', 'id', 'fgu_central_user_fk')->restrictOnDelete();
             $table->string('status', 32)->default('active');
             $table->timestamps();
 
-            $table->unique(['group_id', 'central_user_id']);
+            $table->unique(['group_id', 'central_user_id'], 'fgu_group_user_unique');
             });
         }
 
         if (!Schema::connection('mysql')->hasTable('finance_group_user_scopes')) {
             Schema::connection('mysql')->create('finance_group_user_scopes', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('group_user_id')->constrained('finance_group_users')->cascadeOnDelete();
-            $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
+            $table->foreignId('group_user_id')->constrained('finance_group_users', 'id', 'fgus_group_user_fk')->cascadeOnDelete();
+            $table->foreignId('school_id')->nullable()->constrained('schools', 'id', 'fgus_school_fk')->nullOnDelete();
             $table->string('scope_type', 32);
             $table->string('capability', 64);
             // `school_id` is nullable for Group/HQ scope. This normalized key
@@ -72,15 +73,15 @@ return new class extends Migration
             $table->date('active_to')->nullable();
             $table->timestamps();
 
-            $table->unique(['group_user_id', 'scope_key', 'capability']);
+            $table->unique(['group_user_id', 'scope_key', 'capability'], 'fg_user_scope_unique');
             });
         }
 
         if (!Schema::connection('mysql')->hasTable('finance_group_user_tenant_identities')) {
             Schema::connection('mysql')->create('finance_group_user_tenant_identities', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('group_user_id')->constrained('finance_group_users')->cascadeOnDelete();
-            $table->foreignId('school_id')->constrained('schools')->restrictOnDelete();
+            $table->foreignId('group_user_id')->constrained('finance_group_users', 'id', 'fguti_group_user_fk')->cascadeOnDelete();
+            $table->foreignId('school_id')->constrained('schools', 'id', 'fguti_school_fk')->restrictOnDelete();
             // This intentionally has no foreign key: the user exists in the
             // separately selected tenant database and is validated by the
             // service before this mapping is stored.

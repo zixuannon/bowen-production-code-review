@@ -15,7 +15,7 @@ return new class extends Migration
         if (!Schema::connection('mysql')->hasTable('finance_group_hq_accounts')) {
             Schema::connection('mysql')->create('finance_group_hq_accounts', function (Blueprint $table): void {
                 $table->id();
-                $table->foreignId('group_id')->constrained('finance_groups')->cascadeOnDelete();
+                $table->foreignId('group_id')->constrained('finance_groups', 'id', 'fgha_group_fk')->cascadeOnDelete();
                 $table->string('account_name', 191);
                 $table->string('account_number', 128)->nullable();
                 $table->string('account_type', 32)->default('bank');
@@ -24,46 +24,46 @@ return new class extends Migration
                 $table->date('opening_balance_date')->nullable();
                 $table->boolean('is_active')->default(true);
                 $table->text('notes')->nullable();
-                $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-                $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
+                $table->foreignId('created_by')->nullable()->constrained('users', 'id', 'fgha_created_by_fk')->nullOnDelete();
+                $table->foreignId('updated_by')->nullable()->constrained('users', 'id', 'fgha_updated_by_fk')->nullOnDelete();
                 $table->timestamps();
-                $table->unique(['group_id', 'account_name']);
+                $table->unique(['group_id', 'account_name'], 'fgha_group_name_unique');
             });
         }
 
         if (!Schema::connection('mysql')->hasTable('finance_group_hq_account_users')) {
             Schema::connection('mysql')->create('finance_group_hq_account_users', function (Blueprint $table): void {
                 $table->id();
-                $table->foreignId('hq_account_id')->constrained('finance_group_hq_accounts')->cascadeOnDelete();
-                $table->foreignId('group_user_id')->constrained('finance_group_users')->cascadeOnDelete();
+                $table->foreignId('hq_account_id')->constrained('finance_group_hq_accounts', 'id', 'fghau_account_fk')->cascadeOnDelete();
+                $table->foreignId('group_user_id')->constrained('finance_group_users', 'id', 'fghau_group_user_fk')->cascadeOnDelete();
                 $table->timestamps();
-                $table->unique(['hq_account_id', 'group_user_id']);
+                $table->unique(['hq_account_id', 'group_user_id'], 'fghau_account_user_unique');
             });
         }
 
         if (!Schema::connection('mysql')->hasTable('finance_group_hq_account_adjustments')) {
             Schema::connection('mysql')->create('finance_group_hq_account_adjustments', function (Blueprint $table): void {
                 $table->id();
-                $table->foreignId('hq_account_id')->constrained('finance_group_hq_accounts')->restrictOnDelete();
+                $table->foreignId('hq_account_id')->constrained('finance_group_hq_accounts', 'id', 'fghaa_account_fk')->restrictOnDelete();
                 $table->decimal('amount', 18, 2);
                 $table->decimal('balance_before', 18, 2);
                 $table->decimal('balance_after', 18, 2);
                 $table->date('adjustment_date');
                 $table->text('reason');
-                $table->foreignId('created_by_group_user_id')->constrained('finance_group_users')->restrictOnDelete();
+                $table->foreignId('created_by_group_user_id')->constrained('finance_group_users', 'id', 'fghaa_creator_fk')->restrictOnDelete();
                 $table->timestamps();
-                $table->index(['hq_account_id', 'adjustment_date']);
+                $table->index(['hq_account_id', 'adjustment_date'], 'fghaa_account_date_idx');
             });
         }
 
         if (!Schema::connection('mysql')->hasTable('finance_group_transfers')) {
             Schema::connection('mysql')->create('finance_group_transfers', function (Blueprint $table): void {
                 $table->id();
-                $table->foreignId('group_id')->constrained('finance_groups')->restrictOnDelete();
-                $table->foreignId('school_id')->constrained('schools')->restrictOnDelete();
+                $table->foreignId('group_id')->constrained('finance_groups', 'id', 'fgt_group_fk')->restrictOnDelete();
+                $table->foreignId('school_id')->constrained('schools', 'id', 'fgt_school_fk')->restrictOnDelete();
                 // A School request may leave the HQ account for Head Finance
                 // to select at confirmation; it is then immutable.
-                $table->foreignId('hq_account_id')->nullable()->constrained('finance_group_hq_accounts')->restrictOnDelete();
+                $table->foreignId('hq_account_id')->nullable()->constrained('finance_group_hq_accounts', 'id', 'fgt_hq_account_fk')->restrictOnDelete();
                 // This is an ID in the selected school's isolated tenant DB,
                 // so it deliberately has no central foreign key.
                 $table->unsignedBigInteger('tenant_bank_account_id');
@@ -74,19 +74,19 @@ return new class extends Migration
                 $table->string('reference_no', 128)->nullable();
                 $table->text('notes')->nullable();
                 $table->string('status', 32)->default('pending');
-                $table->foreignId('requested_by_group_user_id')->constrained('finance_group_users')->restrictOnDelete();
+                $table->foreignId('requested_by_group_user_id')->constrained('finance_group_users', 'id', 'fgt_requested_by_fk')->restrictOnDelete();
                 $table->timestamp('requested_at');
-                $table->foreignId('confirmed_by_group_user_id')->nullable()->constrained('finance_group_users')->restrictOnDelete();
+                $table->foreignId('confirmed_by_group_user_id')->nullable()->constrained('finance_group_users', 'id', 'fgt_confirmed_by_fk')->restrictOnDelete();
                 $table->timestamp('confirmed_at')->nullable();
-                $table->foreignId('rejected_by_group_user_id')->nullable()->constrained('finance_group_users')->restrictOnDelete();
+                $table->foreignId('rejected_by_group_user_id')->nullable()->constrained('finance_group_users', 'id', 'fgt_rejected_by_fk')->restrictOnDelete();
                 $table->timestamp('rejected_at')->nullable();
                 $table->text('rejection_reason')->nullable();
-                $table->foreignId('cancelled_by_group_user_id')->nullable()->constrained('finance_group_users')->restrictOnDelete();
+                $table->foreignId('cancelled_by_group_user_id')->nullable()->constrained('finance_group_users', 'id', 'fgt_cancelled_by_fk')->restrictOnDelete();
                 $table->timestamp('cancelled_at')->nullable();
                 $table->text('cancellation_reason')->nullable();
                 $table->timestamps();
-                $table->index(['group_id', 'school_id', 'status']);
-                $table->index(['tenant_bank_account_id', 'status']);
+                $table->index(['group_id', 'school_id', 'status'], 'fgt_group_school_status_idx');
+                $table->index(['tenant_bank_account_id', 'status'], 'fgt_tenant_account_status_idx');
             });
         }
     }
