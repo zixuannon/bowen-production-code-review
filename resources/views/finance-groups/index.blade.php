@@ -39,7 +39,13 @@
                         <div class="form-group col-md-2"><button class="btn btn-outline-primary" type="submit">{{ __('Save identity') }}</button></div>
                     </form>
                     <small class="text-muted d-block mb-2">{{ __('The selected existing School user is verified server-side in that School before this mapping is saved.') }}</small>
-                    <ul class="mb-2">@foreach($group->users as $groupUser)@foreach($groupUser->tenantIdentities->where('status','active') as $identity)<li>{{ $groupUser->centralUser?->full_name ?? ('User #'.$groupUser->central_user_id) }} → {{ $identity->school?->name }} ({{ __('School user') }} #{{ $identity->tenant_user_id }})</li>@endforeach@endforeach</ul>
+                    <ul class="mb-2">
+                        @foreach($group->users as $groupUser)
+                            @foreach($groupUser->tenantIdentities->where('status','active') as $identity)
+                                <li>{{ $groupUser->centralUser?->full_name ?? ('User #'.$groupUser->central_user_id) }} → {{ $identity->school?->name }} ({{ __('School user') }} #{{ $identity->tenant_user_id }})</li>
+                            @endforeach
+                        @endforeach
+                    </ul>
                     <a class="btn btn-sm btn-outline-secondary" href="{{ route('finance-groups.reports.index', $group) }}">{{ __('Open read-only Group reports') }}</a>
                     <a class="btn btn-sm btn-outline-secondary" href="{{ route('finance-groups.transfers.index', $group) }}">{{ __('Open HQ / School funding') }}</a>
                 </div>
