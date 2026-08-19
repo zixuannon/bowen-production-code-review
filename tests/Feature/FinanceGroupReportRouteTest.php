@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\FinanceGroup;
 use App\Models\FinanceGroupUser;
 use App\Models\User;
+use App\Http\Controllers\FinanceGroupController;
 use App\Http\Middleware\CheckForMaintenanceMode;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckSchoolStatus;
@@ -19,6 +20,7 @@ use App\Services\FinanceGroupScopeService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class FinanceGroupReportRouteTest extends TestCase
@@ -115,6 +117,18 @@ class FinanceGroupReportRouteTest extends TestCase
         $this->withoutRouteGuards()->actingAs(User::on('mysql')->findOrFail(101))
             ->get(route('finance-groups.reports.index', $group))
             ->assertNotFound();
+    }
+
+    public function test_normal_central_user_cannot_access_group_configuration(): void
+    {
+        $this->actingAs(User::on('mysql')->findOrFail(101));
+
+        try {
+            app(FinanceGroupController::class)->index();
+            $this->fail('A non-Super-Admin user reached Finance Group configuration.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
     }
 
     private function centralHash(): string
