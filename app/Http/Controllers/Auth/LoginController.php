@@ -158,7 +158,7 @@ class LoginController extends Controller
 
                         return redirect()->route('auth.2fa');
                     } else {
-                        return redirect()->intended('/dashboard');
+                        return $this->postAuthenticationRedirect();
                     }
                 }
 
@@ -211,7 +211,7 @@ class LoginController extends Controller
 
                         return redirect()->route('auth.2fa');
                     } else {
-                        return redirect()->intended('/dashboard');
+                        return $this->postAuthenticationRedirect();
                     }
                 }
 
@@ -224,6 +224,20 @@ class LoginController extends Controller
 
         // Login failed, redirect back with an error message
         return back()->withErrors(['email' => 'The provided credentials do not match our records.']);
+    }
+
+    /**
+     * A central Group Finance user enters the restricted Group read-model,
+     * while every tenant user keeps the established dashboard redirect.
+     */
+    private function postAuthenticationRedirect()
+    {
+        $user = Auth::user();
+        if ($user && app(\App\Services\GroupFinanceAccessService::class)->hasReportAccess($user)) {
+            return redirect()->route('group-finance.index');
+        }
+
+        return redirect()->intended('/dashboard');
     }
 
     private function generate2FACode($length = 6)

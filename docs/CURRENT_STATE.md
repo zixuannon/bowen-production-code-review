@@ -191,6 +191,21 @@ requires the email/user ownership to match before consuming the token.
 
 ## Next task
 
+## Group Finance central entry (local)
+
+- Central Super Admin remains configuration-only: the Finance Groups page no
+  longer exposes operational report/funding links that can fail for a user
+  without an explicit Group Finance membership.
+- A configured central Group Finance user enters the read-only `group-finance`
+  route after normal or 2FA login. The School switcher is limited to active
+  explicit `view_reports` scope, and selected-school accounts are read through
+  the mapped tenant identity plus the existing Fund Account scope.
+- CSV export requires the separate `export_reports` capability. The controller
+  is read-only and does not set a global tenant session or impersonate a
+  tenant user.
+- Regression characterization covers the configured central entry, CSV route,
+  forged-school rejection, unscoped denial, and a no-write central snapshot.
+
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
 ## Integration release validation

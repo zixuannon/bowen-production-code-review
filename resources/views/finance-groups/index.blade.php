@@ -46,8 +46,7 @@
                             @endforeach
                         @endforeach
                     </ul>
-                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('finance-groups.reports.index', $group) }}">{{ __('Open read-only Group reports') }}</a>
-                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('finance-groups.transfers.index', $group) }}">{{ __('Open HQ / School funding') }}</a>
+                    <small class="text-muted d-block mb-2">{{ __('Group reports and funding are available to configured Group Finance users from the Group Finance menu.') }}</small>
                 </div>
             </div>
         @endforeach

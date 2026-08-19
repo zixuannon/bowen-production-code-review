@@ -226,6 +226,10 @@ class AuthController extends Controller
             DB::table('users')->where('email', $user->email)->update(['two_factor_expires_at' => Carbon::now()->addDays(1)]);
             Auth::loginUsingId($userId);
             Session::forget('2fa_user_id');
+            $authenticated = Auth::user();
+            if ($authenticated && app(\App\Services\GroupFinanceAccessService::class)->hasReportAccess($authenticated)) {
+                return redirect()->route('group-finance.index');
+            }
             return redirect()->intended('/dashboard');
         } else {
             if ($failedAttempts >= $maxFailedAttempts) {

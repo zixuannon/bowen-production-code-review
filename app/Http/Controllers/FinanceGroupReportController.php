@@ -46,7 +46,8 @@ class FinanceGroupReportController extends Controller
         abort_unless($auth && $auth->school_id === null, 403);
         $central = User::on('mysql')->find($auth->id);
         abort_unless($central && $central->school_id === null, 403);
-        $groupUser = FinanceGroupUser::query()->where('group_id', $group->id)->where('central_user_id', $central->id)->where('status', 'active')->firstOrFail();
+        $groupUser = FinanceGroupUser::query()->where('group_id', $group->id)->where('central_user_id', $central->id)->where('status', 'active')->first();
+        abort_unless($groupUser, 403);
         abort_unless(app(\App\Services\FinanceGroupScopeService::class)->accessibleSchools($groupUser, $capability)->isNotEmpty(), 403);
         return [$groupUser, $request->only(['school_id', 'from', 'to', 'type', 'reference', 'keyword', 'bank_account_id'])];
     }

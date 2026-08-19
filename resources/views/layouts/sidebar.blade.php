@@ -1619,6 +1619,15 @@
                 </a>
             </li>
         @endif
+        @php($hasGroupFinanceReports = app(\App\Services\GroupFinanceAccessService::class)->hasReportAccess(Auth::user()))
+        @if ($hasGroupFinanceReports)
+            <li class="nav-item">
+                <a class="nav-link" href="{{ route('group-finance.index') }}">
+                    <i class="fa fa-line-chart menu-icon"></i>
+                    <span class="menu-title">{{ __('Group Finance') }}</span>
+                </a>
+            </li>
+        @endif
         @if (Auth::user()->hasRole('Super Admin'))
             @if (!Auth::user()->school_id)
                 <li class="nav-item">

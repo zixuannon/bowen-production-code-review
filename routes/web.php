@@ -4,6 +4,7 @@ use App\Http\Controllers\FinanceGroupController;
 use App\Http\Controllers\FinanceGroupReportController;
 use App\Http\Controllers\FinanceGroupTransferController;
 use App\Http\Controllers\FinanceGroupHqAccountController;
+use App\Http\Controllers\GroupFinanceController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -225,6 +226,11 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
         Route::get('finance-groups/{financeGroup}/reports', [FinanceGroupReportController::class, 'register'])->name('finance-groups.reports.index');
         Route::get('finance-groups/{financeGroup}/reports/export', [FinanceGroupReportController::class, 'export'])->name('finance-groups.reports.export');
+        // Read-only operational entry point for configured central Finance
+        // users. It remains separate from the Super Admin configuration UI.
+        Route::get('group-finance', [GroupFinanceController::class, 'index'])->name('group-finance.index');
+        Route::get('group-finance/{financeGroup}', [GroupFinanceController::class, 'show'])->name('group-finance.show');
+        Route::get('group-finance/{financeGroup}/export', [GroupFinanceController::class, 'export'])->name('group-finance.export');
         Route::get('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'funding'])->name('finance-groups.transfers.index');
         Route::post('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'store'])->name('finance-groups.transfers.store');
         Route::post('finance-groups/{financeGroup}/funding/{transfer}/confirm', [FinanceGroupTransferController::class, 'confirm'])->name('finance-groups.transfers.confirm');
