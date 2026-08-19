@@ -52,6 +52,10 @@ class WizardSettings
                 'language*',
                 'system-update*',
                 'web-settings*',
+                // Central-only Finance Group configuration has its own
+                // controller authorization. Keep it reachable while the
+                // legacy global setup wizard is incomplete.
+                'finance-groups*',
                 'faqs*',
                 'notification-setting.update',
                 'auth.logout',
