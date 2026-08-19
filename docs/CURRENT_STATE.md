@@ -205,6 +205,13 @@ requires the email/user ownership to match before consuming the token.
   tenant user.
 - Regression characterization covers the configured central entry, CSV route,
   forged-school rejection, unscoped denial, and a no-write central snapshot.
+- Local-only acceptance uses `php artisan local:finance-group-qa reset` and
+  `verify`. It provisions exactly Zixuan QA, Timecity QA, and an unrelated QA
+  tenant through a fixed database allowlist; it refuses Production, Staging,
+  and every `eschool_saas_*` database. Reset is repeatable and removes only
+  the fixed `GROUP_QA` synthetic central fixture. Verify snapshots the fixture
+  financial tables before and after its assertions, proving the read models
+  and Group reports perform zero financial writes.
 
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
