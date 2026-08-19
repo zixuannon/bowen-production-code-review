@@ -9,7 +9,7 @@ function csrfToken(html) {
   return match[1];
 }
 
-async function login(email) {
+async function login(email, expectedRedirect = '/group-finance') {
   const api = await request.newContext({ baseURL });
   try {
     const form = await api.get('/login', { maxRedirects: 0 });
@@ -19,6 +19,7 @@ async function login(email) {
       maxRedirects: 0,
     });
     expect([302, 303]).toContain(response.status());
+    expect(new URL(response.headers().location, baseURL).pathname).toBe(expectedRedirect);
     return await api.storageState();
   } finally {
     await api.dispose();
