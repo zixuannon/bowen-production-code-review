@@ -70,16 +70,21 @@ trait DateFormatTrait
             return $value;
         }
 
+        try {
+            $value = Carbon::parse($value, 'UTC'); // Treat DB time as UTC
 
-        $value = Carbon::parse($value, 'UTC'); // Treat DB time as UTC
+            $cache = app(CachingService::class);
+            $schoolSettings = $cache->getSchoolSettings();
+            $systemSettings = $cache->getSystemSettings();
 
-        $cache = app(CachingService::class);
-        $schoolSettings = $cache->getSchoolSettings();
-        $systemSettings = $cache->getSystemSettings();
+            $date_format = $schoolSettings['date_format'] ?? $systemSettings['date_format'] ?? 'Y-m-d';
 
-        $date_format = $schoolSettings['date_format'] ?? $systemSettings['date_format'] ?? 'Y-m-d';
-
-        return $value->format($date_format);
+            return $value->format($date_format);
+        } catch (\Throwable) {
+            // Central users have no tenant cache namespace. Date presentation
+            // must not turn a read-only Staff List response into a 500.
+            return Carbon::parse($value, 'UTC')->format('Y-m-d');
+        }
     }
     /**
      * Convert the model's attributes to an array.
