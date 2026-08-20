@@ -2127,5 +2127,6 @@
     "Read-only": "只读",
     "Return to All Schools": "返回全部校区",
     "Central identity is retained. Fund Account visibility follows the mapped tenant identity and existing scope.": "保持总部登录身份。资金账户可见范围仍遵循已映射的校区身份和现有授权范围。",
-    "Open an authorized School in read-only Finance workspace. Your central login remains unchanged.": "在只读财务工作区打开已授权校区；总部登录身份保持不变。"
+    "Open an authorized School in read-only Finance workspace. Your central login remains unchanged.": "在只读财务工作区打开已授权校区；总部登录身份保持不变。",
+    "Operate School Finance": "校区财务操作"
 }

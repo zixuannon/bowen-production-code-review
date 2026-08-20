@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\GroupFinanceController;
+use App\Http\Controllers\FinanceGroupController;
 use App\Http\Controllers\FinanceOperatingWorkspaceController;
 use App\Models\FinanceGroup;
 use App\Models\User;
@@ -75,8 +76,15 @@ class GroupFinanceEntryRouteTest extends TestCase
         DB::connection('mysql')->table('roles')->insert([
             'id' => 1, 'name' => 'Head Finance', 'guard_name' => 'web', 'school_id' => null,
         ]);
+        DB::connection('mysql')->table('roles')->insert([
+            'id' => 2, 'name' => 'Super Admin', 'guard_name' => 'web', 'school_id' => null,
+        ]);
         DB::connection('mysql')->table('model_has_roles')->insert([
             'role_id' => 1, 'model_type' => User::class, 'model_id' => 100,
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            ['role_id' => 1, 'model_type' => User::class, 'model_id' => 101],
+            ['role_id' => 2, 'model_type' => User::class, 'model_id' => 101],
         ]);
         (require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php'))->up();
 
@@ -169,6 +177,46 @@ class GroupFinanceEntryRouteTest extends TestCase
         } catch (HttpException $exception) {
             $this->assertSame(403, $exception->getStatusCode());
         }
+    }
+
+    public function test_super_admin_must_explicitly_grant_operate_finance_before_a_head_finance_can_switch_schools(): void
+    {
+        $group = FinanceGroup::on('mysql')->where('code', 'BOWEN_QA')->firstOrFail();
+        $headFinance = User::on('mysql')->findOrFail(101);
+        $scope = app(FinanceGroupScopeService::class);
+
+        // Merely holding Head Finance and Super Admin roles creates no Group
+        // operational authority.
+        $this->assertSame(0, $group->users()->where('central_user_id', $headFinance->id)->count());
+
+        $this->actingAs($headFinance);
+        $response = app(FinanceGroupController::class)->storeUserScope(new Request([
+            'central_user_id' => $headFinance->id,
+            'capability' => 'operate_finance',
+            'scope_type' => 'SCHOOL',
+            'school_id' => 1,
+        ]), $group);
+
+        $this->assertSame(302, $response->getStatusCode());
+        $groupUser = $group->users()->where('central_user_id', $headFinance->id)->sole();
+        $this->assertSame([1], $scope->accessibleSchools($groupUser, 'operate_finance')->pluck('school_id')->all());
+        $this->assertSame([], $scope->accessibleSchools($groupUser, 'view_reports')->pluck('school_id')->all());
+
+        // The same explicit capability also retains the existing GROUP-scope
+        // semantics; the request never supplies a tenant database name.
+        app(FinanceGroupController::class)->storeUserScope(new Request([
+            'central_user_id' => $headFinance->id,
+            'capability' => 'operate_finance',
+            'scope_type' => 'GROUP',
+        ]), $group);
+        $this->assertSame(1, $groupUser->scopes()->where('capability', 'operate_finance')->where('scope_type', 'GROUP')->count());
+
+        // The configuration view exposes the exact whitelisted capability,
+        // rather than a broad Super Admin shortcut. Rendering the full shared
+        // layout here would require unrelated central system-setting fixtures.
+        $configurationView = (string) file_get_contents(resource_path('views/finance-groups/index.blade.php'));
+        $this->assertStringContainsString('value="operate_finance"', $configurationView);
+        $this->assertStringContainsString("__('Operate School Finance')", $configurationView);
     }
 
     private function centralHash(): string

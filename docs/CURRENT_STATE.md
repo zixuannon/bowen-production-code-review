@@ -232,6 +232,10 @@ requires the email/user ownership to match before consuming the token.
 - CSV export requires the separate `export_reports` capability. The controller
   is read-only and does not set a global tenant session or impersonate a
   tenant user.
+- Central Super Admin configuration exposes `operate_finance` as the explicit
+  `校区财务操作` capability at either Group or School scope. It remains in the
+  same server-side capability whitelist as the Operating Context; neither
+  Super Admin nor Head Finance receives it automatically.
 - Regression characterization covers the configured central entry, CSV route,
   forged-school rejection, unscoped denial, and a no-write central snapshot.
 - Local-only acceptance uses `php artisan local:finance-group-qa reset` and
