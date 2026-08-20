@@ -105,6 +105,7 @@ class FinanceOperatingContextServiceTest extends TestCase
     public function test_central_actor_can_switch_only_between_zixuan_and_timecity_scoped_identities(): void
     {
         $central = User::on('mysql')->findOrFail(1);
+        $this->actingAs($central);
         $group = FinanceGroup::on('mysql')->where('code', 'BOWEN_OPERATING_QA')->firstOrFail();
         $service = app(FinanceOperatingContextService::class);
 
@@ -210,6 +211,40 @@ class FinanceOperatingContextServiceTest extends TestCase
 
         $this->expectException(ModelNotFoundException::class);
         app(FinanceOperatingWorkspaceService::class)->ledger($central, ['bank_account_id' => 11]);
+    }
+
+    public function test_operating_executor_uses_only_the_current_trusted_school_identity_and_retains_central_authentication(): void
+    {
+        $central = User::on('mysql')->findOrFail(1);
+        $this->actingAs($central);
+        $group = FinanceGroup::on('mysql')->where('code', 'BOWEN_OPERATING_QA')->firstOrFail();
+        $context = app(FinanceOperatingContextService::class)->enterSchool($central, $group->id, 1);
+        $groupUser = \App\Models\FinanceGroupUser::query()->where('group_id', $group->id)->where('central_user_id', $central->id)->firstOrFail();
+
+        $created = app(FinanceGroupScopeService::class)->executeOperatingFinanceAsTenantIdentity($groupUser, 1,
+            function (User $tenant) use ($context): int {
+                $id = DB::connection('school')->table('other_incomes')->insertGetId([
+                    'school_id' => $tenant->school_id, 'bank_account_id' => 10, 'date' => '2026-08-20',
+                    'payer' => 'Central QA', 'description' => 'trusted operating write', 'amount' => 25,
+                    'payment_method' => 'Cash', 'reference_no' => 'OPERATING_WRITE_A', 'created_by' => $tenant->id,
+                ]);
+                DB::connection('school')->table('finance_operating_audits')->insert([
+                    'central_actor_id' => $context->centralActorId, 'finance_group_id' => $context->groupId,
+                    'school_id' => $context->schoolId, 'tenant_user_id' => $context->tenantUserId,
+                    'source_type' => 'other_income', 'source_id' => $id, 'action' => 'receive_money',
+                    'request_source' => 'finance_operating_context', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+                return $id;
+            });
+
+        Config::set('database.connections.school.database', $this->zixuanDatabase); DB::purge('school');
+        $this->assertSame(2, DB::connection('school')->table('other_incomes')->where('school_id', 1)->count());
+        $this->assertSame(1, DB::connection('school')->table('finance_operating_audits')->where('source_id', $created)->count());
+        Config::set('database.connections.school.database', $this->timecityDatabase); DB::purge('school');
+        $this->assertSame(1, DB::connection('school')->table('other_incomes')->where('school_id', 2)->count());
+        $this->assertSame(1, auth()->id());
+        $this->assertNull(auth()->user()?->school_id);
+        $this->assertNull(session('school_database_name'));
     }
 
     /** @return array<string, mixed> */
@@ -328,6 +363,11 @@ class FinanceOperatingContextServiceTest extends TestCase
         Schema::connection('school')->create('bank_transfers', function ($table): void {
             $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('from_account_id'); $table->unsignedBigInteger('to_account_id');
             $table->decimal('amount', 15, 2); $table->date('transfer_date'); $table->string('reference_no')->nullable(); $table->string('notes')->nullable(); $table->string('status')->default('completed'); $table->unsignedBigInteger('created_by')->nullable(); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+        });
+        Schema::connection('school')->create('finance_operating_audits', function ($table): void {
+            $table->id(); $table->unsignedBigInteger('central_actor_id'); $table->unsignedBigInteger('finance_group_id');
+            $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('tenant_user_id');
+            $table->string('source_type'); $table->unsignedBigInteger('source_id'); $table->string('action'); $table->string('request_source'); $table->timestamps();
         });
 
         DB::connection('school')->table('users')->insert(['id' => $userId, 'first_name' => 'Accountant', 'last_name' => (string) $schoolId, 'email' => "accountant{$schoolId}@group-qa.test", 'school_id' => $schoolId]);

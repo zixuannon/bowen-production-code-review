@@ -13,6 +13,7 @@ use App\Services\CachingService;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
 use App\Services\ExpenseImportService;
+use App\Services\ExpenseCreationService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
 use Illuminate\Http\Request;
@@ -78,7 +79,7 @@ class ExpenseController extends Controller
     }
 
 
-    public function store(Request $request)
+    public function store(Request $request, ExpenseCreationService $creation)
     {
         ResponseService::noFeatureThenSendJson('Expense Management');
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-expense-create');
@@ -109,53 +110,9 @@ class ExpenseController extends Controller
         ]);
         app(FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
         try {
-            DB::beginTransaction();
-            $schoolSettings = $this->cache->getSchoolSettings();
-            
-            // ========== 多货币处理 ==========
-            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
-            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
-            $originalAmount = (float)($request->original_amount ?? $request->amount);
-            $amount = (float)$request->amount; // amount 保存 MMK 等值
-            
-            if ($transactionCurrency === 'MMK') {
-                $originalAmount = $amount;
-                $exchangeRate = 1;
-            } else {
-                if ($originalAmount <= 0) {
-                    $originalAmount = $amount / $exchangeRate;
-                }
-            }
-            $amountMmk = $amount;
-            // =================================
-            
-            $data = [
-                'category_id' => $request->category_id,
-                'finance_category_id' => $request->finance_category_id ?: null,
-                'title' => $request->title,
-                'ref_no' => $request->ref_no,
-                'amount' => $amount,
-                'date' => $request->date
-                    ? Carbon::createFromFormat($schoolSettings['date_format'], $request->date)->format('Y-m-d')
-                    : null,
-                'description' => $request->description,
-                'session_year_id' => $request->session_year_id,
-                'transaction_currency' => $transactionCurrency,
-                'original_amount' => $originalAmount,
-                'exchange_rate_snapshot' => $exchangeRate,
-                'amount_mmk' => $amountMmk,
-                'bank_account_id' => $request->bank_account_id ?: null,
-            ];
-
-            $expense = $this->expense->create($data);
-
-            $sessionYear = $this->cache->getDefaultSessionYear();
-            $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Expense', $expense->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
-
-            DB::commit();
+            $creation->create(Auth::user(), $request->all());
             ResponseService::successResponse('Data Stored Successfully');
         } catch (Throwable $e) {
-            DB::rollBack();
             ResponseService::logErrorResponse($e, "Expense Controller -> Store Method");
             ResponseService::errorResponse();
         }

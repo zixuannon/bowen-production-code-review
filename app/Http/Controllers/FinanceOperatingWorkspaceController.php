@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FinanceGroup;
 use App\Services\FinanceOperatingContextService;
 use App\Services\FinanceOperatingWorkspaceService;
+use App\Services\FinanceOperatingWriteService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,6 +23,7 @@ class FinanceOperatingWorkspaceController extends Controller
     public function __construct(
         private readonly FinanceOperatingContextService $context,
         private readonly FinanceOperatingWorkspaceService $workspace,
+        private readonly FinanceOperatingWriteService $writes,
     ) {
     }
 
@@ -96,5 +98,35 @@ class FinanceOperatingWorkspaceController extends Controller
         ])->values();
 
         return view('group-finance.operating.reports', compact('workspace', 'register', 'filters', 'categories'));
+    }
+
+    public function operations(): View
+    {
+        $actor = Auth::user();
+        abort_unless($actor, 403);
+        $workspace = $this->workspace->workspace($actor);
+        $options = $this->writes->formOptions($actor);
+        return view('group-finance.operating.operations', compact('workspace', 'options'));
+    }
+
+    public function storeExpense(Request $request): RedirectResponse
+    {
+        $actor = Auth::user(); abort_unless($actor, 403);
+        $id = $this->writes->createExpense($actor, $request->all());
+        return back()->with('success', __('Expense created.') . ' #' . $id);
+    }
+
+    public function receiveMoney(Request $request): RedirectResponse
+    {
+        $actor = Auth::user(); abort_unless($actor, 403);
+        $id = $this->writes->receiveMoney($actor, $request->all());
+        return back()->with('success', __('Money received successfully.') . ' #' . $id);
+    }
+
+    public function receiveStudentFee(Request $request): RedirectResponse
+    {
+        $actor = Auth::user(); abort_unless($actor, 403);
+        $id = $this->writes->receiveStudentFee($actor, $request->all());
+        return back()->with('success', __('Student fee received.') . ' #' . $id);
     }
 }

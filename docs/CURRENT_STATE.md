@@ -191,6 +191,13 @@ requires the email/user ownership to match before consuming the token.
 
 ## Next task
 
+## Group Finance Operating Context — Checkpoint 3 (local)
+
+- A Central Head Finance keeps the central authenticated identity while a selected, explicitly scoped School may now use only the canonical Expense, Other Income/Receive Money, and compulsory Student Fee write services.
+- Every operation re-resolves active Group membership, `operate_finance` School scope, trusted central-registry School, mapped tenant User, original tenant permission, and existing Fund Account scope; no request can name a tenant database.
+- Tenant-local `finance_operating_audits` records central actor, Group, School, mapped tenant identity, action, and canonical source ID in the same tenant transaction. It stores no amount and is not a Ledger.
+- Bank Transfer, Fund Handover, and HQ Funding remain unavailable in the Operating workspace. All Schools stays read-only.
+
 ## Group Finance central entry (local)
 
 - Central Super Admin remains configuration-only: the Finance Groups page no

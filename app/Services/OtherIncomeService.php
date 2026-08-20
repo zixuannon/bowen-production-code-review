@@ -13,7 +13,7 @@ class OtherIncomeService
      * Records a genuine non-fee receipt. This is intentionally separate from
      * student fee services so it cannot bypass fee status/outstanding/audit.
      */
-    public function receive(User $actor, array $data): OtherIncome
+    public function receive(User $actor, array $data, ?callable $afterCreate = null): OtherIncome
     {
         if (empty($data['bank_account_id'])) {
             throw ValidationException::withMessages(['bank_account_id' => __('A fund account is required.')]);
@@ -31,7 +31,7 @@ class OtherIncomeService
 
         $reference = trim((string) ($data['reference_no'] ?? ''));
 
-        return DB::connection('school')->transaction(function () use ($actor, $account, $data, $reference) {
+        return DB::connection('school')->transaction(function () use ($actor, $account, $data, $reference, $afterCreate) {
             if ($reference !== '' && OtherIncome::withTrashed()
                 ->where('school_id', $actor->school_id)
                 ->where('reference_no', $reference)
@@ -39,7 +39,7 @@ class OtherIncomeService
                 throw ValidationException::withMessages(['reference_no' => __('This reference number is already reserved.')]);
             }
 
-            return OtherIncome::create([
+            $income = OtherIncome::create([
                 'school_id' => $actor->school_id,
                 'bank_account_id' => $account->id,
                 'date' => $data['date'],
@@ -51,6 +51,8 @@ class OtherIncomeService
                 'remark' => $data['remark'] ?? null,
                 'created_by' => $actor->id,
             ]);
+            if ($afterCreate) { $afterCreate($income); }
+            return $income;
         });
     }
 }

@@ -452,6 +452,35 @@ class FinanceGroupScopeService
         return ['school_id' => (int) $school->id, 'tenant_user_id' => $tenantUserId];
     }
 
+    /**
+     * Execute one narrowly authorized School Finance operation as the mapped
+     * tenant identity. Callers never receive or select a database name.
+     *
+     * This is intentionally capability-fixed to Scheme B operating finance;
+     * the callback is internal application code, never request input. It is
+     * used by FinanceOperatingWriteService to invoke canonical tenant write
+     * services while the authenticated central User remains unchanged.
+     *
+     * @template T
+     * @param callable(User, School):T $operation
+     * @return T
+     */
+    public function executeOperatingFinanceAsTenantIdentity(FinanceGroupUser $groupUser, int $schoolId, callable $operation)
+    {
+        $identity = $this->resolveTrustedTenantIdentity($groupUser, $schoolId, 'operate_finance');
+        $school = $this->centralSchool($identity['school_id']);
+
+        return $this->inTenant($school, function () use ($identity, $school, $operation) {
+            $tenantUser = User::on('school')->whereKey($identity['tenant_user_id'])
+                ->where('school_id', $school->id)->first();
+            if (!$tenantUser) {
+                throw new FinanceGroupTenantUnavailableException('The configured tenant identity no longer belongs to this School.');
+            }
+
+            return $operation($tenantUser, $school);
+        });
+    }
+
     public function canManageAllHqAccounts(FinanceGroupUser $groupUser): bool
     {
         if ($groupUser->status !== 'active') {

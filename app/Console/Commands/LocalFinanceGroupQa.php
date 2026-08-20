@@ -122,8 +122,13 @@ class LocalFinanceGroupQa extends Command
         $head=(int)$db->table('users')->where('email','head@'.$code.'.test')->value('id'); $accountant=(int)$db->table('users')->where('email','accountant@'.$code.'.test')->value('id');
         $hq=(int)$db->table('users')->where('email','group_hq@group-qa.test')->value('id');
         foreach (['Head Finance','Cashier'] as $role) $db->table('roles')->insert(['name'=>$role,'guard_name'=>'web','school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
-        $db->table('model_has_roles')->insert(['role_id'=>$db->table('roles')->where('name','Head Finance')->value('id'),'model_type'=>'App\\Models\\User','model_id'=>$head]);
-        $db->table('model_has_roles')->insert(['role_id'=>$db->table('roles')->where('name','Head Finance')->value('id'),'model_type'=>'App\\Models\\User','model_id'=>$hq]);
+        $headRole=(int)$db->table('roles')->where('name','Head Finance')->value('id');
+        foreach (['finance-payment-create','finance-expense-create','finance-dashboard-view','expense-list','expense-create','fees-paid'] as $permission) {
+            $db->table('permissions')->insert(['name'=>$permission,'guard_name'=>'web','created_at'=>$now,'updated_at'=>$now]);
+            $db->table('role_has_permissions')->insert(['permission_id'=>$db->table('permissions')->where('name',$permission)->value('id'),'role_id'=>$headRole]);
+        }
+        $db->table('model_has_roles')->insert(['role_id'=>$headRole,'model_type'=>'App\\Models\\User','model_id'=>$head]);
+        $db->table('model_has_roles')->insert(['role_id'=>$headRole,'model_type'=>'App\\Models\\User','model_id'=>$hq]);
         $db->table('model_has_roles')->insert(['role_id'=>$db->table('roles')->where('name','Cashier')->value('id'),'model_type'=>'App\\Models\\User','model_id'=>$accountant]);
         foreach ([['CASH','Group QA '.$name.' Cash',1000],['BANK','Group QA '.$name.' Bank',0]] as [$num,$account,$opening]) $db->table('bank_accounts')->insert(['school_id'=>$schoolId,'account_number'=>$code.'_'.$num,'account_name'=>$account,'bank_name'=>'LOCAL ONLY','account_type'=>'cash','currency'=>'MMK','opening_balance'=>$opening,'opening_balance_date'=>'2026-01-01','is_active'=>1,'is_default'=>$num==='CASH','created_by'=>$head,'updated_by'=>$head,'created_at'=>$now,'updated_at'=>$now]);
         $cash=(int)$db->table('bank_accounts')->where('account_number',$code.'_CASH')->value('id'); $bank=(int)$db->table('bank_accounts')->where('account_number',$code.'_BANK')->value('id');
@@ -138,6 +143,8 @@ class LocalFinanceGroupQa extends Command
             $fee=$db->table('fees')->insertGetId(['name'=>'Group QA Fee','currency'=>'MMK','due_date'=>'2026-08-01','due_charges'=>0,'due_charges_amount'=>0,'class_id'=>$class,'session_year_id'=>$session,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
             $type=$db->table('fees_types')->insertGetId(['name'=>'Group QA Tuition','description'=>'Synthetic','school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
             $db->table('fees_class_types')->insert(['fees_id'=>$fee,'fees_type_id'=>$type,'class_id'=>$class,'amount'=>200,'optional'=>0,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
+            $operatingFee=$db->table('fees')->insertGetId(['name'=>'Group QA Operating Fee','currency'=>'MMK','due_date'=>'2026-08-20','due_charges'=>0,'due_charges_amount'=>0,'class_id'=>$class,'session_year_id'=>$session,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
+            $db->table('fees_class_types')->insert(['fees_id'=>$operatingFee,'fees_type_id'=>$type,'class_id'=>$class,'amount'=>150,'optional'=>0,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
             $paid=$db->table('fees_paids')->insertGetId(['fees_id'=>$fee,'student_id'=>$student,'is_fully_paid'=>1,'amount'=>200,'date'=>'2026-08-01','school_id'=>$schoolId,'transaction_currency'=>'MMK','original_amount'=>200,'exchange_rate_snapshot'=>1,'amount_mmk'=>200,'created_at'=>$now,'updated_at'=>$now]);
             $db->table('compulsory_fees')->insert(['student_id'=>$student,'type'=>'Full Payment','mode'=>'Cash','amount'=>200,'due_charges'=>0,'fees_paid_id'=>$paid,'status'=>'Success','date'=>'2026-08-01','school_id'=>$schoolId,'bank_account_id'=>$cash,'reference_no'=>$code.'_FEE','created_at'=>$now,'updated_at'=>$now]);
             $category=$db->table('expense_categories')->insertGetId(['name'=>'Group QA Category','description'=>'Synthetic','school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
@@ -255,7 +262,7 @@ class LocalFinanceGroupQa extends Command
             DB::purge('school');
             $db=DB::connection('school');
             $parts=[];
-            foreach (['bank_accounts','compulsory_fees','other_incomes','expenses','bank_transfers','fund_handovers','bank_account_user'] as $table) {
+            foreach (['bank_accounts','compulsory_fees','other_incomes','expenses','bank_transfers','fund_handovers','bank_account_user','finance_operating_audits'] as $table) {
                 $rows = $db->table($table)->orderBy('id')->get()->map(static fn ($row) => (array) $row)->all();
                 $parts[] = $table.':'.count($rows).':'.hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR));
             }

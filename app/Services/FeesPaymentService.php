@@ -9,6 +9,7 @@ use App\Models\Fee;
 use App\Models\FeesAdvance;
 use App\Models\FeesPaid;
 use App\Models\SessionYearsTracking;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -103,17 +104,19 @@ class FeesPaymentService
      *
      * @throws \InvalidArgumentException
      */
-    public function processPayment(array $data, Fee $fee): array
+    public function processPayment(array $data, Fee $fee, ?User $actor = null): array
     {
-        $schoolId = Auth::user()->school_id;
-        $userId   = Auth::id();
+        $actor ??= Auth::user();
+        if (!$actor) { throw new \InvalidArgumentException('A trusted tenant finance actor is required.'); }
+        $schoolId = $actor->school_id;
+        $userId   = $actor->id;
 
         // ---- 0. Guard: bank_account_id must be a valid, active, school-owned fund account ----
         $bankAccountId = $data['bank_account_id'] ?? null;
         if (empty($bankAccountId)) {
             throw new \InvalidArgumentException('Fund account (bank_account_id) is required for fee payment.');
         }
-        $bankAccount = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())
+        $bankAccount = app(FinanceAccountAccessService::class)->accessibleAccounts($actor)
             ->where('id', $bankAccountId)
             ->where('is_active', true)
             ->whereNull('deleted_at')
@@ -283,7 +286,7 @@ class FeesPaymentService
         // ---- 8. Create SessionYearsTracking entries ----
         foreach ($compulsoryFees as $cf) {
             $cache = app(CachingService::class);
-            $sessionYear = $cache->getDefaultSessionYear();
+            $sessionYear = $cache->getDefaultSessionYear($schoolId);
             SessionYearsTracking::create([
                 'modal_type'      => CompulsoryFee::class,
                 'modal_id'        => $cf->id,
