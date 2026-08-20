@@ -1,7 +1,6 @@
 const { test, expect, request } = require('@playwright/test');
 
 const baseURL = process.env.LOCAL_QA_BASE_URL || 'http://127.0.0.1:8011';
-const groupId = process.env.GROUP_QA_GROUP_ID || '1';
 
 function csrfToken(html) {
   const match = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/i);
@@ -33,7 +32,9 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
   try {
     const page = await context.newPage();
     await page.goto('/group-finance', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(new RegExp(`/group-finance/${groupId}$`));
+    await expect(page).toHaveURL(/\/group-finance\/\d+$/);
+    const groupId = page.url().match(/\/group-finance\/(\d+)$/)?.[1];
+    expect(groupId).toBeTruthy();
     await expect(page.getByRole('heading', { name: 'Group Finance' })).toBeVisible();
     const switcher = page.locator('#group-finance-school');
     await expect(switcher.locator('option')).toHaveCount(3);
@@ -63,7 +64,7 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
     const operatingSchool = operatingSwitcher.locator('#operating-school');
     await expect(operatingSchool.locator('option')).toHaveCount(2);
     await operatingSchool.selectOption(schoolA.value);
-    await operatingSwitcher.getByRole('button', { name: 'Open Read-only Finance' }).click();
+    await operatingSwitcher.getByRole('button', { name: 'Open Finance Workspace' }).click();
     await page.waitForURL(/group-finance\/operating\/bank-accounts$/);
     await expect(page.locator('[data-operating-school-banner]')).toContainText('Zixuan QA School');
     await expect(page.locator('[data-operating-bank-accounts]')).toContainText('Zixuan QA School Cash');
@@ -76,7 +77,7 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
 
     await page.getByRole('link', { name: 'Switch School' }).click();
     await operatingSchool.selectOption(schoolB.value);
-    await operatingSwitcher.getByRole('button', { name: 'Open Read-only Finance' }).click();
+    await operatingSwitcher.getByRole('button', { name: 'Open Finance Workspace' }).click();
     await page.waitForURL(/group-finance\/operating\/bank-accounts$/);
     await expect(page.locator('[data-operating-school-banner]')).toContainText('Timecity QA School');
     await expect(page.locator('[data-operating-bank-accounts]')).toContainText('Timecity QA School Cash');
@@ -89,16 +90,14 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
   }
 });
 
-test('School Accountant cannot switch to the peer or unrelated School', async ({ browser }) => {
-  const context = await browser.newContext({ baseURL, storageState: await login('group_school_a@group-qa.test') });
+test('School Accountant remains in the ordinary School dashboard and has no Group switcher', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL, storageState: await login('group_school_a@group-qa.test', '/dashboard') });
   try {
     const page = await context.newPage();
     await page.goto('/group-finance', { waitUntil: 'domcontentloaded' });
-    const switcher = page.locator('#group-finance-school');
-    await expect(switcher.locator('option')).toHaveCount(2);
-    const values = await switcher.locator('option').evaluateAll(options => options.map(option => option.textContent || ''));
-    expect(values.some(value => /Zixuan QA School/.test(value))).toBeTruthy();
-    expect(values.some(value => /Timecity QA School|Unrelated QA School/.test(value))).toBeFalsy();
+    await expect(page.locator('#group-finance-school')).toHaveCount(0);
+    await expect(page.locator('[data-operating-school-switcher]')).toHaveCount(0);
+    await expect(page.getByText('Bowen QA Group', { exact: false })).toHaveCount(0);
   } finally {
     await context.close();
   }
