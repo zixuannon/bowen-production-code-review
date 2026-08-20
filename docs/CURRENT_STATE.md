@@ -213,6 +213,23 @@ requires the email/user ownership to match before consuming the token.
   financial tables before and after its assertions, proving the read models
   and Group reports perform zero financial writes.
 
+## Group Finance Operating Context — Checkpoint 1 (local)
+
+- Scheme B is defined in `docs/finance/GROUP_OPERATING_CONTEXT.md`. The
+  authenticated identity remains the central User; a tenant identity is an
+  authorization mapping only and is never passed to `Auth::login`.
+- `FinanceOperatingContextService` stores only central actor, Group, School,
+  and mapped tenant-user IDs. It stores no database name, refuses tenant-login
+  sessions, and revalidates every active membership, operating scope, and
+  mapped identity before returning a current context.
+- `operate_finance` is a separate explicit Group capability. It is not granted
+  to Super Admin automatically and has no UI/write adapter in Checkpoint 1.
+- Zixuan/Timecity focused characterization proves central identity retention,
+  connection restoration, Fund Account scope preservation, safe exit, and
+  rejection of unrelated School IDs, tenant session input, forged database
+  fields, stale context data, and a different central actor. No production
+  work, UI, cross-School route, or Finance write is included.
+
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
 ## Integration release validation

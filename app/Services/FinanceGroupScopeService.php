@@ -28,6 +28,7 @@ class FinanceGroupScopeService
     public const CAPABILITIES = [
         'view_reports',
         'export_reports',
+        'operate_finance',
         'manage_configuration',
         'manage_hq_accounts',
         'request_group_transfers',
@@ -359,6 +360,44 @@ class FinanceGroupScopeService
             || $scopes->where('scope_type', 'SCHOOL')->pluck('school_id')->contains($schoolId);
     }
 
+    /**
+     * Resolve an active mapped tenant identity without exposing the tenant
+     * database name. The short-lived tenant connection is restored before the
+     * scalar identifiers are returned.
+     *
+     * @return array{school_id:int,tenant_user_id:int}
+     */
+    public function resolveTrustedTenantIdentity(FinanceGroupUser $groupUser, int $schoolId, string $capability): array
+    {
+        if (!$this->canAccessSchool($groupUser, $schoolId, $capability)) {
+            throw new AuthorizationException('This Group user is not authorized for the requested School.');
+        }
+
+        $identity = FinanceGroupUserTenantIdentity::query()
+            ->where('group_user_id', $groupUser->id)
+            ->where('school_id', $schoolId)
+            ->where('status', 'active')
+            ->first();
+        if (!$identity) {
+            throw new FinanceGroupTenantUnavailableException('No active tenant identity is configured for this Group School.');
+        }
+
+        $school = $this->centralSchool($schoolId);
+        $tenantUserId = $this->inTenant($school, function () use ($identity, $school): int {
+            $tenantUser = User::on('school')
+                ->whereKey($identity->tenant_user_id)
+                ->where('school_id', $school->id)
+                ->first();
+            if (!$tenantUser) {
+                throw new FinanceGroupTenantUnavailableException('The configured tenant identity no longer belongs to this School.');
+            }
+
+            return (int) $tenantUser->id;
+        });
+
+        return ['school_id' => (int) $school->id, 'tenant_user_id' => $tenantUserId];
+    }
+
     public function canManageAllHqAccounts(FinanceGroupUser $groupUser): bool
     {
         if ($groupUser->status !== 'active') {
@@ -485,18 +524,28 @@ class FinanceGroupScopeService
     {
         $previousDefault = DB::getDefaultConnection();
         $previousDatabase = Config::get('database.connections.school.database');
+        $previousConnectionName = session('db_connection_name');
 
         try {
             Config::set('database.connections.school.database', $school->database_name);
             DB::purge('school');
             DB::connection('school')->reconnect();
             DB::setDefaultConnection('school');
+            // User::getConnectionName() is session-aware. Keep mapped tenant
+            // role and bank_account_user lookups on the same trusted School
+            // connection without changing the authenticated central User.
+            session(['db_connection_name' => 'school']);
 
             return $callback();
         } finally {
             DB::purge('school');
             Config::set('database.connections.school.database', $previousDatabase);
             DB::setDefaultConnection($previousDefault);
+            if ($previousConnectionName === null) {
+                session()->forget('db_connection_name');
+            } else {
+                session(['db_connection_name' => $previousConnectionName]);
+            }
         }
     }
 
