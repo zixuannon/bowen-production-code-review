@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-08-13
+Last updated: 2026-08-20
 
 ## Active production target
 
@@ -212,6 +212,13 @@ requires the email/user ownership to match before consuming the token.
 - Only a central user holding the internal `Head Finance` role plus active explicit Group scopes can enter Group Finance, switch Schools, or fund. School Accountants retain their normal single-School flow and receive no Group switcher; HQ Accountant cross-School operation is intentionally deferred.
 - Funding reuses the central canonical `FinanceGroupTransfer` / HQ Account source. Pending records have zero School/HQ balance and Ledger effect; confirmation makes one Internal Transfer and does not change operating income, expense, or net result. The mapped tenant identity is an authorization mapping only; the central browser identity is never impersonated.
 - Local Zixuan/Timecity acceptance creates and confirms one HQ funding and one School remittance, then returns to All Schools to reconcile both canonical records in Group Reports. The fixed Group QA fixture separates the central Head Finance login from its mapped tenant Head Finance identities and verifies no-write snapshots across central and tenant financial tables.
+
+## Group Finance Operating Context — Checkpoint 6 (production verified)
+
+- Production active release is `da65af8b68a77656069ff03152a6aaf1f9713e84`.
+- The sole additive tenant migration, `2026_08_20_000001_create_finance_operating_audits_table`, completed through a Zixuan canary and then the other six active tenants. Every active tenant has the expected table and migration history with zero audit rows immediately after release; inactive Demo was intentionally excluded.
+- A seven-tenant backup was checksum-verified before the canary. Existing Finance table counts were checked per tenant during migration and matched the immediate pre/post-switch snapshot.
+- The release used an isolated RC, assets 8/8 verification, atomic symlink switch, `view:clear` only, and graceful reload of the actual global PHP 8.3 FPM master. No Nginx restart, permission bootstrap, Finance data write, or Group configuration write occurred.
 
 ## Group Finance central entry (local)
 
