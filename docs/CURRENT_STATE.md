@@ -196,7 +196,15 @@ requires the email/user ownership to match before consuming the token.
 - A Central Head Finance keeps the central authenticated identity while a selected, explicitly scoped School may now use only the canonical Expense, Other Income/Receive Money, and compulsory Student Fee write services.
 - Every operation re-resolves active Group membership, `operate_finance` School scope, trusted central-registry School, mapped tenant User, original tenant permission, and existing Fund Account scope; no request can name a tenant database.
 - Tenant-local `finance_operating_audits` records central actor, Group, School, mapped tenant identity, action, and canonical source ID in the same tenant transaction. It stores no amount and is not a Ledger.
-- Bank Transfer, Fund Handover, and HQ Funding remain unavailable in the Operating workspace. All Schools stays read-only.
+- All Schools stays read-only. Bank Transfer and Fund Handover are described by Checkpoint 4 below; HQ Funding remains outside the Operating workspace.
+
+## Group Finance Operating Context — Checkpoint 4 (local)
+
+- The selected-School workspace now delegates immediate Bank Transfer and Fund Handover creation to the existing `BankTransferService` and `FundHandoverService`. It does not create a Group transfer table, duplicate a ledger, accept a database name, or impersonate the mapped tenant User.
+- Both transfer accounts are re-authorized by the existing active/current-School/Fund-Account-scope service and must be distinct. The canonical completed `BankTransfer` remains the only internal movement: its source is Money Out once, destination Money In once, and it has zero operating income, operating expense, and net-result effect.
+- A central Head Finance may create a pending handover in the selected School only when its mapped tenant Head Finance identity has the existing permission and custody role. The target School's designated Accountant still confirms it through the normal existing flow; central identity cannot substitute for the receiver. Pending handovers remain ledger/balance-neutral; confirmation creates exactly one linked canonical transfer.
+- Central-context creates write tenant-local audit metadata in the same transaction (`central_actor`, Group, School, mapped tenant identity, action, source type/ID, no amount). Normal tenant Accountant confirmation retains the normal custody audit and does not fabricate a central actor.
+- Local Zixuan/Timecity browser acceptance covers selected-School direct transfers, Zixuan pending handover creation, source isolation, and central audit rows. Service characterization covers pending neutrality, receiver-only confirmation, exactly-once canonical transfer, repeated-confirm rejection, account scope, and zero operating-result effect. The fixed Group QA reset/verify returns the fixture to a zero-write baseline.
 
 ## Group Finance central entry (local)
 

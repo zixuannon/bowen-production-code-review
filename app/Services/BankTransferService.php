@@ -25,7 +25,10 @@ class BankTransferService
     ) {
     }
 
-    public function create(User $actor, array $data): BankTransfer
+    /**
+     * @param null|callable(BankTransfer):void $afterCreate
+     */
+    public function create(User $actor, array $data, ?callable $afterCreate = null): BankTransfer
     {
         $fromAccountId = (int) $data['from_account_id'];
         $toAccountId = (int) $data['to_account_id'];
@@ -47,7 +50,7 @@ class BankTransferService
             ]);
         }
 
-        return DB::transaction(function () use ($actor, $data, $fromAccount, $toAccount) {
+        return DB::transaction(function () use ($actor, $data, $fromAccount, $toAccount, $afterCreate) {
             $amount = (float) $data['amount'];
             if (!$this->balances->hasSufficientBalance($fromAccount, $amount)) {
                 throw ValidationException::withMessages([
@@ -57,7 +60,7 @@ class BankTransferService
                 ]);
             }
 
-            return BankTransfer::create([
+            $transfer = BankTransfer::create([
                 'school_id' => $actor->school_id,
                 'from_account_id' => $fromAccount->id,
                 'to_account_id' => $toAccount->id,
@@ -68,6 +71,14 @@ class BankTransferService
                 'status' => 'completed',
                 'created_by' => $actor->id,
             ]);
+
+            // Operating-context audit metadata must commit atomically with the
+            // canonical transfer. Normal tenant callers leave this null.
+            if ($afterCreate) {
+                $afterCreate($transfer);
+            }
+
+            return $transfer;
         });
     }
 

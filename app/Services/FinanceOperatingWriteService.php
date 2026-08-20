@@ -28,9 +28,11 @@ class FinanceOperatingWriteService
         private readonly OtherIncomeService $otherIncome,
         private readonly ExpenseCreationService $expenses,
         private readonly FeesPaymentService $fees,
+        private readonly BankTransferService $transfers,
+        private readonly FundHandoverService $handovers,
     ) {}
 
-    /** @return array{accounts:array<int,array{id:int,account_name:string,currency:string}>,categories:array<int,string>,session_years:array<int,string>,fees:array<int,string>,students:array<int,string>} */
+    /** @return array<string,mixed> */
     public function formOptions(User $central): array
     {
         $workspace = $this->workspace->workspace($central);
@@ -39,12 +41,23 @@ class FinanceOperatingWriteService
             function (User $tenant): array {
                 $accounts = app(FinanceAccountAccessService::class)->accessibleAccounts($tenant)->active()->orderBy('account_name')
                     ->get(['id', 'account_name', 'currency'])->map(fn ($a) => ['id'=>(int)$a->id, 'account_name'=>(string)$a->account_name, 'currency'=>(string)$a->currency])->all();
+                // eligibleDestinationAccounts() rechecks same-School custody;
+                // retain school_id on this deliberately narrow projection.
+                $recipients = $this->handovers->recipientCandidates($tenant)->orderBy('first_name')->get(['id', 'school_id', 'first_name', 'last_name', 'email']);
+                $recipientAccounts = [];
+                foreach ($recipients as $recipient) {
+                    $recipientAccounts[(int) $recipient->id] = $this->handovers->eligibleDestinationAccounts($tenant, $recipient)
+                        ->active()->orderBy('account_name')->get(['id', 'account_name', 'currency'])
+                        ->map(fn ($account) => ['id' => (int) $account->id, 'account_name' => (string) $account->account_name, 'currency' => (string) $account->currency])->all();
+                }
                 return [
                     'accounts' => $accounts,
                     'categories' => ExpenseCategory::query()->orderBy('name')->pluck('name', 'id')->mapWithKeys(fn ($name, $id) => [(int)$id => (string)$name])->all(),
                     'session_years' => DB::connection('school')->table('session_years')->orderByDesc('default')->orderByDesc('id')->pluck('name', 'id')->mapWithKeys(fn ($name, $id) => [(int)$id => (string)$name])->all(),
                     'fees' => Fee::query()->where('school_id', $tenant->school_id)->orderBy('name')->get(['id','name'])->mapWithKeys(fn ($fee) => [(int)$fee->id => (string)$fee->name])->all(),
                     'students' => Students::query()->where('school_id', $tenant->school_id)->with('user:id,first_name,last_name')->get()->mapWithKeys(fn ($student) => [(int)$student->user_id => trim(($student->user?->first_name ?? '') . ' ' . ($student->user?->last_name ?? '')) ?: ('Student #' . $student->user_id)])->all(),
+                    'handover_recipients' => $recipients->map(fn ($recipient) => ['id' => (int) $recipient->id, 'name' => trim($recipient->first_name . ' ' . $recipient->last_name) ?: (string) $recipient->email])->all(),
+                    'handover_recipient_accounts' => $recipientAccounts,
                 ];
             },
         );
@@ -106,6 +119,41 @@ class FinanceOperatingWriteService
                 }
                 return (int) $result['compulsory_fees'][0]->id;
             });
+        });
+    }
+
+    /** @param array<string,mixed> $input */
+    public function createBankTransfer(User $central, array $input): int
+    {
+        return $this->within($central, 'finance-transfer-create', function (User $tenant, $context) use ($input): int {
+            $data = Validator::make($input, [
+                'from_account_id' => ['required', 'integer'],
+                'to_account_id' => ['required', 'integer', 'different:from_account_id'],
+                'amount' => ['required', 'numeric', 'min:0.01'],
+                'transfer_date' => ['required', 'date'],
+                'reference_no' => ['nullable', 'string', 'max:100'],
+                'notes' => ['nullable', 'string', 'max:1000'],
+            ])->validate();
+            $transfer = $this->transfers->create($tenant, $data, fn ($source) => $this->audit->record($context, 'bank_transfer', $source->id, 'create_bank_transfer'));
+            return (int) $transfer->id;
+        });
+    }
+
+    /** @param array<string,mixed> $input */
+    public function createFundHandover(User $central, array $input): int
+    {
+        return $this->within($central, 'finance-handover-create', function (User $tenant, $context) use ($input): int {
+            $data = Validator::make($input, [
+                'receiver_id' => ['required', 'integer'],
+                'from_account_id' => ['required', 'integer'],
+                'to_account_id' => ['required', 'integer', 'different:from_account_id'],
+                'amount' => ['required', 'numeric', 'min:0.01'],
+                'handover_date' => ['required', 'date'],
+                'reference_no' => ['nullable', 'string', 'max:100'],
+                'notes' => ['nullable', 'string', 'max:1000'],
+            ])->validate();
+            $handover = $this->handovers->create($tenant, $data, fn ($source) => $this->audit->record($context, 'fund_handover', $source->id, 'create_fund_handover'));
+            return (int) $handover->id;
         });
     }
 

@@ -129,4 +129,18 @@ class FinanceOperatingWorkspaceController extends Controller
         $id = $this->writes->receiveStudentFee($actor, $request->all());
         return back()->with('success', __('Student fee received.') . ' #' . $id);
     }
+
+    public function storeBankTransfer(Request $request): RedirectResponse
+    {
+        $actor = Auth::user(); abort_unless($actor, 403);
+        $id = $this->writes->createBankTransfer($actor, $request->all());
+        return back()->with('success', __('Bank transfer created successfully') . ' #' . $id);
+    }
+
+    public function storeFundHandover(Request $request): RedirectResponse
+    {
+        $actor = Auth::user(); abort_unless($actor, 403);
+        $id = $this->writes->createFundHandover($actor, $request->all());
+        return back()->with('success', __('Fund handover is pending receiver confirmation.') . ' #' . $id);
+    }
 }

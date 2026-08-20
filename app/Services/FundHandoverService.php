@@ -21,7 +21,10 @@ class FundHandoverService
         $role = $this->handoverRole($actor);
         $required = $role === 'head' ? 'Cashier' : 'Head Finance';
 
-        return User::query()->where('school_id', $actor->school_id)->role($required);
+        // A sender can never be their own custody receiver. Keep the
+        // candidate query aligned with assertValidParties() so a malformed
+        // legacy role assignment cannot make the handover form fail early.
+        return User::query()->where('school_id', $actor->school_id)->whereKeyNot($actor->id)->role($required);
     }
 
     /**
@@ -82,7 +85,8 @@ class FundHandoverService
         return $this->access->accessibleAccounts($receiver)->active();
     }
 
-    public function create(User $sender, array $data): FundHandover
+    /** @param null|callable(FundHandover):void $afterCreate */
+    public function create(User $sender, array $data, ?callable $afterCreate = null): FundHandover
     {
         $receiver = User::whereKey($data['receiver_id'])->where('school_id', $sender->school_id)->firstOrFail();
         $this->assertValidParties($sender, $receiver);
@@ -91,23 +95,32 @@ class FundHandoverService
         $this->assertCompatibleAccounts($from, $to);
         $this->assertSufficientBalance($from, (float) $data['amount']);
 
-        return FundHandover::create([
-            'school_id' => $sender->school_id,
-            'from_account_id' => $from->id,
-            'to_account_id' => $to->id,
-            'sender_id' => $sender->id,
-            'receiver_id' => $receiver->id,
-            'amount' => $data['amount'],
-            'handover_date' => $data['handover_date'],
-            'reference_no' => $data['reference_no'] ?? null,
-            'notes' => $data['notes'] ?? null,
-            'status' => FundHandover::STATUS_PENDING,
-        ]);
+        return DB::transaction(function () use ($sender, $data, $from, $to, $receiver, $afterCreate) {
+            $handover = FundHandover::create([
+                'school_id' => $sender->school_id,
+                'from_account_id' => $from->id,
+                'to_account_id' => $to->id,
+                'sender_id' => $sender->id,
+                'receiver_id' => $receiver->id,
+                'amount' => $data['amount'],
+                'handover_date' => $data['handover_date'],
+                'reference_no' => $data['reference_no'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'status' => FundHandover::STATUS_PENDING,
+            ]);
+
+            if ($afterCreate) {
+                $afterCreate($handover);
+            }
+
+            return $handover;
+        });
     }
 
-    public function confirm(User $actor, int $handoverId): FundHandover
+    /** @param null|callable(FundHandover,BankTransfer):void $afterConfirm */
+    public function confirm(User $actor, int $handoverId, ?callable $afterConfirm = null): FundHandover
     {
-        return DB::transaction(function () use ($actor, $handoverId) {
+        return DB::transaction(function () use ($actor, $handoverId, $afterConfirm) {
             $handover = FundHandover::where('school_id', $actor->school_id)->lockForUpdate()->findOrFail($handoverId);
             if ($handover->status !== FundHandover::STATUS_PENDING) {
                 throw new \DomainException('Only a pending handover can be confirmed.');
@@ -141,6 +154,10 @@ class FundHandoverService
                 'confirmed_by' => $actor->id,
                 'confirmed_at' => now(),
             ]);
+
+            if ($afterConfirm) {
+                $afterConfirm($handover, $transfer);
+            }
 
             return $handover->fresh(['bank_transfer']);
         });

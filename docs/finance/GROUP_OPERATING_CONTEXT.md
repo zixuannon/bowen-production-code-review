@@ -89,5 +89,13 @@ BankTransfer, or FundHandover.
    guarded read-only adapter to existing single-School Finance sources. It
    exposes Bank Accounts, Transactions, and Finance Reports through Ledger V1
    and Fund Account balance calculations, not a second write path.
-3. **Checkpoint 3 — write audit:** central-actor audit provenance and full
-   Finance browser acceptance before any operational release.
+3. **Checkpoint 3 — income and expense writes:** selected-School Expense,
+   Other Income/Receive Money, and Student Fee continue through their
+   canonical tenant services. Central-actor audit provenance is committed in
+   the same transaction without creating a second ledger.
+4. **Checkpoint 4 — internal movements:** selected-School immediate Bank
+   Transfer and Fund Handover creation delegate to the canonical tenant
+   services. A pending handover remains neutral; the designated tenant
+   receiver, not the central actor, confirms it and creates exactly one
+   linked canonical BankTransfer. Internal movements remain outside
+   operating income, expense, and net result.

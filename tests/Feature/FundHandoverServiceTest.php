@@ -458,6 +458,35 @@ class FundHandoverServiceTest extends TestCase
         }
     }
 
+    public function test_canonical_transfer_and_handover_callbacks_run_once_inside_the_existing_services(): void
+    {
+        $transferCallbacks = [];
+        $transfer = app(BankTransferService::class)->create($this->head, [
+            'from_account_id' => $this->headAccount->id,
+            'to_account_id' => $this->cashierAccount->id,
+            'amount' => 10,
+            'transfer_date' => '2026-01-03',
+            'reference_no' => 'GROUP_CONTEXT_TRANSFER_' . uniqid(),
+        ], function (BankTransfer $source) use (&$transferCallbacks): void {
+            $transferCallbacks[] = $source->id;
+        });
+        $this->assertSame([$transfer->id], $transferCallbacks);
+
+        $created = [];
+        $handover = app(FundHandoverService::class)->create($this->head, $this->payload($this->cashierA, 15), function (FundHandover $source) use (&$created): void {
+            $created[] = $source->id;
+        });
+        $this->assertSame([$handover->id], $created);
+
+        $confirmed = [];
+        app(FundHandoverService::class)->confirm($this->cashierA, $handover->id, function (FundHandover $source, BankTransfer $canonical) use (&$confirmed): void {
+            $confirmed[] = [$source->id, $canonical->id];
+        });
+        $this->assertCount(1, $confirmed);
+        $this->assertSame($handover->id, $confirmed[0][0]);
+        $this->assertSame((int) FundHandover::findOrFail($handover->id)->bank_transfer_id, $confirmed[0][1]);
+    }
+
     private function payload(User $receiver, float $amount = 100, ?BankAccount $from = null, ?BankAccount $to = null): array
     {
         return ['receiver_id' => $receiver->id, 'from_account_id' => ($from ?? $this->headAccount)->id, 'to_account_id' => ($to ?? $this->cashierAccount)->id, 'amount' => $amount, 'handover_date' => '2026-01-02', 'reference_no' => 'P3-' . uniqid(), 'notes' => 'Synthetic P3 handover'];

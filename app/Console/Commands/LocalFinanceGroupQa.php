@@ -123,13 +123,21 @@ class LocalFinanceGroupQa extends Command
         $hq=(int)$db->table('users')->where('email','group_hq@group-qa.test')->value('id');
         foreach (['Head Finance','Cashier'] as $role) $db->table('roles')->insert(['name'=>$role,'guard_name'=>'web','school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
         $headRole=(int)$db->table('roles')->where('name','Head Finance')->value('id');
-        foreach (['finance-payment-create','finance-expense-create','finance-dashboard-view','expense-list','expense-create','fees-paid'] as $permission) {
+        foreach ([
+            'finance-payment-create', 'finance-expense-create', 'finance-dashboard-view', 'expense-list', 'expense-create', 'fees-paid',
+            'finance-transfer-view', 'finance-transfer-create',
+            'finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel',
+        ] as $permission) {
             $db->table('permissions')->insert(['name'=>$permission,'guard_name'=>'web','created_at'=>$now,'updated_at'=>$now]);
             $db->table('role_has_permissions')->insert(['permission_id'=>$db->table('permissions')->where('name',$permission)->value('id'),'role_id'=>$headRole]);
         }
+        $cashierRole = (int) $db->table('roles')->where('name','Cashier')->value('id');
+        foreach (['finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel', 'finance-transfer-view', 'finance-transfer-create'] as $permission) {
+            $db->table('role_has_permissions')->insert(['permission_id'=>$db->table('permissions')->where('name',$permission)->value('id'),'role_id'=>$cashierRole]);
+        }
         $db->table('model_has_roles')->insert(['role_id'=>$headRole,'model_type'=>'App\\Models\\User','model_id'=>$head]);
         $db->table('model_has_roles')->insert(['role_id'=>$headRole,'model_type'=>'App\\Models\\User','model_id'=>$hq]);
-        $db->table('model_has_roles')->insert(['role_id'=>$db->table('roles')->where('name','Cashier')->value('id'),'model_type'=>'App\\Models\\User','model_id'=>$accountant]);
+        $db->table('model_has_roles')->insert(['role_id'=>$cashierRole,'model_type'=>'App\\Models\\User','model_id'=>$accountant]);
         foreach ([['CASH','Group QA '.$name.' Cash',1000],['BANK','Group QA '.$name.' Bank',0]] as [$num,$account,$opening]) $db->table('bank_accounts')->insert(['school_id'=>$schoolId,'account_number'=>$code.'_'.$num,'account_name'=>$account,'bank_name'=>'LOCAL ONLY','account_type'=>'cash','currency'=>'MMK','opening_balance'=>$opening,'opening_balance_date'=>'2026-01-01','is_active'=>1,'is_default'=>$num==='CASH','created_by'=>$head,'updated_by'=>$head,'created_at'=>$now,'updated_at'=>$now]);
         $cash=(int)$db->table('bank_accounts')->where('account_number',$code.'_CASH')->value('id'); $bank=(int)$db->table('bank_accounts')->where('account_number',$code.'_BANK')->value('id');
         $db->table('bank_account_user')->insert(['user_id'=>$accountant,'bank_account_id'=>$cash,'created_at'=>$now,'updated_at'=>$now]);

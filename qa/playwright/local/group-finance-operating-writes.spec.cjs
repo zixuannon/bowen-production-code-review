@@ -37,6 +37,13 @@ async function enterSchool(page, schoolPattern) {
   await Promise.all([page.waitForURL(/group-finance\/operating\/operations$/), operations.click()]);
 }
 
+async function selectByText(select, pattern) {
+  const options = await select.locator('option').evaluateAll(rows => rows.map(row => ({ value: row.value, text: row.textContent || '' })));
+  const option = options.find(item => pattern.test(item.text));
+  expect(option?.value).toBeTruthy();
+  await select.selectOption(option.value);
+}
+
 test('Central Head Finance writes only the selected School through canonical Finance sources and tenant audit', async ({ browser }) => {
   const context = await browser.newContext({ baseURL, storageState: await centralStorageState() });
   try {
@@ -66,10 +73,29 @@ test('Central Head Finance writes only the selected School through canonical Fin
     await fee.getByRole('button', { name: 'Receive Student Fee' }).click();
     await expect(fee).toBeVisible();
 
+    const transfer = page.locator('[data-operating-bank-transfer-form]');
+    await selectByText(transfer.locator('select[name=from_account_id]'), /Zixuan QA School Cash/);
+    await selectByText(transfer.locator('select[name=to_account_id]'), /Zixuan QA School Bank/);
+    await transfer.locator('input[name=amount]').fill('20');
+    await transfer.locator('input[name=reference_no]').fill('GROUP_OP_A_TRANSFER');
+    await transfer.getByRole('button', { name: 'Create Bank Transfer' }).click();
+    await expect(transfer).toBeVisible();
+
+    const handover = page.locator('[data-operating-fund-handover-form]');
+    await selectByText(handover.locator('select[name=from_account_id]'), /Zixuan QA School Bank/);
+    await handover.locator('select[name=receiver_id]').selectOption({ label: 'School Accountant' });
+    await expect(handover.locator('select[name=to_account_id]')).toBeEnabled();
+    await selectByText(handover.locator('select[name=to_account_id]'), /Zixuan QA School Cash/);
+    await handover.locator('input[name=amount]').fill('25');
+    await handover.locator('input[name=reference_no]').fill('GROUP_OP_A_HANDOVER');
+    await handover.getByRole('button', { name: 'Request Handover' }).click();
+    await expect(handover).toBeVisible();
+
     await page.getByRole('link', { name: 'Transactions' }).click();
     await expect(page.locator('[data-operating-transactions]')).toContainText('GROUP_OP_A_OTHER');
     await expect(page.locator('[data-operating-transactions]')).toContainText('GROUP_OP_A_EXPENSE');
     await expect(page.locator('[data-operating-transactions]')).toContainText('GROUP_OP_A_FEE');
+    await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_OP_A_HANDOVER');
     await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_QA_SCHOOL_B_OTHER');
 
     await page.getByRole('link', { name: 'Switch School' }).click();
@@ -79,5 +105,17 @@ test('Central Head Finance writes only the selected School through canonical Fin
     await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_OP_A_OTHER');
     await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_OP_A_EXPENSE');
     await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_OP_A_FEE');
+    await Promise.all([
+      page.waitForURL(/group-finance\/operating\/operations$/),
+      page.getByRole('link', { name: 'Finance Operations', exact: true }).click(),
+    ]);
+    await expect(page.locator('[data-operating-school-banner]')).toContainText('Timecity QA School');
+    const timecityTransfer = page.locator('[data-operating-bank-transfer-form]');
+    await selectByText(timecityTransfer.locator('select[name=from_account_id]'), /Timecity QA School Cash/);
+    await selectByText(timecityTransfer.locator('select[name=to_account_id]'), /Timecity QA School Bank/);
+    await timecityTransfer.locator('input[name=amount]').fill('20');
+    await timecityTransfer.locator('input[name=reference_no]').fill('GROUP_OP_B_TRANSFER');
+    await timecityTransfer.getByRole('button', { name: 'Create Bank Transfer' }).click();
+    await expect(timecityTransfer).toBeVisible();
   } finally { await context.close(); }
 });

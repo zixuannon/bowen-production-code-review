@@ -245,6 +245,8 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('group-finance/operating/expense', [FinanceOperatingWorkspaceController::class, 'storeExpense'])->name('group-finance.operating.expense.store');
         Route::post('group-finance/operating/receive-money', [FinanceOperatingWorkspaceController::class, 'receiveMoney'])->name('group-finance.operating.receive-money.store');
         Route::post('group-finance/operating/student-fee', [FinanceOperatingWorkspaceController::class, 'receiveStudentFee'])->name('group-finance.operating.student-fee.store');
+        Route::post('group-finance/operating/bank-transfer', [FinanceOperatingWorkspaceController::class, 'storeBankTransfer'])->name('group-finance.operating.bank-transfer.store');
+        Route::post('group-finance/operating/fund-handover', [FinanceOperatingWorkspaceController::class, 'storeFundHandover'])->name('group-finance.operating.fund-handover.store');
         Route::get('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'funding'])->name('finance-groups.transfers.index');
         Route::post('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'store'])->name('finance-groups.transfers.store');
         Route::post('finance-groups/{financeGroup}/funding/{transfer}/confirm', [FinanceGroupTransferController::class, 'confirm'])->name('finance-groups.transfers.confirm');
