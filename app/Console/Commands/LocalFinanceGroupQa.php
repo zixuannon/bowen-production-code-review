@@ -90,6 +90,7 @@ class LocalFinanceGroupQa extends Command
         $hq = $scope->addUser($group, (int) $central->table('users')->where('email','group_hq@group-qa.test')->value('id'));
         $scope->grantScope($hq,'view_reports','GROUP');
         $scope->grantScope($hq,'export_reports','GROUP');
+        $scope->grantScope($hq,'operate_finance','GROUP');
         $scope->bindTenantIdentity($hq, $a, $this->tenantUserId('GROUP_QA_SCHOOL_A', 'group_hq@group-qa.test'));
         $scope->bindTenantIdentity($hq, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'group_hq@group-qa.test'));
 

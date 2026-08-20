@@ -5,6 +5,7 @@ use App\Http\Controllers\FinanceGroupReportController;
 use App\Http\Controllers\FinanceGroupTransferController;
 use App\Http\Controllers\FinanceGroupHqAccountController;
 use App\Http\Controllers\GroupFinanceController;
+use App\Http\Controllers\FinanceOperatingWorkspaceController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -231,6 +232,15 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::get('group-finance', [GroupFinanceController::class, 'index'])->name('group-finance.index');
         Route::get('group-finance/{financeGroup}', [GroupFinanceController::class, 'show'])->name('group-finance.show');
         Route::get('group-finance/{financeGroup}/export', [GroupFinanceController::class, 'export'])->name('group-finance.export');
+        // Scheme B: central identity remains authenticated while selected
+        // School data is read through an explicit mapped tenant identity.
+        // Only the narrow operating context session transition is POST; this
+        // initial workspace intentionally contains no tenant write endpoint.
+        Route::post('group-finance/{financeGroup}/operating', [FinanceOperatingWorkspaceController::class, 'enter'])->name('group-finance.operating.enter');
+        Route::post('group-finance/operating/exit', [FinanceOperatingWorkspaceController::class, 'exit'])->name('group-finance.operating.exit');
+        Route::get('group-finance/operating/bank-accounts', [FinanceOperatingWorkspaceController::class, 'bankAccounts'])->name('group-finance.operating.bank-accounts');
+        Route::get('group-finance/operating/transactions', [FinanceOperatingWorkspaceController::class, 'transactions'])->name('group-finance.operating.transactions');
+        Route::get('group-finance/operating/reports', [FinanceOperatingWorkspaceController::class, 'reports'])->name('group-finance.operating.reports');
         Route::get('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'funding'])->name('finance-groups.transfers.index');
         Route::post('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'store'])->name('finance-groups.transfers.store');
         Route::post('finance-groups/{financeGroup}/funding/{transfer}/confirm', [FinanceGroupTransferController::class, 'confirm'])->name('finance-groups.transfers.confirm');

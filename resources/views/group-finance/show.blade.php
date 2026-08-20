@@ -28,6 +28,26 @@
             </div>
         </div>
 
+        @if ($operatingSchools->isNotEmpty())
+            <div class="card mb-3" data-operating-school-switcher>
+                <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
+                    <div>
+                        <strong>{{ __('Operating School') }}</strong>
+                        <p class="mb-0 text-muted small">{{ __('Open an authorized School in read-only Finance workspace. Your central login remains unchanged.') }}</p>
+                    </div>
+                    <form method="POST" action="{{ route('group-finance.operating.enter', ['financeGroup' => $financeGroup]) }}" id="operating-school-form" class="form-inline mt-2 mt-md-0">
+                        @csrf
+                        <select id="operating-school" name="school_id" class="form-control mr-2" aria-label="{{ __('Operating School') }}">
+                            @foreach ($operatingSchools as $membership)
+                                <option value="{{ $membership->school_id }}">{{ $membership->school?->name }}</option>
+                            @endforeach
+                        </select>
+                        <button class="btn btn-primary" type="submit">{{ __('Open Read-only Finance') }}</button>
+                    </form>
+                </div>
+            </div>
+        @endif
+
         @if ($result['incomplete']->isNotEmpty())
             <div class="alert alert-warning">{{ __('Incomplete: one or more authorized School reports could not be read. Totals below exclude them.') }}</div>
         @endif

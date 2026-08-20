@@ -44,6 +44,7 @@ class GroupFinanceController extends Controller
     public function show(Request $request, FinanceGroup $financeGroup): View
     {
         [$groupUser, $schools, $selected] = $this->context($request, $financeGroup);
+        $operatingSchools = $this->scope->accessibleSchools($groupUser, 'operate_finance')->load('school');
         $filters = $this->filters($request, $selected);
         $result = $this->reports->register($groupUser, $filters);
         $accounts = [];
@@ -62,7 +63,7 @@ class GroupFinanceController extends Controller
             }
         }
 
-        return view('group-finance.show', compact('financeGroup', 'groupUser', 'schools', 'selected', 'filters', 'result', 'accounts'));
+        return view('group-finance.show', compact('financeGroup', 'groupUser', 'schools', 'operatingSchools', 'selected', 'filters', 'result', 'accounts'));
     }
 
     public function export(Request $request, FinanceGroup $financeGroup): StreamedResponse

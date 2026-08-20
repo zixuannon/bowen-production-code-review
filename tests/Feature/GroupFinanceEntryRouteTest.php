@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\GroupFinanceController;
+use App\Http\Controllers\FinanceOperatingWorkspaceController;
 use App\Models\FinanceGroup;
 use App\Models\User;
 use App\Services\FinanceGroupReportService;
@@ -80,6 +81,7 @@ class GroupFinanceEntryRouteTest extends TestCase
         $groupUser = $scope->addUser($group, 100);
         $scope->grantScope($groupUser, 'view_reports', 'SCHOOL', 1);
         $scope->grantScope($groupUser, 'export_reports', 'SCHOOL', 1);
+        $scope->grantScope($groupUser, 'operate_finance', 'SCHOOL', 1);
 
         app()->instance(FinanceGroupReportService::class, new class extends FinanceGroupReportService {
             public function __construct()
@@ -127,6 +129,7 @@ class GroupFinanceEntryRouteTest extends TestCase
         $this->assertSame([1], $view->getData()['schools']->pluck('school_id')->all());
         $this->assertSame([1], app(FinanceGroupScopeService::class)
             ->accessibleSchools($group->users()->sole(), 'export_reports')->pluck('school_id')->all());
+        $this->assertSame([1], $view->getData()['operatingSchools']->pluck('school_id')->all());
 
         // The first request intentionally has every route guard disabled;
         // bind the central web user again before exercising the export action.
@@ -140,6 +143,11 @@ class GroupFinanceEntryRouteTest extends TestCase
         $csv = (string) ob_get_clean();
         $this->assertStringContainsString('tenant:1:other_income:1', $csv);
         $this->assertSame($before, $this->centralHash());
+
+        $operatingEnter = app('router')->getRoutes()->getByName('group-finance.operating.enter');
+        $this->assertSame(['POST'], $operatingEnter->methods());
+        $this->assertSame(FinanceOperatingWorkspaceController::class, $operatingEnter->getControllerClass());
+        $this->assertStringNotContainsString('database', $operatingEnter->uri());
     }
 
     public function test_unscoped_central_user_and_forged_school_are_rejected(): void

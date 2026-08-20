@@ -10,7 +10,9 @@ function csrfToken(html) {
 }
 
 async function login(email, expectedRedirect = '/group-finance') {
-  const api = await request.newContext({ baseURL });
+  // Do not inherit the suite's BOWEN_QA storage state: Group Finance uses a
+  // separate synthetic central identity in the same local browser process.
+  const api = await request.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
   try {
     const form = await api.get('/login', { maxRedirects: 0 });
     expect(form.status()).toBe(200);
@@ -33,7 +35,7 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
     await page.goto('/group-finance', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(new RegExp(`/group-finance/${groupId}$`));
     await expect(page.getByRole('heading', { name: 'Group Finance' })).toBeVisible();
-    const switcher = page.locator('select[name="school_id"]');
+    const switcher = page.locator('#group-finance-school');
     await expect(switcher.locator('option')).toHaveCount(3);
 
     const values = await switcher.locator('option').evaluateAll(options => options.map(option => ({ value: option.value, text: option.textContent })));
@@ -53,6 +55,35 @@ test('central Head Finance sees All Schools, can switch a scoped School, and exp
     const download = page.waitForEvent('download');
     await page.getByRole('link', { name: 'Export CSV' }).click();
     expect((await download).suggestedFilename()).toBe('group-finance-ledger.csv');
+
+    // Scheme B Operating Context: the same central session selects an
+    // authorized School but never becomes the mapped tenant user.
+    const operatingSwitcher = page.locator('[data-operating-school-switcher]');
+    await expect(operatingSwitcher).toBeVisible();
+    const operatingSchool = operatingSwitcher.locator('#operating-school');
+    await expect(operatingSchool.locator('option')).toHaveCount(2);
+    await operatingSchool.selectOption(schoolA.value);
+    await operatingSwitcher.getByRole('button', { name: 'Open Read-only Finance' }).click();
+    await page.waitForURL(/group-finance\/operating\/bank-accounts$/);
+    await expect(page.locator('[data-operating-school-banner]')).toContainText('Zixuan QA School');
+    await expect(page.locator('[data-operating-bank-accounts]')).toContainText('Zixuan QA School Cash');
+    await expect(page.locator('[data-operating-bank-accounts]')).not.toContainText('Timecity QA School Cash');
+    await page.getByRole('link', { name: 'Transactions' }).click();
+    await expect(page.locator('[data-operating-transactions]')).toContainText('GROUP_QA_SCHOOL_A_OTHER');
+    await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_QA_SCHOOL_B_OTHER');
+    await page.getByRole('link', { name: 'Finance Reports' }).click();
+    await expect(page.locator('[data-operating-finance-report]')).toContainText('240.00');
+
+    await page.getByRole('link', { name: 'Switch School' }).click();
+    await operatingSchool.selectOption(schoolB.value);
+    await operatingSwitcher.getByRole('button', { name: 'Open Read-only Finance' }).click();
+    await page.waitForURL(/group-finance\/operating\/bank-accounts$/);
+    await expect(page.locator('[data-operating-school-banner]')).toContainText('Timecity QA School');
+    await expect(page.locator('[data-operating-bank-accounts]')).toContainText('Timecity QA School Cash');
+    await expect(page.locator('[data-operating-bank-accounts]')).not.toContainText('Zixuan QA School Cash');
+    await page.getByRole('button', { name: 'Return to All Schools' }).click();
+    await page.waitForURL(new RegExp(`/group-finance/${groupId}$`));
+    await expect(page.getByText('Unrelated QA School', { exact: false })).toHaveCount(0);
   } finally {
     await context.close();
   }
@@ -63,7 +94,7 @@ test('School Accountant cannot switch to the peer or unrelated School', async ({
   try {
     const page = await context.newPage();
     await page.goto('/group-finance', { waitUntil: 'domcontentloaded' });
-    const switcher = page.locator('select[name="school_id"]');
+    const switcher = page.locator('#group-finance-school');
     await expect(switcher.locator('option')).toHaveCount(2);
     const values = await switcher.locator('option').evaluateAll(options => options.map(option => option.textContent || ''));
     expect(values.some(value => /Zixuan QA School/.test(value))).toBeTruthy();

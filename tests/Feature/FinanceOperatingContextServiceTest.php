@@ -6,7 +6,9 @@ use App\Models\FinanceGroup;
 use App\Models\User;
 use App\Services\FinanceGroupScopeService;
 use App\Services\FinanceOperatingContextService;
+use App\Services\FinanceOperatingWorkspaceService;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -49,6 +51,8 @@ class FinanceOperatingContextServiceTest extends TestCase
         $this->createCentralSchema();
         $this->createTenantSchema($this->zixuanDatabase, 1, 101, 10, 11);
         $this->createTenantSchema($this->timecityDatabase, 2, 201, 20, 21);
+        $this->seedTenantFinance($this->zixuanDatabase, 1, 101, 10, 'ZIXUAN');
+        $this->seedTenantFinance($this->timecityDatabase, 2, 201, 20, 'TIMECITY');
         $this->seedGroupScope();
     }
 
@@ -166,6 +170,48 @@ class FinanceOperatingContextServiceTest extends TestCase
         $service->current($otherCentral);
     }
 
+    public function test_workspace_reads_only_the_current_school_with_mapped_account_scope_and_keeps_central_identity(): void
+    {
+        $central = User::on('mysql')->findOrFail(1);
+        $this->actingAs($central);
+        $group = FinanceGroup::on('mysql')->where('code', 'BOWEN_OPERATING_QA')->firstOrFail();
+        $context = app(FinanceOperatingContextService::class);
+        $workspace = app(FinanceOperatingWorkspaceService::class);
+        $before = $this->financeSourceSnapshot();
+
+        $context->enterSchool($central, $group->id, 1);
+        $zixuanAccounts = $workspace->accounts($central);
+        $zixuanLedger = $workspace->ledger($central);
+        $this->assertSame([10], array_column($zixuanAccounts, 'id'));
+        $this->assertSame(1100.0, $zixuanAccounts[0]['current_balance']);
+        $this->assertSame(['ZIXUAN_OTHER'], $zixuanLedger['rows']->pluck('reference_no')->all());
+        $this->assertSame(100.0, $zixuanLedger['summary']['operating_income']);
+        $this->assertSame(1, auth()->id());
+        $this->assertNull(auth()->user()?->school_id);
+        $this->assertNull(session('school_database_name'));
+
+        $context->enterSchool($central, $group->id, 2);
+        $timecityAccounts = $workspace->accounts($central);
+        $timecityLedger = $workspace->ledger($central);
+        $this->assertSame([20], array_column($timecityAccounts, 'id'));
+        $this->assertSame(1200.0, $timecityAccounts[0]['current_balance']);
+        $this->assertSame(['TIMECITY_OTHER'], $timecityLedger['rows']->pluck('reference_no')->all());
+        $this->assertSame(200.0, $timecityLedger['summary']['operating_income']);
+        $this->assertSame(1, auth()->id());
+        $this->assertNull(session('school_database_name'));
+        $this->assertSame($before, $this->financeSourceSnapshot());
+    }
+
+    public function test_workspace_rejects_an_unassigned_fund_account_filter_and_never_falls_into_the_peer_school(): void
+    {
+        $central = User::on('mysql')->findOrFail(1);
+        $group = FinanceGroup::on('mysql')->where('code', 'BOWEN_OPERATING_QA')->firstOrFail();
+        app(FinanceOperatingContextService::class)->enterSchool($central, $group->id, 1);
+
+        $this->expectException(ModelNotFoundException::class);
+        app(FinanceOperatingWorkspaceService::class)->ledger($central, ['bank_account_id' => 11]);
+    }
+
     /** @return array<string, mixed> */
     private function sqlite(string $database): array
     {
@@ -246,6 +292,7 @@ class FinanceOperatingContextServiceTest extends TestCase
             $table->unsignedBigInteger('school_id');
             $table->string('account_name');
             $table->string('currency')->default('MMK');
+            $table->decimal('opening_balance', 15, 2)->default(0);
             $table->boolean('is_active')->default(true);
             $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
@@ -255,15 +302,70 @@ class FinanceOperatingContextServiceTest extends TestCase
             $table->unsignedBigInteger('user_id');
             $table->timestamps();
         });
+        Schema::connection('school')->create('compulsory_fees', function ($table): void {
+            $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('bank_account_id');
+            $table->unsignedBigInteger('student_id')->nullable(); $table->string('status')->default('Success');
+            $table->string('reference_no')->nullable(); $table->string('mode')->nullable(); $table->decimal('amount', 15, 2); $table->date('date'); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+        });
+        Schema::connection('school')->create('optional_fees', function ($table): void {
+            $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('bank_account_id');
+            $table->unsignedBigInteger('student_id')->nullable(); $table->string('status')->default('Success');
+            $table->string('mode')->nullable(); $table->decimal('amount', 15, 2); $table->date('date'); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+        });
+        Schema::connection('school')->create('other_incomes', function ($table): void {
+            $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('bank_account_id');
+            $table->date('date'); $table->string('payer'); $table->string('description'); $table->decimal('amount', 15, 2);
+            $table->string('payment_method'); $table->string('reference_no')->nullable(); $table->unsignedBigInteger('created_by')->nullable(); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+        });
+        Schema::connection('school')->create('expenses', function ($table): void {
+            $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('bank_account_id');
+            $table->string('ref_no')->nullable(); $table->string('title'); $table->string('description')->nullable();
+            $table->decimal('amount', 15, 2); $table->decimal('amount_mmk', 15, 2)->default(0); $table->string('payment_method')->nullable();
+            $table->unsignedBigInteger('finance_category_id')->nullable(); $table->string('transaction_currency')->nullable();
+            $table->decimal('original_amount', 15, 2)->nullable(); $table->decimal('exchange_rate_snapshot', 15, 4)->nullable(); $table->unsignedBigInteger('created_by')->nullable();
+            $table->date('date'); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+        });
+        Schema::connection('school')->create('bank_transfers', function ($table): void {
+            $table->id(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('from_account_id'); $table->unsignedBigInteger('to_account_id');
+            $table->decimal('amount', 15, 2); $table->date('transfer_date'); $table->string('reference_no')->nullable(); $table->string('notes')->nullable(); $table->string('status')->default('completed'); $table->unsignedBigInteger('created_by')->nullable(); $table->timestamp('deleted_at')->nullable(); $table->timestamps();
+        });
 
         DB::connection('school')->table('users')->insert(['id' => $userId, 'first_name' => 'Accountant', 'last_name' => (string) $schoolId, 'email' => "accountant{$schoolId}@group-qa.test", 'school_id' => $schoolId]);
         DB::connection('school')->table('roles')->insert(['id' => 1, 'name' => 'Cashier', 'guard_name' => 'web', 'school_id' => $schoolId]);
         DB::connection('school')->table('model_has_roles')->insert(['role_id' => 1, 'model_type' => User::class, 'model_id' => $userId]);
         DB::connection('school')->table('bank_accounts')->insert([
-            ['id' => $assignedAccountId, 'school_id' => $schoolId, 'account_name' => "School {$schoolId} Assigned Cash", 'currency' => 'MMK', 'is_active' => true],
-            ['id' => $unassignedAccountId, 'school_id' => $schoolId, 'account_name' => "School {$schoolId} Unassigned Cash", 'currency' => 'MMK', 'is_active' => true],
+            ['id' => $assignedAccountId, 'school_id' => $schoolId, 'account_name' => "School {$schoolId} Assigned Cash", 'currency' => 'MMK', 'opening_balance' => 1000, 'is_active' => true],
+            ['id' => $unassignedAccountId, 'school_id' => $schoolId, 'account_name' => "School {$schoolId} Unassigned Cash", 'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true],
         ]);
         DB::connection('school')->table('bank_account_user')->insert(['bank_account_id' => $assignedAccountId, 'user_id' => $userId]);
+    }
+
+    private function seedTenantFinance(string $database, int $schoolId, int $userId, int $accountId, string $prefix): void
+    {
+        Config::set('database.connections.school.database', $database);
+        DB::purge('school');
+        DB::connection('school')->table('other_incomes')->insert([
+            'school_id' => $schoolId, 'bank_account_id' => $accountId, 'date' => '2026-08-20',
+            'payer' => $prefix . ' Payer', 'description' => $prefix . ' Other Income', 'amount' => $schoolId * 100,
+            'payment_method' => 'Cash', 'reference_no' => $prefix . '_OTHER', 'created_by' => $userId,
+        ]);
+    }
+
+    private function financeSourceSnapshot(): string
+    {
+        $parts = [];
+        foreach ([$this->zixuanDatabase, $this->timecityDatabase] as $database) {
+            Config::set('database.connections.school.database', $database);
+            DB::purge('school');
+            foreach (['bank_accounts', 'compulsory_fees', 'optional_fees', 'other_incomes', 'expenses', 'bank_transfers'] as $table) {
+                $parts[] = $database . ':' . $table . ':' . json_encode(
+                    DB::connection('school')->table($table)->orderBy('id')->get()->map(static fn ($row) => (array) $row)->all(),
+                    JSON_THROW_ON_ERROR,
+                );
+            }
+        }
+
+        return hash('sha256', implode('|', $parts));
     }
 
     private function seedGroupScope(): void

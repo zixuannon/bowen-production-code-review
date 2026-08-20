@@ -230,6 +230,22 @@ requires the email/user ownership to match before consuming the token.
   fields, stale context data, and a different central actor. No production
   work, UI, cross-School route, or Finance write is included.
 
+## Group Finance Operating Context — Checkpoint 2 (local)
+
+- All Schools remains the existing read-only Group Finance / Group Reports
+  view. A separate Operating School switcher displays only active explicit
+  `operate_finance` scope and creates the opaque Checkpoint 1 context through
+  a POST route; no request accepts a tenant database name.
+- The selected-school workspace retains the central login and is currently
+  read-only. It exposes Bank Accounts, Transactions, and Finance Reports
+  through the existing Ledger V1 and Fund Account balance services using only
+  the mapped tenant identity and its normal account scope. Tenant write routes
+  for fees, Other Income, Expense, transfers, and handovers are not mounted.
+- Every page displays the Group/current School context and provides Switch
+  School plus Return to All Schools. Zixuan/Timecity local browser acceptance
+  covers selection, source isolation, central identity retention, and denial
+  of the unrelated School.
+
 Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, refund/void/reversal, or any production work. Any production release requires a fresh, explicit production deployment/migration gate.
 
 ## Integration release validation

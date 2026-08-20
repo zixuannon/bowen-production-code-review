@@ -86,6 +86,8 @@ BankTransfer, or FundHandover.
    resolution, forged input rejection, and Zixuan/Timecity tests. No UI and no
    cross-School writes.
 2. **Checkpoint 2 — route adapter:** clearly labelled enter/exit UX and a
-   guarded adapter to existing single-School Finance routes.
+   guarded read-only adapter to existing single-School Finance sources. It
+   exposes Bank Accounts, Transactions, and Finance Reports through Ledger V1
+   and Fund Account balance calculations, not a second write path.
 3. **Checkpoint 3 — write audit:** central-actor audit provenance and full
    Finance browser acceptance before any operational release.

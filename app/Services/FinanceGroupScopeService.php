@@ -8,6 +8,7 @@ use App\Models\FinanceGroupSchool;
 use App\Models\FinanceGroupUser;
 use App\Models\FinanceGroupUserScope;
 use App\Models\FinanceGroupUserTenantIdentity;
+use App\Models\BankAccount;
 use App\Models\School;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
@@ -328,6 +329,59 @@ class FinanceGroupScopeService
     }
 
     /**
+     * Read current balance-bearing account summaries for one trusted Group
+     * School. This returns scalar data only: callers cannot retain tenant
+     * models, select a database, or turn it into a tenant write callback.
+     *
+     * @return array<int, array{id:int,account_name:string,currency:string,money_in:float,money_out:float,current_balance:float,operating_income:float,operating_expense:float}>
+     */
+    public function readActiveTenantAccountSummariesForGroupUser(FinanceGroupUser $groupUser, int $schoolId, string $capability): array
+    {
+        if (!$this->canAccessSchool($groupUser, $schoolId, $capability)) {
+            throw new AuthorizationException('This Group user is not authorized for the requested School.');
+        }
+
+        $identity = FinanceGroupUserTenantIdentity::query()
+            ->where('group_user_id', $groupUser->id)
+            ->where('school_id', $schoolId)
+            ->where('status', 'active')
+            ->first();
+        if (!$identity) {
+            throw new FinanceGroupTenantUnavailableException('No active tenant identity is configured for this Group School.');
+        }
+
+        $school = $this->centralSchool($schoolId);
+
+        return $this->inTenant($school, function () use ($identity, $school): array {
+            $tenantUser = User::on('school')->whereKey($identity->tenant_user_id)->where('school_id', $school->id)->first();
+            if (!$tenantUser) {
+                throw new FinanceGroupTenantUnavailableException('The configured tenant identity no longer belongs to this School.');
+            }
+
+            $accounts = app(FinanceAccountAccessService::class)->accessibleAccounts($tenantUser)
+                ->active()
+                ->orderBy('account_name')
+                ->get();
+            $balances = app(FundAccountBalanceService::class)->cashFlowSummaries($accounts);
+
+            return $accounts->map(static function (BankAccount $account) use ($balances): array {
+                $balance = $balances->get($account->id);
+
+                return [
+                    'id' => (int) $account->id,
+                    'account_name' => (string) $account->account_name,
+                    'currency' => (string) $account->currency,
+                    'money_in' => (float) $balance['money_in'],
+                    'money_out' => (float) $balance['money_out'],
+                    'current_balance' => (float) $balance['current_balance'],
+                    'operating_income' => (float) $balance['operating_income'],
+                    'operating_expense' => (float) $balance['operating_expense'],
+                ];
+            })->all();
+        });
+    }
+
+    /**
      * Resolve the current balance through the same isolated tenant context
      * used for Fund Account authorization. This is a read-only precondition
      * for School-to-HQ confirmation; no central status is changed unless the
@@ -447,10 +501,9 @@ class FinanceGroupScopeService
      * @param array<string, mixed> $filters
      * @return array{rows: \Illuminate\Support\Collection<int, array<string, mixed>>, summary: array<string, float>}
      */
-    public function readLedgerAsTenantIdentity(FinanceGroupUser $groupUser, FinanceGroupSchool $membership, FinanceLedgerV1Service $ledger, array $filters = []): array
+    public function readLedgerAsTenantIdentity(FinanceGroupUser $groupUser, FinanceGroupSchool $membership, FinanceLedgerV1Service $ledger, array $filters = [], string $capability = 'view_reports'): array
     {
-        $allowed = $this->accessibleSchools($groupUser, 'view_reports');
-        if (!$allowed->contains(fn (FinanceGroupSchool $item) => $item->id === $membership->id)) {
+        if (!$this->canAccessSchool($groupUser, $membership->school_id, $capability)) {
             throw new AuthorizationException('This Group user is not authorized for the requested School.');
         }
 
