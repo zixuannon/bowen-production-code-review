@@ -50,9 +50,8 @@ class GroupFinanceEntryRouteTest extends TestCase
             $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
         });
-        // User::school_id has a legacy Guardian accessor that consults the
-        // Spatie role relation for central users. These empty tables keep the
-        // route characterization faithful without granting a test role.
+        // Group Finance is restricted to the explicitly configured central
+        // Head Finance role; keep the test schema faithful to that boundary.
         Schema::connection('mysql')->create('roles', function ($table): void {
             $table->id();
             $table->string('name');
@@ -72,6 +71,12 @@ class GroupFinanceEntryRouteTest extends TestCase
         DB::connection('mysql')->table('users')->insert([
             ['id' => 100, 'first_name' => 'Central', 'last_name' => 'Head Finance', 'email' => 'head@example.test', 'school_id' => null],
             ['id' => 101, 'first_name' => 'Central', 'last_name' => 'Unscoped', 'email' => 'none@example.test', 'school_id' => null],
+        ]);
+        DB::connection('mysql')->table('roles')->insert([
+            'id' => 1, 'name' => 'Head Finance', 'guard_name' => 'web', 'school_id' => null,
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            'role_id' => 1, 'model_type' => User::class, 'model_id' => 100,
         ]);
         (require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php'))->up();
 

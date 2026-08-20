@@ -294,6 +294,12 @@ class FinanceOperatingContextServiceTest extends TestCase
             ['id' => 1, 'first_name' => 'Central', 'last_name' => 'Head Finance', 'email' => 'head@group-qa.test', 'school_id' => null],
             ['id' => 2, 'first_name' => 'Central', 'last_name' => 'Other', 'email' => 'other@group-qa.test', 'school_id' => null],
         ]);
+        DB::connection('mysql')->table('roles')->insert([
+            'id' => 1, 'name' => 'Head Finance', 'guard_name' => 'web', 'school_id' => null,
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            'role_id' => 1, 'model_type' => User::class, 'model_id' => 1,
+        ]);
         (require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php'))->up();
     }
 

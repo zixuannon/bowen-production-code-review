@@ -7,6 +7,9 @@
         </div>
         <div class="mt-2 mt-md-0">
             <a class="btn btn-outline-primary btn-sm" href="{{ route('group-finance.show', $workspace['group']) }}">{{ __('Switch School') }}</a>
+            @if($workspace['isCentralHeadFinance'])
+                <a class="btn btn-outline-primary btn-sm" href="{{ route('finance-groups.transfers.index', $workspace['group']) }}">{{ __('HQ / School Funding') }}</a>
+            @endif
             <form method="POST" action="{{ route('group-finance.operating.exit') }}" class="d-inline">
                 @csrf
                 <button class="btn btn-outline-secondary btn-sm" type="submit">{{ __('Return to All Schools') }}</button>

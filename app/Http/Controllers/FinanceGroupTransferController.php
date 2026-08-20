@@ -5,10 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\FinanceGroup;
 use App\Models\FinanceGroupHqAccount;
 use App\Models\FinanceGroupTransfer;
-use App\Models\FinanceGroupUser;
-use App\Models\User;
 use App\Services\FinanceGroupScopeService;
 use App\Services\FinanceGroupTransferService;
+use App\Services\FinanceOperatingWorkspaceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,32 +19,30 @@ class FinanceGroupTransferController extends Controller
     public function __construct(
         private readonly FinanceGroupScopeService $scope,
         private readonly FinanceGroupTransferService $transfers,
+        private readonly FinanceOperatingWorkspaceService $operatingWorkspace,
     ) {}
 
     public function funding(FinanceGroup $financeGroup): View
     {
-        $groupUser = $this->groupUser($financeGroup);
-        $schools = $this->scope->accessibleSchools($groupUser, 'request_group_transfers')->load('school');
+        $workspace = $this->operatingWorkspace($financeGroup);
+        $groupUser = $workspace['groupUser'];
+        $operatingSchool = $workspace['school'];
+        $schools = collect([$workspace['group']->schools()->where('school_id', $operatingSchool->id)->firstOrFail()->load('school')]);
         $mayConfirm = $this->scope->canConfirmGroupTransfers($groupUser);
         $mayControlHq = $this->scope->canControlHqAccounts($groupUser);
         $hqAccounts = FinanceGroupHqAccount::query()->active()->where('group_id', $financeGroup->id)
             ->when(!$mayControlHq, fn ($q) => $q->whereHas('authorizedGroupUsers', fn ($users) => $users->whereKey($groupUser->id)))
             ->orderBy('account_name')->get();
-        // An HQ Accountant may have no School request scope, but must still
-        // be able to reach the HQ accounts explicitly assigned to them.
-        abort_unless($schools->isNotEmpty() || $mayConfirm || $hqAccounts->isNotEmpty(), 403);
-
-        $accountsBySchool = [];
-        foreach ($schools as $membership) {
-            $accountsBySchool[$membership->school_id] = $this->scope->accessibleActiveTenantAccountsForGroupUser($groupUser, $membership->school_id);
-        }
+        $accountsBySchool = [
+            $operatingSchool->id => $this->scope->accessibleActiveTenantAccountsForGroupUser(
+                $groupUser, $operatingSchool->id, 'operate_finance',
+            ),
+        ];
 
         $transfers = $financeGroup->transfers()->with(['school', 'hqAccount', 'requester.centralUser'])->latest('id');
-        if (!$mayConfirm) {
-            // A School-scoped requester can only inspect funding records for
-            // Schools within that exact scope; peer Schools remain opaque.
-            $transfers->whereIn('school_id', $schools->pluck('school_id')->all());
-        }
+        // An Operating Context is exactly one trusted School. A URL cannot
+        // turn it into an all-School funding history view.
+        $transfers->where('school_id', $operatingSchool->id);
 
         return view('finance-groups.transfers.index', [
             'financeGroup' => $financeGroup,
@@ -53,6 +50,7 @@ class FinanceGroupTransferController extends Controller
             'schools' => $schools,
             'hqAccounts' => $hqAccounts,
             'accountsBySchool' => $accountsBySchool,
+            'operatingSchool' => $operatingSchool,
             'mayConfirm' => $mayConfirm,
             'mayControlHq' => $mayControlHq,
             'groupUsers' => $financeGroup->users()->with('centralUser')->where('status', 'active')->get(),
@@ -62,9 +60,9 @@ class FinanceGroupTransferController extends Controller
 
     public function store(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
-        $groupUser = $this->groupUser($financeGroup);
+        $workspace = $this->operatingWorkspace($financeGroup);
+        $groupUser = $workspace['groupUser'];
         $data = $request->validate([
-            'school_id' => ['required', 'integer'],
             'tenant_bank_account_id' => ['required', 'integer'],
             'hq_account_id' => ['nullable', 'integer'],
             'direction' => ['required', 'in:HQ_TO_SCHOOL,SCHOOL_TO_HQ'],
@@ -74,41 +72,48 @@ class FinanceGroupTransferController extends Controller
             'reference_no' => ['nullable', 'string', 'max:128'],
             'notes' => ['nullable', 'string'],
         ]);
-        $this->transfers->request($groupUser, $data);
+        // The Operating Context, not request input, selects the School.
+        $data['school_id'] = (int) $workspace['school']->id;
+        $this->transfers->request($groupUser, $data, 'operate_finance');
         return back()->with('success', __('Group funding request submitted for Head Finance confirmation.'));
     }
 
     public function confirm(Request $request, FinanceGroup $financeGroup, FinanceGroupTransfer $transfer): RedirectResponse
     {
-        $groupUser = $this->groupUser($financeGroup);
-        abort_unless($transfer->group_id === $financeGroup->id, 404);
+        $workspace = $this->operatingWorkspace($financeGroup);
+        $groupUser = $workspace['groupUser'];
+        abort_unless($transfer->group_id === $financeGroup->id && $transfer->school_id === $workspace['school']->id, 404);
         $data = $request->validate(['hq_account_id' => ['required', 'integer']]);
-        $this->transfers->confirm($groupUser, $transfer->id, $data);
+        $this->transfers->confirm($groupUser, $transfer->id, $data, 'operate_finance');
         return back()->with('success', __('Group funding transfer confirmed.'));
     }
 
     public function reject(Request $request, FinanceGroup $financeGroup, FinanceGroupTransfer $transfer): RedirectResponse
     {
-        $groupUser = $this->groupUser($financeGroup);
-        abort_unless($transfer->group_id === $financeGroup->id, 404);
+        $workspace = $this->operatingWorkspace($financeGroup);
+        $groupUser = $workspace['groupUser'];
+        abort_unless($transfer->group_id === $financeGroup->id && $transfer->school_id === $workspace['school']->id, 404);
         $this->transfers->reject($groupUser, $transfer->id, (string) $request->validate(['reason'=>['required','string','max:1000']])['reason']);
         return back()->with('success', __('Group funding request rejected.'));
     }
 
     public function cancel(Request $request, FinanceGroup $financeGroup, FinanceGroupTransfer $transfer): RedirectResponse
     {
-        $groupUser = $this->groupUser($financeGroup);
-        abort_unless($transfer->group_id === $financeGroup->id, 404);
+        $workspace = $this->operatingWorkspace($financeGroup);
+        $groupUser = $workspace['groupUser'];
+        abort_unless($transfer->group_id === $financeGroup->id && $transfer->school_id === $workspace['school']->id, 404);
         $this->transfers->cancel($groupUser, $transfer->id, (string) $request->validate(['reason'=>['required','string','max:1000']])['reason']);
         return back()->with('success', __('Group funding request cancelled.'));
     }
 
-    private function groupUser(FinanceGroup $group): FinanceGroupUser
+    /** @return array<string,mixed> */
+    private function operatingWorkspace(FinanceGroup $group): array
     {
         $auth = Auth::user();
         abort_unless($auth && $auth->school_id === null, 403);
-        $central = User::on('mysql')->find($auth->id);
-        abort_unless($central && $central->school_id === null, 403);
-        return FinanceGroupUser::query()->where('group_id', $group->id)->where('central_user_id', $central->id)->where('status', 'active')->firstOrFail();
+        $workspace = $this->operatingWorkspace->workspace($auth);
+        abort_unless($workspace['group']->id === $group->id, 403);
+
+        return $workspace;
     }
 }

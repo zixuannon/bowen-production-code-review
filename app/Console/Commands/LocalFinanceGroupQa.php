@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 use App\Models\School;
 use App\Models\FinanceGroup;
+use App\Models\FinanceGroupHqAccount;
+use App\Models\FinanceGroupTransfer;
 use App\Models\FinanceGroupUser;
 use App\Services\FinanceGroupReportService;
 use App\Services\FinanceGroupScopeService;
@@ -81,6 +83,7 @@ class LocalFinanceGroupQa extends Command
         }
         $migration = require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php');
         $migration->up();
+        (require database_path('migrations/2026_08_19_000001_create_finance_group_hq_accounts_and_transfers.php'))->up();
         $this->clearExistingGroupFixture($central);
         $scope=app(FinanceGroupScopeService::class); $group=FinanceGroup::query()->create(['code'=>'GROUP_QA', 'name'=>'Bowen QA Group','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1]);
         $a=(int)$central->table('schools')->where('code','GROUP_QA_SCHOOL_A')->value('id');
@@ -91,8 +94,15 @@ class LocalFinanceGroupQa extends Command
         $scope->grantScope($hq,'view_reports','GROUP');
         $scope->grantScope($hq,'export_reports','GROUP');
         $scope->grantScope($hq,'operate_finance','GROUP');
-        $scope->bindTenantIdentity($hq, $a, $this->tenantUserId('GROUP_QA_SCHOOL_A', 'group_hq@group-qa.test'));
-        $scope->bindTenantIdentity($hq, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'group_hq@group-qa.test'));
+        $scope->grantScope($hq,'confirm_group_transfers','GROUP');
+        $scope->grantScope($hq,'manage_hq_accounts','GROUP');
+        $this->ensureCentralHeadFinanceRole($central, (int) $hq->central_user_id, $now);
+        // A Central Actor must not also be a tenant login identity.  The
+        // trusted mapping deliberately points to the existing local tenant
+        // Head Finance user, which is used for tenant-scoped authorization
+        // only; the browser session remains the central Group user.
+        $scope->bindTenantIdentity($hq, $a, $this->tenantUserId('GROUP_QA_SCHOOL_A', 'head@GROUP_QA_SCHOOL_A.test'));
+        $scope->bindTenantIdentity($hq, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'head@GROUP_QA_SCHOOL_B.test'));
 
         $schoolA = $scope->addUser($group, (int) $central->table('users')->where('email','group_school_a@group-qa.test')->value('id'));
         $scope->grantScope($schoolA,'view_reports','SCHOOL',$a);
@@ -103,6 +113,38 @@ class LocalFinanceGroupQa extends Command
         $scope->grantScope($schoolB,'view_reports','SCHOOL',$b);
         $scope->grantScope($schoolB,'export_reports','SCHOOL',$b);
         $scope->bindTenantIdentity($schoolB, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'accountant@GROUP_QA_SCHOOL_B.test'));
+
+        $hqAccount = FinanceGroupHqAccount::query()->create([
+            'group_id' => $group->id,
+            'account_name' => 'Group QA HQ Main Cash',
+            'account_number' => 'GROUP_QA_HQ_CASH',
+            'account_type' => 'cash',
+            'currency' => 'MMK',
+            'opening_balance' => 1000,
+            'opening_balance_date' => '2026-01-01',
+            'is_active' => true,
+            'created_by' => $hq->central_user_id,
+            'updated_by' => $hq->central_user_id,
+        ]);
+        $hqAccount->authorizedGroupUsers()->sync([$hq->id]);
+
+        FinanceGroupTransfer::query()->create([
+            'group_id' => $group->id, 'school_id' => $a, 'hq_account_id' => $hqAccount->id,
+            'tenant_bank_account_id' => $this->tenantAccountId('GROUP_QA_SCHOOL_A', 'GROUP_QA_SCHOOL_A_CASH'),
+            'direction' => FinanceGroupTransfer::DIRECTION_HQ_TO_SCHOOL,
+            'purpose' => 'HQ_FUNDING', 'amount' => 70, 'transfer_date' => '2026-08-04',
+            'reference_no' => 'GROUP_QA_HQ_TO_A_CONFIRMED', 'status' => FinanceGroupTransfer::STATUS_CONFIRMED,
+            'requested_by_group_user_id' => $hq->id, 'requested_at' => $now,
+            'confirmed_by_group_user_id' => $hq->id, 'confirmed_at' => $now,
+        ]);
+        FinanceGroupTransfer::query()->create([
+            'group_id' => $group->id, 'school_id' => $b, 'hq_account_id' => null,
+            'tenant_bank_account_id' => $this->tenantAccountId('GROUP_QA_SCHOOL_B', 'GROUP_QA_SCHOOL_B_CASH'),
+            'direction' => FinanceGroupTransfer::DIRECTION_SCHOOL_TO_HQ,
+            'purpose' => 'SCHOOL_REMITTANCE', 'amount' => 35, 'transfer_date' => '2026-08-05',
+            'reference_no' => 'GROUP_QA_B_TO_HQ_PENDING', 'status' => FinanceGroupTransfer::STATUS_PENDING,
+            'requested_by_group_user_id' => $hq->id, 'requested_at' => $now,
+        ]);
     }
 
     private function seed(string $code, string $database): void
@@ -117,10 +159,8 @@ class LocalFinanceGroupQa extends Command
         foreach ([
             ['head@'.$code.'.test','Head','Finance'],
             ['accountant@'.$code.'.test','School','Accountant'],
-            ['group_hq@group-qa.test','Group','HQ Accountant'],
         ] as [$email,$first,$last]) $db->table('users')->insert(['first_name'=>$first,'last_name'=>$last,'email'=>$email,'password'=>bcrypt('local-only'),'school_id'=>$schoolId,'status'=>1,'created_at'=>$now,'updated_at'=>$now]);
         $head=(int)$db->table('users')->where('email','head@'.$code.'.test')->value('id'); $accountant=(int)$db->table('users')->where('email','accountant@'.$code.'.test')->value('id');
-        $hq=(int)$db->table('users')->where('email','group_hq@group-qa.test')->value('id');
         foreach (['Head Finance','Cashier'] as $role) $db->table('roles')->insert(['name'=>$role,'guard_name'=>'web','school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
         $headRole=(int)$db->table('roles')->where('name','Head Finance')->value('id');
         foreach ([
@@ -136,7 +176,6 @@ class LocalFinanceGroupQa extends Command
             $db->table('role_has_permissions')->insert(['permission_id'=>$db->table('permissions')->where('name',$permission)->value('id'),'role_id'=>$cashierRole]);
         }
         $db->table('model_has_roles')->insert(['role_id'=>$headRole,'model_type'=>'App\\Models\\User','model_id'=>$head]);
-        $db->table('model_has_roles')->insert(['role_id'=>$headRole,'model_type'=>'App\\Models\\User','model_id'=>$hq]);
         $db->table('model_has_roles')->insert(['role_id'=>$cashierRole,'model_type'=>'App\\Models\\User','model_id'=>$accountant]);
         foreach ([['CASH','Group QA '.$name.' Cash',1000],['BANK','Group QA '.$name.' Bank',0]] as [$num,$account,$opening]) $db->table('bank_accounts')->insert(['school_id'=>$schoolId,'account_number'=>$code.'_'.$num,'account_name'=>$account,'bank_name'=>'LOCAL ONLY','account_type'=>'cash','currency'=>'MMK','opening_balance'=>$opening,'opening_balance_date'=>'2026-01-01','is_active'=>1,'is_default'=>$num==='CASH','created_by'=>$head,'updated_by'=>$head,'created_at'=>$now,'updated_at'=>$now]);
         $cash=(int)$db->table('bank_accounts')->where('account_number',$code.'_CASH')->value('id'); $bank=(int)$db->table('bank_accounts')->where('account_number',$code.'_BANK')->value('id');
@@ -226,8 +265,8 @@ class LocalFinanceGroupQa extends Command
         if ($register['incomplete']->isNotEmpty() || $register['schools']->count() !== 2
             || (float) $register['summary']['operating_income'] !== 480.0
             || (float) $register['summary']['operating_expense'] !== 60.0
-            || (float) $register['summary']['internal_transfer_amount'] !== 300.0
-            || $register['rows']->where('source_type', 'bank_transfer')->count() !== 4
+            || (float) $register['summary']['internal_transfer_amount'] !== 370.0
+            || $register['rows']->whereIn('source_type', ['bank_transfer', 'group_transfer'])->count() !== 5
             || $register['rows']->contains(fn (array $row) => str_contains((string) $row['reference_no'], 'HANDOVER_PENDING'))) {
             throw new \LogicException('Group Ledger V1 fixture semantics mismatch.');
         }
@@ -276,6 +315,13 @@ class LocalFinanceGroupQa extends Command
             }
             $out[$code]=hash('sha256',implode('|',$parts));
         }
+        if (Schema::connection('mysql')->hasTable('finance_group_transfers')) {
+            foreach (['finance_group_hq_accounts', 'finance_group_hq_account_users', 'finance_group_hq_account_adjustments', 'finance_group_transfers'] as $table) {
+                $rows = DB::connection('mysql')->table($table)->orderBy('id')->get()
+                    ->map(static fn ($row) => (array) $row)->all();
+                $out['central:' . $table] = hash('sha256', count($rows) . ':' . json_encode($rows, JSON_THROW_ON_ERROR));
+            }
+        }
         return $out;
     }
 
@@ -313,6 +359,27 @@ class LocalFinanceGroupQa extends Command
         }
 
         return $id;
+    }
+
+    /** Assign the fixed local fixture's central Head Finance role only. */
+    private function ensureCentralHeadFinanceRole($central, int $userId, $now): void
+    {
+        $role = $central->table('roles')
+            ->where('name', 'Head Finance')
+            ->where('guard_name', 'web')
+            ->whereNull('school_id')
+            ->first();
+        $roleId = $role
+            ? (int) $role->id
+            : (int) $central->table('roles')->insertGetId([
+                'name' => 'Head Finance', 'guard_name' => 'web', 'school_id' => null,
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        $central->table('model_has_roles')->updateOrInsert([
+            'role_id' => $roleId,
+            'model_type' => 'App\\Models\\User',
+            'model_id' => $userId,
+        ], []);
     }
 
     /**

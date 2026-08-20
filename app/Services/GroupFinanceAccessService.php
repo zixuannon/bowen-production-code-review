@@ -39,6 +39,7 @@ class GroupFinanceAccessService
             ->where('status', 'active')
             ->whereHas('group', fn ($query) => $query->where('status', 'active'))
             ->get()
+            ->filter(fn (FinanceGroupUser $groupUser) => $this->scope->isCentralHeadFinance($groupUser))
             ->filter(fn (FinanceGroupUser $groupUser) => $this->scope->accessibleSchools($groupUser, 'view_reports')->isNotEmpty())
             ->values();
     }

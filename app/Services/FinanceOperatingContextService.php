@@ -184,6 +184,10 @@ class FinanceOperatingContextService
             throw new AuthorizationException('A trusted central user is required.');
         }
 
+        if (!$central->hasRole('Head Finance')) {
+            throw new AuthorizationException('Only Central Head Finance may enter Finance Operating Context.');
+        }
+
         return $central;
     }
 

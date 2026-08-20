@@ -30,7 +30,7 @@ class FinanceGroupTransferService
     }
 
     /** @param array<string,mixed> $data */
-    public function request(FinanceGroupUser $requester, array $data): FinanceGroupTransfer
+    public function request(FinanceGroupUser $requester, array $data, string $schoolCapability = 'request_group_transfers'): FinanceGroupTransfer
     {
         $group = FinanceGroup::query()->findOrFail($requester->group_id);
         $schoolId = (int) ($data['school_id'] ?? 0);
@@ -46,7 +46,7 @@ class FinanceGroupTransferService
             throw ValidationException::withMessages(['amount' => [__('Transfer amount must be greater than zero.')]]);
         }
 
-        $tenantAccount = $this->scope->authorizeActiveTenantAccountForGroupUser($requester, $schoolId, $accountId);
+        $tenantAccount = $this->scope->authorizeActiveTenantAccountForGroupUser($requester, $schoolId, $accountId, $schoolCapability);
         $hqAccountId = isset($data['hq_account_id']) ? (int) $data['hq_account_id'] : null;
         if ($hqAccountId) {
             $hq = $this->authorizedHqAccount($requester, $group, $hqAccountId);
@@ -71,13 +71,13 @@ class FinanceGroupTransferService
     }
 
     /** @param array<string,mixed> $data */
-    public function confirm(FinanceGroupUser $confirmer, int $transferId, array $data): FinanceGroupTransfer
+    public function confirm(FinanceGroupUser $confirmer, int $transferId, array $data, string $schoolCapability = 'request_group_transfers'): FinanceGroupTransfer
     {
         if (!$this->scope->canConfirmGroupTransfers($confirmer)) {
             throw new AuthorizationException('Only Group Head Finance may confirm a Group funding transfer.');
         }
 
-        return DB::connection('mysql')->transaction(function () use ($confirmer, $transferId, $data): FinanceGroupTransfer {
+        return DB::connection('mysql')->transaction(function () use ($confirmer, $transferId, $data, $schoolCapability): FinanceGroupTransfer {
             $transfer = FinanceGroupTransfer::query()->lockForUpdate()->findOrFail($transferId);
             if ($transfer->group_id !== $confirmer->group_id || $transfer->status !== FinanceGroupTransfer::STATUS_PENDING) {
                 throw new \DomainException('Only a pending transfer in this Group can be confirmed.');
@@ -96,7 +96,7 @@ class FinanceGroupTransferService
             // the original requester against the tenant Fund Account now.
             $requester = FinanceGroupUser::query()->findOrFail($transfer->requested_by_group_user_id);
             $tenantAccount = $this->scope->authorizeActiveTenantAccountForGroupUser(
-                $requester, (int) $transfer->school_id, (int) $transfer->tenant_bank_account_id,
+                $requester, (int) $transfer->school_id, (int) $transfer->tenant_bank_account_id, $schoolCapability,
             );
             $this->assertCurrency($hq, $tenantAccount['currency']);
 
@@ -106,7 +106,7 @@ class FinanceGroupTransferService
             }
             if ($transfer->direction === FinanceGroupTransfer::DIRECTION_SCHOOL_TO_HQ
                 && !$this->scope->tenantAccountHasSufficientBalanceForGroupUser(
-                    $requester, (int) $transfer->school_id, (int) $transfer->tenant_bank_account_id, (float) $transfer->amount,
+                    $requester, (int) $transfer->school_id, (int) $transfer->tenant_bank_account_id, (float) $transfer->amount, $schoolCapability,
                 )) {
                 throw ValidationException::withMessages(['amount' => [__('Insufficient balance in the selected School Fund Account.')]]);
             }

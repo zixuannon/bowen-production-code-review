@@ -48,7 +48,12 @@ class FinanceOperatingWorkspaceService
 
         $schools = $this->scope->accessibleSchools($groupUser, FinanceOperatingContextService::OPERATING_CAPABILITY)->load('school');
 
-        return compact('context', 'group', 'school', 'groupUser', 'schools');
+        $isCentralHeadFinance = $this->scope->isCentralHeadFinance($groupUser);
+        if (!$isCentralHeadFinance) {
+            throw new AuthorizationException('Only Central Head Finance may use Finance Operating Context.');
+        }
+
+        return compact('context', 'group', 'school', 'groupUser', 'schools', 'isCentralHeadFinance');
     }
 
     /** @param array<string,mixed> $filters

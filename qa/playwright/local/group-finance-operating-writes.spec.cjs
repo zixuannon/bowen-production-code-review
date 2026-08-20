@@ -98,7 +98,10 @@ test('Central Head Finance writes only the selected School through canonical Fin
     await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_OP_A_HANDOVER');
     await expect(page.locator('[data-operating-transactions]')).not.toContainText('GROUP_QA_SCHOOL_B_OTHER');
 
-    await page.getByRole('link', { name: 'Switch School' }).click();
+    await Promise.all([
+      page.waitForURL(/group-finance\/\d+$/),
+      page.getByRole('button', { name: 'Return to All Schools' }).click(),
+    ]);
     await enterSchool(page, /Timecity QA School/);
     await expect(page.locator('[data-operating-transactions]')).toHaveCount(0);
     await page.getByRole('link', { name: 'Transactions' }).click();

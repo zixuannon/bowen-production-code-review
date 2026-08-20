@@ -387,9 +387,9 @@ class FinanceGroupScopeService
      * for School-to-HQ confirmation; no central status is changed unless the
      * School account can actually fund the remittance.
      */
-    public function tenantAccountHasSufficientBalanceForGroupUser(FinanceGroupUser $groupUser, int $schoolId, int $accountId, float $amount): bool
+    public function tenantAccountHasSufficientBalanceForGroupUser(FinanceGroupUser $groupUser, int $schoolId, int $accountId, float $amount, string $capability = 'request_group_transfers'): bool
     {
-        $this->authorizeActiveTenantAccountForGroupUser($groupUser, $schoolId, $accountId);
+        $this->authorizeActiveTenantAccountForGroupUser($groupUser, $schoolId, $accountId, $capability);
         $identity = FinanceGroupUserTenantIdentity::query()
             ->where('group_user_id', $groupUser->id)
             ->where('school_id', $schoolId)
@@ -488,6 +488,24 @@ class FinanceGroupScopeService
         }
         return $this->activeScopes($groupUser, 'manage_hq_accounts')
             ->contains(fn (FinanceGroupUserScope $scope) => in_array($scope->scope_type, ['GROUP', 'HQ'], true));
+    }
+
+    /**
+     * Group Finance operating context is a Central Head Finance surface.
+     * Group scopes remain necessary, but never turn an HQ or School
+     * Accountant into a cross-School operating identity.
+     */
+    public function isCentralHeadFinance(FinanceGroupUser $groupUser): bool
+    {
+        if ($groupUser->status !== 'active') {
+            return false;
+        }
+
+        $central = User::on('mysql')->find($groupUser->central_user_id);
+
+        return $central !== null
+            && $central->school_id === null
+            && $central->hasRole('Head Finance');
     }
 
     /**

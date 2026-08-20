@@ -206,6 +206,13 @@ requires the email/user ownership to match before consuming the token.
 - Central-context creates write tenant-local audit metadata in the same transaction (`central_actor`, Group, School, mapped tenant identity, action, source type/ID, no amount). Normal tenant Accountant confirmation retains the normal custody audit and does not fabricate a central actor.
 - Local Zixuan/Timecity browser acceptance covers selected-School direct transfers, Zixuan pending handover creation, source isolation, and central audit rows. Service characterization covers pending neutrality, receiver-only confirmation, exactly-once canonical transfer, repeated-confirm rejection, account scope, and zero operating-result effect. The fixed Group QA reset/verify returns the fixture to a zero-write baseline.
 
+## Group Finance Operating Context — Checkpoint 5 (local)
+
+- HQ ↔ School Funding is now available only inside one trusted Operating School context. The controller derives the School from the opaque central context; it accepts neither a School selector nor a database name from the request.
+- Only a central user holding the internal `Head Finance` role plus active explicit Group scopes can enter Group Finance, switch Schools, or fund. School Accountants retain their normal single-School flow and receive no Group switcher; HQ Accountant cross-School operation is intentionally deferred.
+- Funding reuses the central canonical `FinanceGroupTransfer` / HQ Account source. Pending records have zero School/HQ balance and Ledger effect; confirmation makes one Internal Transfer and does not change operating income, expense, or net result. The mapped tenant identity is an authorization mapping only; the central browser identity is never impersonated.
+- Local Zixuan/Timecity acceptance creates and confirms one HQ funding and one School remittance, then returns to All Schools to reconcile both canonical records in Group Reports. The fixed Group QA fixture separates the central Head Finance login from its mapped tenant Head Finance identities and verifies no-write snapshots across central and tenant financial tables.
+
 ## Group Finance central entry (local)
 
 - Central Super Admin remains configuration-only: the Finance Groups page no

@@ -99,3 +99,21 @@ BankTransfer, or FundHandover.
    receiver, not the central actor, confirms it and creates exactly one
    linked canonical BankTransfer. Internal movements remain outside
    operating income, expense, and net result.
+5. **Checkpoint 5 — HQ ↔ School Funding:** Funding uses the existing central
+   `FinanceGroupTransfer` canonical source only from a selected, trusted
+   Operating School. A Central Head Finance remains the authenticated actor;
+   the mapped tenant Head Finance identity is used solely for existing School
+   and Fund Account checks. A request is pending with zero balance/Ledger
+   effect. Confirmation projects one Internal Transfer between the selected
+   School Fund Account and an authorized HQ account, never operating income,
+   expense, or net result. All Schools remains read-only.
+
+## Formal role boundary for Checkpoint 5
+
+- Only a **central Head Finance** with explicit active Group scopes may enter
+  the Group switcher, an Operating School, or HQ ↔ School Funding.
+- A **School Accountant** remains in the ordinary single-School Finance
+  workflow. They receive no Group switcher and cannot select a peer School.
+- An **HQ Accountant** has no cross-School operating capability in this
+  checkpoint. Any future HQ-account-only workflow must be explicitly designed
+  and must not inherit Group operating access.
