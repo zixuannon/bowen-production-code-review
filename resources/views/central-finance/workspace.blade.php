@@ -33,7 +33,7 @@
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
     @if(!$school)<div class="alert alert-info">{{ __('All Schools shows consolidated Central Finance only. Select an authorized School to create or resolve financial documents.') }}</div>@endif
-    @if($school && !$canOperate)<div class="alert alert-warning">{{ __('You can view this School, but you do not have Central Finance operating authority.') }}</div>@endif
+    @if($school && !$canOperate)<div class="alert alert-warning">{{ $cutoverStatus !== 'central' ? __('This School remains in legacy Finance until its approved Central cutover. Central Finance is read-only.') : __('You can view this School, but you do not have Central Finance operating authority.') }}</div>@endif
 
     @if($page === 'dashboard' || $page === 'reports')
         <div class="row">

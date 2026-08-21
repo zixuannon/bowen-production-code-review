@@ -34,7 +34,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         DB::purge('mysql'); DB::setDefaultConnection('mysql');
         Schema::connection('mysql')->create('schools', fn (Blueprint $t) => [$t->id(),$t->string('name'),$t->string('code')->nullable(),$t->string('database_name')->nullable(),$t->softDeletes(),$t->timestamps()]);
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(),$t->string('first_name')->nullable(),$t->string('last_name')->nullable(),$t->string('email')->nullable(),$t->unsignedBigInteger('school_id')->nullable(),$t->softDeletes(),$t->timestamps()]);
-        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null]]);
         DB::connection('mysql')->table('finance_groups')->insert(['id'=>1,'code'=>'CENTRAL-QA','name'=>'Central QA','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now()]);
@@ -54,6 +54,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->head=CentralFinanceUser::on('mysql')->findOrFail(100); $this->zixuanAccountant=CentralFinanceUser::on('mysql')->findOrFail(200);
         $this->zixuan=$this->account('ZIX-CASH','Zixuan Cash',1); $this->timecity=$this->account('TIM-CASH','Timecity Cash',2);
         $this->grantSchool($this->head,1,true);$this->grantSchool($this->head,2,true);$this->grantSchool($this->zixuanAccountant,1,false);
+        DB::connection('mysql')->table('central_finance_school_cutovers')->insert([['school_id'=>1,'status'=>'central','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()],['school_id'=>2,'status'=>'legacy','cutover_at'=>null,'created_at'=>now(),'updated_at'=>now()]]);
         $this->grantAccount($this->head,$this->zixuan);$this->grantAccount($this->head,$this->timecity);$this->grantAccount($this->zixuanAccountant,$this->zixuan);
         CentralFinanceCategory::on('mysql')->create(['school_id'=>1,'type'=>'expense','name'=>'Supplies','is_active'=>true]);
         CentralFinanceCategory::on('mysql')->create(['school_id'=>1,'type'=>'income','name'=>'Activity','is_active'=>true]);
@@ -92,6 +93,9 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertNotContains('SwitchDatabase', $route->middleware());
         $view=(string)file_get_contents(resource_path('views/central-finance/workspace.blade.php'));
         $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
+        foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
+            $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
+        }
     }
 
     public function test_scope_without_active_group_membership_is_not_finance_authority(): void
@@ -101,6 +105,22 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame([], $workspace->accessibleSchools($this->zixuanAccountant)->pluck('id')->all());
         $this->expectException(AuthorizationException::class);
         $workspace->enterSchool($this->zixuanAccountant, 1);
+    }
+
+    public function test_legacy_school_is_central_read_only_even_for_a_scoped_head_finance_actor(): void
+    {
+        $this->actingAs($this->head);
+        $workspace = app(CentralFinanceWorkspaceService::class);
+        $workspace->enterSchool($this->head, 2);
+
+        $view = app(CentralFinanceWorkspaceController::class)->dashboard();
+        $this->assertSame('legacy', $view->getData()['cutoverStatus']);
+        $this->assertFalse($view->getData()['canOperate']);
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceWorkspaceController::class)->expense(new Request([
+            'category_id' => 999, 'fund_account_id' => $this->timecity->id,
+            'amount' => 25, 'payment_method' => 'Cash', 'reference_no' => 'TIM-BLOCKED',
+        ]));
     }
 
     private function account(string $code,string $name,int $school): CentralFinanceFundAccount { return CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>'school','school_id'=>$school,'currency'=>'MMK','opening_balance'=>100,'is_active'=>true]); }

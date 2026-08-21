@@ -1,0 +1,113 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\CentralFinanceSchoolCutover;
+use App\Models\School;
+use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
+use LogicException;
+
+/**
+ * Per-School source-of-truth switch. A missing row is deliberately legacy
+ * once this schema exists, so Central Finance can never take a School over by
+ * accident. Central Finance remains read-only until this additive schema has
+ * been installed and the School has explicitly entered the central state.
+ */
+final class CentralFinanceSchoolCutoverService
+{
+    public function statusForSchool(int $schoolId): string
+    {
+        if ($schoolId < 1 || !Schema::connection('mysql')->hasTable('central_finance_school_cutovers')) {
+            return CentralFinanceSchoolCutover::LEGACY;
+        }
+
+        return (string) (CentralFinanceSchoolCutover::on('mysql')
+            ->where('school_id', $schoolId)
+            ->value('status') ?: CentralFinanceSchoolCutover::LEGACY);
+    }
+
+    public function allowsCentralWrites(int $schoolId): bool
+    {
+        return Schema::connection('mysql')->hasTable('central_finance_school_cutovers')
+            && $this->statusForSchool($schoolId) === CentralFinanceSchoolCutover::CENTRAL;
+    }
+
+    public function assertCentralWritesAllowed(int $schoolId): void
+    {
+        if (!$this->allowsCentralWrites($schoolId)) {
+            throw new AuthorizationException('Central Finance is read-only until this School is in the central cutover state.');
+        }
+    }
+
+    public function assertTenantFinanceWritesAllowed(User $actor): void
+    {
+        $schoolId = (int) $actor->school_id;
+        if ($schoolId < 1) {
+            throw new AuthorizationException('A trusted School Finance identity is required.');
+        }
+
+        // The actor is resolved by the tenant auth guard; this central lookup
+        // only confirms the immutable School registry identity. No request
+        // parameter or database name participates in this decision.
+        School::on('mysql')->whereKey($schoolId)->firstOrFail();
+
+        if ($this->statusForSchool($schoolId) === CentralFinanceSchoolCutover::CENTRAL) {
+            throw new AuthorizationException('Legacy tenant Finance is read-only after Central Finance cutover.');
+        }
+    }
+
+    public function transition(School $requestedSchool, string $target): CentralFinanceSchoolCutover
+    {
+        if (!in_array($target, [CentralFinanceSchoolCutover::LEGACY, CentralFinanceSchoolCutover::READY, CentralFinanceSchoolCutover::CENTRAL], true)) {
+            throw new InvalidArgumentException('The Central Finance cutover state is invalid.');
+        }
+        if (!Schema::connection('mysql')->hasTable('central_finance_school_cutovers')) {
+            throw new LogicException('The Central Finance cutover schema is not installed.');
+        }
+
+        $school = School::on('mysql')->findOrFail($requestedSchool->id);
+
+        return DB::connection('mysql')->transaction(function () use ($school, $target): CentralFinanceSchoolCutover {
+            $row = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $school->id)->lockForUpdate()->first();
+            $current = $row?->status ?? CentralFinanceSchoolCutover::LEGACY;
+            if ($current === $target) {
+                return $row ?? CentralFinanceSchoolCutover::on('mysql')->create(['school_id' => $school->id, 'status' => $target]);
+            }
+            if ($current === CentralFinanceSchoolCutover::CENTRAL && $target === CentralFinanceSchoolCutover::LEGACY && $this->hasRealCentralFinancialActivity($school->id)) {
+                throw new LogicException('A School with Central Finance transactions cannot silently return to legacy Finance.');
+            }
+            if (!in_array($current.'>'.$target, [
+                'legacy>ready', 'ready>legacy', 'ready>central', 'central>legacy',
+            ], true)) {
+                throw new LogicException('This Central Finance cutover transition is not permitted.');
+            }
+
+            $row ??= new CentralFinanceSchoolCutover(['school_id' => $school->id]);
+            $row->status = $target;
+            $row->cutover_at = $target === CentralFinanceSchoolCutover::CENTRAL ? now() : null;
+            $row->save();
+
+            return $row->fresh();
+        });
+    }
+
+    public function hasRealCentralFinancialActivity(int $schoolId): bool
+    {
+        foreach ([
+            'central_finance_payments', 'central_finance_expenses', 'central_finance_other_incomes',
+            'central_finance_internal_transfers', 'central_finance_fund_handovers',
+            'central_finance_hq_funding_requests', 'central_finance_ledger_entries',
+        ] as $table) {
+            if (Schema::connection('mysql')->hasTable($table)
+                && DB::connection('mysql')->table($table)->where('school_id', $schoolId)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

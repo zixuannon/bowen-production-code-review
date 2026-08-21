@@ -18,6 +18,7 @@ final class CentralFinancePaymentService {
         return DB::connection('mysql')->transaction(function() use($actor,$receivableId,$account,$amount,$method,$paidAt,$idempotencyReference,$paymentReference): array {
             $r=CentralFinanceReceivable::on('mysql')->lockForUpdate()->findOrFail($receivableId);
             $this->schools->assertCanOperate($actor,$r->school_id); $this->accounts->assertCanOperate($actor,$account);
+            app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $r->school_id);
             $key=hash('sha256',$r->school_id.'|'.$r->id.'|'.$idempotencyReference);
             $existing=CentralFinancePayment::on('mysql')->where('idempotency_key',$key)->lockForUpdate()->first();
             if ($existing) return ['payment'=>$existing,'receipt'=>CentralFinanceReceipt::on('mysql')->where('payment_id',$existing->id)->firstOrFail()];

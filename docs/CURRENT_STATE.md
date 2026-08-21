@@ -49,6 +49,22 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Current phase
 
+## Central Finance Fresh Start — per-School cutover guard (local)
+
+- Central Finance now has an additive, reversible per-School cutover state:
+  `legacy`, `ready`, and `central`. Once its schema is deployed, an absent row
+  safely means `legacy`.
+- `legacy` and `ready` keep tenant Finance as the only writer and make Central
+  workspace documents read-only. `central` makes Central the only new Finance
+  writer and server-side rejects tenant payment, expense, Other Income, Fund
+  Account, Bank Transfer, Fund Handover, and Finance Staff/account-scope
+  mutations; hiding UI alone is not relied upon.
+- The transition is `legacy → ready → central`. A return to `legacy` is allowed
+  only before any Central financial document or Ledger entry exists for that
+  School. It never imports legacy Finance or creates an account/opening
+  balance. Zixuan/Timecity focused tests prove independent states and no
+  cross-School effect. Production and staging remain untouched.
+
 Finance P3.2 Unified Finance Transactions — **LOCAL AUTOMATED VERIFIED**. `Finance → Transactions` is a read-only adapter over compulsory payments, optional payments, non-fee `OtherIncome`, Expense, and canonical completed BankTransfer source records; no duplicate transaction/ledger table exists. Pending handovers are omitted, while confirmed handovers appear exactly once through their linked BankTransfer. The register has date/type/account/reference/keyword filters and rejects forged Fund Account filters server-side. A selected Fund Account renders an internal transfer directionally; an all-account view renders it once as neutral `Internal Transfer`, with no Money In/Out or operating-result contribution. Direct transfers require two distinct active, non-deleted, current-school, authorized accounts and execute through an exception-safe transaction; cancellation removes only the canonical transfer balance effect. Receive Money records a tenant-local non-fee source only after payment-method, active current-school Fund Account, Cashier assignment scope, and reference reservation checks. Expense/Import buttons reuse existing Expense and P3.1 Expense Excel workflows. P0 focused tests and broader finance regression pass (143 tests / 546 assertions). The guarded BOWEN_QA browser rerun is pending local MariaDB credentials in this worktree; no non-local fallback is permitted. Production and staging remain untouched.
 
 Finance P3.1 Permission, Money-In, and Expense Import hardening — **LOCAL ACCEPTANCE VERIFIED**. The completed role bootstrap remains infrastructure and was not extended. Runtime authorization now uses named finance permissions with strictly equivalent legacy compatibility only; account scope, tenant isolation, custody rules, forged-account rejection, and School Admin's handover read-only boundary remain server-side. Compulsory/optional payment and paid-fee import paths validate the payment method and an authorized active Fund Account before creating financial rows. The new Expense Excel workflow is preview-first (no `Expense` writes), whole-batch atomic at confirmation, and creates new records only; it never accepts an expense ID or upserts an existing expense. It rejects duplicate references/files/rows and repeated confirmation attempts, including references retained by soft-deleted expenses. Final BOWEN_QA acceptance passed the School Admin grant/revoke UI, Cashier scope invariant, Fund Handover create/confirm/reject/cancel application-modal behavior with no native browser dialogs, paid-fee/expense account protection, and Expense Import preview/confirm/duplicate/invalid/unauthorized paths. The Expense listing's audited-delete button helper was restored after browser acceptance exposed its missing runtime implementation. Broader finance regression passed (143 tests / 516 assertions). Production and staging remain untouched.

@@ -21,6 +21,7 @@ final class CentralFinanceInternalTransferService
 
     public function transfer(CentralFinanceUser $actor, int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination, float $amount, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null): CentralFinanceInternalTransfer
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $this->assertInput($amount, $idempotencyReference, $referenceNo);
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $referenceNo): CentralFinanceInternalTransfer {
             $this->schools->assertCanOperate($actor, $schoolId);

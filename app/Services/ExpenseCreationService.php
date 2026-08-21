@@ -15,6 +15,7 @@ class ExpenseCreationService
     /** @param array<string,mixed> $data */
     public function create(User $actor, array $data, ?callable $afterCreate = null): Expense
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         app(FinanceAccountAccessService::class)->authorize($actor, (int) $data['bank_account_id']);
 
         return DB::connection('school')->transaction(function () use ($actor, $data, $afterCreate): Expense {

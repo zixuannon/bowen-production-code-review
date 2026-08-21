@@ -21,6 +21,7 @@ final class CentralFinanceReimbursementService
 
     public function submit(CentralFinanceUser $actor, int $schoolId, int $categoryId, float $amount, string $currency, string $idempotencyReference, ?string $referenceNo = null, ?string $description = null): CentralFinanceReimbursementRequest
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $currency = strtoupper(trim($currency));
         $referenceNo = $referenceNo === null ? null : trim($referenceNo);
         if ($amount <= 0 || !is_finite($amount) || !preg_match('/^[A-Z]{3}$/', $currency)
@@ -67,6 +68,7 @@ final class CentralFinanceReimbursementService
         return DB::connection('mysql')->transaction(function () use ($actor, $requestId, $account, $paymentMethod, $approvedAt, $reason): CentralFinanceExpense {
             $request = CentralFinanceReimbursementRequest::on('mysql')->lockForUpdate()->findOrFail($requestId);
             $this->schools->assertCanApproveReimbursements($actor, $request->school_id);
+            app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $request->school_id);
             if ($request->status === CentralFinanceReimbursementRequest::APPROVED) {
                 return CentralFinanceExpense::on('mysql')->findOrFail($request->expense_id);
             }

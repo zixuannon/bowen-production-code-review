@@ -20,6 +20,7 @@ use App\Services\CentralFinanceInternalTransferService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use App\Services\CentralFinancePaymentService;
 use App\Services\CentralFinanceReimbursementService;
+use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -44,6 +45,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceInternalTransferService $transfers,
         private readonly CentralFinanceFundHandoverService $handovers,
         private readonly CentralFinanceHqFundingService $funding,
+        private readonly CentralFinanceSchoolCutoverService $cutovers,
     ) {}
 
     public function dashboard(): View
@@ -202,7 +204,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $schoolId=$school?->id; $base=CentralFinanceLedgerEntry::on('mysql'); if($schoolId) $base->where('school_id',$schoolId); elseif($schools->isNotEmpty()) $base->whereIn('school_id',$schools->pluck('id'));
         $ledger=(clone $base)->latest('occurred_at')->limit(100)->get();
         $totals=['money_in'=>(float)(clone $base)->sum('money_in'),'money_out'=>(float)(clone $base)->sum('money_out'),'operating_income'=>(float)(clone $base)->sum('operating_income'),'operating_expense'=>(float)(clone $base)->sum('operating_expense')]; $totals['operating_net']=$totals['operating_income']-$totals['operating_expense'];
-        $canOperate=false; if($school){try{$this->workspace->requireOperatingSchool($actor);$canOperate=true;}catch(AuthorizationException){$canOperate=false;}}
+        $canOperate=false; if($school){try{$this->workspace->requireOperatingSchool($actor);$canOperate=$this->cutovers->allowsCentralWrites($school->id);}catch(AuthorizationException){$canOperate=false;}}
         $schoolUsers = $schoolId ? CentralFinanceUser::on('mysql')->whereIn('id',
             \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
                 ->join('finance_group_users as group_users', 'group_users.central_user_id', '=', 'scopes.user_id')
@@ -217,7 +219,7 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->where('group_schools.status', 'active')
                 ->pluck('scopes.user_id')->unique()
         )->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']) : collect();
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'accounts'=>$accounts,'canOperate'=>$canOperate,'schoolUsers'=>$schoolUsers,'ledger'=>$ledger,'totals'=>$totals,'receivables'=>$schoolId?CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'profiles'=>$schoolId?CentralFinanceStudentProfile::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'accounts'=>$accounts,'canOperate'=>$canOperate,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'schoolUsers'=>$schoolUsers,'ledger'=>$ledger,'totals'=>$totals,'receivables'=>$schoolId?CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'profiles'=>$schoolId?CentralFinanceStudentProfile::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
         return view('central-finance.workspace',$data);
     }
 }

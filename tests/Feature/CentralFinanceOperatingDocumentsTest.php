@@ -58,6 +58,7 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
             '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
             '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
             '2026_08_21_000002_create_central_finance_operating_documents.php',
+            '2026_08_21_000005_create_central_finance_school_cutovers.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -69,6 +70,10 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
         DB::connection('mysql')->table('users')->insert([
             ['id' => 100, 'first_name' => 'Head', 'last_name' => 'Finance', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 200, 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
+            ['school_id' => 1, 'status' => 'central', 'cutover_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+            ['school_id' => 2, 'status' => 'central', 'cutover_at' => now(), 'created_at' => now(), 'updated_at' => now()],
         ]);
         $this->head = CentralFinanceUser::on('mysql')->findOrFail(100);
         $this->zixuanAccountant = CentralFinanceUser::on('mysql')->findOrFail(200);

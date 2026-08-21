@@ -49,12 +49,16 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
             '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000003_create_central_finance_internal_transfer_documents.php',
+            '2026_08_21_000005_create_central_finance_school_cutovers.php',
         ] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([
             ['id'=>1,'name'=>'Zixuan QA','created_at'=>now(),'updated_at'=>now()], ['id'=>2,'name'=>'Timecity QA','created_at'=>now(),'updated_at'=>now()],
         ]);
         DB::connection('mysql')->table('users')->insert([
             ['id'=>100,'first_name'=>'Head','last_name'=>'Finance','created_at'=>now(),'updated_at'=>now()], ['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','created_at'=>now(),'updated_at'=>now()], ['id'=>300,'first_name'=>'Timecity','last_name'=>'Accountant','created_at'=>now(),'updated_at'=>now()],
+        ]);
+        DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
+            ['school_id'=>1,'status'=>'central','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()], ['school_id'=>2,'status'=>'central','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()],
         ]);
         $this->head=CentralFinanceUser::on('mysql')->findOrFail(100); $this->zixuanAccountant=CentralFinanceUser::on('mysql')->findOrFail(200); $this->timecityAccountant=CentralFinanceUser::on('mysql')->findOrFail(300);
         $this->hq=$this->account('HQ-MAIN','HQ Main','hq',null,1000); $this->zixuanA=$this->account('ZIX-A','Zixuan A','school',1,1000); $this->zixuanB=$this->account('ZIX-B','Zixuan B','school',1,0); $this->timecityA=$this->account('TIM-A','Timecity A','school',2,1000); $this->timecityB=$this->account('TIM-B','Timecity B','school',2,0);

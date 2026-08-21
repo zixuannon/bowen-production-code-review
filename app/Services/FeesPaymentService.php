@@ -108,6 +108,7 @@ class FeesPaymentService
     {
         $actor ??= Auth::user();
         if (!$actor) { throw new \InvalidArgumentException('A trusted tenant finance actor is required.'); }
+        app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         $schoolId = $actor->school_id;
         $userId   = $actor->id;
 

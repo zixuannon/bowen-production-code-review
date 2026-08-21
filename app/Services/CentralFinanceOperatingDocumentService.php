@@ -29,6 +29,7 @@ final class CentralFinanceOperatingDocumentService
 
     public function createExpense(CentralFinanceUser $actor, int $schoolId, int $categoryId, CentralFinanceFundAccount $account, float $amount, string $paymentMethod, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null, ?string $description = null): CentralFinanceExpense
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $this->assertInput($amount, $paymentMethod, $idempotencyReference, $referenceNo);
 
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $description): CentralFinanceExpense {
@@ -59,6 +60,7 @@ final class CentralFinanceOperatingDocumentService
 
     public function createOtherIncome(CentralFinanceUser $actor, int $schoolId, int $categoryId, CentralFinanceFundAccount $account, float $amount, string $paymentMethod, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null, ?string $payer = null, ?string $description = null): CentralFinanceOtherIncome
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $this->assertInput($amount, $paymentMethod, $idempotencyReference, $referenceNo);
 
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $payer, $description): CentralFinanceOtherIncome {
@@ -91,6 +93,8 @@ final class CentralFinanceOperatingDocumentService
     /** @param array{category_id?:int,description?:?string} $changes */
     public function updateExpenseDetails(CentralFinanceUser $actor, int $expenseId, array $changes, string $reason): CentralFinanceExpense
     {
+        $existing = CentralFinanceExpense::on('mysql')->findOrFail($expenseId);
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $existing->school_id);
         if (trim($reason) === '') {
             throw new InvalidArgumentException('An edit reason is required.');
         }
@@ -129,6 +133,8 @@ final class CentralFinanceOperatingDocumentService
     /** @template T of CentralFinanceExpense|CentralFinanceOtherIncome @param class-string<T> $class @return T */
     private function void(CentralFinanceUser $actor, string $class, int $id, string $type, string $reason, CarbonImmutable $occurredAt): CentralFinanceExpense|CentralFinanceOtherIncome
     {
+        $existing = $class::on('mysql')->withTrashed()->findOrFail($id);
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $existing->school_id);
         if (trim($reason) === '') {
             throw new InvalidArgumentException('A delete reason is required.');
         }

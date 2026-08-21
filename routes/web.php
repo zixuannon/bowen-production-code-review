@@ -764,28 +764,28 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::get('/paid/list', [FeesController::class, 'feesPaidList'])->name('fees.paid.list');
 
             Route::get('/pay/compulsory/{feesID}/{studentID}', [FeesController::class, 'payCompulsoryFeesIndex'])->name('fees.compulsory.index');
-            Route::post('pay/compulsory', [FeesController::class, 'payCompulsoryFeesStore'])->name('fees.compulsory.store');
+            Route::post('pay/compulsory', [FeesController::class, 'payCompulsoryFeesStore'])->middleware('tenantFinanceWritable')->name('fees.compulsory.store');
             // Fees Paid Import (Excel batch)
             Route::get('/import/template', [FeesController::class, 'feesPaidImportTemplate'])->name('fees.import.template');
-            Route::post('/import/preview', [FeesController::class, 'feesPaidImportPreview'])->name('fees.import.preview');
-            Route::post('/import/confirm', [FeesController::class, 'feesPaidImportConfirm'])->name('fees.import.confirm');
+            Route::post('/import/preview', [FeesController::class, 'feesPaidImportPreview'])->middleware('tenantFinanceWritable')->name('fees.import.preview');
+            Route::post('/import/confirm', [FeesController::class, 'feesPaidImportConfirm'])->middleware('tenantFinanceWritable')->name('fees.import.confirm');
 
             // Optional Fees Payment Offline
             Route::get('/optional-fees', [FeesController::class, 'optionalFees'])->name('fees.optional');
             Route::get('/optional-fees/list', [FeesController::class, 'optionalFeesList'])->name('fees.optional.list');
 
             Route::get('/pay/optional/{feesID}/{studentID}', [FeesController::class, 'payOptionalFeesIndex'])->name('fees.optional.index');
-            Route::post('pay/optional', [FeesController::class, 'payOptionalFeesStore'])->name('fees.optional.store');
+            Route::post('pay/optional', [FeesController::class, 'payOptionalFeesStore'])->middleware('tenantFinanceWritable')->name('fees.optional.store');
 
-            Route::post('/paid/store', [FeesController::class, 'feesPaidStore'])->name('fees.paid.store');
-            Route::put('/paid/update/{id}', [FeesController::class, 'feesPaidUpdate'])->name('fees.paid.update');
-            Route::delete('/paid/remove-optional-fee/{id}', [FeesController::class, 'removeOptionalFees'])->name('fees.paid.remove.optional.fees');
-            Route::delete('/paid/remove-installment-fees/{id}', [FeesController::class, 'removeInstallmentFees'])->name('fees.paid.remove.installment.fees');
+            Route::post('/paid/store', [FeesController::class, 'feesPaidStore'])->middleware('tenantFinanceWritable')->name('fees.paid.store');
+            Route::put('/paid/update/{id}', [FeesController::class, 'feesPaidUpdate'])->middleware('tenantFinanceWritable')->name('fees.paid.update');
+            Route::delete('/paid/remove-optional-fee/{id}', [FeesController::class, 'removeOptionalFees'])->middleware('tenantFinanceWritable')->name('fees.paid.remove.optional.fees');
+            Route::delete('/paid/remove-installment-fees/{id}', [FeesController::class, 'removeInstallmentFees'])->middleware('tenantFinanceWritable')->name('fees.paid.remove.installment.fees');
             // Fees Config
             Route::get('/config', [FeesController::class, 'feesConfigIndex'])->name('fees.config.index');
             Route::post('/config/update', [FeesController::class, 'feesConfigUpdate'])->name('fees.config.update');
 
-            Route::post('/optional-paid/store', [FeesController::class, 'optionalFeesPaidStore'])->name('fees.optional-paid.store');
+            Route::post('/optional-paid/store', [FeesController::class, 'optionalFeesPaidStore'])->middleware('tenantFinanceWritable')->name('fees.optional-paid.store');
 
 
             // Transaction list
@@ -885,34 +885,34 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Expense
         Route::get('expense/filter/{session_year_id?}', [ExpenseController::class, 'filter_graph']);
         Route::get('expense/import/template', [ExpenseController::class, 'importTemplate'])->name('expense.import.template');
-        Route::post('expense/import/preview', [ExpenseController::class, 'importPreview'])->name('expense.import.preview');
-        Route::post('expense/import/confirm', [ExpenseController::class, 'importConfirm'])->name('expense.import.confirm');
-        Route::resource('expense', ExpenseController::class);
+        Route::post('expense/import/preview', [ExpenseController::class, 'importPreview'])->middleware('tenantFinanceWritable')->name('expense.import.preview');
+        Route::post('expense/import/confirm', [ExpenseController::class, 'importConfirm'])->middleware('tenantFinanceWritable')->name('expense.import.confirm');
+        Route::resource('expense', ExpenseController::class)->middleware('tenantFinanceWritable');
 
         // Unified Finance register: adapters over source records, not a second ledger.
         Route::get('finance/transactions', [FinanceTransactionController::class, 'transactions'])->name('finance-transactions.index');
-        Route::post('finance/transactions/receive', [FinanceTransactionController::class, 'receive'])->name('finance-transactions.receive');
+        Route::post('finance/transactions/receive', [FinanceTransactionController::class, 'receive'])->middleware('tenantFinanceWritable')->name('finance-transactions.receive');
 
         // Bank Accounts
         Route::get('bank-accounts/list', [BankAccountController::class, 'list'])->name('bank-accounts.list');
-        Route::put('bank-accounts/{bankAccount}/assignments', [BankAccountAssignmentController::class, 'update'])->name('bank-accounts.assignments.update');
-        Route::resource('bank-accounts', BankAccountController::class);
+        Route::put('bank-accounts/{bankAccount}/assignments', [BankAccountAssignmentController::class, 'update'])->middleware('tenantFinanceWritable')->name('bank-accounts.assignments.update');
+        Route::resource('bank-accounts', BankAccountController::class)->middleware('tenantFinanceWritable');
 
         // Bank Transfers
         Route::get('bank-transfers/list', [BankTransferController::class, 'list'])->name('bank-transfers.list');
-        Route::resource('bank-transfers', BankTransferController::class)->only(['index', 'store', 'destroy']);
+        Route::resource('bank-transfers', BankTransferController::class)->only(['index', 'store', 'destroy'])->middleware('tenantFinanceWritable');
 
         // Fund handovers are separate from immediate Bank Transfers: pending
         // handovers do not affect any balance until receiver confirmation.
         Route::get('fund-handovers/list', [FundHandoverController::class, 'list'])->name('fund-handovers.list');
-        Route::post('fund-handovers/{id}/confirm', [FundHandoverController::class, 'confirm'])->name('fund-handovers.confirm');
-        Route::post('fund-handovers/{id}/reject', [FundHandoverController::class, 'reject'])->name('fund-handovers.reject');
-        Route::post('fund-handovers/{id}/cancel', [FundHandoverController::class, 'cancel'])->name('fund-handovers.cancel');
-        Route::resource('fund-handovers', FundHandoverController::class)->only(['index', 'store']);
+        Route::post('fund-handovers/{id}/confirm', [FundHandoverController::class, 'confirm'])->middleware('tenantFinanceWritable')->name('fund-handovers.confirm');
+        Route::post('fund-handovers/{id}/reject', [FundHandoverController::class, 'reject'])->middleware('tenantFinanceWritable')->name('fund-handovers.reject');
+        Route::post('fund-handovers/{id}/cancel', [FundHandoverController::class, 'cancel'])->middleware('tenantFinanceWritable')->name('fund-handovers.cancel');
+        Route::resource('fund-handovers', FundHandoverController::class)->only(['index', 'store'])->middleware('tenantFinanceWritable');
         Route::get('finance-staff',[FinanceStaffController::class,'index'])->name('finance-staff.index');
-        Route::post('finance-staff',[FinanceStaffController::class,'store'])->name('finance-staff.store');
-        Route::post('finance-staff/{user}/role',[FinanceStaffController::class,'role'])->name('finance-staff.role');
-        Route::put('finance-staff/{user}/accounts',[FinanceStaffController::class,'accounts'])->name('finance-staff.accounts');
+        Route::post('finance-staff',[FinanceStaffController::class,'store'])->middleware('tenantFinanceWritable')->name('finance-staff.store');
+        Route::post('finance-staff/{user}/role',[FinanceStaffController::class,'role'])->middleware('tenantFinanceWritable')->name('finance-staff.role');
+        Route::put('finance-staff/{user}/accounts',[FinanceStaffController::class,'accounts'])->middleware('tenantFinanceWritable')->name('finance-staff.accounts');
 
         // Finance Category
         Route::get('finance-category/list', [FinanceCategoryController::class, 'list'])->name('finance-category.list');

@@ -30,6 +30,7 @@ class BankTransferService
      */
     public function create(User $actor, array $data, ?callable $afterCreate = null): BankTransfer
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         $fromAccountId = (int) $data['from_account_id'];
         $toAccountId = (int) $data['to_account_id'];
 
@@ -84,6 +85,7 @@ class BankTransferService
 
     public function cancel(User $actor, BankTransfer $transfer): void
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         if ($transfer->status !== 'completed') {
             throw ValidationException::withMessages([
                 'transfer' => [__('Only completed transfers can be cancelled.')],

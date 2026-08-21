@@ -114,6 +114,17 @@ Balances move only on designated receiver confirmation.
 
 ## P2
 
+## Central Finance Fresh Start — cutover safety foundation
+
+- [x] Per-School `legacy` / `ready` / `central` state, stored centrally in an
+  additive reversible schema.
+- [x] Server-enforced Central-write and tenant-legacy-write gates with no raw
+  database selection and no automatic Fund Account/opening-balance creation.
+- [x] Zixuan/Timecity independent-state, rollback-before-first-transaction,
+  route/service guard, and Central workspace read-only characterization.
+- [ ] Explicit approved Production configuration command/UI, signed opening
+  balance, real Central role/scope assignment, and Zixuan pilot deployment.
+
 - Daily Cash Closing
 - Bank Reconciliation
 - Refund / Void / Reversal

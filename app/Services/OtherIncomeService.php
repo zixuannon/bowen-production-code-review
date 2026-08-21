@@ -15,6 +15,7 @@ class OtherIncomeService
      */
     public function receive(User $actor, array $data, ?callable $afterCreate = null): OtherIncome
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         if (empty($data['bank_account_id'])) {
             throw ValidationException::withMessages(['bank_account_id' => __('A fund account is required.')]);
         }

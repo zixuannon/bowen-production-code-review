@@ -24,6 +24,7 @@ final class CentralFinanceFundHandoverService
 
     public function request(CentralFinanceUser $sender, CentralFinanceUser $receiver, int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination, float $amount, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null): CentralFinanceFundHandover
     {
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $this->assertInput($amount, $idempotencyReference, $referenceNo);
         return DB::connection('mysql')->transaction(function () use ($sender, $receiver, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $referenceNo): CentralFinanceFundHandover {
             $this->schools->assertCanOperate($sender, $schoolId);
@@ -55,6 +56,7 @@ final class CentralFinanceFundHandoverService
             if ($handover->status !== CentralFinanceFundHandover::PENDING) throw new InvalidArgumentException('Only a pending Fund Handover can be confirmed.');
             if ((int) $handover->receiver_user_id !== $receiver->id) throw new AuthorizationException('Only the designated receiver can confirm this Fund Handover.');
             $this->schools->assertCanOperate($receiver, $handover->school_id);
+            app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $handover->school_id);
             $source = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($handover->source_account_id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($handover->destination_account_id);
             $this->accounts->assertCanOperate($receiver, $destination);
@@ -98,6 +100,7 @@ final class CentralFinanceFundHandoverService
             if ($handover->status !== CentralFinanceFundHandover::PENDING) throw new InvalidArgumentException('Only a pending Fund Handover can be resolved.');
             if (($receiver && (int) $handover->receiver_user_id !== $actor->id) || (!$receiver && (int) $handover->sender_user_id !== $actor->id)) throw new AuthorizationException('The central actor is not the authorized Fund Handover participant.');
             $this->schools->assertCanOperate($actor, $handover->school_id);
+            app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $handover->school_id);
             $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($receiver ? $handover->destination_account_id : $handover->source_account_id);
             $this->accounts->assertCanOperate($actor, $account);
             $before = $this->snapshot($handover);
