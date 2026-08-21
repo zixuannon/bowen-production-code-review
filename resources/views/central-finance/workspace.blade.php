@@ -19,6 +19,9 @@
 
 @section('content')
 @php($operation = in_array(request('operation'), ['expense', 'income', 'reimbursement'], true) ? request('operation') : 'expense')
+@php($showWriteForm = !$school || $canOperate)
+@php($writeDisabled = !$school)
+@php($writeAvailabilityMessage = __('Select an authorized School before recording a Central Finance transaction.'))
 <div class="content-wrapper">
     <h1 class="sr-only">{{ __('Central Finance') }}</h1>
     <div class="central-finance-context d-flex flex-wrap align-items-center justify-content-between mb-3">
@@ -78,25 +81,28 @@
 
             @if($page === 'receivables')
                 <div class="card central-finance-form-card mb-3"><div class="card-body"><h5>{{ __('学生收费') }}</h5><p class="text-muted">{{ __('Student identity is read only from Central Student Financial Profiles synchronized from the School tenant.') }}</p>
-                    @if($canOperate)<form method="POST" action="{{ route('central-finance.payments.store') }}">@csrf
+                    @if($showWriteForm)
+                        @if($writeDisabled)<p class="text-muted mb-3">{{ $writeAvailabilityMessage }}</p>@endif
+                        <form method="POST" action="{{ route('central-finance.payments.store') }}">@csrf<fieldset @disabled($writeDisabled)>
                         <div class="form-group"><label>{{ __('Receivable') }}</label><select name="receivable_id" class="form-control" required><option value="">{{ __('Receivable') }}</option>@foreach($receivables as $r)<option value="{{ $r->id }}">{{ $r->description }} · {{ $r->amount_due - $r->amount_paid }}</option>@endforeach</select></div>
                         <div class="form-group"><label>{{ __('Fund Account') }}</label><select name="fund_account_id" class="form-control" required><option value="">{{ __('Fund Account') }}</option>@foreach($accounts as $a)<option value="{{ $a->id }}">{{ $a->account_name }}</option>@endforeach</select></div>
                         <div class="form-row"><div class="form-group col-md-4"><label>{{ __('Amount') }}</label><input name="amount" type="number" step="0.01" min="0.01" class="form-control" required></div><div class="form-group col-md-4"><label>{{ __('Payment method') }}</label><input name="payment_method" class="form-control" value="Cash" required></div><div class="form-group col-md-4"><label>{{ __('Reference') }}</label><input name="payment_reference" class="form-control"></div></div>
                         <button class="btn btn-theme">{{ __('Collect') }}</button>
-                    </form>@endif
+                        </fieldset></form>
+                    @endif
                 </div></div>
                 <div class="card"><div class="card-body"><h5>{{ __('Receivables') }}</h5><div class="table-responsive"><table class="table mb-0"><thead><tr><th>{{ __('Student') }}</th><th>{{ __('Description') }}</th><th>{{ __('Due') }}</th><th>{{ __('Paid') }}</th><th>{{ __('Status') }}</th></tr></thead><tbody>@foreach($receivables as $r)<tr><td>{{ optional($profiles->firstWhere('id',$r->student_profile_id))->student_name }}</td><td>{{ $r->description }}</td><td>{{ number_format($r->amount_due,2) }}</td><td>{{ number_format($r->amount_paid,2) }}</td><td>{{ $r->status }}</td></tr>@endforeach</tbody></table></div></div></div>
             @endif
 
             @if($page === 'operating')
                 @if($operation === 'expense')
-                    <div class="card central-finance-form-card"><div class="card-body"><h5>{{ __('支出管理') }}</h5>@if($canOperate)<form method="POST" action="{{ route('central-finance.expenses.store') }}">@csrf @include('central-finance.partials.operation-form',['categories'=>$expenseCategories,'actionLabel'=>'Record Expense','payer'=>false])</form>@endif</div></div>
+                    <div class="card central-finance-form-card"><div class="card-body"><h5>{{ __('支出管理') }}</h5>@if($showWriteForm)@if($writeDisabled)<p class="text-muted mb-3">{{ $writeAvailabilityMessage }}</p>@endif<form method="POST" action="{{ route('central-finance.expenses.store') }}">@csrf<fieldset @disabled($writeDisabled)>@include('central-finance.partials.operation-form',['categories'=>$expenseCategories,'actionLabel'=>'Record Expense','payer'=>false])</fieldset></form>@endif</div></div>
                 @elseif($operation === 'income')
-                    <div class="card central-finance-form-card"><div class="card-body"><h5>{{ __('其他收入') }}</h5>@if($canOperate)<form method="POST" action="{{ route('central-finance.other-income.store') }}">@csrf @include('central-finance.partials.operation-form',['categories'=>$incomeCategories,'actionLabel'=>'Record Other Income','payer'=>true])</form>@endif</div></div>
+                    <div class="card central-finance-form-card"><div class="card-body"><h5>{{ __('其他收入') }}</h5>@if($showWriteForm)@if($writeDisabled)<p class="text-muted mb-3">{{ $writeAvailabilityMessage }}</p>@endif<form method="POST" action="{{ route('central-finance.other-income.store') }}">@csrf<fieldset @disabled($writeDisabled)>@include('central-finance.partials.operation-form',['categories'=>$incomeCategories,'actionLabel'=>'Record Other Income','payer'=>true])</fieldset></form>@endif</div></div>
                 @else
-                    <div class="card central-finance-form-card"><div class="card-body"><h5>{{ __('报销申请') }}</h5>@if($canOperate)<form method="POST" action="{{ route('central-finance.reimbursements.store') }}">@csrf
+                    <div class="card central-finance-form-card"><div class="card-body"><h5>{{ __('报销申请') }}</h5>@if($showWriteForm)@if($writeDisabled)<p class="text-muted mb-3">{{ $writeAvailabilityMessage }}</p>@endif<form method="POST" action="{{ route('central-finance.reimbursements.store') }}">@csrf<fieldset @disabled($writeDisabled)>
                         <div class="form-group"><select name="category_id" class="form-control" required><option value="">{{ __('Expense Category') }}</option>@foreach($expenseCategories as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></div><div class="form-group"><input name="amount" type="number" step="0.01" class="form-control" placeholder="{{ __('Amount') }}" required></div><div class="form-group"><input name="currency" class="form-control" value="MMK" required></div><div class="form-group"><input name="reference_no" class="form-control" placeholder="{{ __('Reference') }}"></div><div class="form-group"><textarea name="description" class="form-control" placeholder="{{ __('Description') }}"></textarea></div><button class="btn btn-theme">{{ __('Submit Reimbursement') }}</button>
-                    </form>@endif</div></div>
+                    </fieldset></form>@endif</div></div>
                     <div class="card mt-3"><div class="card-body"><h5>{{ __('Pending reimbursements') }}</h5>@foreach($reimbursements->where('status','pending') as $r)<div class="border rounded p-2 mb-2">{{ $r->reference_no }} · {{ number_format($r->amount,2) }} @if($canOperate)<form class="mt-2" method="POST" action="{{ route('central-finance.reimbursements.approve',$r->id) }}">@csrf <div class="form-row"><div class="col-md-4"><select name="fund_account_id" class="form-control" required>@foreach($accounts as $a)<option value="{{ $a->id }}">{{ $a->account_name }}</option>@endforeach</select></div><div class="col-md-3"><input name="payment_method" class="form-control" value="Cash" required></div><div class="col-md-3"><input name="reason" class="form-control" placeholder="{{ __('Approval reason') }}" required></div><div class="col-md-2"><button class="btn btn-outline-primary">{{ __('Approve') }}</button></div></div></form>@endif</div>@endforeach</div></div>
                 @endif
             @endif
@@ -110,10 +116,10 @@
 
             @if(in_array($page,['transfers','handovers','funding'],true))
                 @php($heading = $page === 'transfers' ? __('银行转账') : ($page === 'handovers' ? __('资金交接') : __('总部拨款')))
-                <div class="card central-finance-form-card mb-3"><div class="card-body"><h5>{{ $heading }}</h5>@if($canOperate)<form method="POST" action="{{ route('central-finance.'.$page.'.store') }}">@csrf
+                <div class="card central-finance-form-card mb-3"><div class="card-body"><h5>{{ $heading }}</h5>@if($showWriteForm)@if($writeDisabled)<p class="text-muted mb-3">{{ $writeAvailabilityMessage }}</p>@endif<form method="POST" action="{{ route('central-finance.'.$page.'.store') }}">@csrf<fieldset @disabled($writeDisabled)>
                     @if($page === 'handovers')<div class="form-group"><label>{{ __('Receiver') }}</label><select name="receiver_user_id" class="form-control" required><option value="">{{ __('Receiver') }}</option>@foreach($schoolUsers as $u)<option value="{{ $u->id }}">{{ $u->first_name }} {{ $u->last_name }}</option>@endforeach</select></div>@endif
                     <div class="form-group"><label>{{ __('Source Account') }}</label><select name="source_account_id" class="form-control" required><option value="">{{ __('Source Account') }}</option>@foreach($accounts as $a)<option value="{{ $a->id }}">{{ $a->account_name }}</option>@endforeach</select></div><div class="form-group"><label>{{ __('Destination Account') }}</label><select name="destination_account_id" class="form-control" required><option value="">{{ __('Destination Account') }}</option>@foreach($accounts as $a)<option value="{{ $a->id }}">{{ $a->account_name }}</option>@endforeach</select></div><div class="form-row"><div class="form-group col-md-6"><input name="amount" type="number" step="0.01" min="0.01" class="form-control" placeholder="{{ __('Amount') }}" required></div><div class="form-group col-md-6"><input name="reference_no" class="form-control" placeholder="{{ __('Reference') }}"></div></div><button class="btn btn-theme">{{ __('Submit') }}</button>
-                </form>@endif</div></div>
+                </fieldset></form>@endif</div></div>
                 @if($page !== 'transfers')
                     @php($documents = $page === 'handovers' ? $handovers : $fundingRequests)
                     <div class="card"><div class="card-body"><h5>{{ __('Recent requests') }}</h5><div class="table-responsive"><table class="table mb-0"><thead><tr><th>{{ __('Reference') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
