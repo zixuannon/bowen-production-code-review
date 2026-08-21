@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Students;
+use App\Observers\CentralFinanceStudentProfileObserver;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -37,6 +39,7 @@ class AppServiceProvider extends ServiceProvider {
         //
         Schema::defaultStringLength(191);
         Schema::useNativeSchemaOperationsIfPossible();
+        Students::observe(CentralFinanceStudentProfileObserver::class);
 
 //        $this->app['validator']->extend('unique_for_school', function ($attribute, $value, $parameters) {
 //            // Extract and validate the parameters from the rule syntax.

@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Active production target
 
@@ -13,6 +13,17 @@ Last updated: 2026-08-20
 ## Current area
 
 Finance V2
+
+## Central Finance Gate A — local release candidate
+
+Gate A is a schema-and-student-reference preparation release only. It contains
+seven reversible additive central migrations, one reversible tenant Student UUID
+migration, trusted-registry Student Financial Profile reconciliation, and a
+fixed seven-active-school allowlist. Both operational runners are read-only by
+default; the legacy-cutover runner has no execute mode. No Central Finance
+workspace/routes, Finance document write paths, historical import, Ledger,
+balance, opening-balance, or Group Operating Context write capability is part
+of Gate A. Production and staging remain untouched.
 
 ## Active development pipeline — V2
 
