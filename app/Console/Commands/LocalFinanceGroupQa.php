@@ -13,6 +13,9 @@ use App\Models\FinanceGroup;
 use App\Models\FinanceGroupHqAccount;
 use App\Models\FinanceGroupTransfer;
 use App\Models\FinanceGroupUser;
+use App\Models\CentralFinanceStudentProfile;
+use App\Models\CentralFinanceSyncEvent;
+use App\Services\CentralFinanceStudentProfileSyncService;
 use App\Services\FinanceGroupReportService;
 use App\Services\FinanceGroupScopeService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -30,6 +33,15 @@ class LocalFinanceGroupQa extends Command
         'GROUP_QA_SCHOOL_A' => 'Zixuan QA School',
         'GROUP_QA_SCHOOL_B' => 'Timecity QA School',
         'GROUP_QA_UNRELATED' => 'Unrelated QA School',
+    ];
+
+    /**
+     * Fixed valid UUIDs make the reset deterministic while retaining the
+     * tenant-owned identity contract required by Central Finance.
+     */
+    private const STUDENT_SOURCE_UUIDS = [
+        'GROUP_QA_SCHOOL_A' => '8a3c10df-b916-4c76-85a2-53ba6eaa2311',
+        'GROUP_QA_SCHOOL_B' => '94fddb8a-6570-4d8f-a394-c6623405e856',
     ];
     protected $signature = 'local:finance-group-qa {action : reset or verify}';
     protected $description = 'Build or verify fixed local-only synthetic Finance Group QA tenants.';
@@ -63,6 +75,7 @@ class LocalFinanceGroupQa extends Command
         }
         $this->line('Seeding central Group QA scope');
         $this->seedGroup();
+        $this->rebuildCentralStudentProfiles();
         DB::purge('school');
         return $this->verify();
     }
@@ -186,7 +199,7 @@ class LocalFinanceGroupQa extends Command
             $class=$db->table('classes')->insertGetId(['name'=>'Group QA Class','medium_id'=>$medium,'school_id'=>$schoolId,'include_semesters'=>0,'created_at'=>$now,'updated_at'=>$now]); $classSection=$db->table('class_sections')->insertGetId(['class_id'=>$class,'section_id'=>$section,'medium_id'=>$medium,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
             $guardian=$db->table('users')->insertGetId(['first_name'=>'Group','last_name'=>'Guardian','email'=>'guardian@'.$code.'.test','password'=>bcrypt('local-only'),'school_id'=>$schoolId,'status'=>1,'created_at'=>$now,'updated_at'=>$now]);
             $studentUser=$db->table('users')->insertGetId(['first_name'=>'Group','last_name'=>'Student','email'=>'student@'.$code.'.test','password'=>bcrypt('local-only'),'school_id'=>$schoolId,'status'=>1,'created_at'=>$now,'updated_at'=>$now]);
-            $student=$db->table('students')->insertGetId(['user_id'=>$studentUser,'guardian_id'=>$guardian,'class_id'=>$class,'class_section_id'=>$classSection,'session_year_id'=>$session,'join_session_year_id'=>$session,'admission_no'=>$code.'_STUDENT','admission_date'=>'2026-01-01','roll_number'=>1,'application_type'=>0,'application_status'=>1,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
+            $student=$db->table('students')->insertGetId(['user_id'=>$studentUser,'guardian_id'=>$guardian,'class_id'=>$class,'class_section_id'=>$classSection,'session_year_id'=>$session,'join_session_year_id'=>$session,'admission_no'=>$code.'_STUDENT','admission_date'=>'2026-01-01','roll_number'=>1,'application_type'=>0,'application_status'=>1,'school_id'=>$schoolId,'central_finance_source_uuid'=>self::STUDENT_SOURCE_UUIDS[$code],'created_at'=>$now,'updated_at'=>$now]);
             $fee=$db->table('fees')->insertGetId(['name'=>'Group QA Fee','currency'=>'MMK','due_date'=>'2026-08-01','due_charges'=>0,'due_charges_amount'=>0,'class_id'=>$class,'session_year_id'=>$session,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
             $type=$db->table('fees_types')->insertGetId(['name'=>'Group QA Tuition','description'=>'Synthetic','school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
             $db->table('fees_class_types')->insert(['fees_id'=>$fee,'fees_type_id'=>$type,'class_id'=>$class,'amount'=>200,'optional'=>0,'school_id'=>$schoolId,'created_at'=>$now,'updated_at'=>$now]);
@@ -201,6 +214,56 @@ class LocalFinanceGroupQa extends Command
             $handoverTransfer=$db->table('bank_transfers')->insertGetId(['school_id'=>$schoolId,'from_account_id'=>$cash,'to_account_id'=>$bank,'amount'=>50,'transfer_date'=>'2026-08-02','reference_no'=>$code.'_HANDOVER_TRANSFER','status'=>'completed','created_by'=>$head,'created_at'=>$now,'updated_at'=>$now]);
             $db->table('fund_handovers')->insert(['school_id'=>$schoolId,'from_account_id'=>$cash,'to_account_id'=>$bank,'sender_id'=>$head,'receiver_id'=>$accountant,'amount'=>50,'handover_date'=>'2026-08-02','reference_no'=>$code.'_HANDOVER_CONFIRMED','status'=>'confirmed','bank_transfer_id'=>$handoverTransfer,'confirmed_at'=>$now,'confirmed_by'=>$accountant,'created_at'=>$now,'updated_at'=>$now]);
             $db->table('fund_handovers')->insert(['school_id'=>$schoolId,'from_account_id'=>$cash,'to_account_id'=>$bank,'sender_id'=>$head,'receiver_id'=>$accountant,'amount'=>25,'handover_date'=>'2026-08-03','reference_no'=>$code.'_HANDOVER_PENDING','status'=>'pending','created_at'=>$now,'updated_at'=>$now]);
+        }
+    }
+
+    /**
+     * Central profile data is a projection of the fixed tenant fixture, never
+     * an independently seeded student. It is intentionally optional for
+     * older local branches where the Central Finance schema is not installed.
+     */
+    private function rebuildCentralStudentProfiles(): void
+    {
+        if (!Schema::connection('mysql')->hasTable('central_finance_student_profiles')
+            || !Schema::connection('mysql')->hasTable('central_finance_sync_events')) {
+            return;
+        }
+
+        $central = DB::connection('mysql');
+        $schools = School::on('mysql')->whereIn('code', ['GROUP_QA_SCHOOL_A', 'GROUP_QA_SCHOOL_B'])
+            ->orderBy('id')->get();
+        if ($schools->count() !== 2) {
+            throw new \LogicException('Central Student fixture schools are missing.');
+        }
+        $schoolIds = $schools->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+
+        // A fixture reset may discard only an empty Central financial domain.
+        // Refuse rather than deleting/rewriting any documents, balances, or
+        // Ledger history that a developer might have created locally.
+        foreach ([
+            'central_finance_receivables', 'central_finance_payments', 'central_finance_receipts',
+            'central_finance_expenses', 'central_finance_other_incomes',
+            'central_finance_reimbursement_requests', 'central_finance_internal_transfers',
+            'central_finance_fund_handovers', 'central_finance_hq_funding_requests',
+            'central_finance_ledger_entries',
+        ] as $table) {
+            if (Schema::connection('mysql')->hasTable($table)
+                && $central->table($table)->whereIn('school_id', $schoolIds)->exists()) {
+                throw new \LogicException('Refusing to reset Central Student fixture with existing Central Finance documents.');
+            }
+        }
+
+        $central->transaction(function () use ($schoolIds): void {
+            CentralFinanceSyncEvent::on('mysql')->whereIn('school_id', $schoolIds)->delete();
+            CentralFinanceStudentProfile::on('mysql')->whereIn('school_id', $schoolIds)->delete();
+        });
+
+        $sync = app(CentralFinanceStudentProfileSyncService::class);
+        foreach ($schools as $school) {
+            $outcomes = $sync->syncSchool($school);
+            if (count($outcomes) !== 1 || $outcomes[0]['result'] !== 'created') {
+                throw new \LogicException('Central Student fixture sync did not create exactly one profile per School.');
+            }
         }
     }
 
@@ -260,6 +323,7 @@ class LocalFinanceGroupQa extends Command
         $central=DB::connection('mysql'); $group=FinanceGroup::query()->where('code','GROUP_QA')->first(); if (!$group || $group->schools()->where('status','active')->count() !== 2 || $group->schools()->whereHas('school',fn($q)=>$q->where('code','GROUP_QA_UNRELATED'))->exists()) throw new \LogicException('Group scope fixture mismatch.');
         $a = (int) $central->table('schools')->where('code', 'GROUP_QA_SCHOOL_A')->value('id');
         $b = (int) $central->table('schools')->where('code', 'GROUP_QA_SCHOOL_B')->value('id');
+        $this->verifyCentralStudentFixtures($central, ['GROUP_QA_SCHOOL_A' => $a, 'GROUP_QA_SCHOOL_B' => $b]);
         $hq = FinanceGroupUser::query()->where('group_id', $group->id)->where('central_user_id', $central->table('users')->where('email', 'group_hq@group-qa.test')->value('id'))->firstOrFail();
         $register = app(FinanceGroupReportService::class)->register($hq);
         if ($register['incomplete']->isNotEmpty() || $register['schools']->count() !== 2
@@ -322,7 +386,36 @@ class LocalFinanceGroupQa extends Command
                 $out['central:' . $table] = hash('sha256', count($rows) . ':' . json_encode($rows, JSON_THROW_ON_ERROR));
             }
         }
+        if (Schema::connection('mysql')->hasTable('central_finance_student_profiles')
+            && Schema::connection('mysql')->hasTable('central_finance_sync_events')) {
+            foreach (['central_finance_student_profiles', 'central_finance_sync_events'] as $table) {
+                $rows = DB::connection('mysql')->table($table)->orderBy('id')->get()
+                    ->map(static fn ($row) => (array) $row)->all();
+                $out['central:' . $table] = hash('sha256', count($rows) . ':' . json_encode($rows, JSON_THROW_ON_ERROR));
+            }
+        }
         return $out;
+    }
+
+    /** @param array<string, int> $schoolIds */
+    private function verifyCentralStudentFixtures($central, array $schoolIds): void
+    {
+        if (!Schema::connection('mysql')->hasTable('central_finance_student_profiles')
+            || !Schema::connection('mysql')->hasTable('central_finance_sync_events')) {
+            return;
+        }
+
+        foreach ($schoolIds as $code => $schoolId) {
+            $profile = $central->table('central_finance_student_profiles')
+                ->where('school_id', $schoolId)->first();
+            if ($profile === null
+                || $central->table('central_finance_student_profiles')->where('school_id', $schoolId)->count() !== 1
+                || $profile->source_uuid !== self::STUDENT_SOURCE_UUIDS[$code]
+                || (int) $profile->tenant_student_id !== 1
+                || $central->table('central_finance_sync_events')->where('school_id', $schoolId)->count() !== 1) {
+                throw new \LogicException('Central Student fixture identity mismatch.');
+            }
+        }
     }
 
     private function tenantUserId(string $code, string $email): int
