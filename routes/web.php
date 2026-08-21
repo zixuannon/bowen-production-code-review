@@ -6,6 +6,7 @@ use App\Http\Controllers\FinanceGroupTransferController;
 use App\Http\Controllers\FinanceGroupHqAccountController;
 use App\Http\Controllers\GroupFinanceController;
 use App\Http\Controllers\FinanceOperatingWorkspaceController;
+use App\Http\Controllers\CentralFinanceWorkspaceController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -238,6 +239,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // initial workspace intentionally contains no tenant write endpoint.
         Route::post('group-finance/{financeGroup}/operating', [FinanceOperatingWorkspaceController::class, 'enter'])->name('group-finance.operating.enter');
         Route::post('group-finance/operating/exit', [FinanceOperatingWorkspaceController::class, 'exit'])->name('group-finance.operating.exit');
+
         Route::get('group-finance/operating/bank-accounts', [FinanceOperatingWorkspaceController::class, 'bankAccounts'])->name('group-finance.operating.bank-accounts');
         Route::get('group-finance/operating/transactions', [FinanceOperatingWorkspaceController::class, 'transactions'])->name('group-finance.operating.transactions');
         Route::get('group-finance/operating/reports', [FinanceOperatingWorkspaceController::class, 'reports'])->name('group-finance.operating.reports');
@@ -1158,6 +1160,33 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
     Route::resource('transportation-expense', TransportationExpenseController::class);
 
+});
+
+// Central Finance is intentionally outside the tenant-SwitchDatabase group.
+// The middleware re-resolves the central session on mysql before `auth`; no
+// route here can receive a tenant database or impersonated tenant identity.
+Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
+    Route::get('central-finance', [CentralFinanceWorkspaceController::class, 'dashboard'])->name('central-finance.dashboard');
+    Route::post('central-finance/school', [CentralFinanceWorkspaceController::class, 'enterSchool'])->name('central-finance.school.enter');
+    Route::post('central-finance/all-schools', [CentralFinanceWorkspaceController::class, 'exitSchool'])->name('central-finance.school.exit');
+    Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
+    Route::post('central-finance/payments', [CentralFinanceWorkspaceController::class, 'collect'])->name('central-finance.payments.store');
+    Route::get('central-finance/operations', [CentralFinanceWorkspaceController::class, 'operating'])->name('central-finance.operations');
+    Route::post('central-finance/expenses', [CentralFinanceWorkspaceController::class, 'expense'])->name('central-finance.expenses.store');
+    Route::post('central-finance/other-income', [CentralFinanceWorkspaceController::class, 'otherIncome'])->name('central-finance.other-income.store');
+    Route::post('central-finance/reimbursements', [CentralFinanceWorkspaceController::class, 'reimbursement'])->name('central-finance.reimbursements.store');
+    Route::post('central-finance/reimbursements/{reimbursement}/approve', [CentralFinanceWorkspaceController::class, 'approveReimbursement'])->name('central-finance.reimbursements.approve');
+    Route::get('central-finance/fund-accounts', [CentralFinanceWorkspaceController::class, 'accounts'])->name('central-finance.accounts');
+    Route::get('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfers'])->name('central-finance.transfers');
+    Route::post('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfer'])->name('central-finance.transfers.store');
+    Route::get('central-finance/handovers', [CentralFinanceWorkspaceController::class, 'handovers'])->name('central-finance.handovers');
+    Route::post('central-finance/handovers', [CentralFinanceWorkspaceController::class, 'handover'])->name('central-finance.handovers.store');
+    Route::post('central-finance/handovers/{handover}/{action}', [CentralFinanceWorkspaceController::class, 'resolveHandover'])->whereIn('action', ['confirm', 'reject', 'cancel'])->name('central-finance.handovers.resolve');
+    Route::get('central-finance/funding', [CentralFinanceWorkspaceController::class, 'funding'])->name('central-finance.funding');
+    Route::post('central-finance/funding', [CentralFinanceWorkspaceController::class, 'storeFunding'])->name('central-finance.funding.store');
+    Route::post('central-finance/funding/{funding}/{action}', [CentralFinanceWorkspaceController::class, 'resolveFunding'])->whereIn('action', ['confirm', 'reject', 'cancel'])->name('central-finance.funding.resolve');
+    Route::get('central-finance/ledger', [CentralFinanceWorkspaceController::class, 'ledger'])->name('central-finance.ledger');
+    Route::get('central-finance/reports', [CentralFinanceWorkspaceController::class, 'reports'])->name('central-finance.reports');
 });
 
 // webhooks
