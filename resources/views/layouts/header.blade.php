@@ -1,22 +1,20 @@
 <nav class="navbar default-layout-navbar col-lg-12 col-12 p-0 fixed-top d-flex flex-row">
+    @php
+        $horizontalLogo = $schoolSettings['horizontal_logo'] ?? $systemSettings['horizontal_logo'] ?? asset('/assets/horizontal-logo2.svg');
+        $verticalLogo = $schoolSettings['vertical_logo'] ?? $systemSettings['vertical_logo'] ?? asset('/assets/vertical-logo.svg');
+    @endphp
     <div class="text-center navbar-brand-wrapper d-flex align-items-center justify-content-center">
         <a class="navbar-brand brand-logo" href="{{ URL::to('/dashboard') }}">
-            <img src="{{ $schoolSettings['horizontal_logo'] ?? '' }}" alt="logo" data-custom-image="{{$systemSettings['horizontal_logo'] ?? asset('/assets/horizontal-logo2.svg')}}" class="custom-default-image">
+            <img src="{{ $horizontalLogo }}" alt="logo" data-custom-image="{{ $horizontalLogo }}" class="custom-default-image">
         </a>
         <a class="navbar-brand brand-logo-mini" href="{{ URL::to('/dashboard') }}">
-            <img src="{{ $schoolSettings['vertical_logo'] ?? '' }}" alt="logo" data-custom-image="{{$systemSettings['vertical_logo'] ?? asset('/assets/vertical-logo.svg')}}">
+            <img src="{{ $verticalLogo }}" alt="logo" data-custom-image="{{ $verticalLogo }}">
         </a>
     </div>
     <div class="navbar-menu-wrapper d-flex align-items-stretch">
         <button class="navbar-toggler navbar-toggler align-self-center" type="button" data-toggle="minimize">
             <span class="fa fa-bars"></span>
         </button>
-
-        <div class="align-items-stretch d-none d-md-block d-sm-block cache-clear">
-            <a class="btn btn-sm btn-inverse-info align-self-center" href="{{ url('cache-flush') }}">
-                {{ __('cache_clear') }}
-            </a>
-        </div>
 
         @if ($schoolSettings['school_name'] ?? '')
             <div class="align-items-stretch d-none d-md-block d-sm-block cache-clear">
@@ -97,6 +95,9 @@
                     {{-- @endcan --}}
                     <a class="dropdown-item" href="{{ route('auth.change-password.index') }}">
                         <i class="fa fa-refresh mr-2 text-success"></i>{{ __('change_password') }}</a>
+                    <div class="dropdown-divider"></div>
+                    <a class="dropdown-item" href="{{ url('cache-flush') }}">
+                        <i class="fa fa-refresh mr-2 text-muted"></i>{{ __('cache_clear') }}</a>
                     <div class="dropdown-divider"></div>
                     <a class="dropdown-item" href="{{ route('auth.logout') }}">
                         <i class="fa fa-sign-out mr-2 text-primary"></i> {{ __('signout') }}

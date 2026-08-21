@@ -92,7 +92,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertContains('centralFinance', $route->middleware());
         $this->assertNotContains('SwitchDatabase', $route->middleware());
         $view=(string)file_get_contents(resource_path('views/central-finance/workspace.blade.php'));
-        $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
+        $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringContainsString('当前操作校区',$view); $this->assertStringContainsString("['operation' => 'expense']",$view); $this->assertStringContainsString("['operation' => 'income']",$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
         foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
         }
