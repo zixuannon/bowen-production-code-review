@@ -36,15 +36,24 @@ tenant user and validate it against the central School registry.
 
 1. Finance signs the School cutover date, role/scope list, Fund Account
    catalogue, currency, and opening-balance confirmation.
-2. Head Finance creates only the approved Central Fund Accounts and records
-   the signed opening baseline. This is not Income, Expense, Money In, or a
-   reconstructed legacy transaction.
-3. Set the School to `ready`; Central workspace/reporting remains read-only,
+2. Central Super Admin configures the existing Group membership plus explicit
+   Central School scope. This configuration never gives Super Admin Finance
+   operating authority; Head Finance and School Accountant need their own
+   Group, School, and Fund Account scopes.
+3. Head Finance creates only the approved Central School Fund Accounts and
+   records a signed opening baseline. Each initial baseline and each later
+   adjustment stores old/new value, effective date, reason, and central actor.
+   Neither writes Money In, Operating Income, Operating Expense, or a Standard
+   Ledger entry.
+4. Set the School to `ready`; Central workspace/reporting remains read-only,
    and tenant Finance remains the only writer.
-4. At the approved cutover time, set the School to `central`, then verify
+5. At the approved cutover time, set the School to `central`. The server
+   refuses this transition until active Group membership, an active audited
+   Central School Fund Account, and assigned Head Finance Group/School/Fund
+   Account operating authority are all present. Then verify
    Central write authorization and tenant legacy write rejection with no
    production test transaction.
-5. Monitor Central Ledger, account balances, audit, and scope fingerprints.
+6. Monitor Central Ledger, account balances, audit, and scope fingerprints.
    Each later School repeats the same independent checklist.
 
 ## Explicit exclusions

@@ -225,6 +225,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('finance-groups', [FinanceGroupController::class, 'store'])->name('finance-groups.store');
         Route::put('finance-groups/{financeGroup}', [FinanceGroupController::class, 'update'])->name('finance-groups.update');
         Route::post('finance-groups/{financeGroup}/user-scopes', [FinanceGroupController::class, 'storeUserScope'])->name('finance-groups.user-scopes.store');
+        Route::post('finance-groups/{financeGroup}/central-school-scopes', [FinanceGroupController::class, 'storeCentralSchoolScope'])->name('finance-groups.central-school-scopes.store');
         Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
         Route::get('finance-groups/{financeGroup}/reports', [FinanceGroupReportController::class, 'register'])->name('finance-groups.reports.index');
         Route::get('finance-groups/{financeGroup}/reports/export', [FinanceGroupReportController::class, 'export'])->name('finance-groups.reports.export');
@@ -1177,6 +1178,10 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/reimbursements', [CentralFinanceWorkspaceController::class, 'reimbursement'])->name('central-finance.reimbursements.store');
     Route::post('central-finance/reimbursements/{reimbursement}/approve', [CentralFinanceWorkspaceController::class, 'approveReimbursement'])->name('central-finance.reimbursements.approve');
     Route::get('central-finance/fund-accounts', [CentralFinanceWorkspaceController::class, 'accounts'])->name('central-finance.accounts');
+    Route::post('central-finance/fund-accounts', [CentralFinanceWorkspaceController::class, 'createFundAccount'])->name('central-finance.accounts.store');
+    Route::post('central-finance/fund-accounts/{fundAccount}/assignments', [CentralFinanceWorkspaceController::class, 'syncFundAccountAssignments'])->name('central-finance.accounts.assignments');
+    Route::post('central-finance/fund-accounts/{fundAccount}/opening-adjustments', [CentralFinanceWorkspaceController::class, 'adjustFundAccountOpeningBalance'])->name('central-finance.accounts.opening-adjustments');
+    Route::post('central-finance/cutover-state', [CentralFinanceWorkspaceController::class, 'changeCutoverState'])->name('central-finance.cutover-state');
     Route::get('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfers'])->name('central-finance.transfers');
     Route::post('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfer'])->name('central-finance.transfers.store');
     Route::get('central-finance/handovers', [CentralFinanceWorkspaceController::class, 'handovers'])->name('central-finance.handovers');

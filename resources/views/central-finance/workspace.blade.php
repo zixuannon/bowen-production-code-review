@@ -66,7 +66,32 @@
     @endif
 
     @if($page === 'accounts')
-        <div class="card"><div class="card-body"><h5>{{ __('Fund Accounts') }}</h5><table class="table"><thead><tr><th>{{ __('Account') }}</th><th>{{ __('Owner') }}</th><th>{{ __('Currency') }}</th><th>{{ __('Money In') }}</th><th>{{ __('Money Out') }}</th><th>{{ __('Balance') }}</th></tr></thead><tbody>@foreach($accounts as $a)<tr><td>{{ $a->account_name }}</td><td>{{ $a->owner_type === 'hq' ? 'HQ' : $school?->name }}</td><td>{{ $a->currency }}</td><td>{{ number_format($ledger->where('fund_account_id',$a->id)->sum('money_in'),2) }}</td><td>{{ number_format($ledger->where('fund_account_id',$a->id)->sum('money_out'),2) }}</td><td>{{ number_format($a->opening_balance + $ledger->where('fund_account_id',$a->id)->sum('money_in') - $ledger->where('fund_account_id',$a->id)->sum('money_out'),2) }}</td></tr>@endforeach</tbody></table></div></div>
+        @if($canConfigureAccounts)
+            <div class="card mb-3"><div class="card-body"><h5>{{ __('Central Fund Account setup') }}</h5>
+                <p class="text-muted mb-3">{{ __('Only Head Finance may create an opening balance. It is audited and does not create Money In, Operating Income, or a Ledger entry.') }}</p>
+                <form method="POST" action="{{ route('central-finance.accounts.store') }}" class="row">@csrf
+                    <div class="col-md-2"><input name="account_code" class="form-control" placeholder="{{ __('Account code') }}" required></div>
+                    <div class="col-md-2"><input name="account_name" class="form-control" placeholder="{{ __('Account name') }}" required></div>
+                    <div class="col-md-1"><input name="currency" class="form-control" value="MMK" maxlength="3" required></div>
+                    <div class="col-md-2"><input name="opening_balance" type="number" step="0.0001" min="0" class="form-control" placeholder="{{ __('Opening balance') }}" required></div>
+                    <div class="col-md-2"><input name="opening_balance_date" type="date" class="form-control" required></div>
+                    <div class="col-md-3"><input name="opening_reason" class="form-control" placeholder="{{ __('Signed opening-balance reference / reason') }}" required></div>
+                    <div class="col-12 mt-2"><label>{{ __('Authorized Central Finance users') }}</label><div class="d-flex flex-wrap">@foreach($schoolUsers as $user)<label class="mr-3"><input type="checkbox" name="authorized_user_ids[]" value="{{ $user->id }}" @checked($user->id === $actor->id)> {{ $user->first_name }} {{ $user->last_name }}</label>@endforeach</div></div>
+                    <div class="col-12 mt-2"><button class="btn btn-theme">{{ __('Create audited Fund Account') }}</button></div>
+                </form>
+            </div></div>
+            <div class="card mb-3"><div class="card-body"><h5>{{ __('Cutover state') }}</h5><p>{{ __('Current state') }}: <strong>{{ $cutoverStatus }}</strong></p>
+                <form method="POST" action="{{ route('central-finance.cutover-state') }}" class="form-inline">@csrf
+                    <select name="status" class="form-control mr-2"><option value="ready">ready</option><option value="central">central</option><option value="legacy">legacy</option></select><button class="btn btn-outline-primary">{{ __('Update cutover state') }}</button>
+                </form>
+            </div></div>
+        @endif
+        <div class="card"><div class="card-body"><h5>{{ __('Fund Accounts') }}</h5><table class="table"><thead><tr><th>{{ __('Account') }}</th><th>{{ __('Owner') }}</th><th>{{ __('Currency') }}</th><th>{{ __('Money In') }}</th><th>{{ __('Money Out') }}</th><th>{{ __('Balance') }}</th>@if($canConfigureAccounts)<th>{{ __('Configuration') }}</th>@endif</tr></thead><tbody>@foreach($accounts as $a)<tr><td>{{ $a->account_name }}</td><td>{{ $a->owner_type === 'hq' ? 'HQ' : $school?->name }}</td><td>{{ $a->currency }}</td><td>{{ number_format($ledger->where('fund_account_id',$a->id)->sum('money_in'),2) }}</td><td>{{ number_format($ledger->where('fund_account_id',$a->id)->sum('money_out'),2) }}</td><td>{{ number_format($a->opening_balance + $ledger->where('fund_account_id',$a->id)->sum('money_in') - $ledger->where('fund_account_id',$a->id)->sum('money_out'),2) }}</td>@if($canConfigureAccounts)<td>
+            @if($a->owner_type === 'school' && $school && $a->school_id === $school->id)<details><summary>{{ __('Assignments / opening adjustment') }}</summary>
+                <form method="POST" action="{{ route('central-finance.accounts.assignments',$a->id) }}" class="mt-2">@csrf @foreach($schoolUsers as $user)<label class="mr-2"><input type="checkbox" name="authorized_user_ids[]" value="{{ $user->id }}" @checked($a->authorizedUsers->contains('id',$user->id))> {{ $user->first_name }}</label>@endforeach <button class="btn btn-sm btn-outline-primary">{{ __('Save') }}</button></form>
+                <form method="POST" action="{{ route('central-finance.accounts.opening-adjustments',$a->id) }}" class="mt-2">@csrf <input name="amount" type="number" step="0.0001" class="form-control mb-1" placeholder="{{ __('Signed adjustment') }}" required><input name="effective_date" type="date" class="form-control mb-1" required><input name="reason" class="form-control mb-1" placeholder="{{ __('Adjustment reason') }}" required><button class="btn btn-sm btn-outline-primary">{{ __('Record audited adjustment') }}</button></form>
+            </details>@endif
+        </td>@endif</tr>@endforeach</tbody></table></div></div>
     @endif
 
     @if(in_array($page,['transfers','handovers','funding'],true))

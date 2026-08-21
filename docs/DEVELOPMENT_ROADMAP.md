@@ -122,8 +122,11 @@ Balances move only on designated receiver confirmation.
   database selection and no automatic Fund Account/opening-balance creation.
 - [x] Zixuan/Timecity independent-state, rollback-before-first-transaction,
   route/service guard, and Central workspace read-only characterization.
-- [ ] Explicit approved Production configuration command/UI, signed opening
-  balance, real Central role/scope assignment, and Zixuan pilot deployment.
+- [x] Local configuration UI/services for explicit Central School scope,
+  Head-Finance-only audited Fund Account opening balance, and a fail-closed
+  `ready → central` gate.
+- [ ] Approved real Zixuan role/scope, Fund Account, signed opening-balance
+  configuration, and pilot deployment.
 
 - Daily Cash Closing
 - Bank Reconciliation

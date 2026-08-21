@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceSchoolCutover;
+use App\Models\CentralFinanceUser;
 use App\Models\School;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -19,6 +20,11 @@ use LogicException;
  */
 final class CentralFinanceSchoolCutoverService
 {
+    public function __construct(
+        private readonly CentralFinanceCutoverReadinessService $readiness,
+        private readonly CentralFinanceConfigurationAuthorizationService $configurationAuthorization,
+    ) {}
+
     public function statusForSchool(int $schoolId): string
     {
         if ($schoolId < 1 || !Schema::connection('mysql')->hasTable('central_finance_school_cutovers')) {
@@ -60,7 +66,7 @@ final class CentralFinanceSchoolCutoverService
         }
     }
 
-    public function transition(School $requestedSchool, string $target): CentralFinanceSchoolCutover
+    public function transition(CentralFinanceUser $actor, School $requestedSchool, string $target): CentralFinanceSchoolCutover
     {
         if (!in_array($target, [CentralFinanceSchoolCutover::LEGACY, CentralFinanceSchoolCutover::READY, CentralFinanceSchoolCutover::CENTRAL], true)) {
             throw new InvalidArgumentException('The Central Finance cutover state is invalid.');
@@ -70,6 +76,7 @@ final class CentralFinanceSchoolCutoverService
         }
 
         $school = School::on('mysql')->findOrFail($requestedSchool->id);
+        $this->configurationAuthorization->assertHeadFinanceCanConfigureSchool($actor, $school);
 
         return DB::connection('mysql')->transaction(function () use ($school, $target): CentralFinanceSchoolCutover {
             $row = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $school->id)->lockForUpdate()->first();
@@ -84,6 +91,9 @@ final class CentralFinanceSchoolCutoverService
                 'legacy>ready', 'ready>legacy', 'ready>central', 'central>legacy',
             ], true)) {
                 throw new LogicException('This Central Finance cutover transition is not permitted.');
+            }
+            if ($current === CentralFinanceSchoolCutover::READY && $target === CentralFinanceSchoolCutover::CENTRAL) {
+                $this->readiness->assertReadyForCentral($school);
             }
 
             $row ??= new CentralFinanceSchoolCutover(['school_id' => $school->id]);

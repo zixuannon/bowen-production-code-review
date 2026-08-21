@@ -64,6 +64,13 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   School. It never imports legacy Finance or creates an account/opening
   balance. Zixuan/Timecity focused tests prove independent states and no
   cross-School effect. Production and staging remain untouched.
+- Fresh Start configuration now has a Central Super Admin School-scope form
+  (configuration only) and a Head Finance-only Central Fund Account setup
+  surface. Account creation records a signed opening-balance audit; later
+  opening changes are signed adjustments with old/new value and never write a
+  Ledger or operating total. `ready → central` fails closed until audited
+  account, Head Finance, Group scope, School scope, and Fund Account scope are
+  all present. No Production configuration or data has been created.
 
 Finance P3.2 Unified Finance Transactions — **LOCAL AUTOMATED VERIFIED**. `Finance → Transactions` is a read-only adapter over compulsory payments, optional payments, non-fee `OtherIncome`, Expense, and canonical completed BankTransfer source records; no duplicate transaction/ledger table exists. Pending handovers are omitted, while confirmed handovers appear exactly once through their linked BankTransfer. The register has date/type/account/reference/keyword filters and rejects forged Fund Account filters server-side. A selected Fund Account renders an internal transfer directionally; an all-account view renders it once as neutral `Internal Transfer`, with no Money In/Out or operating-result contribution. Direct transfers require two distinct active, non-deleted, current-school, authorized accounts and execute through an exception-safe transaction; cancellation removes only the canonical transfer balance effect. Receive Money records a tenant-local non-fee source only after payment-method, active current-school Fund Account, Cashier assignment scope, and reference reservation checks. Expense/Import buttons reuse existing Expense and P3.1 Expense Excel workflows. P0 focused tests and broader finance regression pass (143 tests / 546 assertions). The guarded BOWEN_QA browser rerun is pending local MariaDB credentials in this worktree; no non-local fallback is permitted. Production and staging remain untouched.
 

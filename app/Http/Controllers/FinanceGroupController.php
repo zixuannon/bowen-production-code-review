@@ -91,6 +91,34 @@ class FinanceGroupController extends Controller
         return redirect()->route('finance-groups.index')->with('success', __('Tenant identity saved.'));
     }
 
+    /** Configure Central Finance School scope; Super Admin configures but never receives it implicitly. */
+    public function storeCentralSchoolScope(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate([
+            'central_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer'],
+            'can_view' => ['nullable', 'boolean'], 'can_operate' => ['nullable', 'boolean'],
+            'can_approve_reimbursements' => ['nullable', 'boolean'], 'can_confirm_funding' => ['nullable', 'boolean'],
+        ]);
+        $schoolId = (int) $data['school_id'];
+        $centralUser = User::on('mysql')->findOrFail((int) $data['central_user_id']);
+        abort_unless($centralUser->school_id === null, 422);
+        abort_unless($financeGroup->schools()->where(['school_id' => $schoolId, 'status' => 'active'])->exists(), 422);
+        $groupUser = $this->groups->addUser($financeGroup, (int) $data['central_user_id']);
+        $canView = (bool) ($data['can_view'] ?? false);
+        $canOperate = (bool) ($data['can_operate'] ?? false);
+        abort_unless($canView && (!$canOperate || $this->groups->canAccessSchool($groupUser, $schoolId, 'operate_finance')), 422);
+        abort_unless($this->groups->canAccessSchool($groupUser, $schoolId, 'view_reports'), 422);
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
+            ['user_id' => (int) $data['central_user_id'], 'school_id' => $schoolId],
+            ['can_view' => $canView, 'can_operate' => $canOperate,
+                'can_approve_reimbursements' => $canOperate && (bool) ($data['can_approve_reimbursements'] ?? false),
+                'can_confirm_funding' => $canOperate && (bool) ($data['can_confirm_funding'] ?? false),
+                'created_at' => now(), 'updated_at' => now()],
+        );
+        return redirect()->route('finance-groups.index')->with('success', __('Central Finance School scope saved.'));
+    }
+
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {
