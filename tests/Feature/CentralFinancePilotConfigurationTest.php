@@ -72,6 +72,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         DB::connection('mysql')->table('finance_group_schools')->insert(['group_id' => $group->id, 'school_id' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
         $this->groupUser($group->id, 100, 1, 'GROUP', null, 'view_reports');
         $this->groupUser($group->id, 100, 1, 'GROUP', null, 'operate_finance');
+        $this->groupUser($group->id, 100, 1, 'GROUP', null, 'manage_hq_accounts');
         $this->groupUser($group->id, 200, 2, 'SCHOOL', 1, 'view_reports');
         $this->groupUser($group->id, 200, 2, 'SCHOOL', 1, 'operate_finance');
         foreach ([[100, true], [200, true]] as [$userId, $canOperate]) {
@@ -119,6 +120,25 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         } catch (AuthorizationException) {}
         $admin->adjustOpeningBalance($this->headFinance, $this->zixuan, $account, -10, '2026-08-22', 'Counted cash correction');
         $this->assertSame(90.0, (float) $account->fresh()->opening_balance);
+        $this->assertSame(2, CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->where('fund_account_id', $account->id)->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_head_finance_can_create_and_audit_an_hq_central_fund_account_for_the_authorized_group(): void
+    {
+        $admin = app(CentralFinanceFundAccountAdministrationService::class);
+        $account = $admin->createHqAccount($this->headFinance, $this->zixuan, [
+            'account_code' => 'HQ-MMK', 'account_name' => 'Bowen HQ MMK', 'currency' => 'MMK',
+            'opening_balance' => 200, 'opening_balance_date' => '2026-08-21', 'opening_reason' => 'Signed HQ opening',
+        ], [$this->accountant->id]);
+
+        $this->assertSame(CentralFinanceFundAccount::OWNER_HQ, $account->owner_type);
+        $this->assertNull($account->school_id);
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_fund_account_users')->where('fund_account_id', $account->id)->count());
+        $this->assertSame(1, CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->where(['fund_account_id' => $account->id, 'change_type' => 'initial'])->count());
+
+        $admin->adjustOpeningBalance($this->headFinance, $this->zixuan, $account, 25, '2026-08-22', 'Signed HQ correction');
+        $this->assertSame(225.0, (float) $account->fresh()->opening_balance);
         $this->assertSame(2, CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->where('fund_account_id', $account->id)->count());
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
     }

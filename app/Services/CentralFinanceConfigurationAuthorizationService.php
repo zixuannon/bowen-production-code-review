@@ -50,6 +50,17 @@ final class CentralFinanceConfigurationAuthorizationService
         }
     }
 
+    /** HQ custody is a Group control-plane privilege, never an implied School-operate grant. */
+    public function assertHeadFinanceCanConfigureHq(CentralFinanceUser $actor, School $school): FinanceGroupUser
+    {
+        $groupUser = $this->assertHeadFinanceCanConfigureSchool($actor, $school);
+        if (!$this->groups->canControlHqAccounts($groupUser)) {
+            throw new AuthorizationException('Head Finance lacks explicit Group HQ Fund Account control.');
+        }
+
+        return $groupUser;
+    }
+
     public function assertEligibleAssignee(int $groupId, School $school, int $userId, bool $canOperate): CentralFinanceUser
     {
         $user = CentralFinanceUser::on('mysql')->findOrFail($userId);

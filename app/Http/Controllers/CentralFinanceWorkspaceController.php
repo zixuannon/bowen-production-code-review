@@ -115,11 +115,16 @@ final class CentralFinanceWorkspaceController extends Controller
         $data = $request->validate([
             'account_code' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9_.-]+$/'],
             'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', 'string', 'size:3', 'alpha'],
+            'owner_type' => ['required', Rule::in([CentralFinanceFundAccount::OWNER_SCHOOL, CentralFinanceFundAccount::OWNER_HQ])],
             'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date'],
             'opening_reason' => ['required', 'string', 'max:2000'], 'authorized_user_ids' => ['nullable', 'array'],
             'authorized_user_ids.*' => ['integer', 'distinct'],
         ]);
-        $this->accountAdministration->createSchoolAccount($actor, $school, $data, $data['authorized_user_ids'] ?? []);
+        if ($data['owner_type'] === CentralFinanceFundAccount::OWNER_HQ) {
+            $this->accountAdministration->createHqAccount($actor, $school, $data, $data['authorized_user_ids'] ?? []);
+        } else {
+            $this->accountAdministration->createSchoolAccount($actor, $school, $data, $data['authorized_user_ids'] ?? []);
+        }
         return back()->with('success', __('Central Fund Account created with an audited opening balance.'));
     }
 
