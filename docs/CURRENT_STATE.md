@@ -49,6 +49,19 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Current phase
 
+## Central Finance Feature Gap P0 — local implementation
+
+- Central Finance now exposes Central-only student ledgers, payment/receipt
+  history, Fund Account detail reports, paginated/filterable Standard Ledger
+  read models, Central Finance Staff scope visibility, and school-scoped
+  Income/Expense category management.
+- Read models enforce the existing Group + School + Fund Account boundaries;
+  an unassigned Fund Account is never disclosed through Ledger, payment, or
+  account-report routes. Audit detail and category changes remain Head
+  Finance configuration actions.
+- No tenant Finance writer, cutover rule, Ledger posting rule, schema, or
+  Production/Staging data changed.
+
 ## Central Finance Fresh Start — per-School cutover guard (local)
 
 - Central Finance now has an additive, reversible per-School cutover state:

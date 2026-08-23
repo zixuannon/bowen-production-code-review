@@ -9,13 +9,13 @@ function csrfToken(html) {
     return match[1];
 }
 
-async function centralLogin(email) {
+async function centralLogin(email, loginPassword = password) {
     const api = await request.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
     try {
         const login = await api.get('/login', { maxRedirects: 0 });
         expect(login.status()).toBe(200);
         const response = await api.post('/login', {
-            form: { _token: csrfToken(await login.text()), email, password },
+            form: { _token: csrfToken(await login.text()), email, password: loginPassword },
             maxRedirects: 0,
         });
         expect([302, 303]).toContain(response.status());
@@ -26,8 +26,8 @@ async function centralLogin(email) {
     }
 }
 
-async function centralPage(browser, email) {
-    const context = await browser.newContext({ baseURL, storageState: await centralLogin(email) });
+async function centralPage(browser, email, loginPassword = password) {
+    const context = await browser.newContext({ baseURL, storageState: await centralLogin(email, loginPassword) });
     const page = await context.newPage();
     await page.goto('/central-finance', { waitUntil: 'domcontentloaded' });
     return { context, page };
@@ -94,6 +94,36 @@ test('Central Finance sidebar expands and collapses both three-level groups on m
         await expect(groups.nth(1).getByRole('link', { name: '银行账户', exact: true })).toBeHidden();
 
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally {
+        await context.close();
+    }
+});
+
+test('Central Finance P0 read screens expose ledger, history, account reporting, and configuration without a write', async ({ browser }) => {
+    const { context, page } = await centralPage(browser, 'group_hq@group-qa.test', 'local-only');
+    try {
+        const switcher = page.getByLabel('Switch School', { exact: true });
+        await switcher.selectOption({ label: 'Zixuan QA School' });
+        await expect(page.getByText('当前操作校区：Zixuan QA School')).toBeVisible();
+
+        for (const [path, heading] of [
+            ['/central-finance/student-ledger', '学生账本'],
+            ['/central-finance/payments', '收费记录 / 收据'],
+            ['/central-finance/ledger', 'Standard Ledger'],
+            ['/central-finance/categories', 'Income / Expense Categories'],
+            ['/central-finance/staff', 'Central Finance Staff'],
+        ]) {
+            await page.goto(path, { waitUntil: 'domcontentloaded' });
+            await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+        }
+
+        await expect(page.getByText('@endif', { exact: true })).toHaveCount(0);
+
+        await expect(page.getByText('School Scope is configured by Central Super Admin in Finance Groups.')).toBeVisible();
+        await page.goto('/central-finance/ledger', { waitUntil: 'domcontentloaded' });
+        await expect(page.locator('select[name="fund_account_id"]')).toBeVisible();
+        await expect(page.locator('select[name="category_id"]')).toBeVisible();
+        await expect(page.locator('select[name="operator_id"]')).toBeVisible();
     } finally {
         await context.close();
     }

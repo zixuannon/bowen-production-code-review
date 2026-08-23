@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CentralFinanceStudentProfile extends Model
 {
@@ -25,4 +26,9 @@ class CentralFinanceStudentProfile extends Model
         'source_deleted_at' => 'datetime',
         'last_synced_at' => 'datetime',
     ];
+
+    public function receivables(): HasMany
+    {
+        return $this->hasMany(CentralFinanceReceivable::class, 'student_profile_id');
+    }
 }

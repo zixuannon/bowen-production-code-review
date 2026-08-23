@@ -125,6 +125,9 @@ Balances move only on designated receiver confirmation.
 - [x] Local configuration UI/services for explicit Central School scope,
   Head-Finance-only audited Fund Account opening balance, and a fail-closed
   `ready → central` gate.
+- [x] Feature Gap P0 Central read/configuration workbench: student ledger,
+  payment/receipt history, Fund Account detail report, Standard Ledger filters
+  and pagination, Finance Staff scope visibility, and Central category UI.
 - [ ] Approved real Zixuan role/scope, Fund Account, signed opening-balance
   configuration, and pilot deployment.
 

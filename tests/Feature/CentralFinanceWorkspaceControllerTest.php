@@ -87,7 +87,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
 
     public function test_workspace_routes_and_ui_have_no_tenant_operating_context_dependency(): void
     {
-        foreach(['central-finance.dashboard','central-finance.receivables','central-finance.operations','central-finance.accounts','central-finance.transfers','central-finance.handovers','central-finance.funding','central-finance.ledger','central-finance.reports'] as $name) $this->assertNotNull(app('router')->getRoutes()->getByName($name));
+        foreach(['central-finance.dashboard','central-finance.receivables','central-finance.student-ledger','central-finance.payments.index','central-finance.operations','central-finance.accounts','central-finance.accounts.report','central-finance.staff','central-finance.categories','central-finance.audits','central-finance.transfers','central-finance.handovers','central-finance.funding','central-finance.ledger','central-finance.reports'] as $name) $this->assertNotNull(app('router')->getRoutes()->getByName($name));
         $route = app('router')->getRoutes()->getByName('central-finance.dashboard');
         $this->assertContains('centralFinance', $route->middleware());
         $this->assertNotContains('SwitchDatabase', $route->middleware());
@@ -96,6 +96,33 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
         }
+    }
+
+    public function test_central_read_models_are_paginated_and_never_disclose_an_unassigned_fund_account(): void
+    {
+        $hidden = $this->account('ZIX-PRIVATE', 'Zixuan Private', 1);
+        CentralFinanceLedgerEntry::on('mysql')->create(['entry_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'entry_date'=>'2026-08-23', 'occurred_at'=>now(), 'source_type'=>'central_payment', 'source_id'=>'visible', 'source_line'=>1, 'transaction_type'=>'operating_income', 'currency'=>'MMK', 'money_in'=>10, 'money_out'=>0, 'operating_income'=>10, 'operating_expense'=>0, 'created_by'=>$this->head->id]);
+        CentralFinanceLedgerEntry::on('mysql')->create(['entry_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'fund_account_id'=>$hidden->id, 'entry_date'=>'2026-08-23', 'occurred_at'=>now(), 'source_type'=>'central_payment', 'source_id'=>'hidden', 'source_line'=>1, 'transaction_type'=>'operating_income', 'currency'=>'MMK', 'money_in'=>20, 'money_out'=>0, 'operating_income'=>20, 'operating_expense'=>0, 'created_by'=>$this->head->id]);
+        $this->actingAs($this->zixuanAccountant);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);
+
+        $view = app(CentralFinanceWorkspaceController::class)->ledger(new Request());
+        $this->assertSame([$this->zixuan->id], $view->getData()['ledger']->pluck('fund_account_id')->all());
+        $this->assertSame(10.0, $view->getData()['totals']['money_in']);
+        $this->assertInstanceOf(\Illuminate\Contracts\Pagination\LengthAwarePaginator::class, $view->getData()['ledger']);
+    }
+
+    public function test_student_payment_history_and_category_read_models_stay_in_the_central_connection(): void
+    {
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        foreach (['student-ledger', 'payments', 'categories'] as $page) {
+            $view = app(CentralFinanceWorkspaceController::class)->{$page === 'student-ledger' ? 'studentLedger' : ($page === 'payments' ? 'paymentHistory' : $page)}(new Request());
+            $this->assertSame('central-finance.workspace', $view->name());
+            $this->assertSame(1, $view->getData()['school']->id);
+        }
+        $this->assertFalse(Schema::connection('mysql')->hasTable('fees_paid'));
+        $this->assertFalse(Schema::connection('mysql')->hasTable('expenses'));
     }
 
     public function test_scope_without_active_group_membership_is_not_finance_authority(): void
