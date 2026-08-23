@@ -1619,13 +1619,53 @@
                 </a>
             </li>
         @endif
-        @php($hasGroupFinanceReports = app(\App\Services\GroupFinanceAccessService::class)->hasReportAccess(Auth::user()))
-        @if ($hasGroupFinanceReports)
+        @php
+            try {
+                $hasCentralFinanceIdentity = app(\App\Services\CentralFinanceWorkspaceService::class)->actor(Auth::user()) !== null;
+            } catch (\Throwable) {
+                $hasCentralFinanceIdentity = false;
+            }
+        @endphp
+        @if ($hasCentralFinanceIdentity)
             <li class="nav-item">
-                <a class="nav-link" href="{{ route('group-finance.index') }}">
+                <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="false" aria-controls="central-finance-menu">
                     <i class="fa fa-line-chart menu-icon"></i>
-                    <span class="menu-title">{{ __('Group Finance') }}</span>
+                    <span class="menu-title">{{ __('Central Finance') }}</span>
+                    <i class="menu-arrow"></i>
                 </a>
+                <div class="collapse" id="central-finance-menu">
+                    <ul class="nav flex-column sub-menu">
+                        <li class="nav-item">
+                            <a class="nav-link" data-toggle="collapse" href="#central-finance-management-menu" aria-expanded="false" aria-controls="central-finance-management-menu">
+                                {{ __('财务管理') }} <i class="menu-arrow"></i>
+                            </a>
+                            <div class="collapse" id="central-finance-management-menu">
+                                <ul class="nav flex-column sub-menu">
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.dashboard') ? 'active' : '' }}" href="{{ route('central-finance.dashboard') }}">{{ __('财务总览') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.receivables') ? 'active' : '' }}" href="{{ route('central-finance.receivables') }}">{{ __('学生收费') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.operations') && request('operation') === 'income' ? 'active' : '' }}" href="{{ route('central-finance.operations', ['operation' => 'income']) }}">{{ __('其他收入') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.reports') ? 'active' : '' }}" href="{{ route('central-finance.reports') }}">{{ __('财务报表') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.ledger') ? 'active' : '' }}" href="{{ route('central-finance.ledger') }}">{{ __('Standard Ledger') }}</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-toggle="collapse" href="#central-finance-expense-menu" aria-expanded="false" aria-controls="central-finance-expense-menu">
+                                {{ __('支出管理') }} <i class="menu-arrow"></i>
+                            </a>
+                            <div class="collapse" id="central-finance-expense-menu">
+                                <ul class="nav flex-column sub-menu">
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.operations') && request('operation') === 'expense' ? 'active' : '' }}" href="{{ route('central-finance.operations', ['operation' => 'expense']) }}">{{ __('支出记录') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.operations') && request('operation') === 'reimbursement' ? 'active' : '' }}" href="{{ route('central-finance.operations', ['operation' => 'reimbursement']) }}">{{ __('报销申请') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts') ? 'active' : '' }}" href="{{ route('central-finance.accounts') }}">{{ __('银行账户') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.transfers') ? 'active' : '' }}" href="{{ route('central-finance.transfers') }}">{{ __('银行转账') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.handovers') ? 'active' : '' }}" href="{{ route('central-finance.handovers') }}">{{ __('Fund Handover') }}</a></li>
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.funding') ? 'active' : '' }}" href="{{ route('central-finance.funding') }}">{{ __('HQ / School Funding') }}</a></li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
             </li>
         @endif
         @if (Auth::user()->hasRole('Super Admin'))
