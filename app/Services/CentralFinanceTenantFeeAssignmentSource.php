@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /** Reads only compulsory tenant fee assignments through the trusted registry. */
@@ -17,12 +18,15 @@ final class CentralFinanceTenantFeeAssignmentSource {
         $db=(string)$school->getRawOriginal('database_name');
         if (!$this->safe($db) || !$fresh->class_id) return [];
         return $this->onSchool($db,function() use($fresh): array {
+            $hasCurrency = Schema::connection('school')->hasColumn('fees_class_types', 'fee_currency');
+            $select = ['fees_class_types.id','fees_class_types.amount','fees_class_types.updated_at','fees.name','fees.due_date'];
+            if ($hasCurrency) $select[] = 'fees_class_types.fee_currency';
             $rows=DB::connection('school')->table('fees_class_types')->leftJoin('fees','fees.id','=','fees_class_types.fees_id')
                 ->where('fees_class_types.class_id',$fresh->class_id)->where('fees_class_types.optional',0)
-                ->select('fees_class_types.id','fees_class_types.amount','fees_class_types.fee_currency','fees_class_types.updated_at','fees.name','fees.due_date')->orderBy('fees_class_types.id')->get();
+                ->select($select)->orderBy('fees_class_types.id')->get();
             return $rows->map(fn(object $r): array => [
                 'source_id'=>(string)$r->id,'description'=>(string)($r->name ?: 'Assigned fee'),
-                'due_date'=>$r->due_date ? (string)$r->due_date : null,'currency'=>strtoupper((string)($r->fee_currency ?: 'MMK')),
+                'due_date'=>$r->due_date ? (string)$r->due_date : null,'currency'=>strtoupper((string)(($hasCurrency ? $r->fee_currency : null) ?: 'MMK')),
                 'amount'=>(float)$r->amount,'updated_at'=>CarbonImmutable::parse($r->updated_at ?? now()),
             ])->all();
         });
