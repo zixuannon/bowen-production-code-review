@@ -12,8 +12,9 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
 
         foreach ([
             'central-finance-menu',
-            'central-finance-management-menu',
-            'central-finance-expense-menu',
+            '<details class="central-finance-sidebar-group">',
+            "{{ __('财务管理') }}",
+            "{{ __('支出管理') }}",
             "route('central-finance.dashboard')",
             "route('central-finance.receivables')",
             "route('central-finance.operations', ['operation' => 'income'])",
