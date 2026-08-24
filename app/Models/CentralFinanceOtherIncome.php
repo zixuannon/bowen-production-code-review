@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -31,4 +32,5 @@ class CentralFinanceOtherIncome extends Model
             }
         });
     }
+    public function category(): BelongsTo { return $this->belongsTo(CentralFinanceCategory::class, 'category_id'); }
 }

@@ -227,6 +227,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::put('finance-groups/{financeGroup}', [FinanceGroupController::class, 'update'])->name('finance-groups.update');
         Route::post('finance-groups/{financeGroup}/user-scopes', [FinanceGroupController::class, 'storeUserScope'])->name('finance-groups.user-scopes.store');
         Route::post('finance-groups/{financeGroup}/central-school-scopes', [FinanceGroupController::class, 'storeCentralSchoolScope'])->name('finance-groups.central-school-scopes.store');
+        Route::post('finance-groups/{financeGroup}/school-staff-accountants', [FinanceGroupController::class, 'storeSchoolStaffAccountant'])->name('finance-groups.school-staff-accountants.store');
         Route::post('finance-groups/{financeGroup}/central-school-scopes/disable', [FinanceGroupController::class, 'disableCentralSchoolScope'])->name('finance-groups.central-school-scopes.disable');
         Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
         Route::get('finance-groups/{financeGroup}', [FinanceGroupController::class, 'show'])->name('finance-groups.show');
@@ -1176,14 +1177,22 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
     Route::get('central-finance/student-ledger', [CentralFinanceWorkspaceController::class, 'studentLedger'])->name('central-finance.student-ledger');
     Route::get('central-finance/payments', [CentralFinanceWorkspaceController::class, 'paymentHistory'])->name('central-finance.payments.index');
+    Route::get('central-finance/payments/export/{format}', [CentralFinanceWorkspaceController::class, 'exportPayments'])->whereIn('format', ['csv','xlsx'])->name('central-finance.payments.export');
     Route::post('central-finance/payments', [CentralFinanceWorkspaceController::class, 'collect'])->name('central-finance.payments.store');
+    Route::get('central-finance/payment-import/template', [CentralFinanceWorkspaceController::class, 'paymentImportTemplate'])->name('central-finance.payment-import.template');
+    Route::post('central-finance/payment-import/preview', [CentralFinanceWorkspaceController::class, 'previewPaymentImport'])->name('central-finance.payment-import.preview');
+    Route::post('central-finance/payment-import/{batch}/confirm', [CentralFinanceWorkspaceController::class, 'confirmPaymentImport'])->name('central-finance.payment-import.confirm');
     Route::get('central-finance/operations', [CentralFinanceWorkspaceController::class, 'operating'])->name('central-finance.operations');
     Route::post('central-finance/expenses', [CentralFinanceWorkspaceController::class, 'expense'])->name('central-finance.expenses.store');
+    Route::get('central-finance/expense-import/template', [CentralFinanceWorkspaceController::class, 'expenseImportTemplate'])->name('central-finance.expense-import.template');
+    Route::post('central-finance/expense-import/preview', [CentralFinanceWorkspaceController::class, 'previewExpenseImport'])->name('central-finance.expense-import.preview');
+    Route::post('central-finance/expense-import/{batch}/confirm', [CentralFinanceWorkspaceController::class, 'confirmExpenseImport'])->name('central-finance.expense-import.confirm');
     Route::post('central-finance/other-income', [CentralFinanceWorkspaceController::class, 'otherIncome'])->name('central-finance.other-income.store');
     Route::post('central-finance/reimbursements', [CentralFinanceWorkspaceController::class, 'reimbursement'])->name('central-finance.reimbursements.store');
     Route::post('central-finance/reimbursements/{reimbursement}/approve', [CentralFinanceWorkspaceController::class, 'approveReimbursement'])->name('central-finance.reimbursements.approve');
     Route::get('central-finance/fund-accounts', [CentralFinanceWorkspaceController::class, 'accounts'])->name('central-finance.accounts');
     Route::get('central-finance/fund-accounts/{fundAccount}/report', [CentralFinanceWorkspaceController::class, 'fundAccountReport'])->name('central-finance.accounts.report');
+    Route::get('central-finance/fund-accounts/{fundAccount}/report/export/{format}', [CentralFinanceWorkspaceController::class, 'exportFundAccountReport'])->whereIn('format', ['csv','xlsx'])->name('central-finance.accounts.report.export');
     Route::post('central-finance/fund-accounts', [CentralFinanceWorkspaceController::class, 'createFundAccount'])->name('central-finance.accounts.store');
     Route::post('central-finance/fund-accounts/{fundAccount}/assignments', [CentralFinanceWorkspaceController::class, 'syncFundAccountAssignments'])->name('central-finance.accounts.assignments');
     Route::post('central-finance/fund-accounts/{fundAccount}/opening-adjustments', [CentralFinanceWorkspaceController::class, 'adjustFundAccountOpeningBalance'])->name('central-finance.accounts.opening-adjustments');
@@ -1202,6 +1211,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/funding', [CentralFinanceWorkspaceController::class, 'storeFunding'])->name('central-finance.funding.store');
     Route::post('central-finance/funding/{funding}/{action}', [CentralFinanceWorkspaceController::class, 'resolveFunding'])->whereIn('action', ['confirm', 'reject', 'cancel'])->name('central-finance.funding.resolve');
     Route::get('central-finance/ledger', [CentralFinanceWorkspaceController::class, 'ledger'])->name('central-finance.ledger');
+    Route::get('central-finance/ledger/export/{format}', [CentralFinanceWorkspaceController::class, 'exportLedger'])->whereIn('format', ['csv','xlsx'])->name('central-finance.ledger.export');
     Route::get('central-finance/reports', [CentralFinanceWorkspaceController::class, 'reports'])->name('central-finance.reports');
 });
 

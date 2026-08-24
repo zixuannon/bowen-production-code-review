@@ -25,6 +25,7 @@ final class CentralFinanceWorkspaceService
         private readonly CentralFinanceSchoolScopeService $schools,
         private readonly CentralFinanceFundAccountScopeService $accounts,
         private readonly FinanceGroupScopeService $groups,
+        private readonly CentralFinanceSchoolStaffIdentityService $staffIdentities,
     ) {}
 
     public function actor(User $authenticated): CentralFinanceUser
@@ -33,7 +34,13 @@ final class CentralFinanceWorkspaceService
         // Read the raw value: User's legacy school_id accessor may inspect
         // tenant roles for Guardian browser flows, which Central Finance must
         // never trigger.
-        if ($actor === null || $actor->getRawOriginal('school_id') !== null) {
+        if ($actor === null) {
+            throw new AuthorizationException('A Central Finance identity is required.');
+        }
+        $type = $actor->getRawOriginal('central_finance_principal_type') ?? 'central_user';
+        if (($type === 'central_user' && $actor->getRawOriginal('school_id') !== null)
+            || ($type === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE && !$this->staffIdentities->isActivePrincipal($actor))
+            || !in_array($type, ['central_user', CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE], true)) {
             throw new AuthorizationException('A Central Finance identity is required.');
         }
         return $actor;
@@ -90,6 +97,20 @@ final class CentralFinanceWorkspaceService
         $school = $this->currentSchool($actor);
         if ($school === null) {
             throw new AuthorizationException('Select an authorized School before operating Central Finance.');
+        }
+        return $this->assertCanOperateSchool($actor, (int) $school->id);
+    }
+
+    /**
+     * The School is re-resolved from the central registry and then checked
+     * against both Central School scope and active Group operating scope.
+     * Import services use this rather than accepting a tenant database name.
+     */
+    public function assertCanOperateSchool(CentralFinanceUser $actor, int $schoolId): School
+    {
+        $school = $this->accessibleSchools($actor)->firstWhere('id', $schoolId);
+        if ($school === null) {
+            throw new AuthorizationException('The Central Finance actor cannot operate this School.');
         }
         $this->schools->assertCanOperate($actor, $school->id);
         if (!$this->groupUsers($actor)->contains(fn (FinanceGroupUser $groupUser): bool => $this->groups->canAccessSchool($groupUser, $school->id, 'operate_finance'))) {

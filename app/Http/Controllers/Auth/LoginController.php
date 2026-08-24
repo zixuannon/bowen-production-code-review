@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use App\Models\Role;
+use App\Services\CentralFinanceSchoolStaffIdentityService;
 
 class LoginController extends Controller
 {
@@ -130,6 +131,11 @@ class LoginController extends Controller
                 Auth::login($user);
 
                 Session::put('school_database_name', $school->database_name);
+                Session::forget(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+                $staffUuid = (string) ($user->getRawOriginal('central_finance_source_uuid') ?? '');
+                if ($staffUuid !== '' && Str::isUuid($staffUuid)) {
+                    Session::put(CentralFinanceSchoolStaffIdentityService::SESSION_KEY, ['school_id' => (int) $school->id, 'user_uuid' => $staffUuid]);
+                }
 
                 $data = DB::table('users')
                     ->where(function ($query) use ($request) {

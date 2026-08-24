@@ -27,12 +27,12 @@ final class CentralFinanceOperatingDocumentService
         private readonly CentralFinanceDocumentAuditService $audits,
     ) {}
 
-    public function createExpense(CentralFinanceUser $actor, int $schoolId, int $categoryId, CentralFinanceFundAccount $account, float $amount, string $paymentMethod, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null, ?string $description = null): CentralFinanceExpense
+    public function createExpense(CentralFinanceUser $actor, int $schoolId, int $categoryId, CentralFinanceFundAccount $account, float $amount, string $paymentMethod, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null, ?string $description = null, ?string $reimbursedBy = null): CentralFinanceExpense
     {
         app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $this->assertInput($amount, $paymentMethod, $idempotencyReference, $referenceNo);
 
-        return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $description): CentralFinanceExpense {
+        return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $description, $reimbursedBy): CentralFinanceExpense {
             $this->schools->assertCanOperate($actor, $schoolId);
             $this->accounts->assertCanOperate($actor, $account);
             $key = $this->key('expense', $schoolId, $idempotencyReference);
@@ -42,15 +42,20 @@ final class CentralFinanceOperatingDocumentService
             }
 
             $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
+            if ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== $schoolId) {
+                throw new InvalidArgumentException('A School Fund Account may record only that School\'s expenses.');
+            }
             $this->category($schoolId, $categoryId, CentralFinanceCategory::EXPENSE);
             $this->assertReferenceFree(CentralFinanceExpense::class, $schoolId, $referenceNo);
-            $expense = CentralFinanceExpense::on('mysql')->create([
+            $values = [
                 'school_id' => $schoolId, 'category_id' => $categoryId,
                 'fund_account_id' => $account->id, 'idempotency_key' => $key,
                 'reference_no' => $referenceNo, 'payment_method' => $paymentMethod,
                 'expense_date' => $occurredAt->toDateString(), 'currency' => strtoupper($account->currency),
                 'amount' => $amount, 'description' => $description, 'created_by' => $actor->id,
-            ]);
+            ];
+            if ($reimbursedBy !== null && trim($reimbursedBy) !== '') $values['reimbursed_by'] = trim($reimbursedBy);
+            $expense = CentralFinanceExpense::on('mysql')->create($values);
             $this->ledger->recordOperatingExpense($actor, $account, $schoolId, 'central_expense', $expense->expense_uuid, $amount, $occurredAt, $referenceNo);
             $this->audits->record($actor, $expense, 'expense', 'created', null, null, $this->snapshot($expense));
 
@@ -200,6 +205,6 @@ final class CentralFinanceOperatingDocumentService
     /** @return array<string,mixed> */
     private function snapshot(CentralFinanceExpense|CentralFinanceOtherIncome $document): array
     {
-        return $document->only(['category_id', 'fund_account_id', 'reference_no', 'amount', 'currency', 'description', 'deleted_at']);
+        return $document->only(['category_id', 'fund_account_id', 'reference_no', 'amount', 'currency', 'description', 'reimbursed_by', 'deleted_at']);
     }
 }

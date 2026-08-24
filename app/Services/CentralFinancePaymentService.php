@@ -23,6 +23,9 @@ final class CentralFinancePaymentService {
             $existing=CentralFinancePayment::on('mysql')->where('idempotency_key',$key)->lockForUpdate()->first();
             if ($existing) return ['payment'=>$existing,'receipt'=>CentralFinanceReceipt::on('mysql')->where('payment_id',$existing->id)->firstOrFail()];
             $account=CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
+            if ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== (int) $r->school_id) {
+                throw new InvalidArgumentException('A School Fund Account may collect only that School\'s receivables.');
+            }
             if (strtoupper($account->currency)!==strtoupper($r->currency) || (float)$r->amount_paid+$amount>(float)$r->amount_due) throw new InvalidArgumentException('Central payment exceeds the receivable or currency/account scope.');
             if ($paymentReference && CentralFinancePayment::on('mysql')->where(['school_id'=>$r->school_id,'payment_reference'=>$paymentReference])->exists()) throw new InvalidArgumentException('Payment reference is already used for this School.');
             $payment=CentralFinancePayment::on('mysql')->create(['payment_uuid'=>(string)Str::uuid(),'school_id'=>$r->school_id,'receivable_id'=>$r->id,'fund_account_id'=>$account->id,'idempotency_key'=>$key,'payment_reference'=>$paymentReference,'payment_method'=>$method,'currency'=>strtoupper($r->currency),'amount'=>$amount,'paid_at'=>$paidAt,'received_by'=>$actor->id]);

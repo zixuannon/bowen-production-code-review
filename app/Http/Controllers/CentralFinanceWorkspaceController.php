@@ -11,6 +11,7 @@ use App\Models\CentralFinanceHqFundingRequest;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinancePayment;
+use App\Models\CentralFinanceImportBatch;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceReimbursementRequest;
 use App\Models\CentralFinanceStudentProfile;
@@ -23,6 +24,8 @@ use App\Services\CentralFinanceHqFundingService;
 use App\Services\CentralFinanceInternalTransferService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use App\Services\CentralFinancePaymentService;
+use App\Services\CentralFinancePaymentImportService;
+use App\Services\CentralFinanceExpenseImportService;
 use App\Services\CentralFinanceReimbursementService;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceWorkspaceService;
@@ -33,6 +36,10 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\CentralPaymentImportTemplateExport;
+use App\Exports\CentralExpenseImportTemplateExport;
+use App\Exports\CentralFinanceReadExport;
 
 /**
  * Central Finance's first real UI. It never establishes tenant context:
@@ -44,6 +51,8 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceFundAccountBalanceService $balances,
         private readonly CentralFinancePaymentService $payments,
+        private readonly CentralFinancePaymentImportService $paymentImports,
+        private readonly CentralFinanceExpenseImportService $expenseImports,
         private readonly CentralFinanceOperatingDocumentService $documents,
         private readonly CentralFinanceReimbursementService $reimbursements,
         private readonly CentralFinanceInternalTransferService $transfers,
@@ -111,6 +120,60 @@ final class CentralFinanceWorkspaceController extends Controller
         return $this->render('audits', $request);
     }
     public function fundAccountReport(Request $request, int $fundAccount): View { return $this->render('account-report', $request, $fundAccount); }
+
+    /** Standard Ledger export uses precisely the Central read-model filters. */
+    public function exportLedger(Request $request, string $format)
+    {
+        $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
+        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->accessibleAccounts($actor, $school?->id);
+        $filters = $this->validatedReadFilters($request, $school, $accounts);
+        $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('occurred_at')->get();
+        $schoolNames = $schools->pluck('name', 'id'); $operators = CentralFinanceUser::on('mysql')->whereIn('id', $entries->pluck('created_by')->filter()->unique())->get()->mapWithKeys(fn ($user) => [$user->id => $user->full_name]);
+        $categories = $this->ledgerCategoryNames($entries);
+        $rows = $entries->map(fn ($entry) => [
+            $entry->entry_date?->format('Y-m-d'), $schoolNames[$entry->school_id] ?? '', $entry->fundAccount?->account_code, $entry->fundAccount?->account_name,
+            $entry->source_type, $entry->reference_no, $categories[$entry->source_type.':'.$entry->source_id] ?? '', $operators[$entry->created_by] ?? '', $entry->currency,
+            (float) $entry->money_in, (float) $entry->money_out, (float) $entry->operating_income, (float) $entry->operating_expense,
+        ])->all();
+        return $this->downloadReadExport(new CentralFinanceReadExport('Standard Ledger', ['Date','School','Fund Account Code','Fund Account','Source','Reference','Category','Operator','Currency','Money In','Money Out','Operating Income','Operating Expense'], $rows), 'central_standard_ledger', $format);
+    }
+
+    /** Payment/receipt export intentionally contains no guardian/contact data. */
+    public function exportPayments(Request $request, string $format)
+    {
+        $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
+        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->accessibleAccounts($actor, $school?->id);
+        $filters = $this->validatedReadFilters($request, $school, $accounts);
+        $payments = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt','receivable.studentProfile','fundAccount'])->orderBy('paid_at')->get();
+        $schoolNames = $schools->pluck('name', 'id');
+        $rows = $payments->map(fn ($payment) => [
+            $payment->paid_at?->format('Y-m-d H:i'), $schoolNames[$payment->school_id] ?? '', $payment->receivable?->studentProfile?->student_name,
+            $payment->receivable?->studentProfile?->admission_no, $payment->fundAccount?->account_code, $payment->fundAccount?->account_name,
+            $payment->payment_reference, $payment->receipt?->receipt_no, $payment->payment_method, $payment->currency, (float) $payment->amount,
+        ])->all();
+        return $this->downloadReadExport(new CentralFinanceReadExport('Payment Receipts', ['Paid At','School','Student','Student Code','Fund Account Code','Fund Account','Payment Reference','Receipt No','Method','Currency','Amount'], $rows), 'central_payment_receipts', $format);
+    }
+
+    public function exportFundAccountReport(Request $request, int $fundAccount, string $format)
+    {
+        $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
+        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->accessibleAccounts($actor, $school?->id);
+        abort_unless($accounts->contains('id', $fundAccount), 404);
+        $filters = $this->validatedReadFilters($request, $school, $accounts); $filters['fund_account_id'] = $fundAccount;
+        $account = $accounts->firstWhere('id', $fundAccount);
+        $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('occurred_at')->get();
+        $schoolNames = $schools->pluck('name', 'id');
+        $moneyIn = (float) $entries->sum('money_in'); $moneyOut = (float) $entries->sum('money_out'); $closing = (float) $account->opening_balance + $moneyIn - $moneyOut;
+        $rows = [[
+            'Summary', '', $schoolNames[$account->school_id] ?? 'HQ', $account->account_code, $account->account_name, '', '', $account->currency,
+            (float) $account->opening_balance, $moneyIn, $moneyOut, $closing,
+        ]];
+        foreach ($entries as $entry) $rows[] = [
+            'Transaction', $entry->entry_date?->format('Y-m-d'), $schoolNames[$entry->school_id] ?? '', $account->account_code, $account->account_name,
+            $entry->source_type, $entry->reference_no, $entry->currency, null, (float) $entry->money_in, (float) $entry->money_out, null,
+        ];
+        return $this->downloadReadExport(new CentralFinanceReadExport('Fund Account Report', ['Record','Date','School','Account Code','Fund Account','Source','Reference','Currency','Opening Balance','Money In','Money Out','Closing Balance'], $rows), 'central_fund_account_report_'.$account->account_code, $format);
+    }
 
     public function createCategory(Request $request): RedirectResponse
     {
@@ -202,6 +265,52 @@ final class CentralFinanceWorkspaceController extends Controller
         return back()->with('success', __('Central payment collected.'));
     }
 
+    public function paymentImportTemplate()
+    {
+        return Excel::download(new CentralPaymentImportTemplateExport(), 'central_payment_import_template_v1.xlsx');
+    }
+
+    public function previewPaymentImport(Request $request): RedirectResponse
+    {
+        [$actor, $school] = $this->currentOperatingContext();
+        $data = $request->validate(['payment_import' => ['required', 'file', 'max:5120', 'mimes:xlsx,xls,csv']]);
+        $batch = $this->paymentImports->previewUploaded($actor, $school->id, $data['payment_import']);
+
+        return redirect()->route('central-finance.payments.index', ['import_batch' => $batch->token])
+            ->with('success', __('Central payment import preview created. Confirm only after reviewing every row.'));
+    }
+
+    public function confirmPaymentImport(string $batch): RedirectResponse
+    {
+        [$actor] = $this->currentOperatingContext();
+        $this->paymentImports->confirm($actor, $batch);
+
+        return redirect()->route('central-finance.payments.index')->with('success', __('Central payment import confirmed.'));
+    }
+
+    public function expenseImportTemplate()
+    {
+        return Excel::download(new CentralExpenseImportTemplateExport(), 'central_expense_import_template_v1.xlsx');
+    }
+
+    public function previewExpenseImport(Request $request): RedirectResponse
+    {
+        [$actor, $school] = $this->currentOperatingContext();
+        $data = $request->validate(['expense_import' => ['required', 'file', 'max:5120', 'mimes:xlsx,xls,csv']]);
+        $batch = $this->expenseImports->previewUploaded($actor, $school->id, $data['expense_import']);
+
+        return redirect()->route('central-finance.operations', ['operation' => 'expense', 'import_batch' => $batch->token])
+            ->with('success', __('Central Expense import preview created. Confirm only after reviewing every row.'));
+    }
+
+    public function confirmExpenseImport(string $batch): RedirectResponse
+    {
+        [$actor] = $this->currentOperatingContext();
+        $this->expenseImports->confirm($actor, $batch);
+
+        return redirect()->route('central-finance.operations', ['operation' => 'expense'])->with('success', __('Central Expense import confirmed.'));
+    }
+
     public function expense(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
@@ -282,18 +391,13 @@ final class CentralFinanceWorkspaceController extends Controller
     private function render(string $page, Request $request, ?int $requestedAccountId = null): View
     {
         $actor=$this->actor(); $school=$this->workspace->currentSchool($actor); $schools=$this->workspace->accessibleSchools($actor); $accounts=$this->workspace->accessibleAccounts($actor,$school?->id);
-        $schoolId=$school?->id; $accountIds=$accounts->pluck('id');
-        $base=CentralFinanceLedgerEntry::on('mysql');
-        if($schoolId) $base->where('school_id',$schoolId); elseif($schools->isNotEmpty()) $base->whereIn('school_id',$schools->pluck('id')); else $base->whereRaw('1 = 0');
-        // A School scope is never a substitute for an explicit Fund Account
-        // scope. Read models must not disclose an unassigned account's Ledger.
-        $base->whereIn('fund_account_id', $accountIds);
+        $schoolId=$school?->id;
         $filters=$this->validatedReadFilters($request, $school, $accounts);
         if ($requestedAccountId !== null) {
             abort_unless($accounts->contains('id', $requestedAccountId), 404);
             $filters['fund_account_id'] = $requestedAccountId;
         }
-        $filteredLedger=$this->applyLedgerFilters(clone $base, $filters);
+        $filteredLedger=$this->scopedLedgerQuery($school, $schools, $accounts, $filters);
         $ledger=(clone $filteredLedger)->latest('occurred_at')->paginate(25)->withQueryString();
         // Account balances and cumulative Money In/Out must use the complete
         // authorized account history, never the current Ledger page.
@@ -317,12 +421,9 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->pluck('scopes.user_id')->unique()
         )->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']) : collect();
         $canConfigureAccounts=false; if($school){try{app(\App\Services\CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureSchool($actor,$school);$canConfigureAccounts=true;}catch(AuthorizationException){$canConfigureAccounts=false;}}
-        $visibleSchoolIds = $schools->pluck('id');
         $receivables=$schoolId ? CentralFinanceReceivable::on('mysql')->with('studentProfile')->where('school_id',$schoolId)->latest()->paginate(25, ['*'], 'receivables_page')->withQueryString() : collect();
         $profiles=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()])->where('school_id',$schoolId)->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
-        $payments=CentralFinancePayment::on('mysql')->with(['receipt','receivable.studentProfile','fundAccount'])
-            ->when($schoolId, fn ($query, $id) => $query->where('school_id', $id), fn ($query) => $query->whereIn('school_id', $visibleSchoolIds))
-            ->whereIn('fund_account_id',$accountIds)->when($filters['student'] ?? null, fn ($query, $student) => $query->whereHas('receivable.studentProfile', fn ($profile) => $profile->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%"))))->when($filters['reference'] ?? null, fn ($query, $reference) => $query->where('payment_reference','like',"%{$reference}%"))->latest('paid_at')->paginate(25, ['*'], 'payments_page')->withQueryString();
+        $payments=$this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt','receivable.studentProfile','fundAccount'])->latest('paid_at')->paginate(25, ['*'], 'payments_page')->withQueryString();
         $paymentProfileQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
         if ($paymentProfileQuery) {
             $paymentProfileQuery
@@ -345,7 +446,20 @@ final class CentralFinanceWorkspaceController extends Controller
             abort_unless($accountReport !== null, 404);
         }
         $audits=$schoolId && $canConfigureAccounts ? CentralFinanceDocumentAudit::on('mysql')->where('school_id',$schoolId)->when($filters['source'] ?? null, fn ($query, $source) => $query->where('document_type',$source))->latest()->paginate(25, ['*'], 'audits_page')->withQueryString() : collect();
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'accounts'=>$accounts,'canOperate'=>$canOperate,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'ledger'=>$ledger,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
+        $paymentImportBatch = null; $expenseImportBatch = null;
+        if ($page === 'payments' && $schoolId && $request->filled('import_batch')) {
+            $paymentImportBatch = CentralFinanceImportBatch::on('mysql')->where([
+                'token' => $request->string('import_batch')->toString(), 'school_id' => $schoolId,
+                'uploaded_by' => $actor->id, 'import_type' => 'payment',
+            ])->firstOrFail();
+        }
+        if ($page === 'operating' && $request->string('operation')->toString() === 'expense' && $schoolId && $request->filled('import_batch')) {
+            $expenseImportBatch = CentralFinanceImportBatch::on('mysql')->where([
+                'token' => $request->string('import_batch')->toString(), 'school_id' => $schoolId,
+                'uploaded_by' => $actor->id, 'import_type' => 'expense',
+            ])->firstOrFail();
+        }
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'accounts'=>$accounts,'canOperate'=>$canOperate,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'ledger'=>$ledger,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
         return view('central-finance.workspace',$data);
     }
 
@@ -376,5 +490,51 @@ final class CentralFinanceWorkspaceController extends Controller
             });
         }
         return $query;
+    }
+
+    /** Central-only Ledger scope shared by the rendered page and export. */
+    private function scopedLedgerQuery(?\App\Models\School $school, \Illuminate\Support\Collection $schools, \Illuminate\Support\Collection $accounts, array $filters)
+    {
+        $query = CentralFinanceLedgerEntry::on('mysql');
+        if ($school) $query->where('school_id', $school->id);
+        elseif ($schools->isNotEmpty()) $query->whereIn('school_id', $schools->pluck('id'));
+        else $query->whereRaw('1 = 0');
+        // A School scope is never a substitute for an explicit Fund Account scope.
+        $query->whereIn('fund_account_id', $accounts->pluck('id'));
+        return $this->applyLedgerFilters($query, $filters);
+    }
+
+    /** Central-only Payment/Receipt scope shared by the rendered page and export. */
+    private function scopedPaymentQuery(?\App\Models\School $school, \Illuminate\Support\Collection $schools, \Illuminate\Support\Collection $accounts, array $filters)
+    {
+        $query = CentralFinancePayment::on('mysql');
+        if ($school) $query->where('school_id', $school->id);
+        elseif ($schools->isNotEmpty()) $query->whereIn('school_id', $schools->pluck('id'));
+        else $query->whereRaw('1 = 0');
+        $query->whereIn('fund_account_id', $accounts->pluck('id'));
+        if (!empty($filters['school_id'])) $query->where('school_id', (int) $filters['school_id']);
+        if (!empty($filters['fund_account_id'])) $query->where('fund_account_id', (int) $filters['fund_account_id']);
+        if (!empty($filters['from'])) $query->whereDate('paid_at', '>=', $filters['from']);
+        if (!empty($filters['to'])) $query->whereDate('paid_at', '<=', $filters['to']);
+        if (!empty($filters['student'])) $query->whereHas('receivable.studentProfile', fn ($profile) => $profile->where(fn ($nested) => $nested->where('student_name','like',"%{$filters['student']}%")->orWhere('admission_no','like',"%{$filters['student']}%")));
+        if (!empty($filters['reference'])) $query->where('payment_reference','like',"%{$filters['reference']}%");
+        return $query;
+    }
+
+    /** @return array<string,string> */
+    private function ledgerCategoryNames(\Illuminate\Support\Collection $entries): array
+    {
+        $expenseIds = $entries->whereIn('source_type', ['central_expense','central_expense_void'])->pluck('source_id')->unique()->filter();
+        $incomeIds = $entries->whereIn('source_type', ['central_other_income','central_other_income_void'])->pluck('source_id')->unique()->filter();
+        $names = [];
+        CentralFinanceExpense::on('mysql')->withTrashed()->with('category')->whereIn('expense_uuid', $expenseIds)->get()->each(fn ($item) => $names['central_expense:'.$item->expense_uuid] = $names['central_expense_void:'.$item->expense_uuid] = $item->category?->name ?? '');
+        CentralFinanceOtherIncome::on('mysql')->withTrashed()->with('category')->whereIn('income_uuid', $incomeIds)->get()->each(fn ($item) => $names['central_other_income:'.$item->income_uuid] = $names['central_other_income_void:'.$item->income_uuid] = $item->category?->name ?? '');
+        return $names;
+    }
+
+    private function downloadReadExport(CentralFinanceReadExport $export, string $basename, string $format)
+    {
+        abort_unless(in_array($format, ['xlsx','csv'], true), 404);
+        return Excel::download($export, $basename.'_'.now()->format('Ymd_His').'.'.$format, $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX);
     }
 }

@@ -6,6 +6,7 @@ use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Models\User;
 use App\Services\FinanceGroupScopeService;
+use App\Services\CentralFinanceSchoolStaffIdentityService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +19,7 @@ use Illuminate\View\View;
  */
 class FinanceGroupController extends Controller
 {
-    public function __construct(private readonly FinanceGroupScopeService $groups)
+    public function __construct(private readonly FinanceGroupScopeService $groups, private readonly CentralFinanceSchoolStaffIdentityService $staffIdentities)
     {
     }
 
@@ -164,6 +165,14 @@ class FinanceGroupController extends Controller
         abort_unless($financeGroup->schools()->where(['school_id' => (int) $data['school_id'], 'status' => 'active'])->exists(), 422);
         $this->upsertCentralScope((int) $data['central_user_id'], (int) $data['school_id'], false, false, false, false);
         return redirect()->route('finance-groups.index')->with('success', __('Central Finance School scope disabled.'));
+    }
+
+    public function storeSchoolStaffAccountant(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_uuid' => ['required', 'uuid']]);
+        $this->staffIdentities->grantSchoolAccountant($financeGroup, (int) $data['school_id'], (string) $data['tenant_user_uuid']);
+        return redirect()->route('finance-groups.index')->with('success', __('School Staff granted Accountant Finance access.'));
     }
 
     private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm): void
