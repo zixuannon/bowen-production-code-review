@@ -27,17 +27,26 @@ class FinanceGroupController extends Controller
         $this->assertCentralSuperAdmin();
 
         return view('finance-groups.index', [
-            'groups' => FinanceGroup::query()->with(['schools.school', 'users.centralUser.roles', 'users.scopes.school', 'users.tenantIdentities.school'])->orderBy('name')->get(),
+            'groups' => FinanceGroup::query()->with(['schools.school'])->orderBy('name')->get(),
+        ]);
+    }
+
+    public function create(): View
+    {
+        $this->assertCentralSuperAdmin();
+
+        return view('finance-groups.create', [
             // Schools come only from the central registry; database names are
             // deliberately not selected or rendered.
             'schools' => School::on('mysql')->orderBy('name')->get(['id', 'name', 'code', 'status']),
-            'centralUsers' => User::on('mysql')->whereNull('school_id')->with('roles')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']),
-            'centralScopes' => DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
-                ->join('users as users', 'users.id', '=', 'scopes.user_id')
-                ->join('schools as schools', 'schools.id', '=', 'scopes.school_id')
-                ->select(['scopes.*', 'users.first_name', 'users.last_name', 'users.email', 'schools.name as school_name'])
-                ->orderBy('users.first_name')->orderBy('schools.name')->get(),
         ]);
+    }
+
+    public function show(FinanceGroup $financeGroup): View
+    {
+        $this->assertCentralSuperAdmin();
+
+        return view('finance-groups.show', $this->configurationData($financeGroup));
     }
 
     public function store(Request $request): RedirectResponse
@@ -163,6 +172,25 @@ class FinanceGroupController extends Controller
             ['user_id' => $userId, 'school_id' => $schoolId],
             ['can_view' => $view, 'can_operate' => $operate, 'can_approve_reimbursements' => $operate && $approve, 'can_confirm_funding' => $operate && $confirm, 'created_at' => now(), 'updated_at' => now()],
         );
+    }
+
+    /** @return array<string, mixed> */
+    private function configurationData(FinanceGroup $financeGroup): array
+    {
+        $group = $financeGroup->load(['schools.school', 'users.centralUser.roles', 'users.scopes.school', 'users.tenantIdentities.school']);
+        $schoolIds = $group->schools->where('status', 'active')->pluck('school_id')->all();
+
+        return [
+            'group' => $group,
+            'schools' => School::on('mysql')->orderBy('name')->get(['id', 'name', 'code', 'status']),
+            'centralUsers' => User::on('mysql')->whereNull('school_id')->with('roles')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']),
+            'centralScopes' => DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
+                ->join('users as users', 'users.id', '=', 'scopes.user_id')
+                ->join('schools as schools', 'schools.id', '=', 'scopes.school_id')
+                ->whereIn('scopes.school_id', $schoolIds)
+                ->select(['scopes.*', 'users.first_name', 'users.last_name', 'users.email', 'schools.name as school_name'])
+                ->orderBy('users.first_name')->orderBy('schools.name')->get(),
+        ];
     }
 
     /** @return array<string, mixed> */

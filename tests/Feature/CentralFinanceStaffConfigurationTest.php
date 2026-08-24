@@ -82,4 +82,19 @@ class CentralFinanceStaffConfigurationTest extends TestCase
         $this->assertNotNull($scope);
         $this->assertFalse((bool) $scope->can_view || (bool) $scope->can_operate || (bool) $scope->can_approve_reimbursements || (bool) $scope->can_confirm_funding);
     }
+
+    public function test_configuration_ui_separates_group_home_staff_scopes_and_legacy_mapping_without_changing_post_targets(): void
+    {
+        $home = (string) file_get_contents(resource_path('views/finance-groups/index.blade.php'));
+        $create = (string) file_get_contents(resource_path('views/finance-groups/create.blade.php'));
+        $manage = (string) file_get_contents(resource_path('views/finance-groups/show.blade.php'));
+
+        $this->assertStringContainsString("route('finance-groups.create')", $home);
+        $this->assertStringContainsString('route(\'finance-groups.show\', $group)', $home);
+        $this->assertStringContainsString("route('finance-groups.store')", $create);
+        $this->assertStringContainsString('route(\'finance-groups.central-school-scopes.store\', $group)', $manage);
+        $this->assertStringContainsString('route(\'finance-groups.central-school-scopes.disable\', $group)', $manage);
+        $this->assertStringContainsString('Authorize All Group Schools', $manage);
+        $this->assertStringContainsString('Legacy / Transition only', $manage);
+    }
 }

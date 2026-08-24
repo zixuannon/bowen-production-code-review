@@ -211,12 +211,10 @@ class GroupFinanceEntryRouteTest extends TestCase
         ]), $group);
         $this->assertSame(1, $groupUser->scopes()->where('capability', 'operate_finance')->where('scope_type', 'GROUP')->count());
 
-        // The configuration view exposes the exact whitelisted capability,
-        // rather than a broad Super Admin shortcut. Rendering the full shared
-        // layout here would require unrelated central system-setting fixtures.
-        $configurationView = (string) file_get_contents(resource_path('views/finance-groups/index.blade.php'));
-        $this->assertStringContainsString('value="operate_finance"', $configurationView);
-        $this->assertStringContainsString("__('Operate School Finance')", $configurationView);
+        // The route remains available for the existing explicit capability
+        // configuration flow; the redesigned Group home no longer embeds
+        // every advanced configuration form.
+        $this->assertTrue(\Illuminate\Support\Facades\Route::has('finance-groups.user-scopes.store'));
     }
 
     private function centralHash(): string

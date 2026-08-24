@@ -1,8 +1,10 @@
+@php($mode = $mode ?? 'full')
 <form action="{{ $action }}" method="POST">
     @csrf
     @if ($method !== 'POST')
         @method($method)
     @endif
+    @if ($mode !== 'schools')
     <div class="row">
         <div class="form-group col-md-4">
             <label>{{ __('Name') }} <span class="text-danger">*</span></label>
@@ -33,6 +35,20 @@
             </select>
         </div>
     </div>
+    @endif
+    @if ($mode === 'schools')
+        <input type="hidden" name="name" value="{{ $group->name }}">
+        <input type="hidden" name="code" value="{{ $group->code }}">
+        <input type="hidden" name="reporting_currency" value="{{ $group->reporting_currency }}">
+        <input type="hidden" name="fiscal_year_start_month" value="{{ $group->fiscal_year_start_month }}">
+        <input type="hidden" name="status" value="{{ $group->status }}">
+    @endif
+    @if ($mode === 'basic')
+        @foreach ($group->schools->where('status', 'active') as $member)
+            <input type="hidden" name="school_ids[]" value="{{ $member->school_id }}">
+        @endforeach
+    @endif
+    @if ($mode !== 'basic')
     <div class="form-group">
         <label>{{ __('Member Schools') }}</label>
         <div class="row">
@@ -48,5 +64,6 @@
         </div>
         <small class="form-text text-muted">{{ __('Only existing Schools from the central registry can be selected.') }}</small>
     </div>
+    @endif
     <button class="btn btn-theme" type="submit">{{ $group ? __('Save changes') : __('Create') }}</button>
 </form>

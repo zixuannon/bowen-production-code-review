@@ -81,6 +81,11 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   paid amount, outstanding amount, and pending-item count before collection.
   These are read-model/UI additions only; payment posting and authorization
   remain unchanged.
+- Finance Groups configuration now has a compact Group-list home, a separate
+  create screen, and a per-Group management workspace for basic settings,
+  member Schools, Central Finance Staff, and collapsed Advanced / Legacy
+  tenant-identity mapping. Existing scope POST targets, validations, and
+  non-destructive disable behavior are unchanged.
 
 ## Central Finance Fresh Start — per-School cutover guard (local)
 
