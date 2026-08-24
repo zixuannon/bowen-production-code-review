@@ -522,7 +522,7 @@ select2Search($(".edit-school-admin-search"), baseUrl + "/schools/admin/search",
 //Guardian Search
 select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
     if (!repo.text) {
-        $('.guardian_email').val(repo.email);
+        $('#guardian_email').val(repo.email);
         $('#guardian_first_name').val(repo.first_name).prop('readonly', true);
         $('#guardian_last_name').val(repo.last_name).prop('readonly', true);
         $('#guardian_mobile').val(repo.mobile).prop('readonly', true);
@@ -545,7 +545,7 @@ select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search
         $('#guardian_image').siblings('span').find('button').prop('disabled', true);
         $('#guardian-image-preview').attr('src', repo.image);
     } else {
-        $('.guardian_email').val(repo.text).prop('readonly', false);
+        $('#guardian_email').val(repo.text);
         $('#guardian_first_name').val('').prop('readonly', false);
         $('#guardian_last_name').val('').prop('readonly', false);
         $('#guardian_mobile').val('').prop('readonly', false);

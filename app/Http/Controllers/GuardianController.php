@@ -44,6 +44,19 @@ class GuardianController extends Controller {
         return view('guardian.index', compact('classes','class_sections'));
     }
 
+    /**
+     * Render the standalone Guardian creation form registered by the resource route.
+     *
+     * Student admission continues to create or reuse a Guardian inline; this route is
+     * for the existing Guardian management permission and must not fall through to a
+     * missing resource-controller action.
+     */
+    public function create() {
+        ResponseService::noPermissionThenRedirect('guardian-create');
+
+        return view('guardian.create');
+    }
+
     public function store(Request $request) {
         ResponseService::noPermissionThenRedirect('guardian-create');
         $request->validate([

@@ -240,8 +240,8 @@
                             <div class="row mt-5">
                                 <div class="form-group col-sm-12 col-md-12">
                                     <label for="guardian_email">{{ __('guardian') . ' ' . __('email') }} <span class="text-danger">*</span></label>
-                                    <select class="guardian-search form-control guardian_email" id="guardian_email"></select>
-                                    <input type="hidden" id="guardian_email" class="guardian_email" name="guardian_email">
+                                    <select class="guardian-search form-control" id="guardian_email_search"></select>
+                                    <input type="hidden" id="guardian_email" name="guardian_email">
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">
