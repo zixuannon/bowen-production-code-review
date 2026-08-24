@@ -133,8 +133,8 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
     {
         $now = now();
         DB::connection('mysql')->table('central_finance_student_profiles')->insert([
-            ['id'=>301, 'school_id'=>1, 'tenant_student_id'=>301, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Zixuan Student', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now],
-            ['id'=>302, 'school_id'=>2, 'tenant_student_id'=>302, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Timecity Student', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now],
+            ['id'=>301, 'school_id'=>1, 'tenant_student_id'=>301, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Zixuan Student', 'class_name'=>'Primary A', 'section_name'=>'Red', 'admission_no'=>'ZIX-301', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now],
+            ['id'=>302, 'school_id'=>2, 'tenant_student_id'=>302, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Timecity Student', 'class_name'=>'Primary B', 'section_name'=>null, 'admission_no'=>'TIM-302', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now],
         ]);
         DB::connection('mysql')->table('central_finance_receivables')->insert([
             ['receivable_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'student_profile_id'=>301, 'source_type'=>'tenant_fee', 'source_id'=>'open', 'description'=>'Open tuition', 'currency'=>'MMK', 'amount_due'=>100, 'amount_paid'=>0, 'status'=>'open', 'created_at'=>$now, 'updated_at'=>$now],
@@ -151,6 +151,16 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $school = $controller->receivables(new Request());
         $this->assertSame([301], $school->getData()['paymentProfiles']->pluck('id')->all());
         $this->assertSame(['Open tuition'], $school->getData()['paymentReceivables']->pluck('description')->all());
+        $this->assertSame(['Primary A'], $school->getData()['paymentClasses']->all());
+        $this->assertSame(200.0, (float) $school->getData()['paymentProfiles']->first()->total_due);
+        $this->assertSame(100.0, (float) $school->getData()['paymentProfiles']->first()->total_paid);
+
+        $filtered = $controller->receivables(new Request(['payment_class' => 'Primary A', 'payment_student' => 'ZIX-301']));
+        $this->assertSame([301], $filtered->getData()['paymentProfiles']->pluck('id')->all());
+        $this->assertSame('Red', $filtered->getData()['paymentProfiles']->first()->section_name);
+
+        $none = $controller->receivables(new Request(['payment_class' => 'Primary B']));
+        $this->assertCount(0, $none->getData()['paymentProfiles']);
     }
 
     public function test_scope_without_active_group_membership_is_not_finance_authority(): void

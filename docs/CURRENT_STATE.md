@@ -75,6 +75,12 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   Students without an outstanding item remain selectable and receive the
   explicit empty-state message. Payment, receipt, Ledger, cutover, and Fund
   Account scope services are unchanged.
+- The selected-School payment screen now has optional Class and student
+  name/admission-number filters. Selecting a Central Student Financial Profile
+  shows its school-synchronized class/section plus Central receivable totals,
+  paid amount, outstanding amount, and pending-item count before collection.
+  These are read-model/UI additions only; payment posting and authorization
+  remain unchanged.
 
 ## Central Finance Fresh Start — per-School cutover guard (local)
 

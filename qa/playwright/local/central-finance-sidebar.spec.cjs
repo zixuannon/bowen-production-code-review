@@ -140,8 +140,14 @@ test('Head Finance and the Zixuan Accountant see the school-first Central Studen
         await expect(head.page.getByText('当前操作校区：Zixuan QA School')).toBeVisible();
         await head.page.goto('/central-finance/receivables', { waitUntil: 'domcontentloaded' });
         await expect(head.page.locator('#central-payment-form')).toBeVisible();
+        await expect(head.page.locator('#central-payment-class')).toBeVisible();
+        await expect(head.page.locator('#central-payment-search')).toBeVisible();
         await expect(head.page.locator('#central-payment-student option')).toHaveCount(2);
         await head.page.locator('#central-payment-student').selectOption({ index: 1 });
+        await expect(head.page.locator('#central-payment-student-summary')).toBeVisible();
+        await expect(head.page.locator('#central-payment-summary-name')).not.toHaveText('');
+        await expect(head.page.locator('#central-payment-summary-due')).not.toHaveText('');
+        await expect(head.page.locator('#central-payment-summary-outstanding')).not.toHaveText('');
         await expect(head.page.getByText('当前没有待缴项目')).toBeVisible();
         await expect(head.page.locator('#central-payment-receivable')).toBeEnabled();
         await expect(head.page.locator('#central-payment-receivable option')).toHaveCount(1);
@@ -156,6 +162,7 @@ test('Head Finance and the Zixuan Accountant see the school-first Central Studen
         await accountant.page.getByLabel('Switch School', { exact: true }).selectOption({ label: 'Zixuan QA School' });
         await accountant.page.goto('/central-finance/receivables', { waitUntil: 'domcontentloaded' });
         await expect(accountant.page.locator('#central-payment-form')).toBeVisible();
+        await expect(accountant.page.locator('#central-payment-filters')).toBeVisible();
         await expect(accountant.page.locator('#central-payment-student')).toContainText('CFQA Zixuan Student');
         await expect(accountant.page.locator('#central-payment-student')).not.toContainText('CFQA Timecity Student');
     } finally {
