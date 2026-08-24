@@ -120,11 +120,13 @@ class LocalFinanceGroupQa extends Command
         $schoolA = $scope->addUser($group, (int) $central->table('users')->where('email','group_school_a@group-qa.test')->value('id'));
         $scope->grantScope($schoolA,'view_reports','SCHOOL',$a);
         $scope->grantScope($schoolA,'export_reports','SCHOOL',$a);
+        $scope->grantScope($schoolA,'operate_finance','SCHOOL',$a);
         $scope->bindTenantIdentity($schoolA, $a, $this->tenantUserId('GROUP_QA_SCHOOL_A', 'accountant@GROUP_QA_SCHOOL_A.test'));
 
         $schoolB = $scope->addUser($group, (int) $central->table('users')->where('email','group_school_b@group-qa.test')->value('id'));
         $scope->grantScope($schoolB,'view_reports','SCHOOL',$b);
         $scope->grantScope($schoolB,'export_reports','SCHOOL',$b);
+        $scope->grantScope($schoolB,'operate_finance','SCHOOL',$b);
         $scope->bindTenantIdentity($schoolB, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'accountant@GROUP_QA_SCHOOL_B.test'));
 
         $hqAccount = FinanceGroupHqAccount::query()->create([
@@ -406,16 +408,36 @@ class LocalFinanceGroupQa extends Command
         }
 
         foreach ($schoolIds as $code => $schoolId) {
+            $tenantStudentId = $this->tenantStudentId($code, self::STUDENT_SOURCE_UUIDS[$code]);
             $profile = $central->table('central_finance_student_profiles')
                 ->where('school_id', $schoolId)->first();
             if ($profile === null
                 || $central->table('central_finance_student_profiles')->where('school_id', $schoolId)->count() !== 1
                 || $profile->source_uuid !== self::STUDENT_SOURCE_UUIDS[$code]
-                || (int) $profile->tenant_student_id !== 1
+                || (int) $profile->tenant_student_id !== $tenantStudentId
                 || $central->table('central_finance_sync_events')->where('school_id', $schoolId)->count() !== 1) {
                 throw new \LogicException('Central Student fixture identity mismatch.');
             }
         }
+    }
+
+    private function tenantStudentId(string $code, string $sourceUuid): int
+    {
+        $database = self::TENANTS[$code] ?? null;
+        if ($database === null) {
+            throw new \LogicException('Unknown fixed Group QA tenant.');
+        }
+        LocalQaTenantGuard::assertTenant($code, $database, self::TENANTS);
+        Config::set('database.connections.school.database', $database);
+        DB::purge('school');
+
+        $id = (int) DB::connection('school')->table('students')
+            ->where('central_finance_source_uuid', $sourceUuid)->value('id');
+        if ($id <= 0) {
+            throw new \LogicException('Required Group QA tenant student is missing.');
+        }
+
+        return $id;
     }
 
     private function tenantUserId(string $code, string $email): int

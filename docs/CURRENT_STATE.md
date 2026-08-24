@@ -62,6 +62,20 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 - No tenant Finance writer, cutover rule, Ledger posting rule, schema, or
   Production/Staging data changed.
 
+## Central Finance pre-opening configuration UX — local implementation
+
+- Finance Groups now presents Central Finance Staff configuration separately:
+  a Head Finance may receive all active Group Schools in one explicit grant,
+  while a School Accountant remains server-enforced to one School. The scope
+  table shows view/operate/approve/confirm state and supports non-destructive
+  disable/revoke. Tenant identity mapping is visibly marked Legacy / Transition.
+- In Central Student Fee, All Schools is a read-only summary/history state;
+  it does not render a disabled collection form. A selected School renders the
+  scoped sequence Student → outstanding receivable → Fund Account → amount.
+  Students without an outstanding item remain selectable and receive the
+  explicit empty-state message. Payment, receipt, Ledger, cutover, and Fund
+  Account scope services are unchanged.
+
 ## Central Finance Fresh Start — per-School cutover guard (local)
 
 - Central Finance now has an additive, reversible per-School cutover state:

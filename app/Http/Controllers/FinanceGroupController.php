@@ -27,11 +27,16 @@ class FinanceGroupController extends Controller
         $this->assertCentralSuperAdmin();
 
         return view('finance-groups.index', [
-            'groups' => FinanceGroup::query()->with(['schools.school', 'users.centralUser', 'users.scopes.school', 'users.tenantIdentities.school'])->orderBy('name')->get(),
+            'groups' => FinanceGroup::query()->with(['schools.school', 'users.centralUser.roles', 'users.scopes.school', 'users.tenantIdentities.school'])->orderBy('name')->get(),
             // Schools come only from the central registry; database names are
             // deliberately not selected or rendered.
             'schools' => School::on('mysql')->orderBy('name')->get(['id', 'name', 'code', 'status']),
-            'centralUsers' => User::on('mysql')->whereNull('school_id')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']),
+            'centralUsers' => User::on('mysql')->whereNull('school_id')->with('roles')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']),
+            'centralScopes' => DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
+                ->join('users as users', 'users.id', '=', 'scopes.user_id')
+                ->join('schools as schools', 'schools.id', '=', 'scopes.school_id')
+                ->select(['scopes.*', 'users.first_name', 'users.last_name', 'users.email', 'schools.name as school_name'])
+                ->orderBy('users.first_name')->orderBy('schools.name')->get(),
         ]);
     }
 
@@ -96,27 +101,68 @@ class FinanceGroupController extends Controller
     {
         $this->assertCentralSuperAdmin();
         $data = $request->validate([
-            'central_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer'],
+            'central_user_id' => ['required', 'integer'], 'school_id' => ['nullable', 'integer'],
+            'grant_type' => ['nullable', 'in:head_finance_all,school_accountant,custom'],
             'can_view' => ['nullable', 'boolean'], 'can_operate' => ['nullable', 'boolean'],
             'can_approve_reimbursements' => ['nullable', 'boolean'], 'can_confirm_funding' => ['nullable', 'boolean'],
         ]);
-        $schoolId = (int) $data['school_id'];
+        $grantType = $data['grant_type'] ?? 'custom';
         $centralUser = User::on('mysql')->findOrFail((int) $data['central_user_id']);
         abort_unless($centralUser->school_id === null, 422);
-        abort_unless($financeGroup->schools()->where(['school_id' => $schoolId, 'status' => 'active'])->exists(), 422);
         $groupUser = $this->groups->addUser($financeGroup, (int) $data['central_user_id']);
-        $canView = (bool) ($data['can_view'] ?? false);
-        $canOperate = (bool) ($data['can_operate'] ?? false);
-        abort_unless($canView && (!$canOperate || $this->groups->canAccessSchool($groupUser, $schoolId, 'operate_finance')), 422);
-        abort_unless($this->groups->canAccessSchool($groupUser, $schoolId, 'view_reports'), 422);
-        DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
-            ['user_id' => (int) $data['central_user_id'], 'school_id' => $schoolId],
-            ['can_view' => $canView, 'can_operate' => $canOperate,
-                'can_approve_reimbursements' => $canOperate && (bool) ($data['can_approve_reimbursements'] ?? false),
-                'can_confirm_funding' => $canOperate && (bool) ($data['can_confirm_funding'] ?? false),
-                'created_at' => now(), 'updated_at' => now()],
-        );
+        if ($grantType === 'head_finance_all') {
+            abort_unless($this->groups->isCentralHeadFinance($groupUser), 422);
+            $this->groups->grantScope($groupUser, 'view_reports', 'GROUP');
+            $this->groups->grantScope($groupUser, 'operate_finance', 'GROUP');
+            foreach ($financeGroup->schools()->where('status', 'active')->pluck('school_id') as $schoolId) {
+                $this->upsertCentralScope((int) $centralUser->id, (int) $schoolId, true, true, true, true);
+            }
+        } else {
+            $schoolId = (int) ($data['school_id'] ?? 0);
+            abort_unless($schoolId > 0 && $financeGroup->schools()->where(['school_id' => $schoolId, 'status' => 'active'])->exists(), 422);
+            if ($grantType === 'school_accountant') {
+                abort_unless(!$this->groups->isCentralHeadFinance($groupUser), 422);
+                $otherSchoolScopeExists = DB::connection('mysql')->table('central_finance_user_school_scopes')
+                    ->where('user_id', $centralUser->id)->where('school_id', '!=', $schoolId)->where('can_view', true)->exists();
+                abort_unless(!$otherSchoolScopeExists, 422);
+                $this->groups->grantScope($groupUser, 'view_reports', 'SCHOOL', $schoolId);
+                $this->groups->grantScope($groupUser, 'operate_finance', 'SCHOOL', $schoolId);
+                $this->upsertCentralScope((int) $centralUser->id, $schoolId, true, true, false, false);
+            } else {
+                $canView = (bool) ($data['can_view'] ?? false);
+                $canOperate = (bool) ($data['can_operate'] ?? false);
+                // The edit form must not turn a School Accountant into a
+                // multi-School user. Head Finance is the only role that may
+                // keep more than one active Central Finance School scope.
+                if (!$this->groups->isCentralHeadFinance($groupUser) && $canView) {
+                    $otherSchoolScopeExists = DB::connection('mysql')->table('central_finance_user_school_scopes')
+                        ->where('user_id', $centralUser->id)->where('school_id', '!=', $schoolId)->where('can_view', true)->exists();
+                    abort_unless(!$otherSchoolScopeExists, 422);
+                }
+                abort_unless($canView && (!$canOperate || $this->groups->canAccessSchool($groupUser, $schoolId, 'operate_finance')), 422);
+                abort_unless($this->groups->canAccessSchool($groupUser, $schoolId, 'view_reports'), 422);
+                $this->upsertCentralScope((int) $centralUser->id, $schoolId, $canView, $canOperate, $canOperate && (bool) ($data['can_approve_reimbursements'] ?? false), $canOperate && (bool) ($data['can_confirm_funding'] ?? false));
+            }
+        }
         return redirect()->route('finance-groups.index')->with('success', __('Central Finance School scope saved.'));
+    }
+
+    public function disableCentralSchoolScope(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate(['central_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer']]);
+        abort_unless(User::on('mysql')->whereKey((int) $data['central_user_id'])->whereNull('school_id')->exists(), 422);
+        abort_unless($financeGroup->schools()->where(['school_id' => (int) $data['school_id'], 'status' => 'active'])->exists(), 422);
+        $this->upsertCentralScope((int) $data['central_user_id'], (int) $data['school_id'], false, false, false, false);
+        return redirect()->route('finance-groups.index')->with('success', __('Central Finance School scope disabled.'));
+    }
+
+    private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm): void
+    {
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
+            ['user_id' => $userId, 'school_id' => $schoolId],
+            ['can_view' => $view, 'can_operate' => $operate, 'can_approve_reimbursements' => $operate && $approve, 'can_confirm_funding' => $operate && $confirm, 'created_at' => now(), 'updated_at' => now()],
+        );
     }
 
     /** @return array<string, mixed> */

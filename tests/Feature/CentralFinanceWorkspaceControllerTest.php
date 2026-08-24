@@ -93,6 +93,10 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertNotContains('SwitchDatabase', $route->middleware());
         $view=(string)file_get_contents(resource_path('views/central-finance/workspace.blade.php'));
         $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringContainsString('当前操作校区',$view); $this->assertStringContainsString("['operation' => 'expense']",$view); $this->assertStringContainsString("['operation' => 'income']",$view); $this->assertStringContainsString('$showWriteForm',$view); $this->assertStringContainsString('<fieldset @disabled($writeDisabled)>',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
+        $this->assertStringContainsString('All Schools is read-only for payment history and totals',$view);
+        $this->assertStringContainsString('central-payment-student',$view);
+        $this->assertStringContainsString('central-payment-receivable',$view);
+        $this->assertStringContainsString('当前没有待缴项目',$view);
         foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
         }
@@ -123,6 +127,30 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         }
         $this->assertFalse(Schema::connection('mysql')->hasTable('fees_paid'));
         $this->assertFalse(Schema::connection('mysql')->hasTable('expenses'));
+    }
+
+    public function test_student_fee_selector_uses_only_current_school_profiles_and_open_receivables(): void
+    {
+        $now = now();
+        DB::connection('mysql')->table('central_finance_student_profiles')->insert([
+            ['id'=>301, 'school_id'=>1, 'tenant_student_id'=>301, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Zixuan Student', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now],
+            ['id'=>302, 'school_id'=>2, 'tenant_student_id'=>302, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Timecity Student', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now],
+        ]);
+        DB::connection('mysql')->table('central_finance_receivables')->insert([
+            ['receivable_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'student_profile_id'=>301, 'source_type'=>'tenant_fee', 'source_id'=>'open', 'description'=>'Open tuition', 'currency'=>'MMK', 'amount_due'=>100, 'amount_paid'=>0, 'status'=>'open', 'created_at'=>$now, 'updated_at'=>$now],
+            ['receivable_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'student_profile_id'=>301, 'source_type'=>'tenant_fee', 'source_id'=>'paid', 'description'=>'Paid tuition', 'currency'=>'MMK', 'amount_due'=>100, 'amount_paid'=>100, 'status'=>'paid', 'created_at'=>$now, 'updated_at'=>$now],
+            ['receivable_uuid'=>(string) Str::uuid(), 'school_id'=>2, 'student_profile_id'=>302, 'source_type'=>'tenant_fee', 'source_id'=>'other', 'description'=>'Other school tuition', 'currency'=>'MMK', 'amount_due'=>100, 'amount_paid'=>0, 'status'=>'open', 'created_at'=>$now, 'updated_at'=>$now],
+        ]);
+        $this->actingAs($this->head);
+        $controller = app(CentralFinanceWorkspaceController::class);
+        $allSchools = $controller->receivables(new Request());
+        $this->assertCount(0, $allSchools->getData()['paymentProfiles']);
+        $this->assertCount(0, $allSchools->getData()['paymentReceivables']);
+
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $school = $controller->receivables(new Request());
+        $this->assertSame([301], $school->getData()['paymentProfiles']->pluck('id')->all());
+        $this->assertSame(['Open tuition'], $school->getData()['paymentReceivables']->pluck('description')->all());
     }
 
     public function test_scope_without_active_group_membership_is_not_finance_authority(): void
