@@ -78,7 +78,7 @@ final class CentralFinanceSchoolCutoverService
         $school = School::on('mysql')->findOrFail($requestedSchool->id);
         $this->configurationAuthorization->assertHeadFinanceCanConfigureSchool($actor, $school);
 
-        return DB::connection('mysql')->transaction(function () use ($school, $target): CentralFinanceSchoolCutover {
+        return DB::connection('mysql')->transaction(function () use ($actor, $school, $target): CentralFinanceSchoolCutover {
             $row = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $school->id)->lockForUpdate()->first();
             $current = $row?->status ?? CentralFinanceSchoolCutover::LEGACY;
             if ($current === $target) {
@@ -92,13 +92,19 @@ final class CentralFinanceSchoolCutoverService
             ], true)) {
                 throw new LogicException('This Central Finance cutover transition is not permitted.');
             }
-            if ($current === CentralFinanceSchoolCutover::READY && $target === CentralFinanceSchoolCutover::CENTRAL) {
+            if (($current === CentralFinanceSchoolCutover::LEGACY && $target === CentralFinanceSchoolCutover::READY)
+                || ($current === CentralFinanceSchoolCutover::READY && $target === CentralFinanceSchoolCutover::CENTRAL)) {
                 $this->readiness->assertReadyForCentral($school);
             }
 
             $row ??= new CentralFinanceSchoolCutover(['school_id' => $school->id]);
             $row->status = $target;
+            if ($target === CentralFinanceSchoolCutover::READY) {
+                $row->ready_by = $actor->id;
+                $row->ready_at = now();
+            }
             $row->cutover_at = $target === CentralFinanceSchoolCutover::CENTRAL ? now() : null;
+            $row->approved_by = $target === CentralFinanceSchoolCutover::CENTRAL ? $actor->id : null;
             $row->save();
 
             return $row->fresh();

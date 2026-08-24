@@ -16,6 +16,8 @@
             </nav>
         </div>
 
+        <div class="row"><div class="col-md-12 grid-margin stretch-card"><div class="card"><div class="card-body"><h5>{{ __('Central Finance') }}</h5>@if($centralFinance['available'])<p class="text-muted">{{ __('Source: Central Finance') }}</p><div class="row"><div class="col-md-4"><strong>{{ __('Due') }}:</strong> {{ number_format($centralFinance['total_due'],2) }}</div><div class="col-md-4"><strong>{{ __('Paid') }}:</strong> {{ number_format($centralFinance['total_paid'],2) }}</div><div class="col-md-4"><strong>{{ __('Outstanding') }}:</strong> {{ number_format($centralFinance['outstanding'],2) }}</div></div><div class="table-responsive mt-3"><table class="table table-sm"><thead><tr><th>{{ __('Receivable') }}</th><th>{{ __('Due') }}</th><th>{{ __('Paid') }}</th><th>{{ __('Outstanding') }}</th><th>{{ __('Status') }}</th><th>{{ __('Receipt') }}</th></tr></thead><tbody>@foreach($centralFinance['receivables'] as $receivable)<tr><td>{{ $receivable->description }}</td><td>{{ number_format($receivable->amount_due,2) }}</td><td>{{ number_format($receivable->amount_paid,2) }}</td><td>{{ number_format(max(0,$receivable->amount_due-$receivable->amount_paid),2) }}</td><td>{{ $receivable->status }}</td><td>{{ $receivable->payments->pluck('receipt.receipt_no')->filter()->implode(', ') }}</td></tr>@endforeach</tbody></table></div>@else<div class="alert alert-warning mb-0">{{ $centralFinance['reason'] }}</div>@endif</div></div></div>
+
         {{-- Sub-navigation tabs --}}
         <div class="mb-3">
             <a href="{{ route('outstanding-fees.index') }}" class="btn btn-outline-primary">{{ __('Outstanding Fees') }}</a>

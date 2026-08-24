@@ -16,13 +16,19 @@ final class CentralFinanceTenantFeeAssignmentSource {
         $fresh=CentralFinanceStudentProfile::on('mysql')->findOrFail($profile->id);
         $school=School::on('mysql')->findOrFail($fresh->school_id);
         $db=(string)$school->getRawOriginal('database_name');
-        if (!$this->safe($db) || !$fresh->class_id) return [];
+        if (!$this->safe($db)) {
+            throw new AuthorizationException('The School registry does not contain a valid tenant database.');
+        }
+        if (!$fresh->class_id) return [];
         return $this->onSchool($db,function() use($fresh): array {
             $hasCurrency = Schema::connection('school')->hasColumn('fees_class_types', 'fee_currency');
             $select = ['fees_class_types.id','fees_class_types.amount','fees_class_types.updated_at','fees.name','fees.due_date'];
             if ($hasCurrency) $select[] = 'fees_class_types.fee_currency';
-            $rows=DB::connection('school')->table('fees_class_types')->leftJoin('fees','fees.id','=','fees_class_types.fees_id')
-                ->where('fees_class_types.class_id',$fresh->class_id)->where('fees_class_types.optional',0)
+            $query = DB::connection('school')->table('fees_class_types')->leftJoin('fees','fees.id','=','fees_class_types.fees_id')
+                ->where('fees_class_types.class_id',$fresh->class_id)->where('fees_class_types.optional',0);
+            if (Schema::connection('school')->hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('fees_class_types.deleted_at');
+            if (Schema::connection('school')->hasColumn('fees', 'deleted_at')) $query->whereNull('fees.deleted_at');
+            $rows=$query
                 ->select($select)->orderBy('fees_class_types.id')->get();
             return $rows->map(fn(object $r): array => [
                 'source_id'=>(string)$r->id,'description'=>(string)($r->name ?: 'Assigned fee'),

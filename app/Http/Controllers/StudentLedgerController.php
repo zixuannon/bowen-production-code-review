@@ -69,6 +69,7 @@ class StudentLedgerController extends Controller
             abort(404);
         }
 
+        $data['centralFinance'] = app(\App\Services\CentralFinanceStudentReadBridge::class)->forStudent($data['student']);
         return view('student-ledger.show', $data);
     }
 

@@ -19,6 +19,9 @@ final class CentralFinancePaymentService {
             $r=CentralFinanceReceivable::on('mysql')->lockForUpdate()->findOrFail($receivableId);
             $this->schools->assertCanOperate($actor,$r->school_id); $this->accounts->assertCanOperate($actor,$account);
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $r->school_id);
+            if (!in_array($r->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true)) {
+                throw new InvalidArgumentException('Only an open or partially paid Central receivable can collect a payment.');
+            }
             $key=hash('sha256',$r->school_id.'|'.$r->id.'|'.$idempotencyReference);
             $existing=CentralFinancePayment::on('mysql')->where('idempotency_key',$key)->lockForUpdate()->first();
             if ($existing) return ['payment'=>$existing,'receipt'=>CentralFinanceReceipt::on('mysql')->where('payment_id',$existing->id)->firstOrFail()];

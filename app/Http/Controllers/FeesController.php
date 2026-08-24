@@ -281,6 +281,9 @@ class FeesController extends Controller
             }
 
             DB::commit();
+            // Best-effort Central projection only. Tenant fee configuration is
+            // already committed and remains authoritative if Central is down.
+            app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, array_map('intval', (array) $request->class_id));
             ResponseService::successResponse('Data Stored Successfully');
         } catch (Throwable $e) {
             if (
@@ -669,6 +672,7 @@ class FeesController extends Controller
             ]);
 
             DB::commit();
+            app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, [(int) $fees->class_id]);
             ResponseService::successRedirectResponse(route('fees.index'), 'Data Update Successfully');
         } catch (Throwable $e) {
             DB::rollback();
@@ -690,10 +694,12 @@ class FeesController extends Controller
         ResponseService::noPermissionThenSendJson('fees-delete');
         try {
             DB::beginTransaction();
+            $classIds = FeesClassType::query()->where('fees_id', $id)->pluck('class_id')->map(fn ($classId) => (int) $classId)->all();
             $this->fees->deleteById($id);
             $sessionYear = $this->cache->getDefaultSessionYear();
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Fees', $id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             DB::commit();
+            app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, $classIds);
             ResponseService::successResponse("Data Deleted Successfully");
         } catch (Throwable $e) {
             DB::rollBack();
@@ -707,7 +713,9 @@ class FeesController extends Controller
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-delete');
         try {
-            $this->fees->findOnlyTrashedById($id)->restore();
+            $fees = $this->fees->findOnlyTrashedById($id);
+            $fees->restore();
+            app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, [(int) $fees->class_id]);
             ResponseService::successResponse("Data Restored Successfully");
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);

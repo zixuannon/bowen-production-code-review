@@ -3,6 +3,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
 class CentralFinancePayment extends Model {
     protected $connection='mysql';
@@ -11,5 +12,6 @@ class CentralFinancePayment extends Model {
     protected static function booted(): void { static::updating(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); static::deleting(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); }
     public function receivable(): BelongsTo { return $this->belongsTo(CentralFinanceReceivable::class, 'receivable_id'); }
     public function receipt(): HasOne { return $this->hasOne(CentralFinanceReceipt::class, 'payment_id'); }
+    public function refunds(): HasMany { return $this->hasMany(CentralFinancePaymentRefund::class, 'payment_id'); }
     public function fundAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'fund_account_id'); }
 }

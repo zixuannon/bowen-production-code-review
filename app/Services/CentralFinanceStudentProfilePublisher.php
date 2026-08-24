@@ -15,7 +15,10 @@ use Throwable;
  */
 final class CentralFinanceStudentProfilePublisher
 {
-    public function __construct(private readonly CentralFinanceStudentProfileSyncService $sync) {}
+    public function __construct(
+        private readonly CentralFinanceStudentProfileSyncService $sync,
+        private readonly CentralFinanceReceivablePublisher $receivables,
+    ) {}
 
     public function studentChanged(Students $student): void
     {
@@ -25,7 +28,10 @@ final class CentralFinanceStudentProfilePublisher
 
         try {
             $school = School::on('mysql')->findOrFail((int) $student->school_id);
-            $this->sync->syncStudent($school, (int) $student->id);
+            $result = $this->sync->syncStudent($school, (int) $student->id);
+            if ($result['profile_id'] !== null) {
+                $this->receivables->studentChanged(\App\Models\CentralFinanceStudentProfile::on('mysql')->findOrFail($result['profile_id']));
+            }
         } catch (Throwable $exception) {
             // Avoid logging PII/payloads. The registered school code/id and
             // bounded exception class are sufficient for an operator to run

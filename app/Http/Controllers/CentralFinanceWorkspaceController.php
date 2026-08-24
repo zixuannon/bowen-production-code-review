@@ -24,10 +24,12 @@ use App\Services\CentralFinanceHqFundingService;
 use App\Services\CentralFinanceInternalTransferService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use App\Services\CentralFinancePaymentService;
+use App\Services\CentralFinancePaymentRefundService;
 use App\Services\CentralFinancePaymentImportService;
 use App\Services\CentralFinanceExpenseImportService;
 use App\Services\CentralFinanceReimbursementService;
 use App\Services\CentralFinanceSchoolCutoverService;
+use App\Services\CentralFinanceCutoverReadinessService;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -51,6 +53,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceFundAccountBalanceService $balances,
         private readonly CentralFinancePaymentService $payments,
+        private readonly CentralFinancePaymentRefundService $refunds,
         private readonly CentralFinancePaymentImportService $paymentImports,
         private readonly CentralFinanceExpenseImportService $expenseImports,
         private readonly CentralFinanceOperatingDocumentService $documents,
@@ -59,6 +62,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceFundHandoverService $handovers,
         private readonly CentralFinanceHqFundingService $funding,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
+        private readonly CentralFinanceCutoverReadinessService $cutoverReadiness,
         private readonly CentralFinanceFundAccountAdministrationService $accountAdministration,
         private readonly CentralFinanceConfigurationAuthorizationService $configuration,
     ) {}
@@ -265,6 +269,15 @@ final class CentralFinanceWorkspaceController extends Controller
         return back()->with('success', __('Central payment collected.'));
     }
 
+    public function refundPayment(Request $request, int $payment): RedirectResponse
+    {
+        [$actor, $school] = $this->currentOperatingContext();
+        $data = $request->validate(['fund_account_id' => ['required', 'integer'], 'amount' => ['required', 'numeric', 'gt:0'], 'reason' => ['required', 'string', 'max:2000'], 'refund_reference' => ['nullable', 'string', 'max:100']]);
+        $document = CentralFinancePayment::on('mysql')->where('school_id', $school->id)->findOrFail($payment);
+        $this->refunds->refund($actor, $document->id, CentralFinanceFundAccount::on('mysql')->findOrFail($data['fund_account_id']), (float) $data['amount'], $data['reason'], CarbonImmutable::now(), $this->workspace->idempotencyReference('ui-payment-refund'), $data['refund_reference'] ?? null);
+        return back()->with('success', __('Central payment refund recorded.'));
+    }
+
     public function paymentImportTemplate()
     {
         return Excel::download(new CentralPaymentImportTemplateExport(), 'central_payment_import_template_v1.xlsx');
@@ -459,7 +472,8 @@ final class CentralFinanceWorkspaceController extends Controller
                 'uploaded_by' => $actor->id, 'import_type' => 'expense',
             ])->firstOrFail();
         }
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'accounts'=>$accounts,'canOperate'=>$canOperate,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'ledger'=>$ledger,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
+        $cutoverChecklist = $school && $canConfigureAccounts ? $this->cutoverReadiness->checklist($school) : collect();
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'accounts'=>$accounts,'canOperate'=>$canOperate,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'ledger'=>$ledger,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
         return view('central-finance.workspace',$data);
     }
 

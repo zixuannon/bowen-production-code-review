@@ -1179,6 +1179,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/payments', [CentralFinanceWorkspaceController::class, 'paymentHistory'])->name('central-finance.payments.index');
     Route::get('central-finance/payments/export/{format}', [CentralFinanceWorkspaceController::class, 'exportPayments'])->whereIn('format', ['csv','xlsx'])->name('central-finance.payments.export');
     Route::post('central-finance/payments', [CentralFinanceWorkspaceController::class, 'collect'])->name('central-finance.payments.store');
+    Route::post('central-finance/payments/{payment}/refund', [CentralFinanceWorkspaceController::class, 'refundPayment'])->name('central-finance.payments.refund');
     Route::get('central-finance/payment-import/template', [CentralFinanceWorkspaceController::class, 'paymentImportTemplate'])->name('central-finance.payment-import.template');
     Route::post('central-finance/payment-import/preview', [CentralFinanceWorkspaceController::class, 'previewPaymentImport'])->name('central-finance.payment-import.preview');
     Route::post('central-finance/payment-import/{batch}/confirm', [CentralFinanceWorkspaceController::class, 'confirmPaymentImport'])->name('central-finance.payment-import.confirm');

@@ -19,6 +19,24 @@
                 <span class="menu-title">{{ __('dashboard') }}</span>
             </a>
         </li>
+        @php
+            try { $hasCentralFinanceIdentity = app(\App\Services\CentralFinanceWorkspaceService::class)->actor(Auth::user()) !== null; } catch (\Throwable) { $hasCentralFinanceIdentity = false; }
+        @endphp
+        @if ($hasCentralFinanceIdentity)
+            <li class="nav-item">
+                <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
+                    <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ __('Central Finance') }}</span><i class="menu-arrow"></i>
+                </a>
+                <div class="collapse {{ request()->routeIs('central-finance.*') ? 'show' : '' }}" id="central-finance-menu"><ul class="nav flex-column sub-menu">
+                    <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.dashboard','central-finance.receivables','central-finance.payments.*','central-finance.student-ledger','central-finance.operations','central-finance.reports','central-finance.ledger')) open @endif><summary class="nav-link">{{ __('财务管理') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu">
+                        <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.dashboard') ? 'active' : '' }}" href="{{ route('central-finance.dashboard') }}">{{ __('财务总览') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.receivables') ? 'active' : '' }}" href="{{ route('central-finance.receivables') }}">{{ __('学生收费') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.payments.*') ? 'active' : '' }}" href="{{ route('central-finance.payments.index') }}">{{ __('收费记录 / 收据') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.student-ledger') ? 'active' : '' }}" href="{{ route('central-finance.student-ledger') }}">{{ __('学生账本') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.operations') && request('operation') === 'income' ? 'active' : '' }}" href="{{ route('central-finance.operations',['operation'=>'income']) }}">{{ __('其他收入') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.reports') ? 'active' : '' }}" href="{{ route('central-finance.reports') }}">{{ __('财务报表') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.ledger') ? 'active' : '' }}" href="{{ route('central-finance.ledger') }}">{{ __('Standard Ledger') }}</a></li>
+                    </ul></details></li>
+                    <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.accounts','central-finance.transfers','central-finance.handovers','central-finance.funding') || (request()->routeIs('central-finance.operations') && in_array(request('operation'),['expense','reimbursement'],true))) open @endif><summary class="nav-link">{{ __('支出管理') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu">
+                        <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.operations') && request('operation') === 'expense' ? 'active' : '' }}" href="{{ route('central-finance.operations',['operation'=>'expense']) }}">{{ __('支出记录') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.operations') && request('operation') === 'reimbursement' ? 'active' : '' }}" href="{{ route('central-finance.operations',['operation'=>'reimbursement']) }}">{{ __('报销申请') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts') ? 'active' : '' }}" href="{{ route('central-finance.accounts') }}">{{ __('银行账户') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.transfers') ? 'active' : '' }}" href="{{ route('central-finance.transfers') }}">{{ __('银行转账') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.handovers') ? 'active' : '' }}" href="{{ route('central-finance.handovers') }}">{{ __('Fund Handover') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.funding') ? 'active' : '' }}" href="{{ route('central-finance.funding') }}">{{ __('HQ / School Funding') }}</a></li>
+                    </ul></details></li>
+                </ul></div>
+            </li>
+        @endif
         {{-- XIAOBAILONG-INTEGRATION: keep this teacher workspace entry during deployments. --}}
         @if (config('xiaobailong.enabled') && Auth::check() && Auth::user()->hasRole('Teacher') && Auth::user()->can('xiaobailong-use'))
             <li class="nav-item {{ request()->routeIs('xiaobailong.*') ? 'active' : '' }}">
@@ -1619,6 +1637,8 @@
                 </a>
             </li>
         @endif
+        {{-- Legacy placement retained in source during this UI-only move; never render a second Central Finance menu. --}}
+        @if (false)
         @php
             try {
                 $hasCentralFinanceIdentity = app(\App\Services\CentralFinanceWorkspaceService::class)->actor(Auth::user()) !== null;
@@ -1663,6 +1683,7 @@
                     </ul>
                 </div>
             </li>
+        @endif
         @endif
         @if (Auth::user()->hasRole('Super Admin'))
             @if (!Auth::user()->school_id)
