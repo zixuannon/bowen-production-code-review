@@ -87,10 +87,31 @@ final class CentralFinanceWorkspaceService
     public function currentSchool(CentralFinanceUser $actor): ?School
     {
         $schoolId = Session::get(self::SESSION_SCHOOL_KEY);
-        if (!is_int($schoolId) && !ctype_digit((string) $schoolId)) {
-            return null;
+        $schools = $this->accessibleSchools($actor);
+        if (is_int($schoolId) || ctype_digit((string) $schoolId)) {
+            $school = $schools->firstWhere('id', (int) $schoolId);
+            if ($school !== null) {
+                return $school;
+            }
         }
-        return $this->accessibleSchools($actor)->firstWhere('id', (int) $schoolId);
+
+        // A School Staff principal is a single-School Finance identity, not a
+        // central All Schools identity. It must therefore fail closed when its
+        // scoped School is ambiguous and otherwise default to its only School.
+        if ($this->isSchoolStaffPrincipal($actor)) {
+            if ($schools->count() !== 1) {
+                throw new AuthorizationException('A School Staff Finance identity requires exactly one authorized School.');
+            }
+
+            return $schools->sole();
+        }
+
+        return null;
+    }
+
+    public function isSchoolStaffPrincipal(CentralFinanceUser $actor): bool
+    {
+        return $actor->getRawOriginal('central_finance_principal_type') === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE;
     }
 
     public function requireOperatingSchool(CentralFinanceUser $actor): School

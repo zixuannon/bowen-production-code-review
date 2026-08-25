@@ -12,6 +12,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -62,6 +63,10 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertSame([$principal->id], DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id', 1)->where('can_view', true)->pluck('user_id')->all());
         $this->assertSame([1], app(CentralFinanceWorkspaceService::class)->accessibleSchools($principal)->pluck('id')->all());
         $this->assertSame($principal->id, $service->resolveTrustedSession(['school_id' => 1, 'user_uuid' => $tenantUuid])->id);
+        Session::forget(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY);
+        $this->assertSame(1, app(CentralFinanceWorkspaceService::class)->currentSchool($principal)?->id);
+        Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, 999);
+        $this->assertSame(1, app(CentralFinanceWorkspaceService::class)->currentSchool($principal)?->id);
 
         $this->expectException(AuthorizationException::class);
         $service->resolveTrustedSession(['school_id' => 2, 'user_uuid' => $tenantUuid]);

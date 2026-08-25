@@ -33,7 +33,7 @@
                     @foreach($schools as $availableSchool)<option value="{{ $availableSchool->id }}" @selected($school && $school->id === $availableSchool->id)>{{ $availableSchool->name }}</option>@endforeach
                 </select>
             </form>
-            @if($school)<form method="POST" action="{{ route('central-finance.school.exit') }}" class="mb-1">@csrf<button class="btn btn-sm btn-outline-secondary">{{ __('返回全部校区') }}</button></form>@endif
+            @if($school && $canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.exit') }}" class="mb-1">@csrf<button class="btn btn-sm btn-outline-secondary">{{ __('返回全部校区') }}</button></form>@endif
         </div>
     </div>
 
