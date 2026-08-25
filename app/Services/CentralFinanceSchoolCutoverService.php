@@ -21,10 +21,18 @@ use LogicException;
  */
 final class CentralFinanceSchoolCutoverService
 {
+    /** Fresh Start dates are Finance business dates, not application-server dates. */
+    public const FRESH_START_TIMEZONE = 'Asia/Yangon';
+
     public function __construct(
         private readonly CentralFinanceCutoverReadinessService $readiness,
         private readonly CentralFinanceConfigurationAuthorizationService $configurationAuthorization,
     ) {}
+
+    public static function parseReceivableSyncEffectiveAt(string $value): CarbonImmutable
+    {
+        return CarbonImmutable::parse($value, self::FRESH_START_TIMEZONE);
+    }
 
     public function statusForSchool(int $schoolId): string
     {

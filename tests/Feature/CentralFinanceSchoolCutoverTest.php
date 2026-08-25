@@ -152,6 +152,16 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $cutovers->setReceivableSyncEffectiveAt($this->headFinance, $school, \Carbon\CarbonImmutable::parse('2026-08-22 00:00:00'), 'Unsafe late change');
     }
 
+    public function test_fresh_start_cutoff_uses_yangon_business_time_even_when_the_application_timezone_differs(): void
+    {
+        config(['app.timezone' => 'Asia/Kolkata']);
+
+        $effectiveAt = CentralFinanceSchoolCutoverService::parseReceivableSyncEffectiveAt('2026-09-01T00:00');
+
+        $this->assertSame('Asia/Yangon', $effectiveAt->getTimezone()->getName());
+        $this->assertSame('2026-08-31 17:30:00', $effectiveAt->utc()->format('Y-m-d H:i:s'));
+    }
+
     private function tenantActor(int $schoolId): User
     {
         $actor = new User();

@@ -266,7 +266,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $this->cutovers->setReceivableSyncEffectiveAt(
             $actor,
             $school,
-            CarbonImmutable::parse($data['receivable_sync_effective_at']),
+            CentralFinanceSchoolCutoverService::parseReceivableSyncEffectiveAt($data['receivable_sync_effective_at']),
             $data['receivable_sync_effective_reason'],
         );
         return back()->with('success', __('Fresh Start receivable cutoff saved.'));
