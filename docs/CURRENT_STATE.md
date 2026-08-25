@@ -44,6 +44,32 @@ Finance V2
   current tenant database connection, never from tenant-local `users.school_id`.
   This prevents a local ID collision from bypassing a Central cutover.
 
+## Zixuan Central Finance Fresh Start — Production Write UAT Phase 2
+
+- Phase 2 used only `CENTRAL-PROD-UAT-` configuration, references, Fund
+  Accounts, categories, and the retained UAT student/receivable.  Two synthetic
+  zero-opening accounts were added: Zixuan MMK-2 and HQ MMK.  No real Fund
+  Account, Opening Balance, or historical tenant Finance record was changed.
+- Other Income and Expense lifecycle checks both proved idempotent creation,
+  append-only void reversal, preserved original Ledger history, and audit rows.
+  The retained approved reimbursement created exactly one Expense; its pending
+  request had no balance or Ledger effect.
+- Direct transfer, Fund Handover, and HQ↔School Funding proved pending
+  neutrality, exactly-once confirmation, same-account/insufficient/unauthorized
+  denial, and zero Operating Income/Expense impact for internal transfers.
+- Expense Import and Payment Import each completed exactly one UAT batch.  The
+  import framework rejected duplicate file/reference, payment overage, and an
+  unauthorized Fund Account at preview.  CSV/XLSX Central Ledger, Payment/
+  Receipt, and Fund Account Report exports generated from the same scoped read
+  model as their pages.
+- The UAT receivable's approved Production baseline includes Payment #3 of
+  10,000 MMK into the UAT HQ account.  Its current result is Due 123,456 MMK,
+  Paid 113,456 MMK, Outstanding 10,000 MMK.  Across the three UAT accounts:
+  Money In 147,212 MMK, Money Out 37,256 MMK, closing total 109,956 MMK,
+  Operating Income 113,456 MMK, Operating Expense 3,500 MMK, Operating Net
+  109,956 MMK.  Tenant legacy Finance counts remained unchanged and the UAT
+  student's tenant `FeesPaid` count is zero.
+
 ## Central Finance Gate A — local release candidate
 
 Gate A is a schema-and-student-reference preparation release only. It contains
