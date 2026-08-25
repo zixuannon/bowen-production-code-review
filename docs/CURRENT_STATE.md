@@ -89,6 +89,19 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Central Finance Fresh Start — per-School cutover guard (local)
 
+- Guardian creation now has a concrete tenant-safe GET create action, and the
+  Student Admission Guardian Select2 search control writes only to the single
+  submitted `guardian_email` field.
+- Central Finance School Accountant configuration now selects an existing
+  Staff member from the trusted School registry. The durable mapping stores
+  that Staff member's UUID, never a bare tenant user ID; no second login user
+  is created. Only an active, matching School Staff identity may receive its
+  School's Fund Account scope.
+- A Central Super Admin remains a Finance Groups configurator only until
+  explicitly granted active Group Finance scope. In `legacy`/`ready`, Student
+  Fee retains School/Class/Student/receivable read access while Collect Payment
+  remains server-side unavailable.
+
 - Central Finance now has an additive, reversible per-School cutover state:
   `legacy`, `ready`, and `central`. Once its schema is deployed, an absent row
   safely means `legacy`.

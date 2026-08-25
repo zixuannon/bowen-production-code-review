@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceUser;
+use App\Models\CentralFinanceSchoolStaffIdentity;
 use App\Models\FinanceGroupUser;
 use App\Models\School;
 use App\Models\User;
@@ -64,7 +65,16 @@ final class CentralFinanceConfigurationAuthorizationService
     public function assertEligibleAssignee(int $groupId, School $school, int $userId, bool $canOperate): CentralFinanceUser
     {
         $user = CentralFinanceUser::on('mysql')->findOrFail($userId);
-        if ($user->getRawOriginal('school_id') !== null) {
+        $principalType = $user->getRawOriginal('central_finance_principal_type') ?? 'central_user';
+        $isVerifiedSchoolStaff = $principalType === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE
+            && (int) $user->getRawOriginal('school_id') === $school->id
+            && Schema::connection('mysql')->hasTable('central_finance_school_staff_identities')
+            && CentralFinanceSchoolStaffIdentity::on('mysql')->where([
+                'central_user_id' => $user->id,
+                'school_id' => $school->id,
+                'status' => 'active',
+            ])->exists();
+        if (!$isVerifiedSchoolStaff && ($principalType !== 'central_user' || $user->getRawOriginal('school_id') !== null)) {
             throw new AuthorizationException('A tenant identity cannot receive a Central Fund Account assignment.');
         }
         $scope = DB::connection('mysql')->table('central_finance_user_school_scopes')

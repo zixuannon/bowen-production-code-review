@@ -33,6 +33,20 @@ async function centralPage(browser, email, loginPassword = password) {
     return { context, page };
 }
 
+async function applicationPage(browser, email, loginPassword = password) {
+    const context = await browser.newContext({ baseURL, storageState: await centralLogin(email, loginPassword) });
+    const page = await context.newPage();
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    return { context, page };
+}
+
+async function configurationPage(browser, email, loginPassword = password) {
+    const context = await browser.newContext({ baseURL, storageState: await centralLogin(email, loginPassword) });
+    const page = await context.newPage();
+    await page.goto('/finance-groups', { waitUntil: 'domcontentloaded' });
+    return { context, page };
+}
+
 test('Zixuan and Timecity Accountants can select only their own Central Finance School', async ({ browser }) => {
     for (const [email, ownSchool, otherSchool] of [
         ['group_school_a@group-qa.test', 'Zixuan QA School', 'Timecity QA School'],
@@ -48,7 +62,7 @@ test('Zixuan and Timecity Accountants can select only their own Central Finance 
             await expect(page.locator('body')).not.toContainText(otherSchool);
 
             await switcher.selectOption({ label: ownSchool });
-            await expect(page.getByText(`当前操作校区：${ownSchool}`)).toBeVisible();
+            await expect(page.getByText(`当前校区：${ownSchool}`)).toBeVisible();
             await expect(page.locator('body')).not.toContainText(otherSchool);
         } finally {
             await context.close();
@@ -57,16 +71,18 @@ test('Zixuan and Timecity Accountants can select only their own Central Finance 
 });
 
 test('ordinary Finance users do not see legacy Group Finance and Super Admin retains Finance Groups', async ({ browser }) => {
-    const ordinary = await centralPage(browser, 'qa_central_regular_finance@bowen-qa.test');
+    const ordinary = await applicationPage(browser, 'qa_central_regular_finance@bowen-qa.test');
     try {
         await expect(ordinary.page.getByText('Group Finance', { exact: true })).toHaveCount(0);
     } finally {
         await ordinary.context.close();
     }
 
-    const superAdmin = await centralPage(browser, 'qa_central_super_admin@bowen-qa.test');
+    const superAdmin = await configurationPage(browser, 'qa_central_super_admin@bowen-qa.test');
     try {
-        await expect(superAdmin.page.getByRole('link', { name: 'Finance Groups', exact: true })).toBeVisible();
+        await expect(superAdmin.page.getByRole('heading', { name: 'Finance Groups', exact: true })).toBeVisible();
+        await superAdmin.page.goto('/central-finance', { waitUntil: 'domcontentloaded' });
+        await expect(superAdmin.page.getByText('403 A Central Finance identity is required.', { exact: true })).toBeVisible();
     } finally {
         await superAdmin.context.close();
     }
@@ -76,17 +92,21 @@ test('Central Finance sidebar expands and collapses both three-level groups on m
     const { context, page } = await centralPage(browser, 'group_hq@group-qa.test', 'local-only');
     try {
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.getByRole('link', { name: /Central Finance/ }).click();
+        await page.locator('.navbar-toggler-right[data-toggle="offcanvas"]').click();
 
         const groups = page.locator('details.central-finance-sidebar-group');
         await expect(groups).toHaveCount(2);
 
-        await groups.nth(0).locator('summary').click();
+        // The active route's group is intentionally expanded on load.
+        await expect(groups.nth(0)).toHaveAttribute('open', '');
         await expect(groups.nth(0).getByRole('link', { name: '财务总览', exact: true })).toBeVisible();
         await expect(groups.nth(0).getByRole('link', { name: 'Standard Ledger', exact: true })).toBeVisible();
         await groups.nth(0).locator('summary').click();
         await expect(groups.nth(0).getByRole('link', { name: '财务总览', exact: true })).toBeHidden();
+        await groups.nth(0).locator('summary').click();
+        await expect(groups.nth(0).getByRole('link', { name: '财务总览', exact: true })).toBeVisible();
 
+        await expect(groups.nth(1)).not.toHaveAttribute('open', '');
         await groups.nth(1).locator('summary').click();
         await expect(groups.nth(1).getByRole('link', { name: '银行账户', exact: true })).toBeVisible();
         await expect(groups.nth(1).getByRole('link', { name: 'HQ / School Funding', exact: true })).toBeVisible();
@@ -104,7 +124,7 @@ test('Central Finance P0 read screens expose ledger, history, account reporting,
     try {
         const switcher = page.getByLabel('Switch School', { exact: true });
         await switcher.selectOption({ label: 'Zixuan QA School' });
-        await expect(page.getByText('当前操作校区：Zixuan QA School')).toBeVisible();
+        await expect(page.getByText('当前校区：Zixuan QA School')).toBeVisible();
 
         for (const [path, heading] of [
             ['/central-finance/student-ledger', '学生账本'],
@@ -137,9 +157,10 @@ test('Head Finance and the Zixuan Accountant see the school-first Central Studen
         await expect(head.page.locator('#central-payment-form')).toHaveCount(0);
 
         await head.page.getByLabel('Switch School', { exact: true }).selectOption({ label: 'Zixuan QA School' });
-        await expect(head.page.getByText('当前操作校区：Zixuan QA School')).toBeVisible();
+        await expect(head.page.getByText('当前校区：Zixuan QA School')).toBeVisible();
         await head.page.goto('/central-finance/receivables', { waitUntil: 'domcontentloaded' });
-        await expect(head.page.locator('#central-payment-form')).toBeVisible();
+        await expect(head.page.locator('#central-payment-form')).toHaveCount(0);
+        await expect(head.page.getByText('Payment collection is unavailable until Central cutover and operating scope are both active. Student financial information remains read-only.')).toBeVisible();
         await expect(head.page.locator('#central-payment-class')).toBeVisible();
         await expect(head.page.locator('#central-payment-search')).toBeVisible();
         await expect(head.page.locator('#central-payment-student option')).toHaveCount(2);
@@ -151,8 +172,8 @@ test('Head Finance and the Zixuan Accountant see the school-first Central Studen
         await expect(head.page.getByText('当前没有待缴项目')).toBeVisible();
         await expect(head.page.locator('#central-payment-receivable')).toBeEnabled();
         await expect(head.page.locator('#central-payment-receivable option')).toHaveCount(1);
-        await expect(head.page.locator('#central-payment-amount')).toBeDisabled();
-        await expect(head.page.locator('#central-payment-submit')).toBeDisabled();
+        await expect(head.page.locator('#central-payment-amount')).toHaveCount(0);
+        await expect(head.page.locator('#central-payment-submit')).toHaveCount(0);
     } finally {
         await head.context.close();
     }
@@ -161,10 +182,11 @@ test('Head Finance and the Zixuan Accountant see the school-first Central Studen
     try {
         await accountant.page.getByLabel('Switch School', { exact: true }).selectOption({ label: 'Zixuan QA School' });
         await accountant.page.goto('/central-finance/receivables', { waitUntil: 'domcontentloaded' });
-        await expect(accountant.page.locator('#central-payment-form')).toBeVisible();
+        await expect(accountant.page.locator('#central-payment-form')).toHaveCount(0);
+        await expect(accountant.page.getByText('Payment collection is unavailable until Central cutover and operating scope are both active. Student financial information remains read-only.')).toBeVisible();
         await expect(accountant.page.locator('#central-payment-filters')).toBeVisible();
-        await expect(accountant.page.locator('#central-payment-student')).toContainText('CFQA Zixuan Student');
-        await expect(accountant.page.locator('#central-payment-student')).not.toContainText('CFQA Timecity Student');
+        await expect(accountant.page.locator('#central-payment-student')).toContainText('GROUP_QA_SCHOOL_A_STUDENT');
+        await expect(accountant.page.locator('#central-payment-student')).not.toContainText('GROUP_QA_SCHOOL_B_STUDENT');
     } finally {
         await accountant.context.close();
     }

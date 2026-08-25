@@ -35,11 +35,12 @@
                     <div class="form-group"><label>{{ __('Central User') }}</label><select class="form-control" name="central_user_id" required><option value="">{{ __('Select Head Finance') }}</option>@foreach($centralUsers->filter(fn($user) => $user->hasRole('Head Finance')) as $user)<option value="{{ $user->id }}">{{ $user->full_name }} {{ $user->email ? '('.$user->email.')' : '' }}</option>@endforeach</select></div>
                     <button class="btn btn-theme" type="submit">{{ __('Authorize All Group Schools') }}</button>
                 </form></div>
-                <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.central-school-scopes.store', $group) }}">@csrf
-                    <h5>{{ __('School Accountant') }}</h5><input type="hidden" name="grant_type" value="school_accountant">
-                    <div class="form-group"><label>{{ __('Central User') }}</label><select class="form-control" name="central_user_id" required><option value="">{{ __('Select Central User') }}</option>@foreach($centralUsers as $user)<option value="{{ $user->id }}">{{ $user->full_name }} {{ $user->email ? '('.$user->email.')' : '' }}</option>@endforeach</select></div>
+                <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.school-staff-accountants.store', $group) }}">@csrf
+                    <h5>{{ __('School Accountant') }}</h5>
+                    <p class="small text-muted">{{ __('Grant an existing School Staff login Central Finance access. The saved mapping uses a stable Staff UUID, never a tenant user ID.') }}</p>
                     <div class="form-group"><label>{{ __('School') }}</label><select class="form-control" name="school_id" required><option value="">{{ __('Select School') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
-                    <button class="btn btn-outline-primary" type="submit">{{ __('Authorize') }}</button>
+                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select School Staff') }}</option>@foreach($schoolStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}</option>@endforeach</select></div>
+                    <button class="btn btn-outline-primary" type="submit">{{ __('Grant Accountant Finance Access') }}</button>
                 </form></div>
             </div>
             <div class="table-responsive"><table class="table table-sm"><thead><tr><th>{{ __('User') }}</th><th>{{ __('Role') }}</th><th>{{ __('School') }}</th><th>{{ __('View') }}</th><th>{{ __('Operate') }}</th><th>{{ __('Approve') }}</th><th>{{ __('Confirm') }}</th><th>{{ __('Status') }}</th><th>{{ __('Edit') }}</th><th>{{ __('Revoke') }}</th></tr></thead><tbody>

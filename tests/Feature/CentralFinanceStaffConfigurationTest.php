@@ -94,6 +94,9 @@ class CentralFinanceStaffConfigurationTest extends TestCase
         $this->assertStringContainsString("route('finance-groups.store')", $create);
         $this->assertStringContainsString('route(\'finance-groups.central-school-scopes.store\', $group)', $manage);
         $this->assertStringContainsString('route(\'finance-groups.central-school-scopes.disable\', $group)', $manage);
+        $this->assertStringContainsString('route(\'finance-groups.school-staff-accountants.store\', $group)', $manage);
+        $this->assertStringContainsString('tenant_user_id', $manage);
+        $this->assertStringContainsString('stable Staff UUID', $manage);
         $this->assertStringContainsString('Authorize All Group Schools', $manage);
         $this->assertStringContainsString('Legacy / Transition only', $manage);
     }

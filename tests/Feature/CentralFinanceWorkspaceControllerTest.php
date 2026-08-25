@@ -36,7 +36,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(),$t->string('first_name')->nullable(),$t->string('last_name')->nullable(),$t->string('email')->nullable(),$t->unsignedBigInteger('school_id')->nullable(),$t->softDeletes(),$t->timestamps()]);
         foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
-        DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null]]);
+        DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null]]);
         DB::connection('mysql')->table('finance_groups')->insert(['id'=>1,'code'=>'CENTRAL-QA','name'=>'Central QA','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('finance_group_schools')->insert([['group_id'=>1,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_id'=>1,'school_id'=>2,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]);
         DB::connection('mysql')->table('finance_group_users')->insert([['group_id'=>1,'central_user_id'=>100,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_id'=>1,'central_user_id'=>200,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]);
@@ -92,11 +92,12 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertContains('centralFinance', $route->middleware());
         $this->assertNotContains('SwitchDatabase', $route->middleware());
         $view=(string)file_get_contents(resource_path('views/central-finance/workspace.blade.php'));
-        $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringContainsString('当前操作校区',$view); $this->assertStringContainsString("['operation' => 'expense']",$view); $this->assertStringContainsString("['operation' => 'income']",$view); $this->assertStringContainsString('$showWriteForm',$view); $this->assertStringContainsString('<fieldset @disabled($writeDisabled)>',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
+        $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringContainsString('当前校区：',$view); $this->assertStringContainsString('@php($operation',$view); $this->assertStringContainsString('$showWriteForm',$view); $this->assertStringContainsString('<fieldset @disabled($writeDisabled)>',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
         $this->assertStringContainsString('All Schools is read-only for payment history and totals',$view);
         $this->assertStringContainsString('central-payment-student',$view);
         $this->assertStringContainsString('central-payment-receivable',$view);
         $this->assertStringContainsString('当前没有待缴项目',$view);
+        $this->assertStringContainsString('Payment collection is unavailable until Central cutover',$view);
         foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
         }
@@ -186,6 +187,30 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
             'category_id' => 999, 'fund_account_id' => $this->timecity->id,
             'amount' => 25, 'payment_method' => 'Cash', 'reference_no' => 'TIM-BLOCKED',
         ]));
+    }
+
+    public function test_super_admin_without_an_explicit_group_finance_grant_is_not_a_central_finance_actor(): void
+    {
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceWorkspaceService::class)->actor(CentralFinanceUser::on('mysql')->findOrFail(300));
+    }
+
+    public function test_legacy_school_keeps_student_filters_and_profiles_read_only(): void
+    {
+        $now = now();
+        DB::connection('mysql')->table('central_finance_student_profiles')->insert([
+            'id'=>303, 'school_id'=>2, 'tenant_student_id'=>303, 'source_uuid'=>(string) Str::uuid(), 'student_name'=>'Timecity Legacy Student', 'class_name'=>'Primary B', 'admission_no'=>'TIM-303', 'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now,
+        ]);
+        DB::connection('mysql')->table('central_finance_receivables')->insert([
+            'receivable_uuid'=>(string) Str::uuid(), 'school_id'=>2, 'student_profile_id'=>303, 'source_type'=>'tenant_fee', 'source_id'=>'legacy-open', 'description'=>'Legacy open tuition', 'currency'=>'MMK', 'amount_due'=>100, 'amount_paid'=>0, 'status'=>'open', 'created_at'=>$now, 'updated_at'=>$now,
+        ]);
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 2);
+        $view = app(CentralFinanceWorkspaceController::class)->receivables(new Request(['payment_class' => 'Primary B']));
+
+        $this->assertFalse($view->getData()['canOperate']);
+        $this->assertSame([303], $view->getData()['paymentProfiles']->pluck('id')->all());
+        $this->assertSame(['Legacy open tuition'], $view->getData()['paymentReceivables']->pluck('description')->all());
     }
 
     private function account(string $code,string $name,int $school): CentralFinanceFundAccount { return CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>'school','school_id'=>$school,'currency'=>'MMK','opening_balance'=>100,'is_active'=>true]); }

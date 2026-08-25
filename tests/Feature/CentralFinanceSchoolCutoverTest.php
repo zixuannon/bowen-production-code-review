@@ -30,12 +30,12 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(), $t->unsignedBigInteger('school_id')->nullable(), $t->string('first_name')->nullable(), $t->string('last_name')->nullable(), $t->softDeletes(), $t->timestamps()]);
         Schema::connection('mysql')->create('roles', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('guard_name'), $t->unsignedBigInteger('school_id')->nullable(), $t->timestamps()]);
         Schema::connection('mysql')->create('model_has_roles', fn (Blueprint $t) => [$t->unsignedBigInteger('role_id'), $t->string('model_type'), $t->unsignedBigInteger('model_id')]);
-        foreach (['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach (['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([
             ['id' => 1, 'name' => 'Zixuan', 'code' => 'SCH202615', 'database_name' => 'local_zixuan', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 2, 'name' => 'Timecity', 'code' => 'SCH202619', 'database_name' => 'local_timecity', 'created_at' => now(), 'updated_at' => now()],
         ]);
-        DB::connection('mysql')->table('users')->insert(['id'=>100,'first_name'=>'Head','last_name'=>'Finance','created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('users')->insert([['id'=>100,'school_id'=>null,'central_finance_principal_type'=>'central_user','first_name'=>'Head','last_name'=>'Finance','created_at'=>now(),'updated_at'=>now()], ['id'=>101,'school_id'=>1,'central_finance_principal_type'=>'school_staff_identity','first_name'=>'Zixuan','last_name'=>'Accountant','created_at'=>now(),'updated_at'=>now()]]);
         DB::connection('mysql')->table('roles')->insert(['id'=>1,'name'=>'Head Finance','guard_name'=>'web','created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('model_has_roles')->insert(['role_id'=>1,'model_type'=>User::class,'model_id'=>100]);
         $this->headFinance = CentralFinanceUser::on('mysql')->findOrFail(100);
@@ -47,9 +47,12 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
             ['group_user_id'=>1,'scope_type'=>'GROUP','scope_key'=>'group','capability'=>'operate_finance','status'=>'active','created_at'=>now(),'updated_at'=>now()],
         ]);
         DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>100,'school_id'=>1,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>false,'can_confirm_funding'=>false,'created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>101,'school_id'=>1,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>false,'can_confirm_funding'=>false,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_accounts')->insert(['id'=>1,'account_uuid'=>'11111111-1111-4111-8111-111111111111','group_id'=>1,'school_id'=>1,'owner_type'=>'school','account_code'=>'ZIX-CASH','account_name'=>'Zixuan Cash','currency'=>'MMK','opening_balance'=>0,'is_active'=>true,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_opening_balance_audits')->insert(['fund_account_id'=>1,'change_type'=>'initial','new_opening_balance'=>0,'effective_date'=>'2026-08-21','reason'=>'Signed zero opening','created_by'=>100,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>100,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>101,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>(string) Str::uuid(),'school_id'=>1,'tenant_user_uuid'=>(string) Str::uuid(),'central_user_id'=>101,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
     }
 
     protected function tearDown(): void

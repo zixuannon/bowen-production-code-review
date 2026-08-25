@@ -170,8 +170,8 @@ class FinanceGroupController extends Controller
     public function storeSchoolStaffAccountant(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
         $this->assertCentralSuperAdmin();
-        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_uuid' => ['required', 'uuid']]);
-        $this->staffIdentities->grantSchoolAccountant($financeGroup, (int) $data['school_id'], (string) $data['tenant_user_uuid']);
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
+        $this->staffIdentities->grantSchoolAccountant($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id']);
         return redirect()->route('finance-groups.index')->with('success', __('School Staff granted Accountant Finance access.'));
     }
 
@@ -199,6 +199,7 @@ class FinanceGroupController extends Controller
                 ->whereIn('scopes.school_id', $schoolIds)
                 ->select(['scopes.*', 'users.first_name', 'users.last_name', 'users.email', 'schools.name as school_name'])
                 ->orderBy('users.first_name')->orderBy('schools.name')->get(),
+            'schoolStaff' => $this->staffIdentities->availableStaff($group),
         ];
     }
 

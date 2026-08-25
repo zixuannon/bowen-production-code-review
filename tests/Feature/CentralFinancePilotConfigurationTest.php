@@ -51,14 +51,16 @@ final class CentralFinancePilotConfigurationTest extends TestCase
             '2026_08_21_000003_create_central_finance_internal_transfer_documents.php',
             '2026_08_21_000005_create_central_finance_school_cutovers.php',
             '2026_08_21_000006_create_central_finance_opening_balance_audits.php',
+            '2026_08_24_000002_create_central_finance_school_staff_identities.php',
+            '2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
         DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan QA', 'code' => 'SCH202615', 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('mysql')->table('users')->insert([
-            ['id' => 100, 'first_name' => 'Head', 'last_name' => 'Finance', 'email' => 'head@example.test', 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 200, 'first_name' => 'School', 'last_name' => 'Accountant', 'email' => 'accountant@example.test', 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 300, 'first_name' => 'Unscoped', 'last_name' => 'User', 'email' => 'unscoped@example.test', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 100, 'school_id' => null, 'central_finance_principal_type' => 'central_user', 'first_name' => 'Head', 'last_name' => 'Finance', 'email' => 'head@example.test', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 200, 'school_id' => 1, 'central_finance_principal_type' => 'school_staff_identity', 'first_name' => 'School', 'last_name' => 'Accountant', 'email' => 'accountant@example.test', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 300, 'school_id' => null, 'central_finance_principal_type' => 'central_user', 'first_name' => 'Unscoped', 'last_name' => 'User', 'email' => 'unscoped@example.test', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::connection('mysql')->table('roles')->insert([
             ['id' => 1, 'name' => 'Head Finance', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
@@ -78,6 +80,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         foreach ([[100, true], [200, true]] as [$userId, $canOperate]) {
             DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id' => $userId, 'school_id' => 1, 'can_view' => true, 'can_operate' => $canOperate, 'can_approve_reimbursements' => false, 'can_confirm_funding' => false, 'created_at' => now(), 'updated_at' => now()]);
         }
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid' => (string) \Illuminate\Support\Str::uuid(), 'school_id' => 1, 'tenant_user_uuid' => (string) \Illuminate\Support\Str::uuid(), 'central_user_id' => 200, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
         $this->headFinance = CentralFinanceUser::on('mysql')->findOrFail(100);
         $this->accountant = CentralFinanceUser::on('mysql')->findOrFail(200);
         $this->zixuan = School::on('mysql')->findOrFail(1);
@@ -91,8 +94,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
     public function test_ready_to_central_requires_signed_opening_and_assigned_head_finance_without_ledger_write(): void
     {
         $cutover = app(CentralFinanceSchoolCutoverService::class);
-        $cutover->transition($this->headFinance, $this->zixuan, 'ready');
-        try { $cutover->transition($this->headFinance, $this->zixuan, 'central'); $this->fail('Incomplete configuration must not cut over.'); } catch (LogicException) {}
+        try { $cutover->transition($this->headFinance, $this->zixuan, 'ready'); $this->fail('Incomplete configuration must not become ready.'); } catch (LogicException) {}
 
         $account = app(CentralFinanceFundAccountAdministrationService::class)->createSchoolAccount($this->headFinance, $this->zixuan, [
             'account_code' => 'ZIX-CASH', 'account_name' => 'Zixuan Cash', 'currency' => 'MMK',
@@ -103,6 +105,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         $this->assertSame(1, CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->where(['fund_account_id' => $account->id, 'change_type' => 'initial'])->count());
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
 
+        $this->assertSame('ready', $cutover->transition($this->headFinance, $this->zixuan, 'ready')->status);
         $this->assertSame('central', $cutover->transition($this->headFinance, $this->zixuan, 'central')->status);
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
     }
