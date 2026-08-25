@@ -14,13 +14,13 @@ Last updated: 2026-08-25
 
 Finance V2
 
-## Zixuan Central Finance Fresh Start — Production UAT baseline
+## Zixuan Central Finance Fresh Start — Production Write UAT
 
-- Production active release: `adea81e1b06544c68cc7f7dd8edc3ae47b4c653a`.
-- Zixuan (`SCH202615`) is `ready`, not `central`: Central Finance remains
-  read-only and tenant Finance remains the live writer. No Payment, Receipt,
-  Expense, Other Income, Internal Transfer, Handover, HQ Funding, or Central
-  Ledger entry has been created during this readiness work.
+- Production active release: `3be9f22078da4d268d9e9147f1432030c1a75e84`.
+- Zixuan (`SCH202615`) is `central`. Its legacy tenant Finance writers are
+  server-side blocked; Central Finance is the sole writer for new Zixuan
+  Finance documents. This must not be rolled back after the recorded UAT
+  transactions.
 - The approved Fresh Start Receivable cutoff is `2026-09-01 00:00
   Asia/Rangoon`, stored through the audited Central Finance cutover service.
   Source assignments before that time are intentionally excluded from Central
@@ -33,8 +33,16 @@ Finance V2
   in the cutoff scope `source=0`, `central=0`, `missing=0`, `stale=0`,
   `mismatched=0`. The retained `CENTRAL-PROD-UAT-` receivable remains UAT data
   and is outside the formal post-cutoff source scope.
-- Do not activate `central` or record real Finance documents until a separate
-  Production write-UAT/cutover authorization has been granted.
+- The approved `CENTRAL-PROD-UAT-` write set is exactly two Payments/Receipts
+  totaling 123,456 MMK and one append-only 23,456 MMK refund against the
+  designated UAT receivable and Fund Account. Final UAT result: Due 123,456;
+  Paid 100,000; Outstanding 23,456; Money In 123,456; Money Out 23,456;
+  closing balance and net operating income 100,000; Operating Expense 0.
+  No Expense, Other Income, Transfer, Handover, HQ Funding, or tenant
+  `FeesPaid` record was created by this UAT.
+- The tenant write guard resolves the Central School from the already trusted
+  current tenant database connection, never from tenant-local `users.school_id`.
+  This prevents a local ID collision from bypassing a Central cutover.
 
 ## Central Finance Gate A — local release candidate
 
