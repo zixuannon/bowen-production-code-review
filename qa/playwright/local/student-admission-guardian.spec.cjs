@@ -32,6 +32,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(matchingGuardian).toBeVisible();
     await matchingGuardian.click();
 
+    await expect(page.locator('#guardian_email_search option:checked')).toHaveText(email);
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
     await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
     await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
@@ -43,6 +44,12 @@ test('Student admission submits exactly the email of an existing Guardian select
 
     await page.locator('#guardian_email_search').selectOption('');
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue('');
+
+    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('.select2-container--open .select2-search__field').fill(email);
+    await expect(matchingGuardian).toBeVisible();
+    await matchingGuardian.click();
+    await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
 
     await page.locator('select[name="class_section_id"]').selectOption({ index: 1 });
     await page.locator('input[name="first_name"]').fill('Admission');

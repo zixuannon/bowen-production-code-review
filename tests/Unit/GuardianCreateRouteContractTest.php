@@ -33,6 +33,10 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString('name="guardian_email"', $view);
 
         $script = file_get_contents(public_path('assets/js/custom/custom.js'));
+        $this->assertStringContainsString('function normalizeGuardianSearchResult(repo)', $script);
+        $this->assertStringContainsString("id: String(repo?.id ?? ''),", $script);
+        $this->assertStringContainsString("text: email || name || (typeof repo?.text === 'string' ? repo.text.trim() : ''),", $script);
+        $this->assertStringContainsString('results: guardians.map(normalizeGuardianSearchResult)', $script);
         $this->assertStringContainsString('function applyGuardianSelection(repo)', $script);
         $this->assertStringContainsString('const existingGuardianEmail = typeof repo?.email', $script);
         $this->assertStringContainsString("$('#guardian_email').val(existingGuardianEmail);", $script);
