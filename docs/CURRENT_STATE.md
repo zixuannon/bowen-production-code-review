@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-08-21
+Last updated: 2026-08-25
 
 ## Active production target
 
@@ -13,6 +13,28 @@ Last updated: 2026-08-21
 ## Current area
 
 Finance V2
+
+## Zixuan Central Finance Fresh Start — Production UAT baseline
+
+- Production active release: `adea81e1b06544c68cc7f7dd8edc3ae47b4c653a`.
+- Zixuan (`SCH202615`) is `ready`, not `central`: Central Finance remains
+  read-only and tenant Finance remains the live writer. No Payment, Receipt,
+  Expense, Other Income, Internal Transfer, Handover, HQ Funding, or Central
+  Ledger entry has been created during this readiness work.
+- The approved Fresh Start Receivable cutoff is `2026-09-01 00:00
+  Asia/Rangoon`, stored through the audited Central Finance cutover service.
+  Source assignments before that time are intentionally excluded from Central
+  Receivable sync and readiness reconciliation; they are not imported.
+- The cutoff is interpreted consistently as Yangon business time for the UI,
+  Central timestamp, and tenant Fee Assignment source comparisons. It must
+  never be inferred from the server clock or `APP_TIMEZONE`.
+- Production reconciliation at the cutoff baseline: Student Profiles
+  `source=3`, `central=3`, `missing=0`, `stale=0`, `mismatched=0`; Receivables
+  in the cutoff scope `source=0`, `central=0`, `missing=0`, `stale=0`,
+  `mismatched=0`. The retained `CENTRAL-PROD-UAT-` receivable remains UAT data
+  and is outside the formal post-cutoff source scope.
+- Do not activate `central` or record real Finance documents until a separate
+  Production write-UAT/cutover authorization has been granted.
 
 ## Central Finance Gate A — local release candidate
 
