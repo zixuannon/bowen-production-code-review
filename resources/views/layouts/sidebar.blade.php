@@ -21,6 +21,7 @@
         </li>
         @php
             try { $hasCentralFinanceIdentity = app(\App\Services\CentralFinanceWorkspaceService::class)->actor(Auth::user()) !== null; } catch (\Throwable) { $hasCentralFinanceIdentity = false; }
+            $sidebarRoleName = Auth::check() ? (string) Auth::user()->getRoleNames()->first() : '';
         @endphp
         @if ($hasCentralFinanceIdentity)
             <li class="nav-item">
@@ -289,7 +290,7 @@
                             @can('timetable-create')
                                 <li class="nav-item">
                                     <a href="{{ route('timetable.index') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                        data-name="{{ $sidebarRoleName }}"
                                         data-access="@hasFeatureAccess('Timetable Management')">{{ __('create_timetable') }} </a>
                                 </li>
                             @endcan
@@ -297,7 +298,7 @@
                             @can('timetable-list')
                                 <li class="nav-item">
                                     <a href="{{ route('timetable.teacher.index') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Timetable Management')">
+                                        data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Timetable Management')">
                                         {{ __('teacher_timetable') }}
                                     </a>
                                 </li>
@@ -313,7 +314,7 @@
             <li class="nav-item">
                 @can('holiday-list')
                     <a href="{{ route('holiday.index') }}" class="nav-link"
-                        data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Holiday Management')">
+                        data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Holiday Management')">
                         <i class="fa fa-calendar-check-o menu-icon"></i>
                         <span class="menu-title">{{ __('holiday_list') }}</span>
                     </a>
@@ -335,7 +336,7 @@
                         @canany(['lesson-list', 'lesson-create', 'lesson-edit', 'lesson-delete'])
                             <li class="nav-item">
                                 <a href="{{ url('lesson') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Lesson Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Lesson Management')">
                                     {{ __('create_lesson') }}</a>
                             </li>
                         @endcanany
@@ -343,7 +344,7 @@
                         @canany(['topic-list', 'topic-create', 'topic-edit', 'topic-delete'])
                             <li class="nav-item">
                                 <a href="{{ url('lesson-topic') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Lesson Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Lesson Management')">
                                     {{ __('create_topic') }}</a>
                             </li>
                         @endcanany
@@ -366,7 +367,7 @@
                         @can('assignment-create')
                             <li class="nav-item">
                                 <a href="{{ route('assignment.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Assignment Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Assignment Management')">
                                     {{ __('create_assignment') }}
                                 </a>
                             </li>
@@ -374,7 +375,7 @@
                         @can('assignment-submission')
                             <li class="nav-item">
                                 <a href="{{ route('assignment.submission') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Assignment Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Assignment Management')">
                                     {{ __('assignment_submission') }}
                                 </a>
                             </li>
@@ -388,7 +389,7 @@
         @can('slider-create')
             <li class="nav-item">
                 <a href="{{ route('sliders.index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Slider Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Slider Management')">
                     <i class="fa fa-list menu-icon"></i>
                     <span class="menu-title">{{ __('sliders') }}</span>
                 </a>
@@ -398,7 +399,7 @@
         @canany(['notification-create', 'notification-list', 'notification-delete'])
             <li class="nav-item">
                 <a href="{{ route('notifications.index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Announcement Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Announcement Management')">
                     <i class="fa fa-bell menu-icon"></i>
                     <span class="menu-title">{{ __('notification') }}</span>
                 </a>
@@ -419,7 +420,7 @@
                         @canany(['class-teacher', 'attendance-create'])
                             <li class="nav-item">
                                 <a href="{{ route('attendance.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Attendance Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Attendance Management')">
                                     {{ __('add_attendance') }}
                                 </a>
                             </li>
@@ -429,14 +430,14 @@
                         @canany(['class-teacher', 'attendance-list'])
                             <li class="nav-item">
                                 <a href="{{ route('attendance.view') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Attendance Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Attendance Management')">
                                     {{ __('view_attendance') }}
                                 </a>
                             </li>
 
                             <li class="nav-item">
                                 <a href="{{ route('attendance.month') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Attendance Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Attendance Management')">
                                     {{ __('month_wise') }}
                                 </a>
                             </li>
@@ -450,7 +451,7 @@
         @if (!Auth::user()->hasRole('School Admin') && Auth::user()->school_id)
             <li class="nav-item">
                 <a href="{{ route('staff-attendance.your-index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
                     <i class="fa fa-calendar-check-o menu-icon"></i>
                     <span class="menu-title">{{ __('my_attendance') }}</span>
                 </a>
@@ -471,7 +472,7 @@
                         @canany(['staff-attendance-create'])
                             <li class="nav-item">
                                 <a href="{{ route('staff-attendance.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
                                     {{ __('add_staff_attendance') }}
                                 </a>
                             </li>
@@ -481,14 +482,14 @@
                         @canany(['staff-attendance-list'])
                                             <li class="nav-item">
                                                 <a href="{{ route('staff-attendance.view') }}" class="nav-link"
-                                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
+                                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
                                                     {{ __('view_staff_attendance') }}
                                                 </a>
                                             </li>
 
                                             <li class="nav-item">
                                                 <a href="{{ route('staff-attendance.month') }}" class="nav-link"
-                                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
+                                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
                                                     {{ __('month_wise') }}
                                                 </a>
                                             </li>
@@ -502,7 +503,7 @@
             'staff-attendance-delete'])
             <li class="nav-item">
                 <a href="{{ route('staff-attendance.index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Attendance Management')">
                     <i class="fa fa-users menu-icon"></i>
                     <span class="menu-title">{{ __('Staff Attendance') }}</span>
                 </a>
@@ -513,7 +514,7 @@
         @can('announcement-list')
             <li class="nav-item">
                 <a href="{{ route('announcement.index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Announcement Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Announcement Management')">
                     <i class="fa fa-bullhorn menu-icon"></i>
                     <span class="menu-title">{{ __('announcement') }}</span>
                 </a>
@@ -534,7 +535,7 @@
                         @can('exam-create')
                             <li class="nav-item">
                                 <a href="{{ route('exams.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('manage_exam') }}
                                 </a>
                             </li>
@@ -542,7 +543,7 @@
 
                         <li class="nav-item">
                             <a href="{{ route('exams.timetable') }}" class="nav-link"
-                                data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                 {{ __('timetable') }}
                             </a>
                         </li>
@@ -550,7 +551,7 @@
                         @can('view-exam-marks')
                             <li class="nav-item">
                                 <a href="{{ route('exam.view-marks') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('track_exam_marks') }}
                                 </a>
                             </li>
@@ -559,14 +560,14 @@
                         @can('exam-upload-marks')
                             <li class="nav-item">
                                 <a href="{{ route('exams.upload-marks') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('upload_exam_marks') }}
                                 </a>
                             </li>
 
                             <li class="nav-item">
                                 <a href="{{ route('exam.bulk-upload-marks') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('bulk_upload_exam_marks') }}
                                 </a>
                             </li>
@@ -574,7 +575,7 @@
                         @can('exam-result')
                             <li class="nav-item">
                                 <a href="{{ route('exams.get-result') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('Exam Result') }}
                                 </a>
                             </li>
@@ -583,7 +584,7 @@
                         @can('grade-create')
                             <li class="nav-item">
                                 <a href="{{ route('exam.grade.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('exam_grade') }}
                                 </a>
                             </li>
@@ -608,7 +609,7 @@
                             <li class="nav-item">
 
                                 <a href="{{ route('online-exam.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('manage_online_exam') }}
                                 </a>
                             </li>
@@ -616,7 +617,7 @@
                         @can('online-exam-create')
                             <li class="nav-item">
                                 <a href="{{ route('online-exam-question.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('manage_questions') }}
                                 </a>
                             </li>
@@ -624,7 +625,7 @@
                         @can('online-exam-create')
                             <li class="nav-item">
                                 <a href="{{ route('online-exam-question.add-bulk-questions') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('add_bulk_questions') }}
                                 </a>
                             </li>
@@ -750,7 +751,7 @@
                             'expense-category-delete'])
                             <li class="nav-item">
                                 <a href="{{ route('finance-category.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('Expense Management')">{{ __('Finance Categories') }} </a>
                             </li>
                         @endcanany
@@ -759,7 +760,7 @@
                             'expense-category-delete'])
                             <li class="nav-item">
                                 <a href="{{ route('expense-category.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('Expense Management')">{{ __('Expense Categories') }} </a>
                             </li>
                         @endcanany
@@ -767,7 +768,7 @@
                         @canany(['finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create'])
                             <li class="nav-item">
                                 <a href="{{ route('expense.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Manage Expenses') }}
                                 </a>
                             </li>
@@ -781,7 +782,7 @@
                         @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
                             <li class="nav-item">
                                 <a href="{{ route('bank-accounts.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Bank Accounts') }}
                                 </a>
                             </li>
@@ -790,7 +791,7 @@
                         @can('finance-transfer-view')
                             <li class="nav-item">
                                 <a href="{{ route('bank-transfers.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Bank Transfer') }}
                                 </a>
                             </li>
@@ -799,7 +800,7 @@
                         @can('finance-handover-view')
                             <li class="nav-item">
                                 <a href="{{ route('fund-handovers.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Fund Handover') }}
                                 </a>
                             </li>
@@ -811,7 +812,7 @@
                         @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
                             <li class="nav-item">
                                 <a href="{{ route('bank-account-report.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('Bank Account Report') }}
                                 </a>
                             </li>
@@ -893,7 +894,7 @@
                     <ul class="nav flex-column sub-menu">
                         <li class="nav-item">
                             <a href="{{ route('leave.index') }}" class="nav-link"
-                                data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Leave Management')">
                                 {{ __('apply_leave') }}
                             </a>
                         </li>
@@ -903,7 +904,7 @@
                         @if(\App\Services\StaffLeave\TwoStageLeaveService::isEnabled() && Auth::user()->subordinates()->exists())
                             <li class="nav-item">
                                 <a href="{{ route('leave.supervisor') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Leave Management')">
                                     {{ __('supervisor_leave_requests') }}
                                 </a>
                             </li>
@@ -914,7 +915,7 @@
                         @if(\App\Services\StaffLeave\TwoStageLeaveService::isEnabled() && Auth::user()->can('hr-view-leave'))
                             <li class="nav-item">
                                 <a href="{{ route('leave.hr') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Leave Management')">
                                     {{ __('hr_leave_requests') }}
                                 </a>
                             </li>
@@ -922,7 +923,7 @@
 
                         <li class="nav-item">
                             <a href="{{ route('leave.report') }}" class="nav-link"
-                                data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Staff Leave Management')">
+                                data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Staff Leave Management')">
                                 {{ __('leave_report') }}
                             </a>
                         </li>
@@ -982,7 +983,7 @@
         @if (Auth::user()->school_id && Auth::user()->staff)
             <li class="nav-item">
                 <a href="{{ route('payroll.slip.index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                     <i class="fa fa-money menu-icon"></i>
                     <span class="menu-title">{{ __('payroll') }} {{ __('slips') }}</span>
                 </a>
@@ -1081,7 +1082,7 @@
             'payroll-settings-create', 'payroll-settings-edit', 'payroll-settings-delete'])
             <li class="nav-item">
                 <a href="#payroll-menu" class="nav-link" data-toggle="collapse"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                     <i class="fa fa-credit-card-alt menu-icon"></i>
                     <span class="menu-title">{{ __('payroll') }}</span>
                     <i class="menu-arrow"></i>
@@ -1091,7 +1092,7 @@
                         @canany(['payroll-create', 'payroll-edit', 'payroll-list'])
                             <li class="nav-item">
                                 <a href="{{ route('payroll.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('Expense Management')">{{ __('manage_payroll') }} </a>
                             </li>
                         @endcanany
@@ -1100,7 +1101,7 @@
                             'payroll-settings-delete'])
                             <li class="nav-item">
                                 <a href="{{ route('payroll-setting.index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Expense Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
                                     {{ __('payroll_setting') }}
                                 </a>
                             </li>
@@ -1124,7 +1125,7 @@
         @canany(['gallery-create', 'gallery-list', 'gallery-edit', 'gallery-delete'])
             <li class="nav-item">
                 <a href="{{ route('gallery.index') }}" class="nav-link"
-                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('School Gallery Management')">
+                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('School Gallery Management')">
                     <i class="fa fa-picture-o menu-icon"></i>
                     <span class="menu-title">{{ __('gallery') }}</span>
                 </a>
@@ -1147,7 +1148,7 @@
                         @canany(['certificate-create', 'certificate-list', 'certificate-edit', 'certificate-delete'])
                             <li class="nav-item">
                                 <a href="{{ url('certificate-template') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('ID Card - Certificate Generation')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('ID Card - Certificate Generation')">
                                     {{ __('certificate_template') }}
                                 </a>
                             </li>
@@ -1156,7 +1157,7 @@
                         @canany(['certificate-list'])
                             <li class="nav-item">
                                 <a href="{{ url('certificate') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('ID Card - Certificate Generation')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('ID Card - Certificate Generation')">
                                     {{ __('student_certificate') }}
                                 </a>
                             </li>
@@ -1165,7 +1166,7 @@
                         @canany(['certificate-list'])
                             <li class="nav-item">
                                 <a href="{{ url('certificate/staff-certificate') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('ID Card - Certificate Generation')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('ID Card - Certificate Generation')">
                                     {{ __('staff_certificate') }}
                                 </a>
                             </li>
@@ -1174,21 +1175,21 @@
                         @can('id-card-settings')
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('id-card-settings') }}"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('ID Card - Certificate Generation')">{{ __('id_card_settings') }}</a>
                             </li>
                         @endcan
 
                         @canany(['student-list', 'class-teacher'])
                             <li class="nav-item"><a href="{{ route('students.generate-id-card-index') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('ID Card - Certificate Generation')">{{ __('student_id_card') }}</a></li>
                         @endcanany
 
                         @can('staff-list')
                             <li class="nav-item">
                                 <a href="{{ route('staff.id-card') }}" class="nav-link"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('ID Card - Certificate Generation')">{{ __('staff_id_card') }}</a>
                             </li>
                         @endcan
@@ -1212,21 +1213,21 @@
                             @canany(['role-list', 'role-create', 'role-edit', 'role-delete'])
                                 <li class="nav-item">
                                     <a href="{{ route('roles.index') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                        data-name="{{ $sidebarRoleName }}"
                                         data-access="@hasFeatureAccess('Staff Management')">{{ __('Role & Permission') }}</a>
                                 </li>
                             @endcanany
                             @canany(['staff-list', 'staff-create', 'staff-edit', 'staff-delete'])
                                 <li class="nav-item">
                                     <a href="{{ route('staff.index') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                        data-name="{{ $sidebarRoleName }}"
                                         data-access="@hasFeatureAccess('Staff Management')">{{ __('staff') }}</a>
                                 </li>
                             @endcanany
                             @canany(['staff-list', 'staff-create', 'staff-edit', 'staff-delete'])
                                 <li class="nav-item">
                                     <a href="{{ route('staff.create-bulk-upload') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                        data-name="{{ $sidebarRoleName }}"
                                         data-access="@hasFeatureAccess('Staff Management')">{{ __('bulk upload') }}</a>
                                 </li>
                             @endcanany
@@ -1250,12 +1251,12 @@
                             @can('approve-leave')
                                 <li class="nav-item">
                                     <a href="{{ route('leave.request') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                        data-name="{{ $sidebarRoleName }}"
                                         data-access="@hasFeatureAccess('Staff Leave Management')">{{ __('staff') }} {{ __('leave') }}</a>
                                 </li>
                                 <li class="nav-item">
                                     <a href="{{ url('leave/report') }}" class="nav-link"
-                                        data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                        data-name="{{ $sidebarRoleName }}"
                                         data-access="@hasFeatureAccess('Staff Leave Management')">{{ __('leave_report') }}</a>
                                 </li>
                             @endcan
@@ -1396,14 +1397,14 @@
                     <ul class="nav flex-column sub-menu">
                         <li class="nav-item">
                             <a class="nav-link" href="{{ route('school.web-settings.index') }}"
-                                data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                data-name="{{ $sidebarRoleName }}"
                                 data-access="@hasFeatureAccess('Website Management')">{{ __('content') }}</a>
                         </li>
 
                         @canany(['faqs-create', 'faqs-list', 'faqs-edit', 'faqs-delete'])
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('faqs.index') }}"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('Website Management')">{{ __('faqs') }}</a>
                             </li>
                         @endcanany
@@ -1446,7 +1447,7 @@
 
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ route('leave-master.index') }}"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}"
+                                    data-name="{{ $sidebarRoleName }}"
                                     data-access="@hasFeatureAccess('Staff Leave Management')">{{ __('leave') }} {{ __('settings') }}</a>
                             </li>
                         @endcan
@@ -1491,7 +1492,7 @@
 
                         {{-- @can('fees-config')
                                     <li class="nav-item">
-                                        <a href="{{ route('fees.config.index') }}" class="nav-link" data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Fees Management')">
+                                        <a href="{{ route('fees.config.index') }}" class="nav-link" data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Fees Management')">
                                             {{ __('Fees Settings') }}</a>
                                     </li>
                                 @endcan --}}
@@ -1499,7 +1500,7 @@
                         @can('school-setting-manage')
                             <li class="nav-item">
                                 <a href="{{ route('school-settings.online-exam.index') }}" class="nav-link text-wrap"
-                                    data-name="{{ Auth::user()->getRoleNames()[0] }}" data-access="@hasFeatureAccess('Exam Management')">
+                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Exam Management')">
                                     {{ __('online_exam_terms_condition') }}
                                 </a>
                             </li>

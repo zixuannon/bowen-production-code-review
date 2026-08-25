@@ -74,4 +74,17 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         app(CentralFinanceSchoolStaffIdentityService::class)->grantSchoolAccountant($group, 1, 99);
     }
+
+    public function test_school_staff_principal_without_a_spatie_role_uses_the_sidebar_safe_role_value(): void
+    {
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Bowen QA', 'code' => 'BOWEN_QA', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        $principal = app(CentralFinanceSchoolStaffIdentityService::class)->grantSchoolAccountant($group, 1, 7);
+
+        $this->assertSame([], $principal->getRoleNames()->all());
+        $sidebar = (string) file_get_contents(resource_path('views/layouts/sidebar.blade.php'));
+        $this->assertStringContainsString("\$sidebarRoleName = Auth::check() ? (string) Auth::user()->getRoleNames()->first() : '';", $sidebar);
+        $this->assertStringContainsString('data-name="{{ $sidebarRoleName }}"', $sidebar);
+        $this->assertStringNotContainsString('getRoleNames()[0]', $sidebar);
+    }
 }
