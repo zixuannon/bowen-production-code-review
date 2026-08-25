@@ -1,7 +1,25 @@
 <nav class="navbar default-layout-navbar col-lg-12 col-12 p-0 fixed-top d-flex flex-row">
     @php
-        $horizontalLogo = $schoolSettings['horizontal_logo'] ?? $systemSettings['horizontal_logo'] ?? asset('/assets/horizontal-logo2.svg');
-        $verticalLogo = $schoolSettings['vertical_logo'] ?? $systemSettings['vertical_logo'] ?? asset('/assets/vertical-logo.svg');
+        // Settings are deliberately cached as raw database values. File settings
+        // are storage-relative, so normalize them here before emitting an img URL.
+        $resolveLogoUrl = static function ($path, string $fallback): string {
+            $path = trim((string) $path);
+            if ($path === '') {
+                return asset($fallback);
+            }
+            if (\Illuminate\Support\Str::startsWith($path, ['http://', 'https://', '/'])) {
+                return $path;
+            }
+            if (\Illuminate\Support\Str::startsWith($path, 'storage/')) {
+                return '/'.$path;
+            }
+
+            return \Illuminate\Support\Facades\Storage::url($path);
+        };
+        $horizontalPath = $schoolSettings['horizontal_logo'] ?? null;
+        $verticalPath = $schoolSettings['vertical_logo'] ?? null;
+        $horizontalLogo = $resolveLogoUrl($horizontalPath ?: ($systemSettings['horizontal_logo'] ?? null), '/assets/horizontal-logo2.svg');
+        $verticalLogo = $resolveLogoUrl($verticalPath ?: ($systemSettings['vertical_logo'] ?? null), '/assets/vertical-logo.svg');
     @endphp
     <div class="text-center navbar-brand-wrapper d-flex align-items-center justify-content-center">
         <a class="navbar-brand brand-logo" href="{{ URL::to('/dashboard') }}">
