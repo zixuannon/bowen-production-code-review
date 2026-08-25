@@ -70,6 +70,22 @@ Finance V2
   109,956 MMK.  Tenant legacy Finance counts remained unchanged and the UAT
   student's tenant `FeesPaid` count is zero.
 
+## Zixuan + HQ Central Fund Account Production UAT
+
+- May Myat Mon's Central school-staff principal resolves only Zixuan and can
+  read the two explicitly assigned `CENTRAL-PROD-UAT-ZXN-MMK` accounts. The
+  Central HQ UAT account and a forged non-Zixuan School request are rejected
+  server-side; no School scope or Fund Account scope was broadened.
+- Head Finance reads the same canonical Central Fund Account and Ledger rows:
+  Zixuan account 1 closes at 92,456 MMK, Zixuan account 2 at 7,000 MMK, and
+  the HQ UAT account at 10,500 MMK. The scoped UAT total is 109,956 MMK,
+  exactly the sum of those three accounts. This is deliberately **not** a
+  complete Group total because other Schools are not onboarded.
+- Existing UAT HQ↔Zixuan internal-funding Ledger lines total 1,500 MMK in and
+  1,500 MMK out, with zero Operating Income and Expense. Tenant Zixuan
+  Finance counts and content hashes were unchanged before/after this read-only
+  verification; no legacy Bank Account or tenant Finance record was created.
+
 ## Central Finance Gate A — local release candidate
 
 Gate A is a schema-and-student-reference preparation release only. It contains
