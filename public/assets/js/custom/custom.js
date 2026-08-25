@@ -543,16 +543,25 @@ function normalizeGuardianSearchResult(repo) {
     };
 }
 
-function applyGuardianSelection(repo) {
-    const existingGuardianEmail = typeof repo?.email === 'string' ? repo.email.trim() : '';
-    const typedGuardianEmail = typeof repo?.text === 'string' ? repo.text.trim() : '';
+function selectedGuardianSearchData() {
+    const selected = $('.guardian-search').select2('data');
+
+    return Array.isArray(selected) && selected.length > 0
+        ? normalizeGuardianSearchResult(selected[0])
+        : null;
+}
+
+function syncSelectedGuardian(repo) {
+    const guardian = normalizeGuardianSearchResult(repo);
+    const existingGuardianEmail = guardian.email;
+    const typedGuardianEmail = guardian.text;
 
     if (existingGuardianEmail) {
         $('#guardian_email').val(existingGuardianEmail);
-        $('#guardian_first_name').val(repo.first_name || '').prop('readonly', true);
-        $('#guardian_last_name').val(repo.last_name || '').prop('readonly', true);
-        $('#guardian_mobile').val(repo.mobile || '').prop('readonly', true);
-        if (repo.gender == 'male') {
+        $('#guardian_first_name').val(guardian.first_name).prop('readonly', true);
+        $('#guardian_last_name').val(guardian.last_name).prop('readonly', true);
+        $('#guardian_mobile').val(guardian.mobile).prop('readonly', true);
+        if (guardian.gender == 'male') {
             $('#guardian_female').removeAttr('checked');
             $('#guardian_female').bind('click', function () {
                 return false;
@@ -569,7 +578,8 @@ function applyGuardianSelection(repo) {
         }
 
         $('#guardian_image').siblings('span').find('button').prop('disabled', true);
-        $('#guardian-image-preview').attr('src', repo.image);
+        $('#guardian-image-preview').attr('src', guardian.image);
+        return true;
     } else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedGuardianEmail)) {
         $('#guardian_email').val(typedGuardianEmail);
         $('#guardian_first_name').val('').prop('readonly', false);
@@ -579,7 +589,10 @@ function applyGuardianSelection(repo) {
         $('#guardian_image').siblings('span').find('button').prop('disabled', false);
         $('#guardian_male').unbind('click');
         $('#guardian_female').unbind('click');
+        return true;
     }
+
+    return false;
 }
 
 function clearGuardianSelection() {
@@ -595,11 +608,6 @@ function clearGuardianSelection() {
 
 function guardianSelectionTemplate(repo) {
     const guardian = normalizeGuardianSearchResult(repo);
-
-    if (guardian.email) {
-        applyGuardianSelection(guardian);
-        return guardian.text;
-    }
 
     return guardian.text;
 }
@@ -639,12 +647,25 @@ $('.guardian-search').select2({
 $(".guardian-search")
     .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission')
     .on('select2:select.guardianAdmission', function (event) {
-        applyGuardianSelection(normalizeGuardianSearchResult(event.params && event.params.data ? event.params.data : {}));
+        syncSelectedGuardian(event.params && event.params.data ? event.params.data : {});
     })
     .on('select2:clear.guardianAdmission', clearGuardianSelection)
     .on('change.guardianAdmission', function () {
         if (!$(this).val()) clearGuardianSelection();
+        else syncSelectedGuardian(selectedGuardianSearchData() || {});
     });
+
+// common.js creates FormData in a bubbling submit handler. Capture this event
+// first so a selected existing Guardian can never submit with a stale hidden
+// email field while its Select2 selection is still present.
+const studentAdmissionForm = document.getElementById('create-form');
+if (studentAdmissionForm && $('.guardian-search').length) {
+    studentAdmissionForm.addEventListener('submit', function () {
+        if ($('#guardian_email_search').val()) {
+            syncSelectedGuardian(selectedGuardianSearchData() || {});
+        }
+    }, true);
+}
 
 select2Search($(".edit-guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
     if (!repo.text) {

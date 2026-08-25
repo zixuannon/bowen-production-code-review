@@ -34,6 +34,8 @@ test('Student admission submits exactly the email of an existing Guardian select
 
     await expect(page.locator('#guardian_email_search option:checked')).toHaveText(email);
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
+    const selectedGuardian = await page.locator('#guardian_email_search').evaluate((select) => $(select).select2('data')[0]);
+    expect(selectedGuardian.email).toBe(email);
     await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
     await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
     await expect(page.locator('#guardian_first_name')).not.toBeEditable();
@@ -50,6 +52,13 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(matchingGuardian).toBeVisible();
     await matchingGuardian.click();
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
+
+    // The capture-phase submit guard must recover the authoritative Select2
+    // email even if another client-side callback cleared only the hidden field.
+    await page.locator('#guardian_email').evaluate((input) => {
+        input.value = '';
+    });
+    await expect(page.locator('input[name="guardian_email"]')).toHaveValue('');
 
     await page.locator('select[name="class_section_id"]').selectOption({ index: 1 });
     await page.locator('input[name="first_name"]').fill('Admission');

@@ -37,13 +37,16 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString("id: String(repo?.id ?? ''),", $script);
         $this->assertStringContainsString("text: email || name || (typeof repo?.text === 'string' ? repo.text.trim() : ''),", $script);
         $this->assertStringContainsString('results: guardians.map(normalizeGuardianSearchResult)', $script);
-        $this->assertStringContainsString('function applyGuardianSelection(repo)', $script);
-        $this->assertStringContainsString('const existingGuardianEmail = typeof repo?.email', $script);
+        $this->assertStringContainsString('function selectedGuardianSearchData()', $script);
+        $this->assertStringContainsString('function syncSelectedGuardian(repo)', $script);
+        $this->assertStringContainsString('const existingGuardianEmail = guardian.email;', $script);
         $this->assertStringContainsString("$('#guardian_email').val(existingGuardianEmail);", $script);
         $this->assertStringContainsString('function guardianSelectionTemplate(repo)', $script);
         $this->assertStringContainsString("select2:select.guardianAdmission", $script);
         $this->assertStringContainsString("select2:clear.guardianAdmission", $script);
         $this->assertStringContainsString("change.guardianAdmission", $script);
         $this->assertStringContainsString('function clearGuardianSelection()', $script);
+        $this->assertStringContainsString("studentAdmissionForm.addEventListener('submit'", $script);
+        $this->assertStringContainsString('}, true);', $script);
     }
 }
