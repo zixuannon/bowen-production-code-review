@@ -34,7 +34,7 @@ final class CentralFinanceReceivableSyncService
         $this->assertSchema();
 
         try {
-            $rows = $this->source->forProfile($profile);
+            $allRows = $this->source->allForProfile($profile);
         } catch (Throwable $exception) {
             $this->recordFailure($profile, 'profile:'.$profile->id, 'source_read_failed');
             throw $exception;
@@ -42,7 +42,11 @@ final class CentralFinanceReceivableSyncService
         $this->resolveDeferredSourceFailures($profile);
 
         $expected = [];
-        foreach ($rows as $row) $expected[(string) $row['source_id']] = $row;
+        foreach ($allRows as $row) {
+            if ($this->source->isWithinFreshStartCutoff($profile, $row)) {
+                $expected[(string) $row['source_id']] = $row;
+            }
+        }
 
         $synced = [];
         foreach ($expected as $row) $synced[] = $this->syncOne($profile, $row);
@@ -54,7 +58,9 @@ final class CentralFinanceReceivableSyncService
         ])->get();
         foreach ($existing as $receivable) {
             if (!array_key_exists((string) $receivable->source_id, $expected)) {
-                $synced[] = $this->cancelMissingSource($profile, $receivable);
+                if ($this->tracksReceivableWithinCutoff($profile, $receivable, $allRows)) {
+                    $synced[] = $this->cancelMissingSource($profile, $receivable);
+                }
             }
         }
 
@@ -91,10 +97,15 @@ final class CentralFinanceReceivableSyncService
         $school = School::on('mysql')->findOrFail($requestedSchool->id);
         $sourceCount = 0; $centralCount = 0; $missing = []; $stale = []; $mismatched = []; $cancelled = []; $blocked = [];
         foreach (CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)->orderBy('id')->get() as $profile) {
-            $sourceById = collect($this->source->forProfile($profile))->keyBy(static fn (array $row): string => (string) $row['source_id']);
+            $allRows = $this->source->allForProfile($profile);
+            $sourceById = collect($allRows)
+                ->filter(fn (array $row): bool => $this->source->isWithinFreshStartCutoff($profile, $row))
+                ->keyBy(static fn (array $row): string => (string) $row['source_id']);
             $existing = CentralFinanceReceivable::on('mysql')->where([
                 'school_id' => $school->id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE,
-            ])->get()->keyBy(static fn (CentralFinanceReceivable $r): string => (string) $r->source_id);
+            ])->get()
+                ->filter(fn (CentralFinanceReceivable $r): bool => $this->tracksReceivableWithinCutoff($profile, $r, $allRows))
+                ->keyBy(static fn (CentralFinanceReceivable $r): string => (string) $r->source_id);
             $sourceCount += $sourceById->count(); $centralCount += $existing->count();
             foreach ($sourceById as $sourceId => $row) {
                 $receivable = $existing->get($sourceId); $identity = $profile->source_uuid.':'.$sourceId;
@@ -113,7 +124,7 @@ final class CentralFinanceReceivableSyncService
         return ['source_count' => $sourceCount, 'central_count' => $centralCount, 'missing_in_central' => $missing, 'stale_in_central' => $stale, 'mismatched' => $mismatched, 'cancelled_source' => $cancelled, 'blocked_paid' => $blocked];
     }
 
-    /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable} $row */
+    /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable} $row */
     private function syncOne(CentralFinanceStudentProfile $profile, array $row): CentralFinanceReceivable
     {
         $this->assertSourceRow($row);
@@ -123,7 +134,7 @@ final class CentralFinanceReceivableSyncService
             $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id']])->lockForUpdate()->first();
             if ($duplicate && $receivable !== null) return $receivable;
             if ($receivable === null) {
-                $receivable = CentralFinanceReceivable::on('mysql')->create(['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper($row['currency']), 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'last_synced_at' => now()]);
+                $receivable = CentralFinanceReceivable::on('mysql')->create(['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper($row['currency']), 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()]);
                 $this->complete($event, 'created');
                 return $receivable;
             }
@@ -137,7 +148,7 @@ final class CentralFinanceReceivableSyncService
                 $this->complete($event, 'blocked_paid', 'paid_receivable_source_conflict');
                 return $receivable;
             }
-            $receivable->fill(['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper($row['currency']), 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'last_synced_at' => now()])->save();
+            $receivable->fill(['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper($row['currency']), 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()])->save();
             $this->complete($event, 'updated');
             return $receivable;
         });
@@ -191,7 +202,7 @@ final class CentralFinanceReceivableSyncService
         ])->update(['status' => 'retried', 'processed_at' => now(), 'error_code' => null]);
     }
 
-    /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable} $row */
+    /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable} $row */
     private function matches(CentralFinanceReceivable $receivable, array $row): bool
     {
         return $receivable->status !== CentralFinanceReceivable::CANCELLED && $receivable->description === $row['description'] && optional($receivable->due_date)->format('Y-m-d') === $row['due_date'] && strtoupper((string) $receivable->currency) === strtoupper($row['currency']) && (float) $receivable->amount_due === (float) $row['amount'];
@@ -200,11 +211,26 @@ final class CentralFinanceReceivableSyncService
     /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable} $row */
     private function assertSourceRow(array $row): void
     {
-        if ((float) $row['amount'] < 0 || !preg_match('/^[A-Z]{3}$/', strtoupper((string) $row['currency'])) || !preg_match('/^[0-9]+$/', (string) $row['source_id'])) throw new RuntimeException('Tenant fee assignment is not valid for Central Finance.');
+        if ((float) $row['amount'] < 0 || !isset($row['created_at']) || !preg_match('/^[A-Z]{3}$/', strtoupper((string) $row['currency'])) || !preg_match('/^[0-9]+$/', (string) $row['source_id'])) throw new RuntimeException('Tenant fee assignment is not valid for Central Finance.');
+    }
+
+    /** @param list<array{source_id:string,created_at:CarbonImmutable}> $allRows */
+    private function tracksReceivableWithinCutoff(CentralFinanceStudentProfile $profile, CentralFinanceReceivable $receivable, array $allRows): bool
+    {
+        foreach ($allRows as $row) {
+            if ((string) $row['source_id'] === (string) $receivable->source_id) {
+                return $this->source->isWithinFreshStartCutoff($profile, $row);
+            }
+        }
+        $cutoff = $this->source->freshStartCutoff($profile->school_id);
+        return $cutoff !== null
+            && $receivable->source_created_at !== null
+            && CarbonImmutable::parse($receivable->source_created_at)->greaterThanOrEqualTo($cutoff);
     }
 
     private function assertSchema(): void
     {
         if (!Schema::connection('mysql')->hasTable('central_finance_receivable_sync_events')) throw new RuntimeException('The Central Finance Receivable sync schema is not installed.');
+        if (!Schema::connection('mysql')->hasColumn('central_finance_receivables', 'source_created_at')) throw new RuntimeException('The Central Finance Fresh Start cutoff schema is not installed.');
     }
 }

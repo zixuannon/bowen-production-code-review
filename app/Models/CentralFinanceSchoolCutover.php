@@ -12,7 +12,15 @@ final class CentralFinanceSchoolCutover extends Model
 
     protected $connection = 'mysql';
 
-    protected $fillable = ['school_id', 'status', 'ready_by', 'ready_at', 'cutover_at', 'approved_by'];
+    protected $fillable = [
+        'school_id', 'status',
+        'receivable_sync_effective_at', 'receivable_sync_effective_by', 'receivable_sync_effective_reason',
+        'ready_by', 'ready_at', 'cutover_at', 'approved_by',
+    ];
 
-    protected $casts = ['ready_at' => 'immutable_datetime', 'cutover_at' => 'immutable_datetime'];
+    protected $casts = [
+        'receivable_sync_effective_at' => 'immutable_datetime',
+        'ready_at' => 'immutable_datetime',
+        'cutover_at' => 'immutable_datetime',
+    ];
 }

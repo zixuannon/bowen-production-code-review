@@ -6,6 +6,7 @@ use App\Models\CentralFinanceSchoolCutover;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -64,6 +65,39 @@ final class CentralFinanceSchoolCutoverService
         if ($this->statusForSchool($schoolId) === CentralFinanceSchoolCutover::CENTRAL) {
             throw new AuthorizationException('Legacy tenant Finance is read-only after Central Finance cutover.');
         }
+    }
+
+    /**
+     * Records the explicit Fresh Start source boundary before readiness. It is
+     * intentionally not inferred from now(), ready_at, or a request database.
+     */
+    public function setReceivableSyncEffectiveAt(CentralFinanceUser $actor, School $requestedSchool, CarbonImmutable $effectiveAt, string $reason): CentralFinanceSchoolCutover
+    {
+        if (trim($reason) === '') {
+            throw new InvalidArgumentException('A signed Fresh Start receivable cutoff reason is required.');
+        }
+        if (!Schema::connection('mysql')->hasTable('central_finance_school_cutovers')
+            || !Schema::connection('mysql')->hasColumn('central_finance_school_cutovers', 'receivable_sync_effective_at')) {
+            throw new LogicException('The Fresh Start receivable cutoff schema is not installed.');
+        }
+
+        $school = School::on('mysql')->findOrFail($requestedSchool->id);
+        $this->configurationAuthorization->assertHeadFinanceCanConfigureSchool($actor, $school);
+
+        return DB::connection('mysql')->transaction(function () use ($actor, $school, $effectiveAt, $reason): CentralFinanceSchoolCutover {
+            $row = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $school->id)->lockForUpdate()->first();
+            if ($row !== null && $row->status !== CentralFinanceSchoolCutover::LEGACY) {
+                throw new LogicException('The Fresh Start receivable cutoff is immutable after a School is marked ready.');
+            }
+            $row ??= new CentralFinanceSchoolCutover(['school_id' => $school->id, 'status' => CentralFinanceSchoolCutover::LEGACY]);
+            $row->fill([
+                'receivable_sync_effective_at' => $effectiveAt,
+                'receivable_sync_effective_by' => $actor->id,
+                'receivable_sync_effective_reason' => trim($reason),
+            ])->save();
+
+            return $row->fresh();
+        });
     }
 
     public function transition(CentralFinanceUser $actor, School $requestedSchool, string $target): CentralFinanceSchoolCutover

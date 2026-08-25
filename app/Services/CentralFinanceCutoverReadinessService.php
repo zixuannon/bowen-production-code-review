@@ -89,8 +89,25 @@ final class CentralFinanceCutoverReadinessService
     /** @return list<array{key:string,label:string,status:string,reason:string}> */
     private function syncChecks(School $school): array
     {
-        if (!Schema::connection('mysql')->hasTable('central_finance_student_profiles')) {
+        if (!Schema::connection('mysql')->hasTable('central_finance_receivables')
+            || !Schema::connection('mysql')->hasColumn('central_finance_school_cutovers', 'receivable_sync_effective_at')) {
             return [];
+        }
+
+        // A Fresh Start boundary is a configuration prerequisite in its own
+        // right. Check it before source reconciliation so a School can never
+        // become ready merely because it has no profiles yet.
+        $cutoff = app(CentralFinanceTenantFeeAssignmentSource::class)->freshStartCutoff($school->id);
+        $checks = [
+            $this->check(
+                'receivable_cutoff',
+                'Fresh Start receivable cutoff',
+                $cutoff !== null,
+                'Set an explicit approved cutover-effective datetime before Central Receivable readiness.',
+            ),
+        ];
+        if ($cutoff === null || !Schema::connection('mysql')->hasTable('central_finance_student_profiles')) {
+            return $checks;
         }
 
         try {
@@ -103,9 +120,7 @@ final class CentralFinanceCutoverReadinessService
         }
         $failedProfiles = Schema::connection('mysql')->hasTable('central_finance_sync_events')
             && DB::connection('mysql')->table('central_finance_sync_events')->where('school_id', $school->id)->where('status', 'failed')->exists();
-        $checks = [
-            $this->check('student_profiles', 'Student Profile reconciliation', $profileHealthy && !$failedProfiles, $failedProfiles ? 'Resolve failed Student Profile sync events before cutover.' : $profileReason),
-        ];
+        $checks[] = $this->check('student_profiles', 'Student Profile reconciliation', $profileHealthy && !$failedProfiles, $failedProfiles ? 'Resolve failed Student Profile sync events before cutover.' : $profileReason);
 
         if (!Schema::connection('mysql')->hasTable('central_finance_receivable_sync_events')) {
             return $checks;

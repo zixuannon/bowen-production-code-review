@@ -30,7 +30,7 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(), $t->unsignedBigInteger('school_id')->nullable(), $t->string('first_name')->nullable(), $t->string('last_name')->nullable(), $t->softDeletes(), $t->timestamps()]);
         Schema::connection('mysql')->create('roles', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('guard_name'), $t->unsignedBigInteger('school_id')->nullable(), $t->timestamps()]);
         Schema::connection('mysql')->create('model_has_roles', fn (Blueprint $t) => [$t->unsignedBigInteger('role_id'), $t->string('model_type'), $t->unsignedBigInteger('model_id')]);
-        foreach (['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach (['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php','2026_08_25_000005_add_fresh_start_receivable_cutoff.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([
             ['id' => 1, 'name' => 'Zixuan', 'code' => 'SCH202615', 'database_name' => 'local_zixuan', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 2, 'name' => 'Timecity', 'code' => 'SCH202619', 'database_name' => 'local_timecity', 'created_at' => now(), 'updated_at' => now()],
@@ -53,6 +53,10 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>100,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>101,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>(string) Str::uuid(),'school_id'=>1,'tenant_user_uuid'=>(string) Str::uuid(),'central_user_id'=>101,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
+            ['school_id'=>1,'status'=>'legacy','receivable_sync_effective_at'=>'2026-08-21 00:00:00','receivable_sync_effective_by'=>100,'receivable_sync_effective_reason'=>'Approved Fresh Start QA boundary','created_at'=>now(),'updated_at'=>now()],
+            ['school_id'=>2,'status'=>'legacy','receivable_sync_effective_at'=>'2026-08-21 00:00:00','receivable_sync_effective_by'=>100,'receivable_sync_effective_reason'=>'Approved Fresh Start QA boundary','created_at'=>now(),'updated_at'=>now()],
+        ]);
     }
 
     protected function tearDown(): void
@@ -110,6 +114,42 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $migration->up();
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_school_cutovers'));
         $this->assertTrue(Schema::connection('mysql')->hasTable('schools'));
+    }
+
+    public function test_fresh_start_cutoff_migration_is_additive_and_reversible(): void
+    {
+        $migration = require database_path('migrations/2026_08_25_000005_add_fresh_start_receivable_cutoff.php');
+        $migration->down();
+        $this->assertFalse(Schema::connection('mysql')->hasColumn('central_finance_school_cutovers', 'receivable_sync_effective_at'));
+        $this->assertFalse(Schema::connection('mysql')->hasColumn('central_finance_receivables', 'source_created_at'));
+        $migration->up();
+        $this->assertTrue(Schema::connection('mysql')->hasColumn('central_finance_school_cutovers', 'receivable_sync_effective_at'));
+        $this->assertTrue(Schema::connection('mysql')->hasColumn('central_finance_receivables', 'source_created_at'));
+    }
+
+    public function test_missing_fresh_start_receivable_cutoff_blocks_ready(): void
+    {
+        $cutovers = app(CentralFinanceSchoolCutoverService::class);
+        $school = School::on('mysql')->findOrFail(1);
+        DB::connection('mysql')->table('central_finance_school_cutovers')->where('school_id', 1)->update([
+            'receivable_sync_effective_at' => null,
+            'receivable_sync_effective_by' => null,
+            'receivable_sync_effective_reason' => null,
+        ]);
+
+        $this->expectException(LogicException::class);
+        $cutovers->transition($this->headFinance, $school, 'ready');
+    }
+
+    public function test_explicit_fresh_start_receivable_cutoff_is_audited_and_freezes_after_ready(): void
+    {
+        $cutovers = app(CentralFinanceSchoolCutoverService::class);
+        $school = School::on('mysql')->findOrFail(1);
+        $row = $cutovers->setReceivableSyncEffectiveAt($this->headFinance, $school, \Carbon\CarbonImmutable::parse('2026-08-21 00:00:00'), 'Approved Fresh Start boundary');
+        $this->assertSame(100, (int) $row->receivable_sync_effective_by);
+        $this->assertSame('ready', $cutovers->transition($this->headFinance, $school, 'ready')->status);
+        $this->expectException(LogicException::class);
+        $cutovers->setReceivableSyncEffectiveAt($this->headFinance, $school, \Carbon\CarbonImmutable::parse('2026-08-22 00:00:00'), 'Unsafe late change');
     }
 
     private function tenantActor(int $schoolId): User

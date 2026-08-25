@@ -122,6 +122,14 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   Ledger or operating total. `ready → central` fails closed until audited
   account, Head Finance, Group scope, School scope, and Fund Account scope are
   all present. No Production configuration or data has been created.
+- Fresh Start Receivable sync has an explicit, audited per-School effective
+  datetime. Only tenant Fee Assignments created at or after that approved
+  boundary may become Central Receivables. Pre-boundary assignments remain
+  legacy history, are excluded from Receivable reconciliation/readiness, and
+  are never silently imported or cancelled. A missing boundary blocks
+  `legacy → ready`; the boundary freezes once a School is marked ready. This
+  is additive/reversible schema only and does not create Finance documents,
+  Ledger entries, or balances.
 
 Finance P3.2 Unified Finance Transactions — **LOCAL AUTOMATED VERIFIED**. `Finance → Transactions` is a read-only adapter over compulsory payments, optional payments, non-fee `OtherIncome`, Expense, and canonical completed BankTransfer source records; no duplicate transaction/ledger table exists. Pending handovers are omitted, while confirmed handovers appear exactly once through their linked BankTransfer. The register has date/type/account/reference/keyword filters and rejects forged Fund Account filters server-side. A selected Fund Account renders an internal transfer directionally; an all-account view renders it once as neutral `Internal Transfer`, with no Money In/Out or operating-result contribution. Direct transfers require two distinct active, non-deleted, current-school, authorized accounts and execute through an exception-safe transaction; cancellation removes only the canonical transfer balance effect. Receive Money records a tenant-local non-fee source only after payment-method, active current-school Fund Account, Cashier assignment scope, and reference reservation checks. Expense/Import buttons reuse existing Expense and P3.1 Expense Excel workflows. P0 focused tests and broader finance regression pass (143 tests / 546 assertions). The guarded BOWEN_QA browser rerun is pending local MariaDB credentials in this worktree; no non-local fallback is permitted. Production and staging remain untouched.
 

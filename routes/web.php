@@ -1198,6 +1198,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/fund-accounts/{fundAccount}/assignments', [CentralFinanceWorkspaceController::class, 'syncFundAccountAssignments'])->name('central-finance.accounts.assignments');
     Route::post('central-finance/fund-accounts/{fundAccount}/opening-adjustments', [CentralFinanceWorkspaceController::class, 'adjustFundAccountOpeningBalance'])->name('central-finance.accounts.opening-adjustments');
     Route::post('central-finance/cutover-state', [CentralFinanceWorkspaceController::class, 'changeCutoverState'])->name('central-finance.cutover-state');
+    Route::post('central-finance/cutover-receivable-effective-at', [CentralFinanceWorkspaceController::class, 'setReceivableSyncEffectiveAt'])->name('central-finance.cutover-receivable-effective-at');
     Route::get('central-finance/staff', [CentralFinanceWorkspaceController::class, 'staff'])->name('central-finance.staff');
     Route::get('central-finance/categories', [CentralFinanceWorkspaceController::class, 'categories'])->name('central-finance.categories');
     Route::get('central-finance/audits', [CentralFinanceWorkspaceController::class, 'audits'])->name('central-finance.audits');

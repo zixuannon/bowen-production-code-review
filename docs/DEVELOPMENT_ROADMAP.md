@@ -125,6 +125,10 @@ Balances move only on designated receiver confirmation.
 - [x] Local configuration UI/services for explicit Central School scope,
   Head-Finance-only audited Fund Account opening balance, and a fail-closed
   `ready → central` gate.
+- [x] Fresh Start Receivable cutoff: each School must record an explicit,
+  approved effective datetime before readiness. Only Fee Assignments created
+  on/after that boundary sync to Central; pre-cutoff history is excluded from
+  reconciliation unless a future approved carry-forward process selects it.
 - [x] Feature Gap P0 Central read/configuration workbench: student ledger,
   payment/receipt history, Fund Account detail report, Standard Ledger filters
   and pagination, Finance Staff scope visibility, and Central category UI.

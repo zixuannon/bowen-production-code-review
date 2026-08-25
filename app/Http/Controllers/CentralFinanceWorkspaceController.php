@@ -15,6 +15,7 @@ use App\Models\CentralFinanceImportBatch;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceReimbursementRequest;
 use App\Models\CentralFinanceStudentProfile;
+use App\Models\CentralFinanceSchoolCutover;
 use App\Models\CentralFinanceUser;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundAccountAdministrationService;
@@ -255,6 +256,22 @@ final class CentralFinanceWorkspaceController extends Controller
         return back()->with('success', __('Central Finance cutover state updated.'));
     }
 
+    public function setReceivableSyncEffectiveAt(Request $request): RedirectResponse
+    {
+        [$actor, $school] = $this->currentOperatingContext();
+        $data = $request->validate([
+            'receivable_sync_effective_at' => ['required', 'date'],
+            'receivable_sync_effective_reason' => ['required', 'string', 'max:2000'],
+        ]);
+        $this->cutovers->setReceivableSyncEffectiveAt(
+            $actor,
+            $school,
+            CarbonImmutable::parse($data['receivable_sync_effective_at']),
+            $data['receivable_sync_effective_reason'],
+        );
+        return back()->with('success', __('Fresh Start receivable cutoff saved.'));
+    }
+
     public function collect(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
@@ -473,7 +490,8 @@ final class CentralFinanceWorkspaceController extends Controller
             ])->firstOrFail();
         }
         $cutoverChecklist = $school && $canConfigureAccounts ? $this->cutoverReadiness->checklist($school) : collect();
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'canOperate'=>$canOperate,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'ledger'=>$ledger,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
+        $cutoverRecord = $schoolId ? CentralFinanceSchoolCutover::on('mysql')->where('school_id', $schoolId)->first() : null;
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'canOperate'=>$canOperate,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'ledger'=>$ledger,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'reimbursements'=>$schoolId?CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
         return view('central-finance.workspace',$data);
     }
 

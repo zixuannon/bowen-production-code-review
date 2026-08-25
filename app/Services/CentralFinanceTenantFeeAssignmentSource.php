@@ -1,5 +1,6 @@
 <?php
 namespace App\Services;
+use App\Models\CentralFinanceSchoolCutover;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\School;
 use Carbon\CarbonImmutable;
@@ -11,8 +12,21 @@ use RuntimeException;
 
 /** Reads only compulsory tenant fee assignments through the trusted registry. */
 final class CentralFinanceTenantFeeAssignmentSource {
-    /** @return list<array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable}> */
+    /** @return list<array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable}> */
     public function forProfile(CentralFinanceStudentProfile $profile): array {
+        return array_values(array_filter(
+            $this->allForProfile($profile),
+            fn (array $row): bool => $this->isWithinFreshStartCutoff($profile, $row),
+        ));
+    }
+
+    /**
+     * Reconciliation needs the pre-cutoff rows too, so it can explain why
+     * historic tenant assignments are intentionally absent from Central.
+     *
+     * @return list<array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable}>
+     */
+    public function allForProfile(CentralFinanceStudentProfile $profile): array {
         $fresh=CentralFinanceStudentProfile::on('mysql')->findOrFail($profile->id);
         $school=School::on('mysql')->findOrFail($fresh->school_id);
         $db=(string)$school->getRawOriginal('database_name');
@@ -22,7 +36,10 @@ final class CentralFinanceTenantFeeAssignmentSource {
         if (!$fresh->class_id) return [];
         return $this->onSchool($db,function() use($fresh): array {
             $hasCurrency = Schema::connection('school')->hasColumn('fees_class_types', 'fee_currency');
-            $select = ['fees_class_types.id','fees_class_types.amount','fees_class_types.updated_at','fees.name','fees.due_date'];
+            // The cutoff is based on source creation, never an incidental
+            // later update. A tenant without this timestamp fails closed.
+            if (!Schema::connection('school')->hasColumn('fees_class_types', 'created_at')) return [];
+            $select = ['fees_class_types.id','fees_class_types.amount','fees_class_types.created_at as source_created_at','fees_class_types.updated_at','fees.name','fees.due_date'];
             if ($hasCurrency) $select[] = 'fees_class_types.fee_currency';
             $query = DB::connection('school')->table('fees_class_types')->leftJoin('fees','fees.id','=','fees_class_types.fees_id')
                 ->where('fees_class_types.class_id',$fresh->class_id)->where('fees_class_types.optional',0);
@@ -33,9 +50,25 @@ final class CentralFinanceTenantFeeAssignmentSource {
             return $rows->map(fn(object $r): array => [
                 'source_id'=>(string)$r->id,'description'=>(string)($r->name ?: 'Assigned fee'),
                 'due_date'=>$r->due_date ? (string)$r->due_date : null,'currency'=>strtoupper((string)(($hasCurrency ? $r->fee_currency : null) ?: 'MMK')),
-                'amount'=>(float)$r->amount,'updated_at'=>CarbonImmutable::parse($r->updated_at ?? now()),
+                'amount'=>(float)$r->amount,
+                'created_at'=>CarbonImmutable::parse($r->source_created_at),
+                'updated_at'=>CarbonImmutable::parse($r->updated_at ?? $r->source_created_at),
             ])->all();
         });
+    }
+
+    /** @param array{created_at:CarbonImmutable} $row */
+    public function isWithinFreshStartCutoff(CentralFinanceStudentProfile $profile, array $row): bool {
+        $cutoff = $this->freshStartCutoff($profile->school_id);
+        return $cutoff !== null && $row['created_at']->greaterThanOrEqualTo($cutoff);
+    }
+
+    public function freshStartCutoff(int $schoolId): ?CarbonImmutable {
+        if ($schoolId < 1
+            || !Schema::connection('mysql')->hasTable('central_finance_school_cutovers')
+            || !Schema::connection('mysql')->hasColumn('central_finance_school_cutovers', 'receivable_sync_effective_at')) return null;
+        $value = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $schoolId)->value('receivable_sync_effective_at');
+        return $value === null ? null : CarbonImmutable::parse($value);
     }
     private function safe(string $database): bool {
         if (preg_match('/^[A-Za-z0-9_.-]+$/',$database)) return true;
