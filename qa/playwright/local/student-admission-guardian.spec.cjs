@@ -24,6 +24,7 @@ test('Student admission submits exactly the email of an existing Guardian select
 
     await expect(page.locator('#guardian_email_search')).toBeVisible();
     await expect(page.locator('input[name="guardian_email"]')).toHaveCount(1);
+    await expect(page.locator('script[src*="/assets/js/custom/custom.js"]')).toHaveAttribute('src', /\?v=[a-f0-9]{64}$/);
 
     await page.locator('#guardian_email_search + .select2 .select2-selection').click();
     await page.locator('.select2-container--open .select2-search__field').fill(email);
@@ -39,6 +40,9 @@ test('Student admission submits exactly the email of an existing Guardian select
 
     const submittedGuardianEmail = await page.locator('#create-form').evaluate((form) => new FormData(form).get('guardian_email'));
     expect(submittedGuardianEmail).toBe(email);
+
+    await page.locator('#guardian_email_search').selectOption('');
+    await expect(page.locator('input[name="guardian_email"]')).toHaveValue('');
 
     await page.locator('select[name="class_section_id"]').selectOption({ index: 1 });
     await page.locator('input[name="first_name"]').fill('Admission');
