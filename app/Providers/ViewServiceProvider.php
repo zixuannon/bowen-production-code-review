@@ -44,7 +44,9 @@ class ViewServiceProvider extends ServiceProvider {
         try {
 
             $cache = app(CachingService::class);
-            view()->composer('*', function ($view) use ($cache) {
+            $isCentralFinanceRequest = static fn (): bool => request()->is('central-finance*');
+
+            view()->composer('*', function ($view) use ($cache, $isCentralFinanceRequest) {
                 $user = auth()->user();
                 $schoolId = null;
 
@@ -52,7 +54,7 @@ class ViewServiceProvider extends ServiceProvider {
                     // if user has school_id column
                     $schoolId = $user->school_id ?? null;
                 }
-                if ($schoolId){
+                if ($schoolId && !$isCentralFinanceRequest()){
                   $originalDateFormat = $cache->getSchoolSettings('date_format', $schoolId);
                   $originalTimeFormat = $cache->getSchoolSettings('time_format', $schoolId);
                   $view->with('originalDateFormat', $originalDateFormat);
@@ -131,11 +133,15 @@ class ViewServiceProvider extends ServiceProvider {
         
 
         /*** Header File ***/
-        View::composer('layouts.header', static function (\Illuminate\View\View $view) use ($cache) {
+        View::composer('layouts.header', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
             $view->with('systemSettings', $cache->getSystemSettings());
             $view->with('languages', $cache->getLanguages());
 
-            if (!empty(Auth::user()->school_id)) {
+            // Central Finance deliberately uses the central connection even when
+            // its authenticated principal has a school_id. Session years and
+            // semesters are tenant-only tables, so never resolve them while a
+            // Central Finance view is being rendered.
+            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
                 $view->with('sessionYear', $cache->getDefaultSessionYear());
                 $view->with('schoolSettings', $cache->getSchoolSettings());
                 $view->with('semester', $cache->getDefaultSemesterData());
@@ -143,9 +149,9 @@ class ViewServiceProvider extends ServiceProvider {
         });
 
         /*** Include File ***/
-        View::composer('layouts.include', static function (\Illuminate\View\View $view) use ($cache) {
+        View::composer('layouts.include', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
             $view->with('systemSettings', $cache->getSystemSettings());
-            if (!empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
                 $view->with('schoolSettings', $cache->getSchoolSettings());
             }
         });
@@ -180,9 +186,9 @@ class ViewServiceProvider extends ServiceProvider {
             $view->with('systemSettings', $cache->getSystemSettings());
         });
 
-        View::composer('layouts.home_page.master', static function (\Illuminate\View\View $view) use ($cache) {
+        View::composer('layouts.home_page.master', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
             $view->with('systemSettings', $cache->getSystemSettings());
-            if (!empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
                 $view->with('schoolSettings', $cache->getSchoolSettings());
             }
         });
@@ -205,9 +211,9 @@ class ViewServiceProvider extends ServiceProvider {
         });
 
         /*** Footer File ***/
-        View::composer('layouts.footer_js', static function (\Illuminate\View\View $view) use ($cache) {
+        View::composer('layouts.footer_js', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
             $view->with('systemSettings', $cache->getSystemSettings());
-            if (!empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
                 $view->with('schoolSettings', $cache->getSchoolSettings());
             }
         });

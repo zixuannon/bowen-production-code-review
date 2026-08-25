@@ -34,8 +34,11 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         DB::purge('mysql'); DB::setDefaultConnection('mysql');
         Schema::connection('mysql')->create('schools', fn (Blueprint $t) => [$t->id(),$t->string('name'),$t->string('code')->nullable(),$t->string('database_name')->nullable(),$t->softDeletes(),$t->timestamps()]);
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(),$t->string('first_name')->nullable(),$t->string('last_name')->nullable(),$t->string('email')->nullable(),$t->unsignedBigInteger('school_id')->nullable(),$t->softDeletes(),$t->timestamps()]);
-        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
+        Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
+        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_24_000002_create_central_finance_school_staff_identities.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
+        DB::connection('mysql')->table('system_settings')->insert(['name' => 'date_format', 'data' => 'd-m-Y', 'type' => 'text']);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null]]);
         DB::connection('mysql')->table('finance_groups')->insert(['id'=>1,'code'=>'CENTRAL-QA','name'=>'Central QA','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('finance_group_schools')->insert([['group_id'=>1,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_id'=>1,'school_id'=>2,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]);
@@ -101,6 +104,40 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
         }
+    }
+
+    public function test_central_finance_layout_does_not_query_tenant_session_years_for_a_school_scoped_principal(): void
+    {
+        $tenantUuid = (string) Str::uuid();
+        DB::connection('mysql')->table('users')->where('id', $this->zixuanAccountant->id)->update([
+            'school_id' => 1,
+            'central_finance_principal_type' => 'school_staff_identity',
+        ]);
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert([
+            'identity_uuid' => (string) Str::uuid(), 'school_id' => 1,
+            'tenant_user_uuid' => $tenantUuid, 'central_user_id' => $this->zixuanAccountant->id,
+            'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->zixuanAccountant->refresh();
+
+        // Invoke the real header composer while the default connection is mysql.
+        // The Central connection middleware itself is covered separately; this
+        // characterization catches accidental tenant-only session-year queries.
+        $this->actingAs($this->zixuanAccountant);
+        app()->instance('request', Request::create('/central-finance'));
+        $withCalls = [];
+        $view = \Mockery::mock(\Illuminate\View\View::class);
+        $view->shouldReceive('name')->andReturn('layouts.header');
+        $view->shouldReceive('with')->zeroOrMoreTimes()->andReturnUsing(function (...$arguments) use (&$withCalls, $view) {
+            $withCalls[] = $arguments;
+            return $view;
+        });
+        $factory = app('view');
+        $factory->callComposer($view);
+
+        $keys = array_map(fn (array $arguments) => $arguments[0] ?? null, $withCalls);
+        $this->assertNotContains('sessionYear', $keys);
+        $this->assertNotContains('semester', $keys);
     }
 
     public function test_central_read_models_are_paginated_and_never_disclose_an_unassigned_fund_account(): void
