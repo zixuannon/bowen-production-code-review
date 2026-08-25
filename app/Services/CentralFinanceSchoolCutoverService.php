@@ -31,6 +31,16 @@ final class CentralFinanceSchoolCutoverService
 
     public static function parseReceivableSyncEffectiveAt(string $value): CarbonImmutable
     {
+        return self::parseFreshStartBusinessTime($value);
+    }
+
+    /**
+     * MySQL returns timestamp columns in the connection session timezone.
+     * Finance source dates and the configured cutoff are both Yangon business
+     * dates, so they must never be interpreted using APP_TIMEZONE.
+     */
+    public static function parseFreshStartBusinessTime(string $value): CarbonImmutable
+    {
         return CarbonImmutable::parse($value, self::FRESH_START_TIMEZONE);
     }
 

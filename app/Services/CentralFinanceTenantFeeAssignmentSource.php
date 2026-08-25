@@ -51,8 +51,8 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 'source_id'=>(string)$r->id,'description'=>(string)($r->name ?: 'Assigned fee'),
                 'due_date'=>$r->due_date ? (string)$r->due_date : null,'currency'=>strtoupper((string)(($hasCurrency ? $r->fee_currency : null) ?: 'MMK')),
                 'amount'=>(float)$r->amount,
-                'created_at'=>CarbonImmutable::parse($r->source_created_at),
-                'updated_at'=>CarbonImmutable::parse($r->updated_at ?? $r->source_created_at),
+                'created_at'=>CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) $r->source_created_at),
+                'updated_at'=>CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) ($r->updated_at ?? $r->source_created_at)),
             ])->all();
         });
     }
@@ -68,7 +68,7 @@ final class CentralFinanceTenantFeeAssignmentSource {
             || !Schema::connection('mysql')->hasTable('central_finance_school_cutovers')
             || !Schema::connection('mysql')->hasColumn('central_finance_school_cutovers', 'receivable_sync_effective_at')) return null;
         $value = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $schoolId)->value('receivable_sync_effective_at');
-        return $value === null ? null : CarbonImmutable::parse($value);
+        return $value === null ? null : CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) $value);
     }
     private function safe(string $database): bool {
         if (preg_match('/^[A-Za-z0-9_.-]+$/',$database)) return true;
