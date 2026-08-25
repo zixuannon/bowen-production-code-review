@@ -70,17 +70,21 @@ final class CentralFinanceSchoolCutoverService
 
     public function assertTenantFinanceWritesAllowed(User $actor): void
     {
-        $schoolId = (int) $actor->school_id;
-        if ($schoolId < 1) {
+        if ((int) $actor->school_id < 1) {
             throw new AuthorizationException('A trusted School Finance identity is required.');
         }
 
-        // The actor is resolved by the tenant auth guard; this central lookup
-        // only confirms the immutable School registry identity. No request
-        // parameter or database name participates in this decision.
-        School::on('mysql')->whereKey($schoolId)->firstOrFail();
+        // Tenant-local school IDs are not Central registry IDs. The current
+        // tenant connection is initialized by the trusted School login/host
+        // middleware, so resolve the Central School through its registered
+        // database name rather than a locally scoped users.school_id.
+        $database = trim((string) config('database.connections.school.database'));
+        if ($database === '') {
+            throw new AuthorizationException('A trusted School tenant connection is required.');
+        }
+        $school = School::on('mysql')->where('database_name', $database)->firstOrFail();
 
-        if ($this->statusForSchool($schoolId) === CentralFinanceSchoolCutover::CENTRAL) {
+        if ($this->statusForSchool((int) $school->id) === CentralFinanceSchoolCutover::CENTRAL) {
             throw new AuthorizationException('Legacy tenant Finance is read-only after Central Finance cutover.');
         }
     }

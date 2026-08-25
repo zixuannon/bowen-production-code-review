@@ -69,24 +69,30 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $cutovers = app(CentralFinanceSchoolCutoverService::class);
         $zixuan = School::on('mysql')->findOrFail(1);
 
+        // A tenant user's local school_id is intentionally unrelated to the
+        // Central registry key; only the trusted current tenant connection
+        // determines which School's cutover state applies.
+        Config::set('database.connections.school.database', 'local_zixuan');
         $cutovers->transition($this->headFinance, $zixuan, 'ready');
         $this->assertFalse($cutovers->allowsCentralWrites(1));
-        $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(1));
+        $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(999));
         $this->assertSame('legacy', $cutovers->statusForSchool(2));
         $cutovers->transition($this->headFinance, $zixuan, 'central');
 
         $this->assertTrue($cutovers->allowsCentralWrites(1));
         $this->assertFalse($cutovers->allowsCentralWrites(2));
         $this->expectException(AuthorizationException::class);
-        $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(1));
+        $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(999));
     }
 
     public function test_timecity_legacy_tenant_writes_remain_allowed_after_zixuan_cutover(): void
     {
         $cutovers = app(CentralFinanceSchoolCutoverService::class);
         $school = School::on('mysql')->findOrFail(1);
+        Config::set('database.connections.school.database', 'local_zixuan');
         $cutovers->transition($this->headFinance, $school, 'ready');
         $cutovers->transition($this->headFinance, $school, 'central');
+        Config::set('database.connections.school.database', 'local_timecity');
         $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(2));
         $this->assertSame('legacy', $cutovers->statusForSchool(2));
     }
