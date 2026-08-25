@@ -520,12 +520,16 @@ select2Search($(".edit-school-admin-search"), baseUrl + "/schools/admin/search",
 });
 
 // Guardian Search
-// Select2 calls templateSelection while rendering as well as after a choice.  Keep
-// it presentation-only; update the submitted Guardian fields from the explicit
-// select event so an existing Guardian always supplies guardian_email.
+// The production Guardian search endpoint returns an existing Guardian with a
+// top-level `email` field (not `text`).  Select2 may render the selected item
+// before or without exposing a reliable select2:select callback, so both the
+// selection renderer and the event handler share the same safe updater.
 function applyGuardianSelection(repo) {
-    if (!repo.text) {
-        $('#guardian_email').val(repo.email);
+    const existingGuardianEmail = typeof repo?.email === 'string' ? repo.email.trim() : '';
+    const typedGuardianEmail = typeof repo?.text === 'string' ? repo.text.trim() : '';
+
+    if (existingGuardianEmail) {
+        $('#guardian_email').val(existingGuardianEmail);
         $('#guardian_first_name').val(repo.first_name).prop('readonly', true);
         $('#guardian_last_name').val(repo.last_name).prop('readonly', true);
         $('#guardian_mobile').val(repo.mobile).prop('readonly', true);
@@ -547,8 +551,8 @@ function applyGuardianSelection(repo) {
 
         $('#guardian_image').siblings('span').find('button').prop('disabled', true);
         $('#guardian-image-preview').attr('src', repo.image);
-    } else {
-        $('#guardian_email').val(repo.text);
+    } else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedGuardianEmail)) {
+        $('#guardian_email').val(typedGuardianEmail);
         $('#guardian_first_name').val('').prop('readonly', false);
         $('#guardian_last_name').val('').prop('readonly', false);
         $('#guardian_mobile').val('').prop('readonly', false);
@@ -559,13 +563,40 @@ function applyGuardianSelection(repo) {
     }
 }
 
-select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
-    return repo.email || repo.text;
-});
+function clearGuardianSelection() {
+    $('#guardian_email').val('');
+    $('#guardian_first_name').val('').prop('readonly', false);
+    $('#guardian_last_name').val('').prop('readonly', false);
+    $('#guardian_mobile').val('').prop('readonly', false);
+    $('#guardian-image-tag').attr('src', '');
+    $('#guardian_image').siblings('span').find('button').prop('disabled', false);
+    $('#guardian_male').unbind('click');
+    $('#guardian_female').unbind('click');
+}
 
-$(".guardian-search").on('select2:select', function (event) {
-    applyGuardianSelection(event.params.data);
-});
+function guardianSelectionTemplate(repo) {
+    // This rendering callback is part of Select2's actual selection path.  It
+    // receives the exact Guardian AJAX object and provides a reliable fallback
+    // when the event callback is unavailable.
+    if (repo && typeof repo.email === 'string' && repo.email.trim() !== '') {
+        applyGuardianSelection(repo);
+        return repo.email;
+    }
+
+    return repo && repo.text ? repo.text : '';
+}
+
+select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, guardianSelectionTemplate);
+
+$(".guardian-search")
+    .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission')
+    .on('select2:select.guardianAdmission', function (event) {
+        applyGuardianSelection(event.params && event.params.data ? event.params.data : {});
+    })
+    .on('select2:clear.guardianAdmission', clearGuardianSelection)
+    .on('change.guardianAdmission', function () {
+        if (!$(this).val()) clearGuardianSelection();
+    });
 
 select2Search($(".edit-guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
     if (!repo.text) {

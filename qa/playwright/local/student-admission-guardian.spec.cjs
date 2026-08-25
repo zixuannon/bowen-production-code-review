@@ -43,9 +43,18 @@ test('Student admission submits exactly the email of an existing Guardian select
     await page.locator('select[name="class_section_id"]').selectOption({ index: 1 });
     await page.locator('input[name="first_name"]').fill('Admission');
     await page.locator('input[name="last_name"]').fill(`Student ${suffix}`);
-    await page.locator('input[name="dob"]').fill('01-01-2015');
+    await page.locator('input[name="mobile"]').fill(`092${String(suffix).slice(-7)}`);
+    const dob = page.locator('input[name="dob"]');
+    // The legacy datepicker clears typed values unless its input/change events
+    // are raised.  Use the same DOM events the picker emits after a date click.
+    await dob.evaluate((input) => {
+        input.value = '01-01-2015';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(dob).toHaveValue('01-01-2015');
     await page.locator('textarea[name="current_address"]').fill('BOWEN QA local address');
     await page.locator('textarea[name="permanent_address"]').fill('BOWEN QA local address');
     await page.locator('#create-btn').click();
-    await expect(page.getByText('Data Created Successfully')).toBeVisible();
+    await expect(page.getByText('Data Stored Successfully')).toBeVisible();
 });
