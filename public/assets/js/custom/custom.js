@@ -519,8 +519,11 @@ select2Search($(".edit-school-admin-search"), baseUrl + "/schools/admin/search",
     return repo.email || repo.text;
 });
 
-//Guardian Search
-select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
+// Guardian Search
+// Select2 calls templateSelection while rendering as well as after a choice.  Keep
+// it presentation-only; update the submitted Guardian fields from the explicit
+// select event so an existing Guardian always supplies guardian_email.
+function applyGuardianSelection(repo) {
     if (!repo.text) {
         $('#guardian_email').val(repo.email);
         $('#guardian_first_name').val(repo.first_name).prop('readonly', true);
@@ -554,7 +557,14 @@ select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search
         $('#guardian_male').unbind('click');
         $('#guardian_female').unbind('click');
     }
+}
+
+select2Search($(".guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
     return repo.email || repo.text;
+});
+
+$(".guardian-search").on('select2:select', function (event) {
+    applyGuardianSelection(event.params.data);
 });
 
 select2Search($(".edit-guardian-search"), baseUrl + "/guardian/search", null, 'Search for Guardian Email', Select2SearchDesignTemplate, function (repo) {
