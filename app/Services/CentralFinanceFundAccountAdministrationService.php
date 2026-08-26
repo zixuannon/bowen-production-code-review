@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundAccountOpeningBalanceAudit;
+use App\Models\CentralFinanceDocumentAudit;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,7 @@ final class CentralFinanceFundAccountAdministrationService
 {
     public function __construct(private readonly CentralFinanceConfigurationAuthorizationService $authorization) {}
 
-    /** @param array{account_code:string,account_name:string,currency:string,opening_balance:float|int|string,opening_balance_date:string,opening_reason:string} $attributes @param array<int,int> $assigneeIds */
+    /** @param array{account_code:string,account_name:string,currency:string,opening_balance:float|int|string,opening_balance_date:string,opening_reason:string,account_type?:string,bank_name?:?string,masked_account_identifier?:?string,custodian_user_id?:?int,notes?:?string} $attributes @param array<int,int> $assigneeIds */
     public function createSchoolAccount(CentralFinanceUser $actor, School $school, array $attributes, array $assigneeIds): CentralFinanceFundAccount
     {
         return $this->createAccount($actor, $school, $attributes, $assigneeIds, CentralFinanceFundAccount::OWNER_SCHOOL);
@@ -61,6 +62,48 @@ final class CentralFinanceFundAccountAdministrationService
         });
     }
 
+    /** Metadata never changes a balance or creates a Ledger entry. */
+    public function updateMasterData(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $attributes): void
+    {
+        DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $attributes): void {
+            $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
+            $groupUser = $this->groupUserForAccount($actor, $school, $account);
+            $this->assertAccountInConfigurationScope($account, $school, (int) $groupUser->group_id);
+            $this->assertCustodian($account, $school, $attributes['custodian_user_id'] ?? null);
+            $before = $account->only(['account_name', 'account_type', 'bank_name', 'masked_account_identifier', 'custodian_user_id', 'notes']);
+            $account->fill([
+                'account_name' => trim((string) $attributes['account_name']),
+                'account_type' => $attributes['account_type'],
+                'bank_name' => $this->nullableTrim($attributes['bank_name'] ?? null),
+                'masked_account_identifier' => $this->nullableTrim($attributes['masked_account_identifier'] ?? null),
+                'custodian_user_id' => $attributes['custodian_user_id'] ?? null,
+                'notes' => $this->nullableTrim($attributes['notes'] ?? null),
+            ])->save();
+            $this->audit($school, $account, $actor, 'master_data_updated', trim((string) ($attributes['reason'] ?? 'Central Fund Account master-data update')), $before, $account->only(array_keys($before)));
+        });
+    }
+
+    /** Deactivation/archival preserves all history. Archive is impossible until the real balance is zero. */
+    public function changeStatus(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, string $status, string $reason): void
+    {
+        if (!in_array($status, [CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED], true) || trim($reason) === '') {
+            throw ValidationException::withMessages(['status' => [__('A valid Fund Account status and reason are required.')]]);
+        }
+        DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $status, $reason): void {
+            $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
+            $groupUser = $this->groupUserForAccount($actor, $school, $account);
+            $this->assertAccountInConfigurationScope($account, $school, (int) $groupUser->group_id);
+            if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED && abs(app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account)) > 0.0001) {
+                throw ValidationException::withMessages(['status' => [__('A Fund Account with a non-zero balance cannot be archived.')]]);
+            }
+            $account->update([
+                'status' => $status, 'is_active' => $status === CentralFinanceFundAccount::STATUS_ACTIVE,
+                'status_reason' => trim($reason), 'status_changed_by' => $actor->id, 'status_changed_at' => now(),
+            ]);
+            $this->audit($school, $account, $actor, 'lifecycle_'.$status, trim($reason), ['status' => $account->getOriginal('status'), 'is_active' => (bool) $account->getOriginal('is_active')], ['status' => $status, 'is_active' => $status === CentralFinanceFundAccount::STATUS_ACTIVE]);
+        });
+    }
+
     /** @param array<int,int> $assigneeIds */
     private function syncAssignmentsLocked(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $account, int $groupId, array $assigneeIds): void
     {
@@ -80,7 +123,7 @@ final class CentralFinanceFundAccountAdministrationService
         }
     }
 
-    /** @param array{account_code:string,account_name:string,currency:string,opening_balance:float|int|string,opening_balance_date:string,opening_reason:string} $attributes @param array<int,int> $assigneeIds */
+    /** @param array{account_code:string,account_name:string,currency:string,opening_balance:float|int|string,opening_balance_date:string,opening_reason:string,account_type?:string,bank_name?:?string,masked_account_identifier?:?string,custodian_user_id?:?int,notes?:?string} $attributes @param array<int,int> $assigneeIds */
     private function createAccount(CentralFinanceUser $actor, School $school, array $attributes, array $assigneeIds, string $ownerType): CentralFinanceFundAccount
     {
         $groupUser = $ownerType === CentralFinanceFundAccount::OWNER_HQ
@@ -89,12 +132,19 @@ final class CentralFinanceFundAccountAdministrationService
         $this->assertOpening($attributes['opening_balance'], $attributes['opening_reason']);
 
         return DB::connection('mysql')->transaction(function () use ($actor, $school, $groupUser, $attributes, $assigneeIds, $ownerType): CentralFinanceFundAccount {
+            $this->assertCustodianForCreate($school, $attributes['custodian_user_id'] ?? null, (int) $groupUser->group_id, $ownerType);
             $account = CentralFinanceFundAccount::on('mysql')->create([
                 'account_uuid' => (string) Str::uuid(), 'group_id' => $groupUser->group_id,
                 'school_id' => $ownerType === CentralFinanceFundAccount::OWNER_HQ ? null : $school->id,
                 'owner_type' => $ownerType, 'account_code' => $attributes['account_code'],
                 'account_name' => $attributes['account_name'], 'currency' => $attributes['currency'],
                 'opening_balance' => $attributes['opening_balance'], 'is_active' => true,
+                'account_type' => $attributes['account_type'] ?? CentralFinanceFundAccount::TYPE_OTHER,
+                'bank_name' => $this->nullableTrim($attributes['bank_name'] ?? null),
+                'masked_account_identifier' => $this->nullableTrim($attributes['masked_account_identifier'] ?? null),
+                'custodian_user_id' => $attributes['custodian_user_id'] ?? null,
+                'status' => CentralFinanceFundAccount::STATUS_ACTIVE,
+                'notes' => $this->nullableTrim($attributes['notes'] ?? null),
             ]);
             CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->create([
                 'fund_account_id' => $account->id, 'change_type' => CentralFinanceFundAccountOpeningBalanceAudit::INITIAL,
@@ -102,6 +152,7 @@ final class CentralFinanceFundAccountAdministrationService
                 'effective_date' => $attributes['opening_balance_date'], 'reason' => trim($attributes['opening_reason']),
                 'created_by' => $actor->id,
             ]);
+            $this->audit($school, $account, $actor, 'created', trim($attributes['opening_reason']), [], ['account_code' => $account->account_code, 'account_type' => $account->account_type, 'owner_type' => $account->owner_type, 'custodian_user_id' => $account->custodian_user_id]);
             $this->syncAssignmentsLocked($actor, $school, $account, $groupUser->group_id, $assigneeIds);
 
             return $account->fresh();
@@ -122,5 +173,38 @@ final class CentralFinanceFundAccountAdministrationService
         return $account->owner_type === CentralFinanceFundAccount::OWNER_HQ
             ? $this->authorization->assertHeadFinanceCanConfigureHq($actor, $school)
             : $this->authorization->assertHeadFinanceCanConfigureSchool($actor, $school);
+    }
+
+    private function assertCustodian(CentralFinanceFundAccount $account, School $school, ?int $custodianUserId): void
+    {
+        if ($custodianUserId === null) return;
+        $this->assertCustodianForCreate($school, $custodianUserId, (int) $account->group_id, $account->owner_type);
+    }
+
+    private function assertCustodianForCreate(School $school, ?int $custodianUserId, int $groupId, string $ownerType): void
+    {
+        if ($custodianUserId === null) return;
+        $query = CentralFinanceUser::on('mysql')->whereKey($custodianUserId);
+        if ($ownerType === CentralFinanceFundAccount::OWNER_SCHOOL) {
+            $query->whereIn('id', DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id', $school->id)->where('can_view', true)->pluck('user_id'));
+        } else {
+            $query->whereIn('id', DB::connection('mysql')->table('finance_group_users')->where('group_id', $groupId)->where('status', 'active')->pluck('central_user_id'));
+        }
+        if (!$query->exists()) throw new \Illuminate\Auth\Access\AuthorizationException('The requested Fund Account custodian is outside the trusted Central Finance scope.');
+    }
+
+    private function nullableTrim(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        return $value === '' ? null : $value;
+    }
+
+    private function audit(School $school, CentralFinanceFundAccount $account, CentralFinanceUser $actor, string $action, ?string $reason, array $before, array $after): void
+    {
+        CentralFinanceDocumentAudit::on('mysql')->create([
+            'school_id' => $school->id, 'document_type' => 'fund_account', 'document_id' => $account->id,
+            'action' => $action, 'actor_id' => $actor->id, 'reason' => $reason,
+            'before_values' => $before, 'after_values' => $after,
+        ]);
     }
 }

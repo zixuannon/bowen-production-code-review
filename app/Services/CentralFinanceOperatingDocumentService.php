@@ -125,6 +125,44 @@ final class CentralFinanceOperatingDocumentService
         });
     }
 
+    /**
+     * Correct descriptive Other Income metadata without changing the canonical
+     * amount, Fund Account, date, reference, or its already-posted Ledger.
+     *
+     * @param array{category_id?:int,payer?:?string,description?:?string} $changes
+     */
+    public function updateOtherIncomeDetails(CentralFinanceUser $actor, int $incomeId, array $changes, string $reason): CentralFinanceOtherIncome
+    {
+        $existing = CentralFinanceOtherIncome::on('mysql')->findOrFail($incomeId);
+        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $existing->school_id);
+        if (trim($reason) === '') {
+            throw new InvalidArgumentException('An edit reason is required.');
+        }
+
+        return DB::connection('mysql')->transaction(function () use ($actor, $incomeId, $changes, $reason): CentralFinanceOtherIncome {
+            $income = CentralFinanceOtherIncome::on('mysql')->lockForUpdate()->findOrFail($incomeId);
+            $this->schools->assertCanOperate($actor, $income->school_id);
+            $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($income->fund_account_id));
+            $before = $this->snapshot($income);
+            if (array_key_exists('category_id', $changes)) {
+                $this->category($income->school_id, (int) $changes['category_id'], CentralFinanceCategory::INCOME);
+                $income->category_id = (int) $changes['category_id'];
+            }
+            if (array_key_exists('payer', $changes)) {
+                $income->payer = $changes['payer'];
+            }
+            if (array_key_exists('description', $changes)) {
+                $income->description = $changes['description'];
+            }
+            $income->updated_by = $actor->id;
+            $income->edit_reason = trim($reason);
+            $income->save();
+            $this->audits->record($actor, $income, 'other_income', 'updated', trim($reason), $before, $this->snapshot($income));
+
+            return $income;
+        });
+    }
+
     public function voidExpense(CentralFinanceUser $actor, int $expenseId, string $reason, CarbonImmutable $occurredAt): CentralFinanceExpense
     {
         return $this->void($actor, CentralFinanceExpense::class, $expenseId, 'expense', $reason, $occurredAt);
@@ -205,6 +243,6 @@ final class CentralFinanceOperatingDocumentService
     /** @return array<string,mixed> */
     private function snapshot(CentralFinanceExpense|CentralFinanceOtherIncome $document): array
     {
-        return $document->only(['category_id', 'fund_account_id', 'reference_no', 'amount', 'currency', 'description', 'reimbursed_by', 'deleted_at']);
+        return $document->only(['category_id', 'fund_account_id', 'reference_no', 'amount', 'currency', 'payer', 'description', 'reimbursed_by', 'deleted_at']);
     }
 }

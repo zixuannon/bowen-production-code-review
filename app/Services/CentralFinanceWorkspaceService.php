@@ -153,6 +153,38 @@ final class CentralFinanceWorkspaceService
         return $query->get();
     }
 
+    /**
+     * Read models are School-scoped, not Fund-Account-operation-scoped.
+     * A School Accountant may read the school's Ledger/Audit trail in order to
+     * reconcile work performed by the finance team, while every write continues
+     * to use accessibleAccounts() and the Fund Account scope service.
+     *
+     * @return Collection<int, CentralFinanceFundAccount>
+     */
+    public function readableAccounts(CentralFinanceUser $actor, ?int $schoolId = null): Collection
+    {
+        $schools = $this->accessibleSchools($actor);
+        $query = CentralFinanceFundAccount::on('mysql')->orderBy('account_name');
+
+        if ($this->isSchoolStaffPrincipal($actor)) {
+            $query->whereIn('school_id', $schools->pluck('id'));
+        } else {
+            $groupIds = $this->groupUsers($actor)->pluck('group_id');
+            $query->where(function ($accounts) use ($schools, $groupIds): void {
+                $accounts->whereIn('school_id', $schools->pluck('id'))
+                    ->orWhere(fn ($hq) => $hq->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->whereIn('group_id', $groupIds));
+            });
+        }
+
+        if ($schoolId !== null) {
+            $query->where(function ($accounts) use ($schoolId): void {
+                $accounts->where('school_id', $schoolId)->orWhere('owner_type', CentralFinanceFundAccount::OWNER_HQ);
+            });
+        }
+
+        return $query->get();
+    }
+
     public function idempotencyReference(string $prefix): string
     {
         return $prefix.'-'.Str::uuid();

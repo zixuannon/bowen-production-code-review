@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 final class CentralFinancePaymentService {
-    public function __construct(private readonly CentralFinanceSchoolScopeService $schools, private readonly CentralFinanceFundAccountScopeService $accounts, private readonly CentralFinanceLedgerService $ledger) {}
+    public function __construct(private readonly CentralFinanceSchoolScopeService $schools, private readonly CentralFinanceFundAccountScopeService $accounts, private readonly CentralFinanceLedgerService $ledger, private readonly CentralFinanceDocumentAuditService $audits) {}
     /** @return array{payment:CentralFinancePayment,receipt:CentralFinanceReceipt} */
     public function collect(CentralFinanceUser $actor,int $receivableId,CentralFinanceFundAccount $account,float $amount,string $method,CarbonImmutable $paidAt,string $idempotencyReference,?string $paymentReference=null): array {
         if ($amount<=0 || !is_finite($amount) || !preg_match('/^[A-Za-z0-9 _.-]{2,40}$/',$method) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/',$idempotencyReference)) throw new InvalidArgumentException('Central payment input is invalid.');
@@ -35,6 +35,7 @@ final class CentralFinancePaymentService {
             $receipt=CentralFinanceReceipt::on('mysql')->create(['receipt_uuid'=>(string)Str::uuid(),'school_id'=>$r->school_id,'payment_id'=>$payment->id,'receipt_no'=>'CFR-'.$r->school_id.'-'.strtoupper(substr(str_replace('-','',$payment->payment_uuid),0,12)),'issued_at'=>$paidAt,'issued_by'=>$actor->id]);
             $this->ledger->recordOperatingIncome($actor,$account,$r->school_id,'central_payment',$payment->payment_uuid,$amount,$paidAt,$receipt->receipt_no);
             $paid=(float)$r->amount_paid+$amount; $r->update(['amount_paid'=>$paid,'status'=>$paid>=(float)$r->amount_due?CentralFinanceReceivable::PAID:CentralFinanceReceivable::PARTIAL]);
+            $this->audits->record($actor, $payment, 'central_payment', 'collected', null, null, ['receipt_id' => $receipt->id, 'receivable_id' => $r->id, 'amount' => $amount, 'fund_account_id' => $account->id]);
             return ['payment'=>$payment,'receipt'=>$receipt];
         });
     }
