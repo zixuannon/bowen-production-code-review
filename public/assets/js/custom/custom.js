@@ -549,6 +549,37 @@ function normalizeGuardianSearchResult(repo) {
     };
 }
 
+// Select2 may reduce its generated native <option> to id/text after a result
+// is selected. Keep the complete, server-returned record separately so that a
+// later change/reselect event can never overwrite admission fields with that
+// partial option object.
+const guardianAdmissionResultCatalog = new Map();
+
+function rememberGuardianSearchResult(repo) {
+    const guardian = normalizeGuardianSearchResult(repo);
+
+    if (guardian.id && guardian.email) {
+        guardianAdmissionResultCatalog.set(`id:${guardian.id}`, guardian);
+        guardianAdmissionResultCatalog.set(`email:${guardian.email.toLowerCase()}`, guardian);
+    }
+
+    return guardian;
+}
+
+function resolveGuardianSearchResult(repo) {
+    const normalized = normalizeGuardianSearchResult(repo);
+
+    if (normalized.id && guardianAdmissionResultCatalog.has(`id:${normalized.id}`)) {
+        return guardianAdmissionResultCatalog.get(`id:${normalized.id}`);
+    }
+
+    if (normalized.email && guardianAdmissionResultCatalog.has(`email:${normalized.email.toLowerCase()}`)) {
+        return guardianAdmissionResultCatalog.get(`email:${normalized.email.toLowerCase()}`);
+    }
+
+    return normalized;
+}
+
 function selectedGuardianSearchData($search) {
     const cached = $search.data('guardianAdmissionSelection');
     if (cached && cached.id && cached.email) return cached;
@@ -556,12 +587,12 @@ function selectedGuardianSearchData($search) {
     const selected = $search.select2('data');
 
     return Array.isArray(selected) && selected.length > 0
-        ? normalizeGuardianSearchResult(selected[0])
+        ? resolveGuardianSearchResult(selected[0])
         : null;
 }
 
 function syncSelectedGuardian(repo, $search = $('.guardian-search')) {
-    const guardian = normalizeGuardianSearchResult(repo);
+    const guardian = resolveGuardianSearchResult(repo);
     const existingGuardianEmail = guardian.email;
     const typedGuardianEmail = guardian.text;
 
@@ -642,7 +673,7 @@ $('.guardian-search').select2({
             const total = Number(data?.total_count || 0);
 
             return {
-                results: guardians.map(normalizeGuardianSearchResult),
+                results: guardians.map(rememberGuardianSearchResult),
                 pagination: {
                     more: (params.page * 30) < total,
                 },

@@ -54,9 +54,23 @@ test('Student admission submits exactly the email of an existing Guardian select
         guardian_mobile: `091${String(suffix).slice(-7)}`,
     });
 
-    // A native Select2 option may retain only id/text. The change callback must
-    // retain the complete selected Guardian instead of clearing required fields.
+    // Production Select2 reduces its native selected option to id/text. Reproduce
+    // that event shape after dropping the selection cache: the result catalog must
+    // recover the complete Guardian received from the AJAX result.
+    await page.locator('#guardian_email_search').evaluate((select, data) => {
+        $(select).removeData('guardianAdmissionSelection').trigger({
+            type: 'select2:select',
+            params: { data },
+        });
+    }, { id: selectedGuardian.id, text: email });
+    await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
+    await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
+    await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
+    await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
+
+    // The normal change callback must preserve that same authoritative result.
     await page.locator('#guardian_email_search').evaluate((select) => $(select).trigger('change'));
+    await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
     await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
     await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
     await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);

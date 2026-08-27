@@ -36,7 +36,10 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString('function normalizeGuardianSearchResult(repo)', $script);
         $this->assertStringContainsString("id: String(repo?.id ?? ''),", $script);
         $this->assertStringContainsString("text: email || name || field(repo?.text, true),", $script);
-        $this->assertStringContainsString('results: guardians.map(normalizeGuardianSearchResult)', $script);
+        $this->assertStringContainsString('const guardianAdmissionResultCatalog = new Map();', $script);
+        $this->assertStringContainsString('function rememberGuardianSearchResult(repo)', $script);
+        $this->assertStringContainsString('function resolveGuardianSearchResult(repo)', $script);
+        $this->assertStringContainsString('results: guardians.map(rememberGuardianSearchResult)', $script);
         $this->assertStringContainsString("function selectedGuardianSearchData(\$search)", $script);
         $this->assertStringContainsString("function syncSelectedGuardian(repo, \$search = $('.guardian-search'))", $script);
         $this->assertStringContainsString("data('guardianAdmissionSelection', guardian)", $script);
