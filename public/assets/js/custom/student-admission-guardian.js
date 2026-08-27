@@ -145,11 +145,6 @@ $(function () {
         loadGuardian(field(event && event.params && event.params.data && event.params.data.id) || selectedId());
     });
     $search.on('select2:clear.guardianAdmissionController', clearSelection);
-    $search.on('change.guardianAdmissionController', () => {
-        const id = selectedId();
-        if (!id) clearSelection();
-        else if (!state || state.id !== id) loadGuardian(id);
-    });
     $form.on('reset.guardianAdmissionController', () => window.setTimeout(() => {
         $search.val(null).trigger('change.select2');
         clearSelection();

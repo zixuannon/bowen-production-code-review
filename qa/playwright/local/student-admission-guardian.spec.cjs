@@ -112,13 +112,6 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
     await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
 
-    // The normal change callback must preserve that same authoritative result.
-    await page.locator('#guardian_admission_guardian_id').evaluate((select) => $(select).trigger('change'));
-    await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
-    await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
-    await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
-    await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
-
     await clearSelectedGuardian();
 
     await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
