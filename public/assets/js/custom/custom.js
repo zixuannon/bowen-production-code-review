@@ -580,6 +580,59 @@ function resolveGuardianSearchResult(repo) {
     return normalized;
 }
 
+function hasCompleteGuardianAdmissionFields(guardian) {
+    return Boolean(
+        guardian.id
+        && guardian.email
+        && guardian.first_name
+        && guardian.last_name
+        && guardian.mobile
+    );
+}
+
+function hydrateGuardianAdmissionSelection(guardian, $search) {
+    // A user-created Select2 tag has the typed email as both its id and text;
+    // it is the existing new-Guardian flow and must not be resolved as a
+    // stored Guardian.
+    if (!guardian.id || !guardian.text || guardian.id === guardian.text) {
+        return false;
+    }
+
+    const lookupKey = `${guardian.id}:${guardian.text}`;
+    $search.data('guardianAdmissionLookupKey', lookupKey);
+
+    $.ajax({
+        url: baseUrl + '/guardian/search',
+        dataType: 'json',
+        data: { email: guardian.text },
+    }).done(function (response) {
+        if ($search.data('guardianAdmissionLookupKey') !== lookupKey || String($search.val()) !== guardian.id) {
+            return;
+        }
+
+        const records = Array.isArray(response?.data) ? response.data : [];
+        const completeGuardian = records
+            .map(rememberGuardianSearchResult)
+            .find((candidate) => candidate.id === guardian.id);
+
+        if (completeGuardian) {
+            syncSelectedGuardian(completeGuardian, $search);
+        }
+    });
+
+    return false;
+}
+
+function synchronizeGuardianAdmissionSelection(repo, $search) {
+    const guardian = resolveGuardianSearchResult(repo);
+
+    if (hasCompleteGuardianAdmissionFields(guardian) || guardian.id === guardian.text) {
+        return syncSelectedGuardian(guardian, $search);
+    }
+
+    return hydrateGuardianAdmissionSelection(guardian, $search);
+}
+
 function selectedGuardianSearchData($search) {
     const cached = $search.data('guardianAdmissionSelection');
     if (cached && cached.id && cached.email) return cached;
@@ -637,7 +690,9 @@ function syncSelectedGuardian(repo, $search = $('.guardian-search')) {
 }
 
 function clearGuardianSelection() {
-    $('.guardian-search').removeData('guardianAdmissionSelection');
+    $('.guardian-search')
+        .removeData('guardianAdmissionSelection')
+        .removeData('guardianAdmissionLookupKey');
     $('#guardian_email').val('');
     $('#guardian_first_name').val('').prop('readonly', false);
     $('#guardian_last_name').val('').prop('readonly', false);
@@ -689,12 +744,12 @@ $('.guardian-search').select2({
 $(".guardian-search")
     .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission')
     .on('select2:select.guardianAdmission', function (event) {
-        syncSelectedGuardian(event.params && event.params.data ? event.params.data : {}, $(this));
+        synchronizeGuardianAdmissionSelection(event.params && event.params.data ? event.params.data : {}, $(this));
     })
     .on('select2:clear.guardianAdmission', clearGuardianSelection)
     .on('change.guardianAdmission', function () {
         if (!$(this).val()) clearGuardianSelection();
-        else syncSelectedGuardian(selectedGuardianSearchData($(this)) || {}, $(this));
+        else synchronizeGuardianAdmissionSelection(selectedGuardianSearchData($(this)) || {}, $(this));
     });
 
 // common.js creates FormData in a bubbling submit handler. Capture this event
@@ -702,10 +757,16 @@ $(".guardian-search")
 // email field while its Select2 selection is still present.
 const studentAdmissionForm = document.getElementById('create-form');
 if (studentAdmissionForm && $('.guardian-search').length) {
-    studentAdmissionForm.addEventListener('submit', function () {
+    studentAdmissionForm.addEventListener('submit', function (event) {
         const $search = $('#guardian_email_search');
         if ($search.val()) {
-            syncSelectedGuardian(selectedGuardianSearchData($search) || {}, $search);
+            const synchronized = synchronizeGuardianAdmissionSelection(selectedGuardianSearchData($search) || {}, $search);
+
+            // Never submit partially hydrated existing-Guardian fields. A
+            // normal Select2 result is synchronous via the result catalog; the
+            // narrow rehydration fallback safely asks the user to retry after
+            // it completes rather than allowing invalid Guardian data through.
+            if (!synchronized) event.preventDefault();
         }
     }, true);
 }

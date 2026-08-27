@@ -39,6 +39,9 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString('const guardianAdmissionResultCatalog = new Map();', $script);
         $this->assertStringContainsString('function rememberGuardianSearchResult(repo)', $script);
         $this->assertStringContainsString('function resolveGuardianSearchResult(repo)', $script);
+        $this->assertStringContainsString('function hydrateGuardianAdmissionSelection(guardian, $search)', $script);
+        $this->assertStringContainsString('function synchronizeGuardianAdmissionSelection(repo, $search)', $script);
+        $this->assertStringContainsString("data: { email: guardian.text }", $script);
         $this->assertStringContainsString('results: guardians.map(rememberGuardianSearchResult)', $script);
         $this->assertStringContainsString("function selectedGuardianSearchData(\$search)", $script);
         $this->assertStringContainsString("function syncSelectedGuardian(repo, \$search = $('.guardian-search'))", $script);
@@ -55,6 +58,7 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString("change.guardianAdmission", $script);
         $this->assertStringContainsString('function clearGuardianSelection()', $script);
         $this->assertStringContainsString("removeData('guardianAdmissionSelection')", $script);
+        $this->assertStringContainsString("removeData('guardianAdmissionLookupKey')", $script);
         $this->assertStringContainsString("studentAdmissionForm.addEventListener('submit'", $script);
         $this->assertStringContainsString('}, true);', $script);
     }
