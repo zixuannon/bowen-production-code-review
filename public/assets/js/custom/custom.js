@@ -746,10 +746,15 @@ const guardianAdmissionSearchSelector = '#guardian_email_search';
 $(document)
     .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission', guardianAdmissionSearchSelector)
     .on('select2:select.guardianAdmission', guardianAdmissionSearchSelector, function (event) {
+        if ($(this).data('guardianAdmissionController')) return;
         synchronizeGuardianAdmissionSelection(event.params && event.params.data ? event.params.data : {}, $(this));
     })
-    .on('select2:clear.guardianAdmission', guardianAdmissionSearchSelector, clearGuardianSelection)
+    .on('select2:clear.guardianAdmission', guardianAdmissionSearchSelector, function () {
+        if ($(this).data('guardianAdmissionController')) return;
+        clearGuardianSelection();
+    })
     .on('change.guardianAdmission', guardianAdmissionSearchSelector, function () {
+        if ($(this).data('guardianAdmissionController')) return;
         if (!$(this).val()) clearGuardianSelection();
         else synchronizeGuardianAdmissionSelection(selectedGuardianSearchData($(this)) || {}, $(this));
     });
@@ -761,6 +766,7 @@ const studentAdmissionForm = document.getElementById('create-form');
 if (studentAdmissionForm && $('.guardian-search').length) {
     studentAdmissionForm.addEventListener('submit', function (event) {
         const $search = $('#guardian_email_search');
+        if ($search.data('guardianAdmissionController')) return;
         if ($search.val()) {
             const synchronized = synchronizeGuardianAdmissionSelection(selectedGuardianSearchData($search) || {}, $search);
 
