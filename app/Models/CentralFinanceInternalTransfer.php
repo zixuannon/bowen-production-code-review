@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use RuntimeException;
+use App\Support\CentralFinanceCurrency;
 
 /** A confirmed canonical Central Finance internal movement. */
 class CentralFinanceInternalTransfer extends Model
@@ -21,7 +22,10 @@ class CentralFinanceInternalTransfer extends Model
 
     protected static function booted(): void
     {
-        static::creating(function (self $transfer): void { $transfer->transfer_uuid ??= (string) Str::uuid(); });
+        static::creating(function (self $transfer): void {
+            $transfer->transfer_uuid ??= (string) Str::uuid();
+            $transfer->currency = CentralFinanceCurrency::normalize((string) $transfer->currency);
+        });
         static::updating(static fn (): never => throw new RuntimeException('Central internal transfers are immutable.'));
         static::deleting(static fn (): never => throw new RuntimeException('Central internal transfers are append-only.'));
     }

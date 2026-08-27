@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -128,13 +129,14 @@ final class CentralFinanceReceivableSyncService
     private function syncOne(CentralFinanceStudentProfile $profile, array $row): CentralFinanceReceivable
     {
         $this->assertSourceRow($row);
-        $payload = ['profile_source_uuid' => strtolower((string) $profile->source_uuid), 'source_id' => (string) $row['source_id'], 'description' => (string) $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper((string) $row['currency']), 'amount' => (float) $row['amount'], 'updated_at' => $row['updated_at']->utc()->format('Y-m-d\\TH:i:s.u\\Z')];
-        return DB::connection('mysql')->transaction(function () use ($profile, $row, $payload): CentralFinanceReceivable {
+        $currency = \App\Support\CentralFinanceCurrency::normalize((string) $row['currency']);
+        $payload = ['profile_source_uuid' => strtolower((string) $profile->source_uuid), 'source_id' => (string) $row['source_id'], 'description' => (string) $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount' => (float) $row['amount'], 'updated_at' => $row['updated_at']->utc()->format('Y-m-d\\TH:i:s.u\\Z')];
+        return DB::connection('mysql')->transaction(function () use ($profile, $row, $payload, $currency): CentralFinanceReceivable {
             [$event, $duplicate] = $this->beginEvent($profile, (string) $row['source_id'], $payload);
             $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id']])->lockForUpdate()->first();
             if ($duplicate && $receivable !== null) return $receivable;
             if ($receivable === null) {
-                $receivable = CentralFinanceReceivable::on('mysql')->create(['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper($row['currency']), 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()]);
+                $receivable = CentralFinanceReceivable::on('mysql')->create(['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()]);
                 $this->complete($event, 'created');
                 return $receivable;
             }
@@ -148,7 +150,7 @@ final class CentralFinanceReceivableSyncService
                 $this->complete($event, 'blocked_paid', 'paid_receivable_source_conflict');
                 return $receivable;
             }
-            $receivable->fill(['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => strtoupper($row['currency']), 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()])->save();
+            $receivable->fill(['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()])->save();
             $this->complete($event, 'updated');
             return $receivable;
         });
@@ -211,7 +213,8 @@ final class CentralFinanceReceivableSyncService
     /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable} $row */
     private function assertSourceRow(array $row): void
     {
-        if ((float) $row['amount'] < 0 || !isset($row['created_at']) || !preg_match('/^[A-Z]{3}$/', strtoupper((string) $row['currency'])) || !preg_match('/^[0-9]+$/', (string) $row['source_id'])) throw new RuntimeException('Tenant fee assignment is not valid for Central Finance.');
+        try { \App\Support\CentralFinanceCurrency::normalize((string) $row['currency']); } catch (InvalidArgumentException) { throw new RuntimeException('Tenant fee assignment is not valid for Central Finance.'); }
+        if ((float) $row['amount'] < 0 || !isset($row['created_at']) || !preg_match('/^[0-9]+$/', (string) $row['source_id'])) throw new RuntimeException('Tenant fee assignment is not valid for Central Finance.');
     }
 
     /** @param list<array{source_id:string,created_at:CarbonImmutable}> $allRows */

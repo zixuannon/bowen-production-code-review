@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceLedgerEntry;
+use App\Support\CentralFinanceCurrency;
+use LogicException;
 
 final class CentralFinanceFundAccountBalanceService
 {
@@ -21,10 +23,22 @@ final class CentralFinanceFundAccountBalanceService
         return $amount > 0 && $this->currentBalance($account) >= $amount;
     }
 
-    /** @return array{money_in:float,money_out:float,operating_income:float,operating_expense:float,operating_net:float} */
-    public function totalsForSchool(int $schoolId): array
+    /**
+     * A scalar total is meaningful only for one original currency.  Callers
+     * rendering multiple accounts must use totalsByCurrencyForSchool().
+     *
+     * @return array{money_in:float,money_out:float,operating_income:float,operating_expense:float,operating_net:float}
+     */
+    public function totalsForSchool(int $schoolId, ?string $currency = null): array
     {
-        $totals = CentralFinanceLedgerEntry::on('mysql')->where('school_id', $schoolId)
+        $currencies = CentralFinanceLedgerEntry::on('mysql')->where('school_id', $schoolId)
+            ->distinct()->pluck('currency')->map(fn ($value) => CentralFinanceCurrency::normalize((string) $value))->values();
+        if ($currency === null && $currencies->count() > 1) {
+            throw new LogicException('A Central Finance School total requires a currency when more than one currency exists.');
+        }
+        $currency ??= $currencies->first() ?? CentralFinanceCurrency::MMK;
+        $currency = CentralFinanceCurrency::normalize($currency);
+        $totals = CentralFinanceLedgerEntry::on('mysql')->where('school_id', $schoolId)->where('currency', $currency)
             ->selectRaw('COALESCE(SUM(money_in), 0) as money_in, COALESCE(SUM(money_out), 0) as money_out, COALESCE(SUM(operating_income), 0) as operating_income, COALESCE(SUM(operating_expense), 0) as operating_expense')
             ->first();
         $income = (float) $totals->operating_income;
@@ -37,5 +51,21 @@ final class CentralFinanceFundAccountBalanceService
             'operating_expense' => $expense,
             'operating_net' => round($income - $expense, 4),
         ];
+    }
+
+    /** @return array<string,array{money_in:float,money_out:float,operating_income:float,operating_expense:float,operating_net:float}> */
+    public function totalsByCurrencyForSchool(int $schoolId): array
+    {
+        $rows = CentralFinanceLedgerEntry::on('mysql')->where('school_id', $schoolId)
+            ->selectRaw('currency, COALESCE(SUM(money_in), 0) as money_in, COALESCE(SUM(money_out), 0) as money_out, COALESCE(SUM(operating_income), 0) as operating_income, COALESCE(SUM(operating_expense), 0) as operating_expense')
+            ->groupBy('currency')->get();
+        $totals = [];
+        foreach ($rows as $row) {
+            $currency = CentralFinanceCurrency::normalize((string) $row->currency);
+            $income = (float) $row->operating_income;
+            $expense = (float) $row->operating_expense;
+            $totals[$currency] = ['money_in' => (float) $row->money_in, 'money_out' => (float) $row->money_out, 'operating_income' => $income, 'operating_expense' => $expense, 'operating_net' => round($income - $expense, 4)];
+        }
+        return $totals;
     }
 }

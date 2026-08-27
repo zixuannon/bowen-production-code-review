@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Models;
+use App\Support\CentralFinanceCurrency;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,9 +28,10 @@ class CentralFinanceExpense extends Model
     {
         static::creating(function (self $expense): void {
             $expense->expense_uuid ??= (string) Str::uuid();
-            if ((float) $expense->amount <= 0 || !preg_match('/^[A-Z]{3}$/', (string) $expense->currency)) {
+            if ((float) $expense->amount <= 0) {
                 throw new InvalidArgumentException('Central Expense amount or currency is invalid.');
             }
+            $expense->currency = CentralFinanceCurrency::normalize((string) $expense->currency);
         });
     }
 

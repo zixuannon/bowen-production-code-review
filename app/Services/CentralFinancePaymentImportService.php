@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use App\Support\CentralFinanceCurrency;
 
 /**
  * Maps a payment spreadsheet into existing Central identities only. Preview is
@@ -124,6 +125,7 @@ final class CentralFinancePaymentImportService
             'student_code' => trim((string) ($row['Student Code'] ?? '')),
             'receivable_reference' => strtolower(trim((string) ($row['Receivable Reference'] ?? ''))),
             'fund_account_code' => strtoupper(trim((string) ($row['Fund Account Code'] ?? ''))),
+            'currency' => trim((string) ($row['Currency'] ?? '')),
             'amount' => is_numeric($row['Amount'] ?? null) ? (float) $row['Amount'] : null,
             'payment_method' => trim((string) ($row['Payment Method'] ?? '')),
             'payment_reference' => trim((string) ($row['Payment Reference'] ?? '')),
@@ -140,6 +142,7 @@ final class CentralFinancePaymentImportService
         if (!empty($data['student_uuid']) && !Str::isUuid($data['student_uuid'])) $errors[] = 'Student UUID is invalid.';
         if (($data['receivable_reference'] ?? '') === '' || !Str::isUuid($data['receivable_reference'])) $errors[] = 'Receivable Reference must be an existing Central receivable UUID.';
         if (($data['fund_account_code'] ?? '') === '') $errors[] = 'Fund Account Code is required.';
+        try { CentralFinanceCurrency::assertCanonical((string) ($data['currency'] ?? '')); } catch (InvalidArgumentException $error) { $errors[] = $error->getMessage(); }
         if (!is_numeric($data['amount'] ?? null) || (float) $data['amount'] <= 0 || !is_finite((float) $data['amount'])) $errors[] = 'Amount must be greater than zero.';
         if (!preg_match('/^[A-Za-z0-9 _.-]{2,40}$/', (string) ($data['payment_method'] ?? ''))) $errors[] = 'Payment Method is invalid.';
         if (!preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', (string) ($data['payment_reference'] ?? ''))) $errors[] = 'Payment Reference is required and invalid.';
@@ -155,7 +158,8 @@ final class CentralFinancePaymentImportService
             }
             $account = $this->account($schoolId, $data);
             $this->accounts->assertCanOperate($actor, $account);
-            if (strtoupper($account->currency) !== strtoupper($receivable->currency)) $errors[] = 'Fund Account currency does not match the receivable.';
+            if (!CentralFinanceCurrency::same((string) $data['currency'], (string) $account->currency)
+                || !CentralFinanceCurrency::same((string) $data['currency'], (string) $receivable->currency)) $errors[] = 'Currency must match both the Fund Account and receivable.';
         } catch (AuthorizationException) {
             $errors[] = 'Fund Account is not authorized for this actor.';
         } catch (\Throwable) {

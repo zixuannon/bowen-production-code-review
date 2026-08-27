@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use App\Support\CentralFinanceCurrency;
 
 class CentralFinanceFundHandover extends Model
 {
@@ -25,6 +26,9 @@ class CentralFinanceFundHandover extends Model
 
     protected static function booted(): void
     {
-        static::creating(function (self $handover): void { $handover->handover_uuid ??= (string) Str::uuid(); });
+        static::creating(function (self $handover): void {
+            $handover->handover_uuid ??= (string) Str::uuid();
+            $handover->currency = CentralFinanceCurrency::normalize((string) $handover->currency);
+        });
     }
 }

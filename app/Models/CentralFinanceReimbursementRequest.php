@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use InvalidArgumentException;
+use App\Support\CentralFinanceCurrency;
 
 class CentralFinanceReimbursementRequest extends Model
 {
@@ -31,9 +32,10 @@ class CentralFinanceReimbursementRequest extends Model
     {
         static::creating(function (self $request): void {
             $request->request_uuid ??= (string) Str::uuid();
-            if ((float) $request->amount <= 0 || !preg_match('/^[A-Z]{3}$/', (string) $request->currency)) {
+            if ((float) $request->amount <= 0) {
                 throw new InvalidArgumentException('Central reimbursement amount or currency is invalid.');
             }
+            $request->currency = CentralFinanceCurrency::normalize((string) $request->currency);
         });
     }
 

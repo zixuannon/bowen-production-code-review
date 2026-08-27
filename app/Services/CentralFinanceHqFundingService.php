@@ -94,7 +94,8 @@ final class CentralFinanceHqFundingService
 
     private function direction(int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination): string
     {
-        if ($source->id === $destination->id || strtoupper($source->currency) !== strtoupper($destination->currency)) throw new InvalidArgumentException('HQ funding requires distinct active accounts with one currency.');
+        if (strtoupper($source->currency) !== strtoupper($destination->currency)) throw new InvalidArgumentException('目前仅支持同币种资金移动，跨币种兑换尚未启用。');
+        if ($source->id === $destination->id) throw new InvalidArgumentException('HQ funding requires distinct active accounts.');
         if ($source->owner_type === CentralFinanceFundAccount::OWNER_HQ && $source->school_id === null && $destination->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $destination->school_id === $schoolId) return CentralFinanceHqFundingRequest::HQ_TO_SCHOOL;
         if ($destination->owner_type === CentralFinanceFundAccount::OWNER_HQ && $destination->school_id === null && $source->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $source->school_id === $schoolId) return CentralFinanceHqFundingRequest::SCHOOL_TO_HQ;
         throw new InvalidArgumentException('HQ funding requires exactly one HQ account and one account in the current School.');

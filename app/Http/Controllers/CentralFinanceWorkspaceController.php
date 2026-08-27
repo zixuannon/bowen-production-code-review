@@ -35,6 +35,10 @@ use App\Services\CentralFinanceReimbursementService;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceCutoverReadinessService;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Services\CentralFinanceCurrencySummaryService;
+use App\Services\CentralFinanceReceiptViewModelFactory;
+use App\ViewModels\CentralFinanceReceiptViewModel;
+use App\Support\CentralFinanceCurrency;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,6 +47,7 @@ use InvalidArgumentException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -75,6 +80,8 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceFundAccountAdministrationService $accountAdministration,
         private readonly CentralFinanceConfigurationAuthorizationService $configuration,
         private readonly CentralFinanceLedgerPresentationService $ledgerPresentation,
+        private readonly CentralFinanceCurrencySummaryService $currencySummaries,
+        private readonly CentralFinanceReceiptViewModelFactory $receiptViewModels,
     ) {}
 
     public function dashboard(?Request $request = null): View
@@ -197,17 +204,16 @@ final class CentralFinanceWorkspaceController extends Controller
     public function paymentHistory(Request $request): View { return $this->render('payments', $request); }
     public function receipt(int $payment): View
     {
-        [$actor, $school] = $this->currentReadSchool();
-        $document = CentralFinancePayment::on('mysql')->with([
-            'receipt', 'refunds.fundAccount', 'receivable.studentProfile', 'fundAccount',
-        ])->where('school_id', $school->id)->findOrFail($payment);
+        [$actor, $school, $document, $receipt, $audits] = $this->receiptData($payment);
+        return view('central-finance.receipt', compact('actor', 'school', 'document', 'receipt', 'audits'));
+    }
 
-        $audits = CentralFinanceDocumentAudit::on('mysql')->where('school_id', $school->id)
-            ->where(function ($query) use ($document): void {
-                $query->where(fn ($paymentAudit) => $paymentAudit->where('document_type', 'central_payment')->where('document_id', $document->id))
-                    ->orWhere(fn ($refundAudit) => $refundAudit->where('document_type', 'central_payment_refund')->whereIn('document_id', $document->refunds->pluck('id')));
-            })->latest()->get();
-        return view('central-finance.receipt', compact('actor', 'school', 'document', 'audits'));
+    public function refundDetail(int $payment, int $refund): View
+    {
+        [$actor, $school, $document, $receipt, $audits] = $this->receiptData($payment);
+        $refundDocument = $document->refunds->firstWhere('id', $refund);
+        abort_unless($refundDocument !== null, 404);
+        return view('central-finance.payment-refund-detail', compact('actor', 'school', 'document', 'receipt', 'refundDocument', 'audits'));
     }
 
     public function receivableDetail(int $receivable): View
@@ -423,7 +429,7 @@ final class CentralFinanceWorkspaceController extends Controller
         [$actor, $school] = $this->currentOperatingContext();
         $data = $request->validate([
             'account_code' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9_.-]+$/'],
-            'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', 'string', 'size:3', 'alpha'],
+            'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', Rule::in(CentralFinanceCurrency::ALLOWED)],
             'owner_type' => ['required', Rule::in([CentralFinanceFundAccount::OWNER_SCHOOL, CentralFinanceFundAccount::OWNER_HQ])],
             'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date'],
             'opening_reason' => ['required', 'string', 'max:2000'], 'authorized_user_ids' => ['nullable', 'array'],
@@ -663,7 +669,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function reimbursement(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
-        $data = $request->validate(['category_id'=>['required','integer'],'amount'=>['required','numeric','gt:0'],'currency'=>['required','string','size:3'],'reference_no'=>['nullable','string','max:100'],'description'=>['required','string','max:2000'],'reason'=>['required','string','max:255']]);
+        $data = $request->validate(['category_id'=>['required','integer'],'amount'=>['required','numeric','gt:0'],'currency'=>['required', Rule::in(CentralFinanceCurrency::ALLOWED)],'reference_no'=>['nullable','string','max:100'],'description'=>['required','string','max:2000'],'reason'=>['required','string','max:255']]);
         $this->reimbursements->submit($actor, $school->id, (int) $data['category_id'], (float) $data['amount'], $data['currency'], $this->workspace->idempotencyReference('ui-reimbursement'), $data['reason'], $data['reference_no'] ?? null, $data['description']);
         return back()->with('success', __('Central reimbursement submitted.'));
     }
@@ -802,6 +808,7 @@ final class CentralFinanceWorkspaceController extends Controller
         if (!empty($filters['category_id'])) $query->where('category_id', (int) $filters['category_id']);
         if (!empty($filters['operator_id'])) $query->where('created_by', (int) $filters['operator_id']);
         if (!empty($filters['payment_method'])) $query->where('payment_method', $filters['payment_method']);
+        if (!empty($filters['currency'])) $query->where('currency', $filters['currency']);
         if (!empty($filters['reference'])) $query->where('reference_no', 'like', '%'.$filters['reference'].'%');
         if (!empty($filters['from'])) $query->whereDate($dateColumn, '>=', $filters['from']);
         if (!empty($filters['to'])) $query->whereDate($dateColumn, '<=', $filters['to']);
@@ -834,7 +841,7 @@ final class CentralFinanceWorkspaceController extends Controller
         if ($page === 'accounts') {
             $ledger = (clone $filteredLedger)->latest('occurred_at')->get();
         }
-        $totals=['money_in'=>(float)(clone $filteredLedger)->sum('money_in'),'money_out'=>(float)(clone $filteredLedger)->sum('money_out'),'operating_income'=>(float)(clone $filteredLedger)->sum('operating_income'),'operating_expense'=>(float)(clone $filteredLedger)->sum('operating_expense')]; $totals['operating_net']=$totals['operating_income']-$totals['operating_expense'];
+        $currencyTotals = $this->currencySummaries->ledger((clone $filteredLedger)->get());
         $canOperate=false; if($school){try{$this->workspace->requireOperatingSchool($actor);$canOperate=$this->cutovers->allowsCentralWrites($school->id);}catch(AuthorizationException){$canOperate=false;}}
         $schoolUsers = $schoolId ? CentralFinanceUser::on('mysql')->whereIn('id',
             \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
@@ -855,23 +862,22 @@ final class CentralFinanceWorkspaceController extends Controller
         if ($receivableQuery) {
             $receivableQuery
                 ->when($filters['receivable_status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+                ->when($filters['currency'] ?? null, fn ($query, $currency) => $query->where('currency', $currency))
                 ->when($filters['student'] ?? null, fn ($query, $student) => $query->whereHas('studentProfile', fn ($profile) => $profile->where(fn ($nested) => $nested
                     ->where('student_name', 'like', "%{$student}%")
                     ->orWhere('admission_no', 'like', "%{$student}%"))));
         }
         $receivables = $receivableQuery ? (clone $receivableQuery)->orderBy('due_date')->paginate(25, ['*'], 'receivables_page')->withQueryString() : collect();
-        $aging = collect(['current' => 0.0, '1_30' => 0.0, '31_60' => 0.0, '61_90' => 0.0, 'over_90' => 0.0]);
+        $receivableCurrencyTotals = $this->currencySummaries->receivables($receivableQuery ? (clone $receivableQuery)->get() : []);
+        $aging = collect();
         if ($receivableQuery) {
             $today = CarbonImmutable::today();
-            (clone $receivableQuery)->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])
-                ->get(['due_date', 'amount_due', 'amount_paid'])->each(function (CentralFinanceReceivable $receivable) use ($aging, $today): void {
-                    $outstanding = max(0.0, (float) $receivable->amount_due - (float) $receivable->amount_paid);
-                    $days = $receivable->due_date ? $receivable->due_date->diffInDays($today, false) : 0;
-                    $bucket = $days <= 0 ? 'current' : ($days <= 30 ? '1_30' : ($days <= 60 ? '31_60' : ($days <= 90 ? '61_90' : 'over_90')));
-                    $aging->put($bucket, (float) $aging->get($bucket) + $outstanding);
-                });
+            $aging = collect($this->currencySummaries->aging((clone $receivableQuery)->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])->get(['due_date', 'amount_due', 'amount_paid', 'currency']), $today));
         }
-        $profiles=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()])->where('school_id',$schoolId)->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
+        $profiles=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()->with('payments.receipt')])->where('school_id',$schoolId)->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
+        if ($profiles instanceof LengthAwarePaginator) {
+            $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
+        }
         $payments=$this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt','refunds','receivable.studentProfile','fundAccount'])->latest('paid_at')->paginate(25, ['*'], 'payments_page')->withQueryString();
         $paymentProfileQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
         if ($paymentProfileQuery) {
@@ -880,10 +886,10 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->when($filters['payment_student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested
                     ->where('student_name', 'like', "%{$student}%")
                     ->orWhere('admission_no', 'like', "%{$student}%")))
-                ->withSum('receivables as total_due', 'amount_due')
-                ->withSum('receivables as total_paid', 'amount_paid');
+                ->with('receivables');
         }
         $paymentProfiles = $paymentProfileQuery ? $paymentProfileQuery->orderBy('student_name')->get(['id','student_name','admission_no','class_name','section_name']) : collect();
+        $paymentProfiles->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         $paymentClasses = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId)->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name') : collect();
         $paymentReceivables=$schoolId ? CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->whereIn('status',['open','partial'])->orderBy('student_profile_id')->orderBy('due_date')->get(['id','student_profile_id','description','amount_due','amount_paid','currency']) : collect();
         $categories=CentralFinanceCategory::on('mysql')->when($schoolId, fn ($query) => $query->where('school_id',$schoolId), fn ($query) => $query->whereIn('school_id', $schools->pluck('id')))->orderBy('type')->orderBy('name')->get();
@@ -907,6 +913,7 @@ final class CentralFinanceWorkspaceController extends Controller
             if (!empty($filters['account_owner'])) $directoryQuery->where('owner_type', $filters['account_owner']);
             if (!empty($filters['account_type'])) $directoryQuery->where('account_type', $filters['account_type']);
             if (!empty($filters['account_status'])) $directoryQuery->where('status', $filters['account_status']);
+            if (!empty($filters['currency'])) $directoryQuery->where('currency', $filters['currency']);
             if (!empty($filters['custodian_user_id'])) $directoryQuery->where('custodian_user_id', (int) $filters['custodian_user_id']);
             if (!empty($filters['account_search'])) $directoryQuery->where(fn ($query) => $query->where('account_code', 'like', '%'.$filters['account_search'].'%')->orWhere('account_name', 'like', '%'.$filters['account_search'].'%'));
             $accountDirectory = $directoryQuery->orderBy('account_code')->paginate(25, ['*'], 'accounts_page')->withQueryString();
@@ -978,7 +985,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $reimbursementCategories = $page === 'reimbursements' ? CentralFinanceCategory::on('mysql')->whereIn('school_id', $school ? [$school->id] : $schools->pluck('id'))->where('type', CentralFinanceCategory::EXPENSE)->orderBy('name')->get() : collect();
         $canApproveReimbursements = false;
         if ($school) try { app(\App\Services\CentralFinanceSchoolScopeService::class)->assertCanApproveReimbursements($actor, $school->id); $canApproveReimbursements = $canOperate; } catch (AuthorizationException) {}
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'totals'=>$totals,'filters'=>$filters,'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'currencyTotals'=>$currencyTotals,'receivableCurrencyTotals'=>$receivableCurrencyTotals,'filters'=>$filters,'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true])->get():collect(),'incomeCategories'=>$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true])->get():collect(),'expenses'=>$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'otherIncomes'=>$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$schoolId?CentralFinanceFundHandover::on('mysql')->where('school_id',$schoolId)->latest()->get():collect(),'fundingRequests'=>$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId)->latest()->get():collect()];
         return view('central-finance.workspace',$data);
     }
 
@@ -998,7 +1005,7 @@ final class CentralFinanceWorkspaceController extends Controller
     /** @return array<string, mixed> */
     private function validatedReadFilters(Request $request, ?\App\Models\School $school, \Illuminate\Support\Collection $accounts, ?\Illuminate\Support\Collection $schools = null): array
     {
-        $data=$request->validate(['from'=>['nullable','date'],'to'=>['nullable','date','after_or_equal:from'],'school_id'=>['nullable','integer'],'fund_account_id'=>['nullable','integer'],'source'=>['nullable','string','max:80'],'category_id'=>['nullable','integer'],'operator_id'=>['nullable','integer'],'requester_id'=>['nullable','integer'],'amount_min'=>['nullable','numeric','min:0'],'amount_max'=>['nullable','numeric','gte:amount_min'],'reimbursement_status'=>['nullable', Rule::in([CentralFinanceReimbursementRequest::PENDING, CentralFinanceReimbursementRequest::APPROVED, CentralFinanceReimbursementRequest::REJECTED, CentralFinanceReimbursementRequest::WITHDRAWN, CentralFinanceReimbursementRequest::CANCELLED])],'payment_method'=>['nullable','string','max:40'],'student'=>['nullable','string','max:191'],'reference'=>['nullable','string','max:100'],'payment_class'=>['nullable','string','max:191'],'payment_student'=>['nullable','string','max:191'],'receivable_status'=>['nullable', Rule::in([CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL, CentralFinanceReceivable::PAID, CentralFinanceReceivable::WAIVED, CentralFinanceReceivable::CANCELLED])], 'account_owner'=>['nullable', Rule::in([CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL])], 'account_type'=>['nullable', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])], 'account_status'=>['nullable', Rule::in([CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED])], 'custodian_user_id'=>['nullable','integer'], 'account_search'=>['nullable','string','max:191'], 'direction'=>['nullable', Rule::in(['money_in','money_out','internal_transfer'])], 'operating_classification'=>['nullable', Rule::in(['income','expense','neutral'])], 'audit_action'=>['nullable','string','max:80'], 'audit_module'=>['nullable','string','max:80'], 'audit_document'=>['nullable','string','max:100']]);
+        $data=$request->validate(['from'=>['nullable','date'],'to'=>['nullable','date','after_or_equal:from'],'school_id'=>['nullable','integer'],'fund_account_id'=>['nullable','integer'],'source'=>['nullable','string','max:80'],'category_id'=>['nullable','integer'],'operator_id'=>['nullable','integer'],'requester_id'=>['nullable','integer'],'amount_min'=>['nullable','numeric','min:0'],'amount_max'=>['nullable','numeric','gte:amount_min'],'reimbursement_status'=>['nullable', Rule::in([CentralFinanceReimbursementRequest::PENDING, CentralFinanceReimbursementRequest::APPROVED, CentralFinanceReimbursementRequest::REJECTED, CentralFinanceReimbursementRequest::WITHDRAWN, CentralFinanceReimbursementRequest::CANCELLED])],'payment_method'=>['nullable','string','max:40'],'student'=>['nullable','string','max:191'],'reference'=>['nullable','string','max:100'],'receipt_no'=>['nullable','string','max:100'],'receipt_status'=>['nullable', Rule::in(['active','refunded'])], 'currency'=>['nullable', Rule::in(CentralFinanceCurrency::ALLOWED)],'payment_class'=>['nullable','string','max:191'],'payment_student'=>['nullable','string','max:191'],'receivable_status'=>['nullable', Rule::in([CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL, CentralFinanceReceivable::PAID, CentralFinanceReceivable::WAIVED, CentralFinanceReceivable::CANCELLED])], 'account_owner'=>['nullable', Rule::in([CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL])], 'account_type'=>['nullable', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])], 'account_status'=>['nullable', Rule::in([CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED])], 'custodian_user_id'=>['nullable','integer'], 'account_search'=>['nullable','string','max:191'], 'direction'=>['nullable', Rule::in(['money_in','money_out','internal_transfer'])], 'operating_classification'=>['nullable', Rule::in(['income','expense','neutral'])], 'audit_action'=>['nullable','string','max:80'], 'audit_module'=>['nullable','string','max:80'], 'audit_document'=>['nullable','string','max:100']]);
         if ($school && isset($data['school_id']) && (int) $data['school_id'] !== $school->id) abort(404);
         if (!$school && isset($data['school_id']) && $schools && !$schools->contains('id', (int) $data['school_id'])) abort(404);
         if (isset($data['fund_account_id']) && !$accounts->contains('id',(int)$data['fund_account_id'])) abort(404);
@@ -1012,6 +1019,7 @@ final class CentralFinanceWorkspaceController extends Controller
         if (!empty($filters['source'])) $query->where('source_type', $filters['source']);
         if (!empty($filters['operator_id'])) $query->where('created_by', (int) $filters['operator_id']);
         if (!empty($filters['reference'])) $query->where('reference_no', 'like', '%'.$filters['reference'].'%');
+        if (!empty($filters['currency'])) $query->where('currency', $filters['currency']);
         if (!empty($filters['category_id'])) {
             $expenseIds = CentralFinanceExpense::on('mysql')->withTrashed()->where('category_id', (int) $filters['category_id'])->pluck('expense_uuid');
             $incomeIds = CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('category_id', (int) $filters['category_id'])->pluck('income_uuid');
@@ -1139,7 +1147,26 @@ final class CentralFinanceWorkspaceController extends Controller
         if (!empty($filters['to'])) $query->whereDate('paid_at', '<=', $filters['to']);
         if (!empty($filters['student'])) $query->whereHas('receivable.studentProfile', fn ($profile) => $profile->where(fn ($nested) => $nested->where('student_name','like',"%{$filters['student']}%")->orWhere('admission_no','like',"%{$filters['student']}%")));
         if (!empty($filters['reference'])) $query->where('payment_reference','like',"%{$filters['reference']}%");
+        if (!empty($filters['currency'])) $query->where('currency', $filters['currency']);
+        if (!empty($filters['receipt_no'])) $query->whereHas('receipt', fn ($receipt) => $receipt->where('receipt_no', 'like', "%{$filters['receipt_no']}%"));
+        if (($filters['receipt_status'] ?? null) === 'active') $query->whereDoesntHave('refunds');
+        if (($filters['receipt_status'] ?? null) === 'refunded') $query->whereHas('refunds');
         return $query;
+    }
+
+    /** @return array{0:CentralFinanceUser,1:\App\Models\School,2:CentralFinancePayment,3:CentralFinanceReceiptViewModel,4:\Illuminate\Support\Collection} */
+    private function receiptData(int $payment): array
+    {
+        [$actor, $school] = $this->currentReadSchool();
+        $document = CentralFinancePayment::on('mysql')->with([
+            'receipt', 'refunds.fundAccount', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
+        ])->where('school_id', $school->id)->findOrFail($payment);
+        $audits = CentralFinanceDocumentAudit::on('mysql')->where('school_id', $school->id)
+            ->where(function ($query) use ($document): void {
+                $query->where(fn ($paymentAudit) => $paymentAudit->where('document_type', 'central_payment')->where('document_id', $document->id))
+                    ->orWhere(fn ($refundAudit) => $refundAudit->where('document_type', 'central_payment_refund')->whereIn('document_id', $document->refunds->pluck('id')));
+            })->latest()->get();
+        return [$actor, $school, $document, $this->receiptViewModels->make($document, $school), $audits];
     }
 
     /**

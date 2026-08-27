@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Models;
+use App\Support\CentralFinanceCurrency;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,9 +28,10 @@ class CentralFinanceOtherIncome extends Model
     {
         static::creating(function (self $income): void {
             $income->income_uuid ??= (string) Str::uuid();
-            if ((float) $income->amount <= 0 || !preg_match('/^[A-Z]{3}$/', (string) $income->currency)) {
+            if ((float) $income->amount <= 0) {
                 throw new InvalidArgumentException('Central Other Income amount or currency is invalid.');
             }
+            $income->currency = CentralFinanceCurrency::normalize((string) $income->currency);
         });
     }
     public function category(): BelongsTo { return $this->belongsTo(CentralFinanceCategory::class, 'category_id'); }

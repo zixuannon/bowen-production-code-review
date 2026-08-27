@@ -10,6 +10,7 @@ use App\Models\CentralFinanceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use App\Support\CentralFinanceCurrency;
 
 final class CentralFinanceReimbursementService
 {
@@ -22,7 +23,7 @@ final class CentralFinanceReimbursementService
     public function submit(CentralFinanceUser $actor, int $schoolId, int $categoryId, float $amount, string $currency, string $idempotencyReference, string $reason, ?string $referenceNo = null, ?string $description = null): CentralFinanceReimbursementRequest
     {
         app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
-        $currency = strtoupper(trim($currency));
+        $currency = CentralFinanceCurrency::normalize($currency);
         $referenceNo = $referenceNo === null ? null : trim($referenceNo);
         if ($amount <= 0 || !is_finite($amount) || !preg_match('/^[A-Z]{3}$/', $currency)
             || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference) || trim($reason) === ''
@@ -89,6 +90,9 @@ final class CentralFinanceReimbursementService
             }
             if ($request->status !== CentralFinanceReimbursementRequest::PENDING) {
                 throw new InvalidArgumentException('Only a pending reimbursement can be approved.');
+            }
+            if (!CentralFinanceCurrency::same((string) $request->currency, (string) $account->currency)) {
+                throw new InvalidArgumentException('A reimbursement can be approved only from a Fund Account with the same currency.');
             }
             $before = $this->snapshot($request);
             $expense = $this->documents->createExpense(

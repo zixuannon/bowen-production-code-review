@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use App\Support\CentralFinanceCurrency;
 use InvalidArgumentException;
 
 class CentralFinanceFundAccount extends Model
@@ -47,9 +48,8 @@ class CentralFinanceFundAccount extends Model
         static::creating(function (self $account): void {
             $account->account_uuid ??= (string) Str::uuid();
             $account->account_code = strtoupper(trim((string) $account->account_code));
-            $account->currency = strtoupper(trim((string) $account->currency));
+            $account->currency = CentralFinanceCurrency::normalize((string) $account->currency);
             if (!preg_match('/^[A-Z0-9_.-]{2,80}$/', $account->account_code)
-                || !preg_match('/^[A-Z]{3}$/', $account->currency)
                 || !in_array($account->owner_type, [self::OWNER_HQ, self::OWNER_SCHOOL], true)
                 || !in_array($account->account_type ?? self::TYPE_OTHER, [self::TYPE_CASH, self::TYPE_BANK, self::TYPE_OTHER], true)
                 || !in_array($account->status ?? self::STATUS_ACTIVE, [self::STATUS_ACTIVE, self::STATUS_INACTIVE, self::STATUS_ARCHIVED], true)) {

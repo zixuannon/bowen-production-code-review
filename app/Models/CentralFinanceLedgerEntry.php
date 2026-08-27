@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use RuntimeException;
+use App\Support\CentralFinanceCurrency;
 
 /**
  * Central Ledger is append-only. Corrections belong to a future approved
@@ -41,6 +42,7 @@ class CentralFinanceLedgerEntry extends Model
 
     protected static function booted(): void
     {
+        static::creating(function (self $entry): void { $entry->currency = CentralFinanceCurrency::normalize((string) $entry->currency); });
         static::updating(static fn (): never => throw new RuntimeException('Central Finance Ledger entries are append-only.'));
         static::deleting(static fn (): never => throw new RuntimeException('Central Finance Ledger entries are append-only.'));
     }

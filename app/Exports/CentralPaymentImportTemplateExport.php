@@ -14,7 +14,7 @@ final class CentralPaymentImportTemplateExport implements FromArray, WithHeading
     {
         return [
             'Payment Date', 'Student UUID', 'Student Code', 'Receivable Reference',
-            'Fund Account Code', 'Amount', 'Payment Method', 'Payment Reference', 'Remarks',
+            'Fund Account Code', 'Currency', 'Amount', 'Payment Method', 'Payment Reference', 'Remarks',
         ];
     }
 
@@ -22,7 +22,7 @@ final class CentralPaymentImportTemplateExport implements FromArray, WithHeading
     {
         return [[
             '2026-08-24', 'student-source-uuid', 'student-code', 'receivable-uuid',
-            'ZIX-CASH', '123456', 'Cash', 'PAY-20260824-001', 'Optional import note',
+            'ZIX-CASH', 'MMK', '123456', 'Cash', 'PAY-20260824-001', 'Optional import note',
         ]];
     }
 }

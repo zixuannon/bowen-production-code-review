@@ -48,10 +48,12 @@ final class CentralFinanceInternalTransferService
 
     private function assertSameOperatingSchool(int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination): void
     {
+        if (strtoupper($source->currency) !== strtoupper($destination->currency)) {
+            throw new InvalidArgumentException('目前仅支持同币种资金移动，跨币种兑换尚未启用。');
+        }
         if ($source->id === $destination->id || $source->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL || $destination->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL
-            || (int) $source->school_id !== $schoolId || (int) $destination->school_id !== $schoolId
-            || strtoupper($source->currency) !== strtoupper($destination->currency)) {
-            throw new InvalidArgumentException('A direct Central Bank Transfer requires two distinct active accounts in the current School and currency.');
+            || (int) $source->school_id !== $schoolId || (int) $destination->school_id !== $schoolId) {
+            throw new InvalidArgumentException('A direct Central Bank Transfer requires two distinct active accounts in the current School.');
         }
     }
 

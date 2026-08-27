@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use App\Support\CentralFinanceCurrency;
 
 class CentralFinanceHqFundingRequest extends Model
 {
@@ -27,6 +28,9 @@ class CentralFinanceHqFundingRequest extends Model
 
     protected static function booted(): void
     {
-        static::creating(function (self $funding): void { $funding->funding_uuid ??= (string) Str::uuid(); });
+        static::creating(function (self $funding): void {
+            $funding->funding_uuid ??= (string) Str::uuid();
+            $funding->currency = CentralFinanceCurrency::normalize((string) $funding->currency);
+        });
     }
 }

@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use App\Support\CentralFinanceCurrency;
 
 /**
  * Direct historical-expense importer. `报销人` is immutable Expense metadata;
@@ -94,6 +95,7 @@ final class CentralFinanceExpenseImportService
             'expense_date' => $this->normaliseDate($row['日期'] ?? null), 'reimbursed_by' => trim((string) ($row['报销人'] ?? '')),
             'summary' => trim((string) ($row['摘要'] ?? '')), 'school_label' => trim((string) ($row['校区'] ?? '')),
             'fund_account_code' => strtoupper(trim((string) ($row['Fund Account Code'] ?? ''))), 'account_type' => strtolower(trim((string) ($row['Account Type'] ?? ''))),
+            'currency' => trim((string) ($row['Currency'] ?? '')),
             'category_name' => trim((string) ($row['费用类别'] ?? '')), 'payment_method' => trim((string) ($row['付款方式'] ?? '')),
             'amount' => is_numeric($row['支出'] ?? null) ? (float) $row['支出'] : null, 'reference_no' => trim((string) ($row['Reference No'] ?? '')),
             'remarks' => trim((string) ($row['备注'] ?? '')), 'expected_balance' => ($row['余款'] ?? '') === '' || $row['余款'] === null ? null : (is_numeric($row['余款']) ? (float) $row['余款'] : false),
@@ -108,6 +110,7 @@ final class CentralFinanceExpenseImportService
         if ($data['summary'] === '') $errors[] = '摘要 is required.';
         if ($data['school_label'] === '' || !in_array(mb_strtolower($data['school_label']), array_filter([mb_strtolower($schoolName), mb_strtolower((string) $schoolCode)]), true)) $errors[] = '校区 must match the selected Central School.';
         if ($data['fund_account_code'] === '') $errors[] = 'Fund Account Code is required.';
+        try { CentralFinanceCurrency::assertCanonical((string) ($data['currency'] ?? '')); } catch (InvalidArgumentException $error) { $errors[] = $error->getMessage(); }
         if (!in_array($data['account_type'], ['school', 'hq'], true)) $errors[] = 'Account Type must be School or HQ.';
         if ($data['category_name'] === '') $errors[] = '费用类别 is required.';
         if (!preg_match('/^[A-Za-z0-9 _.-]{2,40}$/', $data['payment_method'])) $errors[] = '付款方式 is invalid.';
@@ -120,6 +123,7 @@ final class CentralFinanceExpenseImportService
         try {
             $account = $this->account((int) $data['school_id'], $data);
             $this->accounts->assertCanOperate($actor, $account);
+            if (!CentralFinanceCurrency::same((string) $data['currency'], (string) $account->currency)) $errors[] = 'Currency must match the Central Fund Account.';
             if ($account->owner_type !== $data['account_type']) $errors[] = 'Account Type does not match the Central Fund Account.';
             $this->category((int) $data['school_id'], $data);
             if (CentralFinanceExpense::on('mysql')->withTrashed()->where(['school_id' => $data['school_id'], 'reference_no' => $data['reference_no']])->exists()) $errors[] = 'Reference No is already reserved for this School.';
