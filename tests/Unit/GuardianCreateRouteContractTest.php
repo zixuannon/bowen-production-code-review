@@ -35,17 +35,23 @@ class GuardianCreateRouteContractTest extends TestCase
         $script = file_get_contents(public_path('assets/js/custom/custom.js'));
         $this->assertStringContainsString('function normalizeGuardianSearchResult(repo)', $script);
         $this->assertStringContainsString("id: String(repo?.id ?? ''),", $script);
-        $this->assertStringContainsString("text: email || name || (typeof repo?.text === 'string' ? repo.text.trim() : ''),", $script);
+        $this->assertStringContainsString("text: email || name || field(repo?.text, true),", $script);
         $this->assertStringContainsString('results: guardians.map(normalizeGuardianSearchResult)', $script);
-        $this->assertStringContainsString('function selectedGuardianSearchData()', $script);
-        $this->assertStringContainsString('function syncSelectedGuardian(repo)', $script);
+        $this->assertStringContainsString("function selectedGuardianSearchData(\$search)", $script);
+        $this->assertStringContainsString("function syncSelectedGuardian(repo, \$search = $('.guardian-search'))", $script);
+        $this->assertStringContainsString("data('guardianAdmissionSelection', guardian)", $script);
+        $this->assertStringContainsString("const cached = \$search.data('guardianAdmissionSelection');", $script);
         $this->assertStringContainsString('const existingGuardianEmail = guardian.email;', $script);
         $this->assertStringContainsString("$('#guardian_email').val(existingGuardianEmail);", $script);
+        $this->assertStringContainsString("$('#guardian_first_name').val(guardian.first_name)", $script);
+        $this->assertStringContainsString("$('#guardian_last_name').val(guardian.last_name)", $script);
+        $this->assertStringContainsString("$('#guardian_mobile').val(guardian.mobile)", $script);
         $this->assertStringContainsString('function guardianSelectionTemplate(repo)', $script);
         $this->assertStringContainsString("select2:select.guardianAdmission", $script);
         $this->assertStringContainsString("select2:clear.guardianAdmission", $script);
         $this->assertStringContainsString("change.guardianAdmission", $script);
         $this->assertStringContainsString('function clearGuardianSelection()', $script);
+        $this->assertStringContainsString("removeData('guardianAdmissionSelection')", $script);
         $this->assertStringContainsString("studentAdmissionForm.addEventListener('submit'", $script);
         $this->assertStringContainsString('}, true);', $script);
     }

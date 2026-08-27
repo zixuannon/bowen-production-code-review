@@ -524,39 +524,49 @@ select2Search($(".edit-school-admin-search"), baseUrl + "/schools/admin/search",
 // records before Select2 sees them so both its generated <option> and every
 // selection callback carry one complete, stable Guardian object.
 function normalizeGuardianSearchResult(repo) {
-    const email = typeof repo?.email === 'string' ? repo.email.trim() : '';
-    const firstName = typeof repo?.first_name === 'string' ? repo.first_name : '';
-    const lastName = typeof repo?.last_name === 'string' ? repo.last_name : '';
+    const field = (value, trim = false) => {
+        if (value === null || value === undefined) return '';
+
+        const normalized = String(value);
+        return trim ? normalized.trim() : normalized;
+    };
+    const email = field(repo?.email, true);
+    const firstName = field(repo?.first_name);
+    const lastName = field(repo?.last_name);
     const name = `${firstName} ${lastName}`.trim();
 
     return {
         id: String(repo?.id ?? ''),
         // A manually typed Select2 tag is not a Guardian API result; retain
         // its typed text so the existing new-Guardian admission path works.
-        text: email || name || (typeof repo?.text === 'string' ? repo.text.trim() : ''),
+        text: email || name || field(repo?.text, true),
         email: email,
         first_name: firstName,
         last_name: lastName,
-        mobile: typeof repo?.mobile === 'string' ? repo.mobile : '',
-        gender: typeof repo?.gender === 'string' ? repo.gender : '',
-        image: typeof repo?.image === 'string' ? repo.image : '',
+        mobile: field(repo?.mobile),
+        gender: field(repo?.gender),
+        image: field(repo?.image),
     };
 }
 
-function selectedGuardianSearchData() {
-    const selected = $('.guardian-search').select2('data');
+function selectedGuardianSearchData($search) {
+    const cached = $search.data('guardianAdmissionSelection');
+    if (cached && cached.id && cached.email) return cached;
+
+    const selected = $search.select2('data');
 
     return Array.isArray(selected) && selected.length > 0
         ? normalizeGuardianSearchResult(selected[0])
         : null;
 }
 
-function syncSelectedGuardian(repo) {
+function syncSelectedGuardian(repo, $search = $('.guardian-search')) {
     const guardian = normalizeGuardianSearchResult(repo);
     const existingGuardianEmail = guardian.email;
     const typedGuardianEmail = guardian.text;
 
     if (existingGuardianEmail) {
+        $search.data('guardianAdmissionSelection', guardian);
         $('#guardian_email').val(existingGuardianEmail);
         $('#guardian_first_name').val(guardian.first_name).prop('readonly', true);
         $('#guardian_last_name').val(guardian.last_name).prop('readonly', true);
@@ -596,6 +606,7 @@ function syncSelectedGuardian(repo) {
 }
 
 function clearGuardianSelection() {
+    $('.guardian-search').removeData('guardianAdmissionSelection');
     $('#guardian_email').val('');
     $('#guardian_first_name').val('').prop('readonly', false);
     $('#guardian_last_name').val('').prop('readonly', false);
@@ -647,12 +658,12 @@ $('.guardian-search').select2({
 $(".guardian-search")
     .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission')
     .on('select2:select.guardianAdmission', function (event) {
-        syncSelectedGuardian(event.params && event.params.data ? event.params.data : {});
+        syncSelectedGuardian(event.params && event.params.data ? event.params.data : {}, $(this));
     })
     .on('select2:clear.guardianAdmission', clearGuardianSelection)
     .on('change.guardianAdmission', function () {
         if (!$(this).val()) clearGuardianSelection();
-        else syncSelectedGuardian(selectedGuardianSearchData() || {});
+        else syncSelectedGuardian(selectedGuardianSearchData($(this)) || {}, $(this));
     });
 
 // common.js creates FormData in a bubbling submit handler. Capture this event
@@ -661,8 +672,9 @@ $(".guardian-search")
 const studentAdmissionForm = document.getElementById('create-form');
 if (studentAdmissionForm && $('.guardian-search').length) {
     studentAdmissionForm.addEventListener('submit', function () {
-        if ($('#guardian_email_search').val()) {
-            syncSelectedGuardian(selectedGuardianSearchData() || {});
+        const $search = $('#guardian_email_search');
+        if ($search.val()) {
+            syncSelectedGuardian(selectedGuardianSearchData($search) || {}, $search);
         }
     }, true);
 }

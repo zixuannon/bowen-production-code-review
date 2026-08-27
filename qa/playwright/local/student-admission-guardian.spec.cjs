@@ -38,13 +38,30 @@ test('Student admission submits exactly the email of an existing Guardian select
     expect(selectedGuardian.email).toBe(email);
     await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
     await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
+    await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
     await expect(page.locator('#guardian_first_name')).not.toBeEditable();
     await expect(page.locator('#guardian_last_name')).not.toBeEditable();
+    await expect(page.locator('#guardian_mobile')).not.toBeEditable();
 
-    const submittedGuardianEmail = await page.locator('#create-form').evaluate((form) => new FormData(form).get('guardian_email'));
-    expect(submittedGuardianEmail).toBe(email);
+    const submittedGuardianFields = await page.locator('#create-form').evaluate((form) => Object.fromEntries(
+        ['guardian_email', 'guardian_first_name', 'guardian_last_name', 'guardian_mobile']
+            .map((field) => [field, new FormData(form).get(field)])
+    ));
+    expect(submittedGuardianFields).toEqual({
+        guardian_email: email,
+        guardian_first_name: 'Admission',
+        guardian_last_name: `Guardian ${suffix}`,
+        guardian_mobile: `091${String(suffix).slice(-7)}`,
+    });
 
-    await page.locator('#guardian_email_search').selectOption('');
+    // A native Select2 option may retain only id/text. The change callback must
+    // retain the complete selected Guardian instead of clearing required fields.
+    await page.locator('#guardian_email_search').evaluate((select) => $(select).trigger('change'));
+    await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
+    await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
+    await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
+
+    await page.locator('#guardian_email_search').evaluate((select) => $(select).val(null).trigger('change'));
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue('');
 
     await page.locator('#guardian_email_search + .select2 .select2-selection').click();
@@ -53,10 +70,35 @@ test('Student admission submits exactly the email of an existing Guardian select
     await matchingGuardian.click();
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
 
-    // The capture-phase submit guard must recover the authoritative Select2
-    // email even if another client-side callback cleared only the hidden field.
-    await page.locator('#guardian_email').evaluate((input) => {
-        input.value = '';
+    // A typed email remains the new-Guardian path: it must not reuse stale
+    // selected-Guardian details and the required name/mobile fields stay editable.
+    const newGuardianEmail = `new-guardian-${suffix}@bowen-qa.test`;
+    await page.locator('#guardian_email_search').evaluate((select) => $(select).val(null).trigger('change'));
+    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('.select2-container--open .select2-search__field').fill(newGuardianEmail);
+    const typedGuardian = page.locator('.select2-results__option').filter({ hasText: newGuardianEmail }).last();
+    await expect(typedGuardian).toBeVisible();
+    await typedGuardian.click();
+    await expect(page.locator('#guardian_email')).toHaveValue(newGuardianEmail);
+    await expect(page.locator('#guardian_first_name')).toBeEditable();
+    await expect(page.locator('#guardian_last_name')).toBeEditable();
+    await expect(page.locator('#guardian_mobile')).toBeEditable();
+
+    await page.locator('#guardian_email_search').evaluate((select) => $(select).val(null).trigger('change'));
+    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('.select2-container--open .select2-search__field').fill(email);
+    await expect(matchingGuardian).toBeVisible();
+    await matchingGuardian.click();
+
+    // The capture-phase submit guard must restore every required Guardian
+    // field even if another client-side callback cleared form inputs.
+    await page.locator('#create-form').evaluate((form) => {
+        form.addEventListener('submit', () => {
+            window.__guardianAdmissionFormData = Object.fromEntries(new FormData(form).entries());
+        }, true);
+        ['guardian_email', 'guardian_first_name', 'guardian_last_name', 'guardian_mobile'].forEach((id) => {
+            document.getElementById(id).value = '';
+        });
     });
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue('');
 
@@ -76,5 +118,11 @@ test('Student admission submits exactly the email of an existing Guardian select
     await page.locator('textarea[name="current_address"]').fill('BOWEN QA local address');
     await page.locator('textarea[name="permanent_address"]').fill('BOWEN QA local address');
     await page.locator('#create-btn').click();
+    await expect.poll(() => page.evaluate(() => window.__guardianAdmissionFormData)).toMatchObject({
+        guardian_email: email,
+        guardian_first_name: 'Admission',
+        guardian_last_name: `Guardian ${suffix}`,
+        guardian_mobile: `091${String(suffix).slice(-7)}`,
+    });
     await expect(page.getByText('Data Stored Successfully')).toBeVisible();
 });
