@@ -56,6 +56,8 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString("select2:select.guardianAdmission", $script);
         $this->assertStringContainsString("select2:clear.guardianAdmission", $script);
         $this->assertStringContainsString("change.guardianAdmission", $script);
+        $this->assertStringContainsString("const guardianAdmissionSearchSelector = '#guardian_email_search';", $script);
+        $this->assertStringContainsString(".on('select2:select.guardianAdmission', guardianAdmissionSearchSelector", $script);
         $this->assertStringContainsString('function clearGuardianSelection()', $script);
         $this->assertStringContainsString("removeData('guardianAdmissionSelection')", $script);
         $this->assertStringContainsString("removeData('guardianAdmissionLookupKey')", $script);

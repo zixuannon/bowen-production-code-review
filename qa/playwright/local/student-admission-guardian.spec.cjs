@@ -52,6 +52,10 @@ test('Student admission submits exactly the email of an existing Guardian select
         && response.status() === 200
     ));
     await page.locator('#guardian_email_search').evaluate((select, guardian) => {
+        // The admission source element may be rebound by Select2. Remove the
+        // direct test listener so this assertion exercises the durable,
+        // document-delegated production listener only.
+        $(select).off('.guardianAdmission');
         select.add(new Option(guardian.text, guardian.id, true, true));
         $(select).trigger({
             type: 'select2:select',

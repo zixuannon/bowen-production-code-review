@@ -738,13 +738,18 @@ $('.guardian-search').select2({
     templateSelection: guardianSelectionTemplate,
 });
 
-$(".guardian-search")
-    .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission')
-    .on('select2:select.guardianAdmission', function (event) {
+// Keep the authoritative synchronization delegated from document. Select2 can
+// replace or rebind its source element while rendering an AJAX result; a
+// delegated listener continues to observe the real admission select without
+// putting state changes in the renderer.
+const guardianAdmissionSearchSelector = '#guardian_email_search';
+$(document)
+    .off('select2:select.guardianAdmission select2:clear.guardianAdmission change.guardianAdmission', guardianAdmissionSearchSelector)
+    .on('select2:select.guardianAdmission', guardianAdmissionSearchSelector, function (event) {
         synchronizeGuardianAdmissionSelection(event.params && event.params.data ? event.params.data : {}, $(this));
     })
-    .on('select2:clear.guardianAdmission', clearGuardianSelection)
-    .on('change.guardianAdmission', function () {
+    .on('select2:clear.guardianAdmission', guardianAdmissionSearchSelector, clearGuardianSelection)
+    .on('change.guardianAdmission', guardianAdmissionSearchSelector, function () {
         if (!$(this).val()) clearGuardianSelection();
         else synchronizeGuardianAdmissionSelection(selectedGuardianSearchData($(this)) || {}, $(this));
     });
