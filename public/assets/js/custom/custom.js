@@ -593,29 +593,26 @@ function hasCompleteGuardianAdmissionFields(guardian) {
 function hydrateGuardianAdmissionSelection(guardian, $search) {
     // A user-created Select2 tag has the typed email as both its id and text;
     // it is the existing new-Guardian flow and must not be resolved as a
-    // stored Guardian.
+    // stored Guardian. Existing selections are rehydrated by id, never by a
+    // mutable Select2 label or a browser-generated <option> text value.
     if (!guardian.id || !guardian.text || guardian.id === guardian.text) {
         return false;
     }
 
-    const lookupKey = `${guardian.id}:${guardian.text}`;
+    const lookupKey = String(guardian.id);
     $search.data('guardianAdmissionLookupKey', lookupKey);
 
     $.ajax({
-        url: baseUrl + '/guardian/search',
+        url: baseUrl + '/guardian/' + encodeURIComponent(lookupKey) + '/admission-details',
         dataType: 'json',
-        data: { email: guardian.text },
     }).done(function (response) {
-        if ($search.data('guardianAdmissionLookupKey') !== lookupKey || String($search.val()) !== guardian.id) {
+        if ($search.data('guardianAdmissionLookupKey') !== lookupKey || String($search.val()) !== lookupKey) {
             return;
         }
 
-        const records = Array.isArray(response?.data) ? response.data : [];
-        const completeGuardian = records
-            .map(rememberGuardianSearchResult)
-            .find((candidate) => candidate.id === guardian.id);
+        const completeGuardian = rememberGuardianSearchResult(response?.data || {});
 
-        if (completeGuardian) {
+        if (completeGuardian.id === lookupKey && hasCompleteGuardianAdmissionFields(completeGuardian)) {
             syncSelectedGuardian(completeGuardian, $search);
         }
     });

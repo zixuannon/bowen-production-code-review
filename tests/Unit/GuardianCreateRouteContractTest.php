@@ -41,7 +41,7 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString('function resolveGuardianSearchResult(repo)', $script);
         $this->assertStringContainsString('function hydrateGuardianAdmissionSelection(guardian, $search)', $script);
         $this->assertStringContainsString('function synchronizeGuardianAdmissionSelection(repo, $search)', $script);
-        $this->assertStringContainsString("data: { email: guardian.text }", $script);
+        $this->assertStringContainsString("'/guardian/' + encodeURIComponent(lookupKey) + '/admission-details'", $script);
         $this->assertStringContainsString('results: guardians.map(rememberGuardianSearchResult)', $script);
         $this->assertStringContainsString("function selectedGuardianSearchData(\$search)", $script);
         $this->assertStringContainsString("function syncSelectedGuardian(repo, \$search = $('.guardian-search'))", $script);
@@ -61,5 +61,21 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString("removeData('guardianAdmissionLookupKey')", $script);
         $this->assertStringContainsString("studentAdmissionForm.addEventListener('submit'", $script);
         $this->assertStringContainsString('}, true);', $script);
+    }
+
+    public function test_guardian_admission_details_route_is_tenant_scoped_and_declared_before_resource_route(): void
+    {
+        $routes = file_get_contents(base_path('routes/web.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/GuardianController.php'));
+
+        $this->assertStringContainsString("Route::get('/guardian/{guardianId}/admission-details'", $routes);
+        $this->assertStringContainsString("->whereNumber('guardianId')", $routes);
+        $this->assertLessThan(
+            strpos($routes, "Route::resource('guardian', GuardianController::class);"),
+            strpos($routes, "Route::get('/guardian/{guardianId}/admission-details'"),
+        );
+        $this->assertStringContainsString("ResponseService::noAnyPermissionThenSendJson(['student-create', 'student-edit']);", $controller);
+        $this->assertStringContainsString('$this->user->guardian()', $controller);
+        $this->assertStringContainsString("->findOrFail(\$guardianId)", $controller);
     }
 }

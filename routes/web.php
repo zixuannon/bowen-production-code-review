@@ -561,6 +561,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         /*** Parents ***/
         Route::get('/guardian/search', [GuardianController::class, 'search']);
+        Route::get('/guardian/{guardianId}/admission-details', [GuardianController::class, 'admissionDetails'])
+            ->whereNumber('guardianId')
+            ->name('guardian.admission-details');
         Route::resource('guardian', GuardianController::class);
 
         /*** Students ***/

@@ -200,4 +200,24 @@ class GuardianController extends Controller {
         }
         return response()->json($response);
     }
+
+    /**
+     * Return the authoritative, tenant-scoped Guardian payload for Student
+     * Admission after Select2 has reduced its native option to id/text.
+     *
+     * The id is always resolved through the existing Guardian repository, so
+     * a caller cannot use this endpoint to inspect an arbitrary tenant user.
+     */
+    public function admissionDetails($guardianId) {
+        ResponseService::noAnyPermissionThenSendJson(['student-create', 'student-edit']);
+
+        $guardian = $this->user->guardian()
+            ->select(['id', 'email', 'first_name', 'last_name', 'mobile', 'gender', 'image'])
+            ->findOrFail($guardianId);
+
+        return response()->json([
+            'error' => false,
+            'data' => $guardian,
+        ]);
+    }
 }

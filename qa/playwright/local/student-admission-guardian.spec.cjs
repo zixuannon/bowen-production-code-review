@@ -43,6 +43,34 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(page.locator('#guardian_last_name')).not.toBeEditable();
     await expect(page.locator('#guardian_mobile')).not.toBeEditable();
 
+    // A fresh page has no in-memory Select2 result catalogue. Reproduce the
+    // Production native option shape (id/text only) and prove that the
+    // tenant-scoped details endpoint rehydrates the authoritative Guardian.
+    await page.goto('/students/create', { waitUntil: 'domcontentloaded' });
+    const detailResponse = page.waitForResponse((response) => (
+        response.url().includes(`/guardian/${selectedGuardian.id}/admission-details`)
+        && response.status() === 200
+    ));
+    await page.locator('#guardian_email_search').evaluate((select, guardian) => {
+        select.add(new Option(guardian.text, guardian.id, true, true));
+        $(select).trigger({
+            type: 'select2:select',
+            params: { data: guardian },
+        });
+    }, { id: selectedGuardian.id, text: 'existing-guardian' });
+    await detailResponse;
+    await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
+    await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
+    await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
+    await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
+
+    await page.goto('/students/create', { waitUntil: 'domcontentloaded' });
+    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('.select2-container--open .select2-search__field').fill(email);
+    const matchingGuardianAfterHydration = page.locator('.select2-results__option').filter({ hasText: email }).last();
+    await expect(matchingGuardianAfterHydration).toBeVisible();
+    await matchingGuardianAfterHydration.click();
+
     const submittedGuardianFields = await page.locator('#create-form').evaluate((form) => Object.fromEntries(
         ['guardian_email', 'guardian_first_name', 'guardian_last_name', 'guardian_mobile']
             .map((field) => [field, new FormData(form).get(field)])
