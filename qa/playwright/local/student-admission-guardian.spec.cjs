@@ -22,19 +22,19 @@ test('Student admission submits exactly the email of an existing Guardian select
 
     await page.goto('/students/create', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.locator('#guardian_email_search')).toBeVisible();
+    await expect(page.locator('#guardian_admission_guardian_id')).toBeVisible();
     await expect(page.locator('input[name="guardian_email"]')).toHaveCount(1);
     await expect(page.locator('script[src*="/assets/js/custom/custom.js"]')).toHaveAttribute('src', /\?v=[a-f0-9]{64}$/);
 
-    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
     await page.locator('.select2-container--open .select2-search__field').fill(email);
     const matchingGuardian = page.locator('.select2-results__option').filter({ hasText: email }).last();
     await expect(matchingGuardian).toBeVisible();
     await matchingGuardian.click();
 
-    await expect(page.locator('#guardian_email_search option:checked')).toHaveText(email);
+    await expect(page.locator('#guardian_admission_guardian_id option:checked')).toHaveText(email);
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
-    const selectedGuardian = await page.locator('#guardian_email_search').evaluate((select) => $(select).select2('data')[0]);
+    const selectedGuardian = await page.locator('#guardian_admission_guardian_id').evaluate((select) => $(select).select2('data')[0]);
     expect(String(selectedGuardian.id)).not.toBe('');
     expect(selectedGuardian.email).toBeUndefined();
     await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
@@ -45,7 +45,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(page.locator('#guardian_mobile')).not.toBeEditable();
 
     const clearSelectedGuardian = async () => {
-        const clear = page.locator('#guardian_email_search + .select2 .select2-selection__clear');
+        const clear = page.locator('#guardian_admission_guardian_id + .select2 .select2-selection__clear');
         await expect(clear).toBeVisible();
         await clear.click();
         await expect(page.locator('input[name="guardian_email"]')).toHaveValue('');
@@ -62,7 +62,7 @@ test('Student admission submits exactly the email of an existing Guardian select
         response.url().includes(`/guardian/${selectedGuardian.id}/admission-details`)
         && response.status() === 200
     ));
-    await page.locator('#guardian_email_search').evaluate((select, guardian) => {
+    await page.locator('#guardian_admission_guardian_id').evaluate((select, guardian) => {
         // The admission source element may be rebound by Select2. Remove the
         // direct test listener so this assertion exercises the durable,
         // document-delegated production listener only.
@@ -80,7 +80,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
 
     await page.goto('/students/create', { waitUntil: 'domcontentloaded' });
-    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
     await page.locator('.select2-container--open .select2-search__field').fill(email);
     const matchingGuardianAfterHydration = page.locator('.select2-results__option').filter({ hasText: email }).last();
     await expect(matchingGuardianAfterHydration).toBeVisible();
@@ -101,7 +101,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     // Production Select2 reduces its native selected option to id/text. Reproduce
     // that event shape after dropping the selection cache: the result catalog must
     // recover the complete Guardian received from the AJAX result.
-    await page.locator('#guardian_email_search').evaluate((select, data) => {
+    await page.locator('#guardian_admission_guardian_id').evaluate((select, data) => {
         $(select).removeData('guardianAdmissionSelection').trigger({
             type: 'select2:select',
             params: { data },
@@ -113,7 +113,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(page.locator('#guardian_mobile')).toHaveValue(`091${String(suffix).slice(-7)}`);
 
     // The normal change callback must preserve that same authoritative result.
-    await page.locator('#guardian_email_search').evaluate((select) => $(select).trigger('change'));
+    await page.locator('#guardian_admission_guardian_id').evaluate((select) => $(select).trigger('change'));
     await expect(page.locator('input[name="guardian_email"]')).toHaveValue(email);
     await expect(page.locator('#guardian_first_name')).toHaveValue('Admission');
     await expect(page.locator('#guardian_last_name')).toHaveValue(`Guardian ${suffix}`);
@@ -121,7 +121,7 @@ test('Student admission submits exactly the email of an existing Guardian select
 
     await clearSelectedGuardian();
 
-    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
     await page.locator('.select2-container--open .select2-search__field').fill(email);
     await expect(matchingGuardian).toBeVisible();
     await matchingGuardian.click();
@@ -131,7 +131,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     // selected-Guardian details and the required name/mobile fields stay editable.
     const newGuardianEmail = `new-guardian-${suffix}@bowen-qa.test`;
     await clearSelectedGuardian();
-    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
     await page.locator('.select2-container--open .select2-search__field').fill(newGuardianEmail);
     const typedGuardian = page.locator('.select2-results__option').filter({ hasText: newGuardianEmail }).last();
     await expect(typedGuardian).toBeVisible();
@@ -142,7 +142,7 @@ test('Student admission submits exactly the email of an existing Guardian select
     await expect(page.locator('#guardian_mobile')).toBeEditable();
 
     await clearSelectedGuardian();
-    await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+    await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
     await page.locator('.select2-container--open .select2-search__field').fill(email);
     await expect(matchingGuardian).toBeVisible();
     await matchingGuardian.click();
@@ -211,21 +211,21 @@ test('Student admission keeps the latest canonical Guardian response and blocks 
 
     await page.goto('/students/create', { waitUntil: 'domcontentloaded' });
     const choose = async (email) => {
-        await page.locator('#guardian_email_search + .select2 .select2-selection').click();
+        await page.locator('#guardian_admission_guardian_id + .select2 .select2-selection').click();
         await page.locator('.select2-container--open .select2-search__field').fill(email);
         const option = page.locator('.select2-results__option').filter({ hasText: email }).last();
         await expect(option).toBeVisible();
         await option.click();
     };
     const clear = async () => {
-        const clearControl = page.locator('#guardian_email_search + .select2 .select2-selection__clear');
+        const clearControl = page.locator('#guardian_admission_guardian_id + .select2 .select2-selection__clear');
         await expect(clearControl).toBeVisible();
         await clearControl.click();
     };
 
     await choose(firstEmail);
     await expect(page.locator('#guardian_email')).toHaveValue(firstEmail);
-    const firstId = await page.locator('#guardian_email_search').evaluate((select) => String($(select).val()));
+    const firstId = await page.locator('#guardian_admission_guardian_id').evaluate((select) => String($(select).val()));
     await clear();
 
     await page.route(`**/guardian/${firstId}/admission-details`, async (route) => {
@@ -241,7 +241,7 @@ test('Student admission keeps the latest canonical Guardian response and blocks 
     await expect(page.locator('#guardian_email')).toHaveValue(secondEmail);
     await expect(page.locator('#guardian_first_name')).toHaveValue('RaceB');
 
-    const secondId = await page.locator('#guardian_email_search').evaluate((select) => String($(select).val()));
+    const secondId = await page.locator('#guardian_admission_guardian_id').evaluate((select) => String($(select).val()));
     await clear();
     await page.route(`**/guardian/${secondId}/admission-details`, (route) => route.abort());
     await choose(secondEmail);

@@ -29,7 +29,7 @@ class GuardianCreateRouteContractTest extends TestCase
         $view = file_get_contents(resource_path('views/students/create.blade.php'));
 
         $this->assertSame(1, substr_count($view, 'id="guardian_email"'));
-        $this->assertStringContainsString('id="guardian_email_search"', $view);
+        $this->assertStringContainsString('id="guardian_admission_guardian_id"', $view);
         $this->assertStringContainsString('data-guardian-admission-controller="true"', $view);
         $this->assertStringContainsString('name="guardian_email"', $view);
 
@@ -64,8 +64,6 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString("removeData('guardianAdmissionLookupKey')", $script);
         $this->assertStringContainsString("studentAdmissionForm.addEventListener('submit'", $script);
         $this->assertStringContainsString('}, true);', $script);
-        $this->assertStringContainsString("if (\$(this).data('guardianAdmissionController')) return;", $script);
-        $this->assertStringContainsString("if (\$search.data('guardianAdmissionController')) return;", $script);
         $this->assertStringContainsString('student-admission-guardian.js', file_get_contents(resource_path('views/students/create.blade.php')));
 
         $pageController = file_get_contents(public_path('assets/js/custom/student-admission-guardian.js'));

@@ -3,7 +3,7 @@
 // Student Admission owns this selector. Select2 supplies only a Guardian id;
 // all existing-Guardian fields come from the tenant-scoped canonical endpoint.
 $(function () {
-    const $search = $('#guardian_email_search');
+    const $search = $('#guardian_admission_guardian_id');
     const $form = $('#create-form');
     const $submit = $('#create-btn');
 
