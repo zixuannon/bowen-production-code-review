@@ -296,6 +296,7 @@
     </div>
 @endsection
 @section('script')
+    <script src="{{ asset('/assets/js/custom/student-admission-guardian.js') }}?v={{ hash_file('sha256', public_path('assets/js/custom/student-admission-guardian.js')) }}"></script>
     <script>
         function formSuccessFunction() {
             setTimeout(() => {

@@ -63,6 +63,7 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString("removeData('guardianAdmissionLookupKey')", $script);
         $this->assertStringContainsString("studentAdmissionForm.addEventListener('submit'", $script);
         $this->assertStringContainsString('}, true);', $script);
+        $this->assertStringContainsString('student-admission-guardian.js', file_get_contents(resource_path('views/students/create.blade.php')));
     }
 
     public function test_guardian_admission_details_route_is_tenant_scoped_and_declared_before_resource_route(): void
