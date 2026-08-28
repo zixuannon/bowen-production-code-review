@@ -25,7 +25,7 @@
                                 <select name="filter_class_section_id" id="filter_class_section_id" class="form-control">
                                     <option value="">{{ __('select_class_section') }}</option>
                                     @foreach ($class_sections as $class_section)
-                                        <option value={{ $class_section->id }}>{{$class_section->full_name}}</option>
+                                        <option value={{ $class_section->id }} @selected((int) request('class_section_id') === $class_section->id)>{{$class_section->full_name}}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -33,7 +33,7 @@
                                 <label class="filter-menu">{{ __('session_year') }} <span class="text-danger">*</span></label>
                                 <select name="filter_session_year_id" id="filter_session_year_id" class="form-control">
                                     @foreach ($sessionYears as $sessionYear)
-                                        <option value={{ $sessionYear->id }} {{$sessionYear->default==1?"selected":""}}>{{$sessionYear->name}}</option>
+                                        <option value={{ $sessionYear->id }} @selected((int) request('session_year_id', $sessionYear->default ? $sessionYear->id : 0) === $sessionYear->id)>{{$sessionYear->name}}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -474,6 +474,28 @@
         $(function() {
             $exportTable.bootstrapTable()
         })
+
+        const editStudentUserId = @json(request('edit_student'));
+        const editStudentUpdateUrl = @json(request('edit_update_url'));
+        if (editStudentUserId && editStudentUpdateUrl) {
+            const $studentTable = $('#table_list');
+            $studentTable.on('load-success.bs.table.student-edit-link', function (event, payload) {
+                const student = (payload.rows || []).find((row) => String(row.user_id) === String(editStudentUserId));
+                if (!student) {
+                    return;
+                }
+
+                window.studentEvents['click .edit-data'](event, null, student);
+                $('#edit-form').attr('action', editStudentUpdateUrl);
+                $('#editModal').modal('show');
+                $studentTable.off('load-success.bs.table.student-edit-link');
+            });
+
+            // The table may have completed its first load before this Blade
+            // section is evaluated, so refresh once with the trusted placement
+            // query supplied by StudentController::edit.
+            $studentTable.bootstrapTable('refresh');
+        }
 
     </script>
 @endsection

@@ -96,6 +96,28 @@ class StudentController extends Controller
         return view('students.create', compact('class_sections', 'admission_no', 'extraFields', 'sessionYears', 'features'));
     }
 
+    /**
+     * The Student Directory owns the existing edit form. Keep resource edit
+     * links inside that canonical modal instead of introducing a second
+     * academic-placement update path.
+     */
+    public function edit($id)
+    {
+        ResponseService::noAnyPermissionThenRedirect(['student-create', 'student-edit']);
+
+        $student = $this->student->defaultModel()
+            ->owner()
+            ->where('user_id', $id)
+            ->firstOrFail();
+
+        return redirect()->route('students.index', [
+            'edit_student' => $student->user_id,
+            'session_year_id' => $student->session_year_id,
+            'class_section_id' => $student->class_section_id,
+            'edit_update_url' => route('students.update', $student->user_id),
+        ]);
+    }
+
     public function store(Request $request)
     {
         ResponseService::noPermissionThenRedirect(['student-create']);
