@@ -9,6 +9,12 @@ $(function () {
 
     if (!$search.length || !$form.length || !$search.data('guardianAdmissionController')) return;
 
+    // Keep the controller bound to the original <select>, not the Select2
+    // presentation container. The marker is harmless UI metadata and gives
+    // browser acceptance a concrete proof that this page controller, rather
+    // than a legacy Guardian handler, owns the admission selector.
+    $search.attr('data-guardian-admission-controller-state', 'ready');
+
     const state = { mode: 'empty', guardianId: '', guardian: null, request: null, generation: 0 };
     const field = (value) => value == null ? '' : String(value).trim();
     const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -100,17 +106,19 @@ $(function () {
         abortPending();
         state.mode = 'empty'; state.guardianId = ''; state.guardian = null; delete state.email;
         clearError(); setBusy(false); clearCanonicalFields();
+        $search.attr('data-guardian-admission-controller-state', 'ready');
     };
     const selectNewGuardian = (email) => {
         abortPending();
         state.mode = 'new'; state.guardianId = ''; state.guardian = null; state.email = email;
         clearError(); clearCanonicalFields(); applyStateToForm(); setBusy(false);
+        $search.attr('data-guardian-admission-controller-state', 'new-ready');
     };
     const selectExistingGuardian = (id) => {
         abortPending();
         const currentGeneration = state.generation;
         state.mode = 'existing'; state.guardianId = field(id); state.guardian = null; delete state.email;
-        clearError(); clearCanonicalFields(); $canonical.mode.val('existing'); $canonical.id.val(state.guardianId); setBusy(true);
+        clearError(); clearCanonicalFields(); $canonical.mode.val('existing'); $canonical.id.val(state.guardianId); $search.attr('data-guardian-admission-controller-state', 'loading'); setBusy(true);
         const request = $.ajax({
             url: `${baseUrl}/guardian/${encodeURIComponent(state.guardianId)}/admission-details`,
             dataType: 'json',
@@ -119,25 +127,30 @@ $(function () {
             if (currentGeneration !== state.generation || selectedId() !== state.guardianId) return;
             if (!validDto(guardian, state.guardianId)) {
                 state.mode = 'empty'; state.guardianId = ''; state.guardian = null;
-                clearCanonicalFields(); showError('Unable to load the selected Guardian. Please select it again.');
+                clearCanonicalFields(); $search.attr('data-guardian-admission-controller-state', 'failed'); showError('Unable to load the selected Guardian. Please select it again.');
                 return;
             }
             state.guardian = guardian;
             applyStateToForm();
+            $search.attr('data-guardian-admission-controller-state', 'existing-ready');
         }).fail((_xhr, status) => {
             if (status === 'abort' || currentGeneration !== state.generation) return;
             state.mode = 'empty'; state.guardianId = ''; state.guardian = null;
-            clearCanonicalFields(); showError('Unable to load the selected Guardian. Please try again.');
+            clearCanonicalFields(); $search.attr('data-guardian-admission-controller-state', 'failed'); showError('Unable to load the selected Guardian. Please try again.');
         }).always(() => {
             if (currentGeneration === state.generation) setBusy(false);
             if (state.request === request) state.request = null;
         });
         state.request = request;
     };
-    const selectionChanged = () => {
-        const id = selectedId();
+    const selectionChanged = (event) => {
+        // Select2 supplies the stable id with select2:select. Prefer it over
+        // the source value during the event itself; some Select2 versions do
+        // not settle the native value until their subsequent change event.
+        const eventId = event && event.params && event.params.data ? field(event.params.data.id) : '';
+        const id = eventId || selectedId();
         if (!id) return clearState();
-        const tagEmail = selectedTagEmail();
+        const tagEmail = isEmail(eventId) ? eventId : selectedTagEmail();
         if (tagEmail && isEmail(tagEmail)) {
             if (state.mode !== 'new' || state.email !== tagEmail) selectNewGuardian(tagEmail);
             return;
@@ -174,7 +187,16 @@ $(function () {
             }),
         },
     });
-    $search.on('select2:select.guardianAdmissionController change.guardianAdmissionController', selectionChanged);
+    // Bind the source directly and delegate as a Select2 lifecycle fallback.
+    // The guard in selectionChanged makes a duplicate select/change harmless.
+    // Namespace only this page controller; the shared legacy Guardian widget
+    // remains untouched for other pages.
+    $search
+        .off('select2:select.guardianAdmissionController change.guardianAdmissionController')
+        .on('select2:select.guardianAdmissionController change.guardianAdmissionController', selectionChanged);
+    $(document)
+        .off('select2:select.guardianAdmissionController change.guardianAdmissionController', '#guardian_admission_guardian_id')
+        .on('select2:select.guardianAdmissionController change.guardianAdmissionController', '#guardian_admission_guardian_id', selectionChanged);
     // Select2 tags can commit a newly typed option while closing the dropdown
     // without dispatching a source change event. Re-read the settled selection
     // at close so the canonical new-Guardian state is never left empty.
