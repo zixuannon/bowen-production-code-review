@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use RuntimeException;
 class CentralFinancePayment extends Model {
     protected $connection='mysql';
-    protected $fillable=['payment_uuid','school_id','receivable_id','fund_account_id','idempotency_key','payment_reference','payment_method','currency','amount','paid_at','received_by'];
+    protected $fillable=['payment_uuid','school_id','receivable_id','fund_account_id','idempotency_key','payment_reference','payment_method','note','currency','amount','paid_at','received_by'];
     protected $casts=['amount'=>'decimal:4','paid_at'=>'datetime'];
     protected static function booted(): void { static::creating(function (self $payment): void { $payment->currency = CentralFinanceCurrency::normalize((string) $payment->currency); }); static::updating(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); static::deleting(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); }
     public function receivable(): BelongsTo { return $this->belongsTo(CentralFinanceReceivable::class, 'receivable_id'); }

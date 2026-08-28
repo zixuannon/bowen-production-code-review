@@ -7,6 +7,7 @@ use App\Http\Controllers\FinanceGroupHqAccountController;
 use App\Http\Controllers\GroupFinanceController;
 use App\Http\Controllers\FinanceOperatingWorkspaceController;
 use App\Http\Controllers\CentralFinanceWorkspaceController;
+use App\Http\Controllers\CentralFinanceStudentCollectionController;
 
 use App\Http\Controllers\AddonController;
 use App\Http\Controllers\AnnouncementController;
@@ -1182,6 +1183,11 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance', [CentralFinanceWorkspaceController::class, 'dashboard'])->name('central-finance.dashboard');
     Route::post('central-finance/school', [CentralFinanceWorkspaceController::class, 'enterSchool'])->name('central-finance.school.enter');
     Route::post('central-finance/all-schools', [CentralFinanceWorkspaceController::class, 'exitSchool'])->name('central-finance.school.exit');
+    Route::get('central-finance/student-collection', [CentralFinanceStudentCollectionController::class, 'collection'])->name('central-finance.student-collection.index');
+    Route::get('central-finance/student-collection/{profile}', [CentralFinanceStudentCollectionController::class, 'show'])->whereNumber('profile')->name('central-finance.student-collection.show');
+    Route::get('central-finance/student-collection/{profile}/receivables/{receivable}/collect', [CentralFinanceStudentCollectionController::class, 'review'])->whereNumber('profile')->whereNumber('receivable')->name('central-finance.student-collection.review');
+    Route::post('central-finance/student-collection/{profile}/receivables/{receivable}/collect', [CentralFinanceStudentCollectionController::class, 'collect'])->whereNumber('profile')->whereNumber('receivable')->name('central-finance.student-collection.collect');
+    Route::get('central-finance/student-collection/payments/{payment}/success', [CentralFinanceStudentCollectionController::class, 'success'])->whereNumber('payment')->name('central-finance.student-collection.success');
     Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
     Route::get('central-finance/receivables/{receivable}', [CentralFinanceWorkspaceController::class, 'receivableDetail'])->name('central-finance.receivables.show');
     Route::post('central-finance/receivables/{receivable}/adjustments', [CentralFinanceWorkspaceController::class, 'adjustReceivable'])->name('central-finance.receivables.adjustments.store');
