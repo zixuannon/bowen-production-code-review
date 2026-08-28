@@ -12,6 +12,7 @@ use RuntimeException;
 
 /** Reads only compulsory tenant fee assignments through the trusted registry. */
 final class CentralFinanceTenantFeeAssignmentSource {
+    public function __construct(private readonly CentralFinanceReceivableSyncUatExceptionService $uatExceptions) {}
     /** @return list<array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable}> */
     public function forProfile(CentralFinanceStudentProfile $profile): array {
         return array_values(array_filter(
@@ -56,6 +57,7 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 ->select($select)->orderBy('fees_class_types.id')->get();
             return $rows->map(fn(object $r): array => [
                 'source_id'=>(string)$r->id,'description'=>(string)($r->name ?: 'Assigned fee'),
+                'source_scope' => 'legacy_class_fee',
                 'due_date'=>$r->due_date ? (string)$r->due_date : null,'currency'=>strtoupper((string)(($hasCurrency ? $r->fee_currency : null) ?: 'MMK')),
                 'amount'=>(float)$r->amount,
                 'created_at'=>CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) $r->source_created_at),
@@ -87,6 +89,7 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 // Intentionally use the legacy FeesClassType identity, never
                 // the assignment-item UUID, so transition is no-op/safe.
                 'source_id' => (string) $row->source_id,
+                'source_scope' => 'student_fee_assignment',
                 'description' => (string) $row->description_snapshot,
                 'due_date' => $row->due_date_snapshot ? (string) $row->due_date_snapshot : null,
                 'currency' => strtoupper((string) $row->currency_snapshot),
@@ -100,7 +103,8 @@ final class CentralFinanceTenantFeeAssignmentSource {
     /** @param array{created_at:CarbonImmutable} $row */
     public function isWithinFreshStartCutoff(CentralFinanceStudentProfile $profile, array $row): bool {
         $cutoff = $this->freshStartCutoff($profile->school_id);
-        return $cutoff !== null && $row['created_at']->greaterThanOrEqualTo($cutoff);
+        return ($cutoff !== null && $row['created_at']->greaterThanOrEqualTo($cutoff))
+            || $this->uatExceptions->allows($profile, $row);
     }
 
     public function freshStartCutoff(int $schoolId): ?CarbonImmutable {
