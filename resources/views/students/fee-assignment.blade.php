@@ -58,8 +58,8 @@
     </div>
 @endsection
 
-@push('scripts')
+@section('script')
 <script>
 (() => { const refresh = () => { let total = 0; document.querySelectorAll('.fee-item:checked').forEach((el) => total += Number(el.dataset.amount || 0)); document.getElementById('fee-total').textContent = total.toFixed(2); }; document.querySelectorAll('.fee-item').forEach((el) => el.addEventListener('change', refresh)); refresh(); })();
 </script>
-@endpush
+@endsection
