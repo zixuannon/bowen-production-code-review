@@ -35,6 +35,11 @@ final class CentralFinanceCurrencySummaryService
     {
         $totals = $this->receivableZero();
         foreach ($receivables as $receivable) {
+            // Cancelled source rows remain visible for audit, but must never
+            // inflate a student's financial position or aging worklist.
+            if ((string) ($receivable->status ?? '') === 'cancelled') {
+                continue;
+            }
             $currency = CentralFinanceCurrency::normalize((string) $receivable->currency);
             $due = (float) $receivable->amount_due;
             $paid = (float) $receivable->amount_paid;
@@ -53,6 +58,9 @@ final class CentralFinanceCurrencySummaryService
             $aging[$currency] = array_fill_keys(['current', '1_30', '31_60', '61_90', 'over_90'], 0.0);
         }
         foreach ($receivables as $receivable) {
+            if ((string) ($receivable->status ?? '') === 'cancelled') {
+                continue;
+            }
             $currency = CentralFinanceCurrency::normalize((string) $receivable->currency);
             $outstanding = max(0.0, (float) $receivable->amount_due - (float) $receivable->amount_paid);
             $days = $receivable->due_date ? $receivable->due_date->diffInDays($today, false) : 0;
