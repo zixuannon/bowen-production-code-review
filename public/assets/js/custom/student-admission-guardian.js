@@ -23,41 +23,6 @@ $(function () {
         firstName: $('#guardian_first_name'), lastName: $('#guardian_last_name'),
         mobile: $('#guardian_mobile'), gender: $('#guardian_gender'),
     };
-    // Browser automation intentionally redacts contact and hidden-control
-    // values. Publish only boolean integrity state on the admission selector so
-    // UAT can prove the real page's canonical state without disclosing any
-    // Guardian information.
-    const updateDiagnosticState = () => {
-        const values = {
-            guardian_id_present: Boolean(field($canonical.id.val())),
-            guardian_email_present: Boolean(field($canonical.email.val())),
-            guardian_first_name_present: Boolean(field($canonical.firstName.val())),
-            guardian_last_name_present: Boolean(field($canonical.lastName.val())),
-            guardian_mobile_present: Boolean(field($canonical.mobile.val())),
-            guardian_gender_present: Boolean(field($canonical.gender.val())),
-        };
-        const formData = new FormData($form[0]);
-        const formDataFieldPresence = Object.fromEntries(Object.keys(values).map((key) => {
-            const fieldName = key.replace(/_present$/, '');
-            return [key, Boolean(field(formData.get(fieldName)))];
-        }));
-        const existingRequired = [
-            'guardian_id_present', 'guardian_email_present', 'guardian_first_name_present',
-            'guardian_last_name_present', 'guardian_mobile_present', 'guardian_gender_present',
-        ];
-        const newRequired = existingRequired.filter((key) => key !== 'guardian_id_present');
-        const required = state.mode === 'existing' ? existingRequired : (state.mode === 'new' ? newRequired : []);
-        const diagnostic = {
-            controller_initialized: true,
-            mode: state.mode,
-            selected_guardian_id: state.guardianId ? true : false,
-            ...values,
-            canonical_state_complete: required.length > 0 && required.every((key) => values[key]),
-            formdata_field_presence_complete: required.length > 0 && required.every((key) => formDataFieldPresence[key]),
-        };
-        $search.attr('data-guardian-admission-diagnostic', JSON.stringify(diagnostic));
-        return diagnostic;
-    };
     // Admission's canonical fields are plain form controls. Write both their
     // live and default values from this one controller so a legacy form reset
     // or a Select2 redraw cannot leave an Existing Guardian visibly selected
@@ -121,7 +86,6 @@ $(function () {
         writeCanonical($canonical.gender, 'male');
         setDisplayGender('male', false);
         clearImage();
-        updateDiagnosticState();
     };
     const applyStateToForm = () => {
         writeCanonical($canonical.mode, state.mode);
@@ -137,7 +101,6 @@ $(function () {
             clearImage();
             $('#guardian-image-preview').attr('src', field(guardian.image));
             $('#guardian_image').siblings('span').find('button').prop('disabled', true);
-            updateDiagnosticState();
             return;
         }
         if (state.mode === 'new') {
@@ -148,7 +111,6 @@ $(function () {
             $canonical.mobile.prop('readonly', false);
             writeCanonical($canonical.gender, displayGender());
             setDisplayGender(displayGender(), false);
-            updateDiagnosticState();
             return;
         }
         clearCanonicalFields();
@@ -221,12 +183,10 @@ $(function () {
                 return;
             }
             applyStateToForm();
-            updateDiagnosticState();
             return;
         }
         if (state.mode === 'new' && isEmail(state.email) && selectedTagEmail() === state.email) {
             applyStateToForm();
-            updateDiagnosticState();
             return;
         }
         showError('Select an existing Guardian or enter a new Guardian email before submitting.');
