@@ -570,6 +570,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         /*** Students ***/
         Route::group(['prefix' => 'students'], static function () {
+            Route::get('{studentId}/finance', [StudentFeeAssignmentController::class, 'summary'])->name('students.finance.show');
             Route::get('{studentId}/fee-assignment', [StudentFeeAssignmentController::class, 'show'])->name('students.fee-assignment.show');
             Route::post('{studentId}/fee-assignment/draft', [StudentFeeAssignmentController::class, 'saveDraft'])->name('students.fee-assignment.draft');
             Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');

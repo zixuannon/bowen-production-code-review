@@ -79,7 +79,7 @@
                                         @endforeach
                                         {{-- End admission form fields --}}
 
-                                        @canany(['student-edit','student-delete','fees-create'])
+                                        @canany(['student-list','student-edit','student-delete','fees-create'])
                                             <th data-events="studentEvents" class="align-button text-center" scope="col" data-field="operate" data-escape="false">{{ __('action') }}</th>
                                         @endcanany
                                     </tr>

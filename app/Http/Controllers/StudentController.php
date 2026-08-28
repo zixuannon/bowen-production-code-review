@@ -371,6 +371,9 @@ class StudentController extends Controller
             if (Auth::user()->can('student-delete')) {
                 $operate .= BootstrapTableService::trashButton(route('student.trash', $row->user_id));
             }
+            if (Auth::user()->can('student-list') || Auth::user()->can('student-create') || Auth::user()->can('student-edit') || Auth::user()->can('fees-create')) {
+                $operate .= BootstrapTableService::button('fa fa-line-chart', route('students.finance.show', $row->id), ['btn-gradient-info'], ['title' => __('Student Finance')]);
+            }
             if (Auth::user()->can('fees-create')) {
                 $operate .= BootstrapTableService::button('fa fa-money', route('students.fee-assignment.show', $row->id), ['btn-gradient-primary'], ['title' => __('Set Up Student Fees')]);
             }

@@ -6,7 +6,7 @@
     <div class="content-wrapper">
         <div class="page-header d-flex justify-content-between align-items-center">
             <h3 class="page-title">{{ __('Student Fee Setup') }}</h3>
-            <a class="btn btn-outline-secondary" href="{{ route('students.index') }}">{{ __('Back to Student') }}</a>
+            <a class="btn btn-outline-secondary" href="{{ route('students.finance.show', $student->id) }}">{{ __('Back to Student') }}</a>
         </div>
         @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
         <div class="card mb-3"><div class="card-body">
@@ -51,6 +51,7 @@
             <div class="card mt-3"><div class="card-body"><h5>{{ __('Assigned Total') }}: {{ number_format($assignment->items->where('status','active')->sum('amount_snapshot'), 2) }}</h5>
                 <div class="text-muted">{{ __('Academic Year') }} {{ $assignment->academic_year_id }} · {{ __('Confirmed') }} {{ $assignment->confirmed_at }} · {{ __('Central Finance Status') }}: {{ ($assignmentSync[$assignment->id] ?? 'pending') === 'synced' ? __('Synced') : __('Sync Pending / Requires Retry') }}</div>
                 <ul class="mb-0">@foreach($assignment->items as $item)<li>{{ $item->description_snapshot }} — {{ number_format($item->amount_snapshot, 2) }} {{ $item->currency_snapshot }}</li>@endforeach</ul>
+                @if(($assignmentSync[$assignment->id] ?? 'pending') === 'synced' && ($finance['profile']->id ?? null))<a class="btn btn-sm btn-outline-primary mt-2" href="{{ route('students.finance.show', $student->id) }}">{{ __('View Student Finance') }}</a>@endif
                 @if(($assignmentSync[$assignment->id] ?? 'pending') === 'synced' && $canCollect && ($finance['profile']->id ?? null))<a class="btn btn-sm btn-theme mt-2" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}">{{ __('Collect Payment Now') }}</a>@elseif(($assignmentSync[$assignment->id] ?? 'pending') === 'synced')<p class="small text-muted mt-2 mb-0">{{ __('Fees assigned successfully. Finance collection must be completed by a School Accountant or Head Finance.') }}</p>@endif
             </div></div>
         @endforeach

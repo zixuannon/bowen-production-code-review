@@ -12,6 +12,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -26,6 +27,7 @@ final class StudentFeeAssignmentService
     public function availableItems(Students $student): Collection
     {
         $this->assertStudentShape($student);
+        $classId = $this->studentClassId($student);
         $assigned = StudentFeeAssignmentItem::query()
             ->where('source_type', StudentFeeAssignmentItem::FEES_CLASS_TYPE)
             ->where('status', StudentFeeAssignmentItem::ACTIVE)
@@ -33,7 +35,7 @@ final class StudentFeeAssignmentService
             ->pluck('source_id')->map(fn ($id) => (string) $id)->all();
 
         $query = FeesClassType::query()->with(['fee', 'fees_type'])
-            ->where('class_id', $student->class_id)
+            ->where('class_id', $classId)
             ->where('school_id', $student->school_id)
             ->whereNotIn('id', $assigned);
         if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
@@ -48,7 +50,7 @@ final class StudentFeeAssignmentService
             'school_id' => $student->school_id,
             'student_id' => $student->id,
             'academic_year_id' => $student->session_year_id,
-            'class_id' => $student->class_id,
+            'class_id' => $this->studentClassId($student),
             'status' => StudentFeeAssignment::DRAFT,
         ])->latest('id')->first();
     }
@@ -74,7 +76,7 @@ final class StudentFeeAssignmentService
         return DB::transaction(function () use ($student, $selected): StudentFeeAssignment {
             $assignment = $this->latestDraft($student) ?? StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
-                'academic_year_id' => $student->session_year_id, 'class_id' => $student->class_id, 'assignment_type' => StudentFeeAssignment::INITIAL, 'status' => StudentFeeAssignment::DRAFT,
+                'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student), 'assignment_type' => StudentFeeAssignment::INITIAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
             // Drafts are the only mutable records. Confirmed snapshots are never rebuilt.
             $assignment->items()->delete();
@@ -97,7 +99,7 @@ final class StudentFeeAssignmentService
         return DB::transaction(function () use ($student, $selected, $optional): StudentFeeAssignment {
             $assignment = StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
-                'academic_year_id' => $student->session_year_id, 'class_id' => $student->class_id,
+                'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student),
                 'assignment_type' => StudentFeeAssignment::ADDITIONAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
             foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id)));
@@ -108,7 +110,8 @@ final class StudentFeeAssignmentService
     public function confirm(Students $student, User $actor, string $assignmentUuid): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
-        $assignment = DB::transaction(function () use ($student, $actor, $assignmentUuid): StudentFeeAssignment {
+        try {
+            $assignment = DB::transaction(function () use ($student, $actor, $assignmentUuid): StudentFeeAssignment {
             $assignment = StudentFeeAssignment::query()->with('items')->where([
                 'uuid' => $assignmentUuid, 'school_id' => $student->school_id, 'student_id' => $student->id,
             ])->lockForUpdate()->firstOrFail();
@@ -116,9 +119,28 @@ final class StudentFeeAssignmentService
             if ($assignment->status !== StudentFeeAssignment::DRAFT || $assignment->items->isEmpty()) {
                 throw ValidationException::withMessages(['assignment' => 'A non-empty draft assignment is required before confirmation.']);
             }
+            foreach ($assignment->items->where('status', StudentFeeAssignmentItem::ACTIVE) as $item) {
+                DB::table('student_fee_assignment_source_locks')->insert([
+                    'school_id' => $student->school_id,
+                    'student_id' => $student->id,
+                    'academic_year_id' => $student->session_year_id,
+                    'source_type' => $item->source_type,
+                    'source_id' => (string) $item->source_id,
+                    'student_fee_assignment_item_id' => $item->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
             $assignment->update(['status' => StudentFeeAssignment::CONFIRMED, 'confirmed_at' => now(), 'confirmed_by' => $actor->id]);
             return $assignment->fresh('items');
-        });
+            });
+        } catch (QueryException $exception) {
+            if (str_contains(strtolower($exception->getMessage()), 'student_fee_assignment_source_lock')) {
+                throw ValidationException::withMessages(['assignment' => 'This fee is already assigned to this Student for the selected academic year.']);
+            }
+
+            throw $exception;
+        }
         // Central outages cannot roll back the tenant source-of-truth. The established publisher logs a deferred retry.
         $this->publisher->studentFeeAssignmentConfirmed((int) $student->school_id, (int) $student->id);
         return $assignment;
@@ -140,9 +162,18 @@ final class StudentFeeAssignmentService
 
     private function assertStudentShape(Students $student): void
     {
-        if (!$student->school_id || !$student->class_id || !$student->session_year_id) {
+        if (!$student->school_id || !$this->studentClassId($student) || !$student->session_year_id) {
             throw ValidationException::withMessages(['student' => 'Student must have a School, class, and academic year before fee setup.']);
         }
+    }
+
+    private function studentClassId(Students $student): int
+    {
+        if ((int) $student->class_id > 0) {
+            return (int) $student->class_id;
+        }
+
+        return (int) ($student->class_section?->class_id ?? $student->class_section()->value('class_id'));
     }
 
     private function assertActor(Students $student, User $actor): void

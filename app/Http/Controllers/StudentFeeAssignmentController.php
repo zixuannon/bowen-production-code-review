@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Students;
+use App\Models\StudentFeeAssignment;
 use App\Services\ResponseService;
 use App\Services\CentralFinanceStudentReadBridge;
 use App\Services\CentralFinanceWorkspaceService;
@@ -42,6 +43,23 @@ final class StudentFeeAssignmentController extends Controller
             'assignmentSync' => $assignmentSync,
             'canCollect' => $canCollect,
         ]);
+    }
+
+    public function summary(int $studentId): View
+    {
+        ResponseService::noAnyPermissionThenRedirect(['student-list', 'student-create', 'student-edit', 'fees-create']);
+        $student = $this->student($studentId);
+        $student->load(['user', 'class', 'class_section', 'feeAssignments.items']);
+        $assignments = $student->feeAssignments()
+            ->with(['items', 'student'])
+            ->where('status', StudentFeeAssignment::CONFIRMED)
+            ->latest('confirmed_at')
+            ->get();
+        $finance = $this->finance->forStudent($student);
+        $canSetup = Auth::user()?->can('fees-create') ?? false;
+        $canCollect = $this->canCollectForStudent($student);
+
+        return view('students.finance-summary', compact('student', 'assignments', 'finance', 'canSetup', 'canCollect'));
     }
 
     public function saveDraft(Request $request, int $studentId): RedirectResponse
