@@ -29,7 +29,7 @@ final class StudentFeeAssignmentService
         $assigned = StudentFeeAssignmentItem::query()
             ->where('source_type', StudentFeeAssignmentItem::FEES_CLASS_TYPE)
             ->where('status', StudentFeeAssignmentItem::ACTIVE)
-            ->whereHas('assignment', fn ($query) => $query->where('student_id', $student->id)->where('status', StudentFeeAssignment::CONFIRMED))
+            ->whereHas('assignment', fn ($query) => $query->where('student_id', $student->id)->where('academic_year_id', $student->session_year_id)->where('status', StudentFeeAssignment::CONFIRMED))
             ->pluck('source_id')->map(fn ($id) => (string) $id)->all();
 
         $query = FeesClassType::query()->with(['fee', 'fees_type'])
@@ -53,6 +53,12 @@ final class StudentFeeAssignmentService
         ])->latest('id')->first();
     }
 
+    /** @return Collection<int, FeesClassType> */
+    public function availableAdditionalItems(Students $student): Collection
+    {
+        return $this->availableItems($student)->where('optional', true)->values();
+    }
+
     /** @param list<mixed> $requestedOptionalIds */
     public function saveDraft(Students $student, User $actor, array $requestedOptionalIds): StudentFeeAssignment
     {
@@ -68,13 +74,33 @@ final class StudentFeeAssignmentService
         return DB::transaction(function () use ($student, $selected): StudentFeeAssignment {
             $assignment = $this->latestDraft($student) ?? StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
-                'academic_year_id' => $student->session_year_id, 'class_id' => $student->class_id, 'status' => StudentFeeAssignment::DRAFT,
+                'academic_year_id' => $student->session_year_id, 'class_id' => $student->class_id, 'assignment_type' => StudentFeeAssignment::INITIAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
             // Drafts are the only mutable records. Confirmed snapshots are never rebuilt.
             $assignment->items()->delete();
             foreach ($selected as $template) {
                 $assignment->items()->create($this->snapshot($template));
             }
+            return $assignment->fresh('items');
+        });
+    }
+
+    /** @param list<mixed> $requestedOptionalIds */
+    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds): StudentFeeAssignment
+    {
+        $this->assertActor($student, $actor);
+        $optional = $this->availableAdditionalItems($student)->keyBy('id');
+        $selected = collect($requestedOptionalIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values();
+        if ($selected->isEmpty() || $selected->diff($optional->keys())->isNotEmpty()) {
+            throw ValidationException::withMessages(['optional_fee_ids' => 'Select one eligible optional fee for this Student.']);
+        }
+        return DB::transaction(function () use ($student, $selected, $optional): StudentFeeAssignment {
+            $assignment = StudentFeeAssignment::create([
+                'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
+                'academic_year_id' => $student->session_year_id, 'class_id' => $student->class_id,
+                'assignment_type' => StudentFeeAssignment::ADDITIONAL, 'status' => StudentFeeAssignment::DRAFT,
+            ]);
+            foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id)));
             return $assignment->fresh('items');
         });
     }

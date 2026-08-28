@@ -12,8 +12,10 @@ final class StudentFeeAssignment extends Model
     public const DRAFT = 'draft';
     public const CONFIRMED = 'confirmed';
     public const CANCELLED = 'cancelled';
+    public const INITIAL = 'initial';
+    public const ADDITIONAL = 'additional';
 
-    protected $fillable = ['uuid', 'school_id', 'student_id', 'academic_year_id', 'class_id', 'status', 'confirmed_at', 'confirmed_by'];
+    protected $fillable = ['uuid', 'school_id', 'student_id', 'academic_year_id', 'class_id', 'assignment_type', 'status', 'confirmed_at', 'confirmed_by'];
     protected $casts = ['confirmed_at' => 'datetime'];
 
     public function items()

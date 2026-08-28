@@ -573,6 +573,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::get('{studentId}/fee-assignment', [StudentFeeAssignmentController::class, 'show'])->name('students.fee-assignment.show');
             Route::post('{studentId}/fee-assignment/draft', [StudentFeeAssignmentController::class, 'saveDraft'])->name('students.fee-assignment.draft');
             Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');
+            Route::post('{studentId}/fee-assignment/add-fee', [StudentFeeAssignmentController::class, 'addFee'])->name('students.fee-assignment.add-fee');
             Route::get('create-bulk', [StudentController::class, 'createBulkData'])->name('students.create-bulk-data');
             Route::post('store-bulk', [StudentController::class, 'storeBulkData'])->name('students.store-bulk-data');
 

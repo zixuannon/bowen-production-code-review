@@ -303,10 +303,11 @@
 @section('script')
     <script src="{{ asset('/assets/js/custom/student-admission-guardian.js') }}?v={{ hash_file('sha256', public_path('assets/js/custom/student-admission-guardian.js')) }}"></script>
     <script>
-        function formSuccessFunction() {
+        function formSuccessFunction(response) {
+            const next = response && response.next_url;
             setTimeout(() => {
-                window.location.reload()
-            }, 3000);
+                window.location.href = next || window.location.href;
+            }, 700);
         }
 
         $('#admission_date').datepicker({

@@ -122,8 +122,8 @@ class StudentController extends Controller
                 'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/',
                 'guardian_first_name' => 'required|string',
                 'guardian_last_name' => 'required|string',
-                // A phone number is an identifier, not a numeric amount. Keep its
-                // string representation intact so a leading zero is not lost.
+            // A phone number is an identifier, not a numeric amount. Keep its
+            // string representation intact so a leading zero is not lost.
                 'guardian_mobile' => ['required', 'string', 'regex:/^\\d{6,15}$/'],
                 'guardian_gender' => 'required|in:male,female',
                 'guardian_image' => 'nullable|mimes:jpg,jpeg,png|max:4096',
@@ -195,10 +195,11 @@ class StudentController extends Controller
                 $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image);
             }
             $is_send_notification = true;
-            $userService->createStudentUser($request->first_name, $request->last_name, $request->admission_no, $request->mobile, $request->dob, $request->gender, $request->image, $request->class_section_id, $request->admission_date, $request->current_address, $request->permanent_address, $sessionYear->id, $guardian->id, $request->extra_fields ?? [], $request->status ?? 0, $is_send_notification);
+            $studentUser = $userService->createStudentUser($request->first_name, $request->last_name, $request->admission_no, $request->mobile, $request->dob, $request->gender, $request->image, $request->class_section_id, $request->admission_date, $request->current_address, $request->permanent_address, $sessionYear->id, $guardian->id, $request->extra_fields ?? [], $request->status ?? 0, $is_send_notification);
+            $studentId = $this->student->builder()->where('user_id', $studentUser->id)->value('id');
 
             DB::commit();
-            ResponseService::successResponse('Data Stored Successfully');
+            ResponseService::successResponse('Data Stored Successfully', null, ['next_url' => $studentId ? route('students.fee-assignment.show', $studentId) : null]);
         } catch (Throwable $e) {
             // IF Exception is TypeError and message contains Mail keywords then email is not sent successfully
             if (
