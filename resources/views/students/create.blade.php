@@ -241,6 +241,8 @@
                                 <div class="form-group col-sm-12 col-md-12">
                                     <label for="guardian_email">{{ __('guardian') . ' ' . __('email') }} <span class="text-danger">*</span></label>
                                     <select class="guardian-admission-search form-control" id="guardian_admission_guardian_id" data-guardian-admission-controller="true"></select>
+                                    <input type="hidden" id="guardian_mode" name="guardian_mode" value="empty">
+                                    <input type="hidden" id="guardian_id" name="guardian_id" value="">
                                     <input type="hidden" id="guardian_email" name="guardian_email">
                                 </div>
 
@@ -255,20 +257,23 @@
                                 </div>
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">
                                     <label>{{ __('guardian') . ' ' . __('mobile') }} <span class="text-danger">*</span></label>
-                                    {!! Form::number('guardian_mobile', null, ['placeholder' => __('guardian') . ' ' . __('mobile'), "pattern"=>"[0-9]{6,15}", "title"=>"Please enter a valid mobile number (6-15 digits)", 'class' => 'form-control remove-number-increment', 'id' => 'guardian_mobile','min' => 1 ]) !!}
+                                    {!! Form::tel('guardian_mobile', null, ['placeholder' => __('guardian') . ' ' . __('mobile'), 'inputmode' => 'numeric', 'pattern' => '[0-9]{6,15}', 'title' => 'Please enter a valid mobile number (6-15 digits)', 'class' => 'form-control', 'id' => 'guardian_mobile', 'maxlength' => 15]) !!}
                                 </div>
                                 <div class="form-group col-sm-12 col-md-12 col-lg-12">
                                     <label>{{ __('gender') }} <span class="text-danger">*</span></label><br>
+                                    {{-- The selected existing Guardian keeps the display radios disabled.
+                                         Keep its canonical value in one enabled field so it is included in FormData. --}}
+                                    <input type="hidden" id="guardian_gender" name="guardian_gender" value="male">
                                     <div class="d-flex">
                                         <div class="form-check form-check-inline">
                                             <label class="form-check-label">
-                                                <input type="radio" checked name="guardian_gender" value="male" id="guardian_male">
+                                                <input type="radio" checked name="guardian_gender_display" value="male" id="guardian_male">
                                                 {{ __('male') }}
                                             </label>
                                         </div>
                                         <div class="form-check form-check-inline">
                                             <label class="form-check-label">
-                                                <input type="radio" name="guardian_gender" value="female" id="guardian_female">
+                                                <input type="radio" name="guardian_gender_display" value="female" id="guardian_female">
                                                 {{ __('female') }}
                                             </label>
                                         </div>
@@ -308,5 +313,16 @@
             format: "dd-mm-yyyy",
             rtl: isRTL()
         }).datepicker("setDate", 'now');
+
+        // The shared validation configuration classifies legacy mobile inputs
+        // as numbers. Admission keeps this field as a digit string so leading
+        // zeroes survive FormData and persistence.
+        $('#guardian_mobile').rules('remove', 'number');
+        $('#guardian_mobile').rules('add', {
+            digits: true,
+            minlength: 6,
+            maxlength: 15,
+            messages: {digits: 'Please enter a valid mobile number (6-15 digits).'}
+        });
     </script>
 @endsection

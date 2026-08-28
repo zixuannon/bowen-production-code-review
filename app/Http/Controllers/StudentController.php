@@ -99,7 +99,7 @@ class StudentController extends Controller
     public function store(Request $request)
     {
         ResponseService::noPermissionThenRedirect(['student-create']);
-        $request->validate([
+        $rules = [
             'first_name' => 'required',
             'last_name' => 'required',
             'mobile' => 'nullable|regex:/^([0-9\s\-\+\(\)]*)$/|digits_between:6,15',
@@ -110,16 +110,39 @@ class StudentController extends Controller
             'admission_no' => 'required|unique:users,email',
             'admission_date' => 'required',
             'session_year_id' => 'required|numeric',
-            'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/',
-            'guardian_first_name' => 'required|string',
-            'guardian_last_name' => 'required|string',
-            'guardian_mobile' => 'required|numeric|digits_between:6,15',
-            'guardian_gender' => 'required|in:male,female',
-            'guardian_image' => 'nullable|mimes:jpg,jpeg,png|max:4096',
+            'guardian_mode' => 'required|in:new,existing',
+            'guardian_id' => 'nullable|integer',
             'status' => 'nullable|in:0,1',
-        ], [
+        ];
+
+        if ($request->input('guardian_mode') === 'existing') {
+            $rules['guardian_id'] = 'required|integer';
+        } else {
+            $rules += [
+                'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/',
+                'guardian_first_name' => 'required|string',
+                'guardian_last_name' => 'required|string',
+                // A phone number is an identifier, not a numeric amount. Keep its
+                // string representation intact so a leading zero is not lost.
+                'guardian_mobile' => ['required', 'string', 'regex:/^\\d{6,15}$/'],
+                'guardian_gender' => 'required|in:male,female',
+                'guardian_image' => 'nullable|mimes:jpg,jpeg,png|max:4096',
+            ];
+        }
+
+        $request->validate($rules, [
             'guardian_email.regex' => 'Please enter a valid guardian email (e.g. user@example.com).',
         ]);
+
+        if ($request->input('guardian_mode') === 'new'
+            && $this->user->guardian()->withTrashed()->where('email', $request->guardian_email)->exists()) {
+            // New admission data must never silently update an existing
+            // Guardian. The caller must choose that Guardian through the
+            // tenant-scoped existing-Guardian flow instead.
+            throw ValidationException::withMessages([
+                'guardian_email' => 'This Guardian already exists. Please select the existing Guardian from search.',
+            ]);
+        }
 
         try {
             DB::beginTransaction();
@@ -151,16 +174,26 @@ class StudentController extends Controller
                 }
             }
 
-            // Get the user details from the guardian details & identify whether that user is guardian or not. if not the guardian and has some other role then show appropriate message in response
-            $guardianUser = $this->user->builder()->whereHas('roles', function ($q) {
-                $q->where('name', '!=', 'Guardian');
-            })->where('email', $request->guardian_email)->withTrashed()->first();
-            if ($guardianUser) {
-                ResponseService::errorResponse("Email ID is already taken for Other Role");
-            }
             $userService = app(UserService::class);
             $sessionYear = $this->sessionYear->findById($request->session_year_id);
-            $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image);
+
+            if ($request->input('guardian_mode') === 'existing') {
+                // The selected id is the only browser-supplied existing-Guardian
+                // identity. Resolve it again through the active tenant repository
+                // and deliberately ignore submitted profile values.
+                $guardian = $this->user->guardian()->findOrFail($request->guardian_id);
+            } else {
+                // New Guardian remains the only path that creates a Guardian
+                // from submitted profile data. Existing email reuse was
+                // rejected before the transaction begins.
+                $guardianUser = $this->user->builder()->whereHas('roles', function ($q) {
+                    $q->where('name', '!=', 'Guardian');
+                })->where('email', $request->guardian_email)->withTrashed()->first();
+                if ($guardianUser) {
+                    ResponseService::errorResponse("Email ID is already taken for Other Role");
+                }
+                $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image);
+            }
             $is_send_notification = true;
             $userService->createStudentUser($request->first_name, $request->last_name, $request->admission_no, $request->mobile, $request->dob, $request->gender, $request->image, $request->class_section_id, $request->admission_date, $request->current_address, $request->permanent_address, $sessionYear->id, $guardian->id, $request->extra_fields ?? [], $request->status ?? 0, $is_send_notification);
 

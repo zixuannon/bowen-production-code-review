@@ -49,6 +49,14 @@ $('#create-form,.create-form,.create-form-without-reset').on('submit', function 
     submitButtonElement.val(please_wait).attr('disabled', true);
 
     setTimeout(() => {
+        // Page modules may synchronize their own canonical hidden fields
+        // immediately before this shared handler snapshots FormData. The hook
+        // stays generic: a page can cancel only its own invalid submit state.
+        const beforeFormData = new CustomEvent('eschool:before-form-data', { cancelable: true });
+        if (!this.dispatchEvent(beforeFormData)) {
+            submitButtonElement.val(submitButtonText).attr('disabled', false);
+            return;
+        }
         let data = new FormData(this);
         let preSubmitFunction = $(this).data('pre-submit-function');
         if (preSubmitFunction) {
