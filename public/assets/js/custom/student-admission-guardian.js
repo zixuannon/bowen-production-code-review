@@ -23,6 +23,19 @@ $(function () {
         firstName: $('#guardian_first_name'), lastName: $('#guardian_last_name'),
         mobile: $('#guardian_mobile'), gender: $('#guardian_gender'),
     };
+    // Admission's canonical fields are plain form controls. Write both their
+    // live and default values from this one controller so a legacy form reset
+    // or a Select2 redraw cannot leave an Existing Guardian visibly selected
+    // while its submit payload is empty.
+    const writeCanonical = ($input, value, options = {}) => {
+        const normalized = field(value);
+        $input.each((_index, input) => {
+            input.value = normalized;
+            input.defaultValue = normalized;
+            if (Object.prototype.hasOwnProperty.call(options, 'readonly')) input.readOnly = options.readonly;
+        });
+        return $input;
+    };
     const displayGender = () => $('input[name="guardian_gender_display"]:checked').val() || 'male';
     const selectedId = () => field($search.val());
     const selectedTagEmail = () => {
@@ -64,26 +77,26 @@ $(function () {
         $('#guardian_female').prop('checked', gender === 'female').prop('disabled', locked);
     };
     const clearCanonicalFields = () => {
-        $canonical.mode.val('empty');
-        $canonical.id.val('');
-        $canonical.email.val('');
-        $canonical.firstName.val('').prop('readonly', false);
-        $canonical.lastName.val('').prop('readonly', false);
-        $canonical.mobile.val('').prop('readonly', false);
-        $canonical.gender.val('male');
+        writeCanonical($canonical.mode, 'empty');
+        writeCanonical($canonical.id, '');
+        writeCanonical($canonical.email, '');
+        writeCanonical($canonical.firstName, '', {readonly: false});
+        writeCanonical($canonical.lastName, '', {readonly: false});
+        writeCanonical($canonical.mobile, '', {readonly: false});
+        writeCanonical($canonical.gender, 'male');
         setDisplayGender('male', false);
         clearImage();
     };
     const applyStateToForm = () => {
-        $canonical.mode.val(state.mode);
+        writeCanonical($canonical.mode, state.mode);
         if (state.mode === 'existing') {
             const guardian = state.guardian;
-            $canonical.id.val(field(guardian.id));
-            $canonical.email.val(field(guardian.email));
-            $canonical.firstName.val(field(guardian.first_name)).prop('readonly', true);
-            $canonical.lastName.val(field(guardian.last_name)).prop('readonly', true);
-            $canonical.mobile.val(field(guardian.mobile)).prop('readonly', true);
-            $canonical.gender.val(field(guardian.gender));
+            writeCanonical($canonical.id, guardian.id);
+            writeCanonical($canonical.email, guardian.email);
+            writeCanonical($canonical.firstName, guardian.first_name, {readonly: true});
+            writeCanonical($canonical.lastName, guardian.last_name, {readonly: true});
+            writeCanonical($canonical.mobile, guardian.mobile, {readonly: true});
+            writeCanonical($canonical.gender, guardian.gender);
             setDisplayGender(field(guardian.gender), true);
             clearImage();
             $('#guardian-image-preview').attr('src', field(guardian.image));
@@ -91,12 +104,12 @@ $(function () {
             return;
         }
         if (state.mode === 'new') {
-            $canonical.id.val('');
-            $canonical.email.val(field(state.email));
+            writeCanonical($canonical.id, '');
+            writeCanonical($canonical.email, state.email);
             $canonical.firstName.prop('readonly', false);
             $canonical.lastName.prop('readonly', false);
             $canonical.mobile.prop('readonly', false);
-            $canonical.gender.val(displayGender());
+            writeCanonical($canonical.gender, displayGender());
             setDisplayGender(displayGender(), false);
             return;
         }
@@ -118,7 +131,7 @@ $(function () {
         abortPending();
         const currentGeneration = state.generation;
         state.mode = 'existing'; state.guardianId = field(id); state.guardian = null; delete state.email;
-        clearError(); clearCanonicalFields(); $canonical.mode.val('existing'); $canonical.id.val(state.guardianId); $search.attr('data-guardian-admission-controller-state', 'loading'); setBusy(true);
+        clearError(); clearCanonicalFields(); writeCanonical($canonical.mode, 'existing'); writeCanonical($canonical.id, state.guardianId); $search.attr('data-guardian-admission-controller-state', 'loading'); setBusy(true);
         const request = $.ajax({
             url: `${baseUrl}/guardian/${encodeURIComponent(state.guardianId)}/admission-details`,
             dataType: 'json',
@@ -133,6 +146,11 @@ $(function () {
             state.guardian = guardian;
             applyStateToForm();
             $search.attr('data-guardian-admission-controller-state', 'existing-ready');
+            // Run after Select2 has completed its select/change/close cycle.
+            // This remains one authoritative renderer, not a second data path.
+            window.setTimeout(() => {
+                if (state.mode === 'existing' && state.guardian && selectedId() === state.guardianId) applyStateToForm();
+            }, 0);
         }).fail((_xhr, status) => {
             if (status === 'abort' || currentGeneration !== state.generation) return;
             state.mode = 'empty'; state.guardianId = ''; state.guardian = null;
