@@ -33,6 +33,10 @@ class FeesClassType extends Model {
         return $this->belongsTo(FeesType::class, 'fees_type_id')->withTrashed();
     }
 
+    public function fee() {
+        return $this->belongsTo(Fee::class, 'fees_id')->withTrashed();
+    }
+
     public function class() {
         return $this->belongsTo(ClassSchool::class, 'class_id')->with('medium')->withTrashed();
     }

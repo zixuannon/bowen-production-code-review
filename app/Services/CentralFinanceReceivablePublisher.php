@@ -44,6 +44,24 @@ final class CentralFinanceReceivablePublisher
         }
     }
 
+    public function studentFeeAssignmentConfirmed(int $schoolId, int $tenantStudentId): void
+    {
+        if (!$this->available() || $schoolId < 1 || $tenantStudentId < 1) return;
+        try {
+            $profile = CentralFinanceStudentProfile::on('mysql')->where([
+                'school_id' => $schoolId,
+                'tenant_student_id' => $tenantStudentId,
+            ])->first();
+            if ($profile !== null) $this->sync->syncProfile($profile);
+        } catch (Throwable $exception) {
+            Log::warning('Central Finance receivable sync deferred after student fee assignment confirmation.', [
+                'school_id' => $schoolId,
+                'tenant_student_id' => $tenantStudentId,
+                'error' => $exception::class,
+            ]);
+        }
+    }
+
     private function available(): bool
     {
         return Schema::connection('mysql')->hasTable('central_finance_receivables')

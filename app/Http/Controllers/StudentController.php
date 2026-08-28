@@ -370,6 +370,9 @@ class StudentController extends Controller
             if (Auth::user()->can('student-delete')) {
                 $operate .= BootstrapTableService::trashButton(route('student.trash', $row->user_id));
             }
+            if (Auth::user()->can('fees-create')) {
+                $operate .= BootstrapTableService::button('fa fa-money', route('students.fee-assignment.show', $row->id), ['btn-gradient-primary'], ['title' => __('Set Up Student Fees')]);
+            }
             $student_gender = $row->user->gender;
             $guardian_gender = $row->guardian->gender ?? '';
             $row->user->gender = trans(strtolower($row->user->gender));

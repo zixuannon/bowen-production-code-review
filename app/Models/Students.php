@@ -167,6 +167,11 @@ class Students extends Model
         return $this->belongsTo(User::class, 'guardian_id')->withTrashed();
     }
 
+    public function feeAssignments()
+    {
+        return $this->hasMany(StudentFeeAssignment::class, 'student_id');
+    }
+
     //    public function scopeOfTeacher($query) {
 //        $user = Auth::user();
 //        if ($user->hasRole('Teacher')) {

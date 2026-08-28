@@ -35,6 +35,13 @@ final class CentralFinanceTenantFeeAssignmentSource {
         }
         if (!$fresh->class_id) return [];
         return $this->onSchool($db,function() use($fresh): array {
+            if (Schema::connection('school')->hasTable('student_fee_assignments')
+                && Schema::connection('school')->hasTable('student_fee_assignment_items')) {
+                $assigned = $this->confirmedStudentAssignmentRows($fresh);
+                // Once a Student has a confirmed assignment, that immutable
+                // item set replaces class-wide projection for this Student.
+                if ($assigned['has_confirmed_assignment']) return $assigned['rows'];
+            }
             $hasCurrency = Schema::connection('school')->hasColumn('fees_class_types', 'fee_currency');
             // The cutoff is based on source creation, never an incidental
             // later update. A tenant without this timestamp fails closed.
@@ -55,6 +62,39 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 'updated_at'=>CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) ($r->updated_at ?? $r->source_created_at)),
             ])->all();
         });
+    }
+
+    /** @return array{has_confirmed_assignment:bool,rows:list<array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable}>} */
+    private function confirmedStudentAssignmentRows(CentralFinanceStudentProfile $profile): array
+    {
+        $assignments = DB::connection('school')->table('student_fee_assignments')
+            ->where('student_id', $profile->tenant_student_id)
+            ->where('class_id', $profile->class_id)
+            ->where('status', 'confirmed')
+            ->whereNull('deleted_at')
+            ->orderBy('id')->get(['id', 'confirmed_at']);
+        if ($assignments->isEmpty()) return ['has_confirmed_assignment' => false, 'rows' => []];
+        $rows = DB::connection('school')->table('student_fee_assignment_items')
+            ->whereIn('student_fee_assignment_id', $assignments->pluck('id'))
+            ->where('status', 'active')
+            ->where('source_type', 'fees_class_type')
+            ->orderBy('id')->get();
+        $confirmedAt = $assignments->keyBy('id');
+        return ['has_confirmed_assignment' => true, 'rows' => $rows->map(function (object $row) use ($confirmedAt): array {
+            $time = $confirmedAt->get($row->student_fee_assignment_id)->confirmed_at ?? $row->created_at;
+            $at = CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) $time);
+            return [
+                // Intentionally use the legacy FeesClassType identity, never
+                // the assignment-item UUID, so transition is no-op/safe.
+                'source_id' => (string) $row->source_id,
+                'description' => (string) $row->description_snapshot,
+                'due_date' => $row->due_date_snapshot ? (string) $row->due_date_snapshot : null,
+                'currency' => strtoupper((string) $row->currency_snapshot),
+                'amount' => (float) $row->amount_snapshot,
+                'created_at' => $at,
+                'updated_at' => $at,
+            ];
+        })->all()];
     }
 
     /** @param array{created_at:CarbonImmutable} $row */

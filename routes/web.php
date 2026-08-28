@@ -65,6 +65,7 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StaffAttendanceController;
 use App\Http\Controllers\StreamController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\StudentFeeAssignmentController;
 use App\Http\Controllers\OutstandingFeesController;
 use App\Http\Controllers\StudentLedgerController;
 use App\Http\Controllers\SubjectController;
@@ -568,6 +569,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         /*** Students ***/
         Route::group(['prefix' => 'students'], static function () {
+            Route::get('{studentId}/fee-assignment', [StudentFeeAssignmentController::class, 'show'])->name('students.fee-assignment.show');
+            Route::post('{studentId}/fee-assignment/draft', [StudentFeeAssignmentController::class, 'saveDraft'])->name('students.fee-assignment.draft');
+            Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');
             Route::get('create-bulk', [StudentController::class, 'createBulkData'])->name('students.create-bulk-data');
             Route::post('store-bulk', [StudentController::class, 'storeBulkData'])->name('students.store-bulk-data');
 
