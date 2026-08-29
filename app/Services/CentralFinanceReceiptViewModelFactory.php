@@ -83,7 +83,11 @@ final class CentralFinanceReceiptViewModelFactory
     private function logoUrl(string $path): string
     {
         if ($path === '') return asset('assets/vertical-logo.svg');
-        if (preg_match('#^https?://#i', $path) || str_starts_with($path, '/storage/')) return $path;
+        // Keep this contract aligned with the authenticated school header:
+        // relative public-disk values become /storage URLs, while already
+        // public storage paths and external URLs are never rewritten.
+        if (preg_match('#^https?://#i', $path) || str_starts_with($path, '/')) return $path;
+        if (str_starts_with($path, 'storage/')) return '/'.$path;
         return Storage::url($path);
     }
 }

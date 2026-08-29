@@ -14,6 +14,18 @@ Last updated: 2026-08-25
 
 Finance V2
 
+## Pending local change — selected-School read parity and receipt branding
+
+- A selected Central Finance School now has a strict **read** account scope:
+  dashboards, Fund Account directory/statements, reports, Standard Ledger,
+  payment exports, and document detail use that School's accounts only. Head
+  Finance retains the existing broader authorised account set only for write
+  selectors, so authorised HQ collection and funding rules are unchanged.
+- Central receipts normalize school-logo paths with the same contract as the
+  authenticated header: storage-relative paths resolve through `Storage::url`,
+  existing public storage paths and absolute URLs are preserved, and the
+  generic vertical logo is used only when no logo is configured.
+
 ## Zixuan Central Finance Fresh Start — Production Write UAT
 
 - Production active release: `3be9f22078da4d268d9e9147f1432030c1a75e84`.

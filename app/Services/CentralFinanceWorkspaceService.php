@@ -177,9 +177,12 @@ final class CentralFinanceWorkspaceService
         }
 
         if ($schoolId !== null) {
-            $query->where(function ($accounts) use ($schoolId): void {
-                $accounts->where('school_id', $schoolId)->orWhere('owner_type', CentralFinanceFundAccount::OWNER_HQ);
-            });
+            // A selected School is a strict read context. HQ accounts remain
+            // available to authorised Head Finance write flows through
+            // accessibleAccounts(), but must not inflate this School's
+            // dashboard, directory, statements, reports, or Standard Ledger.
+            $query->where('school_id', $schoolId)
+                ->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL);
         }
 
         return $query->get();

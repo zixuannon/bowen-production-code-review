@@ -34,6 +34,11 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         DB::purge('mysql'); DB::setDefaultConnection('mysql');
         Schema::connection('mysql')->create('schools', fn (Blueprint $t) => [$t->id(),$t->string('name'),$t->string('code')->nullable(),$t->string('database_name')->nullable(),$t->softDeletes(),$t->timestamps()]);
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(),$t->string('first_name')->nullable(),$t->string('last_name')->nullable(),$t->string('email')->nullable(),$t->unsignedBigInteger('school_id')->nullable(),$t->softDeletes(),$t->timestamps()]);
+        // The header composer may safely inspect Spatie roles even for a
+        // role-less Central School Staff principal. Keep this isolated SQLite
+        // fixture structurally compatible with the normal central schema.
+        Schema::connection('mysql')->create('roles', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('guard_name')->default('web'), $t->timestamps()]);
+        Schema::connection('mysql')->create('model_has_roles', fn (Blueprint $t) => [$t->unsignedBigInteger('role_id'), $t->string('model_type'), $t->unsignedBigInteger('model_id')]);
         Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
         Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
         foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_24_000002_create_central_finance_school_staff_identities.php'] as $migration) (require database_path('migrations/'.$migration))->up();
@@ -140,7 +145,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertNotContains('semester', $keys);
     }
 
-    public function test_central_read_models_are_paginated_and_never_disclose_an_unassigned_fund_account(): void
+    public function test_school_read_models_are_paginated_and_include_the_school_ledger_beyond_operation_account_scope(): void
     {
         $hidden = $this->account('ZIX-PRIVATE', 'Zixuan Private', 1);
         CentralFinanceLedgerEntry::on('mysql')->create(['entry_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'entry_date'=>'2026-08-23', 'occurred_at'=>now(), 'source_type'=>'central_payment', 'source_id'=>'visible', 'source_line'=>1, 'transaction_type'=>'operating_income', 'currency'=>'MMK', 'money_in'=>10, 'money_out'=>0, 'operating_income'=>10, 'operating_expense'=>0, 'created_by'=>$this->head->id]);
@@ -149,8 +154,10 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);
 
         $view = app(CentralFinanceWorkspaceController::class)->ledger(new Request());
-        $this->assertSame([$this->zixuan->id], $view->getData()['ledger']->pluck('fund_account_id')->all());
-        $this->assertSame(10.0, $view->getData()['totals']['money_in']);
+        // Fund Account scope governs money movement. School-scoped read models
+        // intentionally include the whole School ledger for reconciliation.
+        $this->assertSame([$this->zixuan->id, $hidden->id], $view->getData()['ledger']->pluck('fund_account_id')->sort()->values()->all());
+        $this->assertSame(30.0, $view->getData()['currencyTotals']['MMK']['money_in']);
         $this->assertInstanceOf(\Illuminate\Contracts\Pagination\LengthAwarePaginator::class, $view->getData()['ledger']);
     }
 
@@ -165,6 +172,53 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         }
         $this->assertFalse(Schema::connection('mysql')->hasTable('fees_paid'));
         $this->assertFalse(Schema::connection('mysql')->hasTable('expenses'));
+    }
+
+    public function test_selected_school_read_models_exclude_hq_but_keep_hq_available_in_all_schools_and_operation_scope(): void
+    {
+        $hq = CentralFinanceFundAccount::on('mysql')->create([
+            'account_uuid' => (string) Str::uuid(), 'group_id' => 1,
+            'account_code' => 'HQ-MMK', 'account_name' => 'HQ MMK',
+            'owner_type' => CentralFinanceFundAccount::OWNER_HQ,
+            'school_id' => null, 'currency' => 'MMK', 'opening_balance' => 0,
+            'is_active' => true,
+        ]);
+        $this->grantAccount($this->head, $hq);
+        foreach ([[$this->zixuan, 20], [$hq, 11]] as [$account, $amount]) {
+            CentralFinanceLedgerEntry::on('mysql')->create([
+                'entry_uuid' => (string) Str::uuid(), 'school_id' => 1,
+                'fund_account_id' => $account->id, 'entry_date' => '2026-08-29',
+                'occurred_at' => now(), 'source_type' => 'central_payment',
+                'source_id' => 'scope-'.$account->id, 'source_line' => 1,
+                'transaction_type' => 'operating_income', 'currency' => 'MMK',
+                'money_in' => $amount, 'money_out' => 0, 'operating_income' => $amount,
+                'operating_expense' => 0, 'created_by' => $this->head->id,
+            ]);
+        }
+
+        $workspace = app(CentralFinanceWorkspaceService::class);
+        $this->actingAs($this->head);
+        $allSchools = app(CentralFinanceWorkspaceController::class)->dashboard();
+        $this->assertSame(['HQ-MMK', 'TIM-CASH', 'ZIX-CASH'], $allSchools->getData()['accounts']->pluck('account_code')->sort()->values()->all());
+        $this->assertSame(31.0, $allSchools->getData()['currencyTotals']['MMK']['money_in']);
+
+        $workspace->enterSchool($this->head, 1);
+        $headZixuan = app(CentralFinanceWorkspaceController::class)->dashboard();
+        $this->assertSame(['ZIX-CASH'], $headZixuan->getData()['accounts']->pluck('account_code')->all());
+        $this->assertSame(20.0, $headZixuan->getData()['currencyTotals']['MMK']['money_in']);
+        $this->assertSame(['HQ-MMK', 'ZIX-CASH'], $headZixuan->getData()['operationAccounts']->pluck('account_code')->sort()->values()->all());
+        $directory = app(CentralFinanceWorkspaceController::class)->accounts(new Request());
+        $this->assertSame(['ZIX-CASH'], $directory->getData()['accountDirectory']->pluck('account_code')->all());
+        $ledger = app(CentralFinanceWorkspaceController::class)->ledger(new Request());
+        $this->assertSame([$this->zixuan->id], $ledger->getData()['ledger']->pluck('fund_account_id')->unique()->values()->all());
+        $reports = app(CentralFinanceWorkspaceController::class)->reports(new Request());
+        $this->assertSame($headZixuan->getData()['currencyTotals'], $reports->getData()['currencyTotals']);
+
+        $this->actingAs($this->zixuanAccountant);
+        $workspace->enterSchool($this->zixuanAccountant, 1);
+        $mayZixuan = app(CentralFinanceWorkspaceController::class)->dashboard();
+        $this->assertSame($headZixuan->getData()['currencyTotals'], $mayZixuan->getData()['currencyTotals']);
+        $this->assertSame(['ZIX-CASH'], $mayZixuan->getData()['accounts']->pluck('account_code')->all());
     }
 
     public function test_student_fee_selector_uses_only_current_school_profiles_and_open_receivables(): void
@@ -190,8 +244,9 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame([301], $school->getData()['paymentProfiles']->pluck('id')->all());
         $this->assertSame(['Open tuition'], $school->getData()['paymentReceivables']->pluck('description')->all());
         $this->assertSame(['Primary A'], $school->getData()['paymentClasses']->all());
-        $this->assertSame(200.0, (float) $school->getData()['paymentProfiles']->first()->total_due);
-        $this->assertSame(100.0, (float) $school->getData()['paymentProfiles']->first()->total_paid);
+        $profileTotals = $school->getData()['paymentProfiles']->first()->currency_totals;
+        $this->assertSame(200.0, (float) $profileTotals['MMK']['due']);
+        $this->assertSame(100.0, (float) $profileTotals['MMK']['paid']);
 
         $filtered = $controller->receivables(new Request(['payment_class' => 'Primary A', 'payment_student' => 'ZIX-301']));
         $this->assertSame([301], $filtered->getData()['paymentProfiles']->pluck('id')->all());
