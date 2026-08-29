@@ -18,6 +18,7 @@ use App\Models\CentralFinanceReimbursementRequest;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceSchoolCutover;
 use App\Models\CentralFinanceUser;
+use App\Models\School;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceLedgerPresentationService;
 use App\Services\CentralFinanceFundAccountAdministrationService;
@@ -1163,6 +1164,12 @@ final class CentralFinanceWorkspaceController extends Controller
     private function receiptData(int $payment): array
     {
         [$actor, $school] = $this->currentReadSchool();
+        // The scoped workspace collection intentionally selects only identity
+        // columns (id/name/code). A receipt also needs non-financial School
+        // presentation fields, so rehydrate this *already-authorized* School
+        // from the trusted central registry rather than weakening the scope
+        // query or falling back to a generic logo.
+        $school = School::on('mysql')->findOrFail($school->id);
         $accounts = $this->workspace->readableAccounts($actor, $school->id);
         $document = CentralFinancePayment::on('mysql')->with([
             'receipt', 'refunds.fundAccount', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
