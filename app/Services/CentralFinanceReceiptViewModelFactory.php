@@ -91,8 +91,14 @@ final class CentralFinanceReceiptViewModelFactory
 
         // Receipts can be opened or printed outside the normal dashboard
         // navigation. Anchor a storage-relative School logo to the configured
-        // application origin so the image does not inherit an alternate static
-        // host from an older release context.
-        return url(Storage::url($path));
+        // application origin and use the file's stable modification time to
+        // invalidate a stale static-image response after a release switch.
+        $url = url(Storage::url($path));
+        try {
+            $version = Storage::disk('public')->lastModified($path);
+            return $version > 0 ? $url.'?v='.$version : $url;
+        } catch (\Throwable) {
+            return $url;
+        }
     }
 }

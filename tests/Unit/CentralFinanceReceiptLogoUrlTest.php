@@ -13,7 +13,12 @@ final class CentralFinanceReceiptLogoUrlTest extends TestCase
         $method = new \ReflectionMethod(CentralFinanceReceiptViewModelFactory::class, 'logoUrl');
         $url = $method->invoke(app(CentralFinanceReceiptViewModelFactory::class), $path);
 
-        $this->assertStringEndsWith($expected, $url);
+        if (str_starts_with($expected, 'http')) {
+            $this->assertSame($expected, $url);
+            return;
+        }
+
+        $this->assertSame($expected, parse_url($url, PHP_URL_PATH));
     }
 
     public static function logoPaths(): array
