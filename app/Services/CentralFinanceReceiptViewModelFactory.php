@@ -87,7 +87,12 @@ final class CentralFinanceReceiptViewModelFactory
         // relative public-disk values become /storage URLs, while already
         // public storage paths and external URLs are never rewritten.
         if (preg_match('#^https?://#i', $path) || str_starts_with($path, '/')) return $path;
-        if (str_starts_with($path, 'storage/')) return '/'.$path;
-        return Storage::url($path);
+        if (str_starts_with($path, 'storage/')) return url('/'.$path);
+
+        // Receipts can be opened or printed outside the normal dashboard
+        // navigation. Anchor a storage-relative School logo to the configured
+        // application origin so the image does not inherit an alternate static
+        // host from an older release context.
+        return url(Storage::url($path));
     }
 }
