@@ -3,14 +3,8 @@
 @section('title', __('Central Finance'))
 
 @section('css')
-<style>
-    .central-finance-context { border: 1px solid #e4e7ed; border-radius: .45rem; background: #fff; padding: .55rem .8rem; }
-    .central-finance-context .form-control { min-width: 190px; }
-    .central-finance-module { font-size: .8rem; font-weight: 700; color: #1f5f87; }
-    .central-finance-form-card { max-width: 960px; }
-    .central-finance-form-card .form-control { min-height: 38px; }
-    @media (max-width: 575.98px) { .central-finance-context .form-control { min-width: 0; width: 100%; } }
-</style>
+@include('central-finance.partials.foundation-styles')
+<style>.central-finance-form-card { max-width: 960px; } .central-finance-form-card .form-control { min-height: 38px; }</style>
 @endsection
 
 @section('content')
@@ -20,24 +14,17 @@
 @php($writeAvailabilityMessage = __('Select an authorized School before recording a Central Finance transaction.'))
 @php($moduleTitle = match($page) { 'dashboard' => __('财务总览'), 'receivables' => request('view') === 'adjustments' ? __('应收调整 / 减免') : __('应收与欠费'), 'payments' => request('view') === 'refunds' ? __('退款 / 冲回') : __('收款 / 收据'), 'student-ledger' => __('学生账本'), 'other-income' => __('其他收入'), 'expenses' => __('支出记录'), 'reimbursements' => __('报销申请'), 'accounts' => __('资金账户'), 'account-report' => __('账户报表'), 'account-statement', 'account-statements' => __('账户流水'), 'transfers' => __('银行转账'), 'handovers' => __('资金交接'), 'funding' => __('总部 / 校区调拨'), 'reports' => __('校区 / 集团报表'), 'ledger' => __('标准流水账'), 'audits' => __('审计日志'), 'imports' => __('导入批次'), 'exports' => __('导出中心'), 'staff' => __('Finance Staff / Scope'), 'categories' => __('收支分类'), default => $operation === 'income' ? __('其他收入') : ($operation === 'reimbursement' ? __('报销申请') : __('支出记录')) })
 @php($moduleGroup = match($page) { 'dashboard' => __('财务总览'), 'receivables', 'payments', 'student-ledger' => __('学生收费'), 'other-income', 'expenses', 'reimbursements', 'categories' => __('收入与支出'), 'accounts', 'account-report', 'account-statement', 'account-statements', 'transfers', 'handovers', 'funding' => __('资金管理'), 'ledger', 'audits', 'reports', 'imports', 'exports' => __('报表与数据'), 'staff' => __('设置与开账'), default => __('收入与支出') })
-<div class="content-wrapper">
-    <h1 class="sr-only">{{ __('Central Finance') }}</h1>
-    <div class="central-finance-context d-flex flex-wrap align-items-center justify-content-between mb-3">
-        <div class="mr-3 mb-2 mb-md-0">
-            <nav class="central-finance-module d-block" aria-label="{{ __('Breadcrumb') }}">{{ __('Central Finance') }} <span aria-hidden="true">›</span> {{ $moduleGroup }} <span aria-hidden="true">›</span> {{ $moduleTitle }}</nav>
-            <strong>@if($school)<span class="sr-only">{{ __('Operating School:') }}</span>{{ __('当前校区：').$school->name }}@else{{ __('All Schools · Read-only') }}@endif</strong>
-            @if($school)<span class="badge badge-{{ $cutoverStatus === 'central' ? 'success' : ($cutoverStatus === 'ready' ? 'info' : 'warning') }} ml-1">{{ __($cutoverStatus) }}</span>@endif
-        </div>
-        <div class="d-flex flex-wrap align-items-center">
-            @if($canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.enter') }}" class="mr-2 mb-1">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}">
+@php($moduleDescription = null)
+<div class="content-wrapper central-finance-page">
+    <x-central-finance.page-header :title="$moduleTitle" :description="$moduleDescription" :school="$school" :status="$cutoverStatus" :eyebrow="$moduleGroup">
+        @if($canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.enter') }}">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}">
                 <select name="school_id" class="form-control form-control-sm" onchange="this.form.submit()" aria-label="{{ __('Switch School') }}">
                     <option value="">{{ __('切换校区') }}</option>
                     @foreach($schools as $availableSchool)<option value="{{ $availableSchool->id }}" @selected($school && $school->id === $availableSchool->id)>{{ $availableSchool->name }}</option>@endforeach
                 </select>
             </form>@endif
-            @if($school && $canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.exit') }}" class="mb-1">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}"><button class="btn btn-sm btn-outline-secondary">{{ __('返回全部校区') }}</button></form>@endif
-        </div>
-    </div>
+        @if($school && $canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.exit') }}">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}"><button class="btn btn-sm btn-outline-secondary">{{ __('返回全部校区') }}</button></form>@endif
+    </x-central-finance.page-header>
 
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -58,6 +45,17 @@
             @endif
 
             @if($page === 'receivables')
+                <div class="card mb-3"><div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3"><div><h5 class="mb-1">{{ __('Receivables') }}</h5></div><a class="btn btn-sm btn-theme mt-2 mt-md-0" href="{{ route('central-finance.student-collection.index') }}">{{ __('Student Collection') }}</a></div>
+                    @if(!$school)
+                        <div class="alert alert-info mb-0">{{ __('All Schools is read-only. Select an authorized School before searching students or collecting payment.') }}</div>
+                    @endif
+                    @include('central-finance.partials.currency-receivable-totals', ['receivableCurrencyTotals' => $receivableCurrencyTotals])
+                </div></div>
+                <div class="mb-3">@foreach($aging as $currency => $buckets)<div class="card mb-2"><div class="card-body py-2"><strong>{{ $currency }}</strong><div class="row mt-2">@foreach(['current' => __('Current'), '1_30' => __('1–30 overdue'), '31_60' => __('31–60 overdue'), '61_90' => __('61–90 overdue'), 'over_90' => __('Over 90 overdue')] as $bucket => $label)<div class="col-6 col-md mb-2"><small class="cf-summary-card__label">{{ $label }}</small><strong>{{ number_format($buckets[$bucket] ?? 0,2) }} {{ $currency }}</strong></div>@endforeach</div></div></div>@endforeach</div>
+                <div class="card"><div class="card-body"><form method="GET" class="form-row cf-filter-bar"><div class="col-md-5 mb-2"><label>{{ __('Student') }}</label><input class="form-control" name="student" value="{{ $filters['student'] ?? '' }}" placeholder="{{ __('Student name or admission number') }}"></div><div class="col-md-3 mb-2"><label>{{ __('Currency') }}</label><select class="form-control" name="currency"><option value="">{{ __('All currencies') }}</option>@foreach(['MMK','USD','CNY'] as $currency)<option value="{{ $currency }}" @selected(($filters['currency'] ?? '') === $currency)>{{ $currency }}</option>@endforeach</select></div><div class="col-md-2 mb-2"><label>{{ __('Status') }}</label><select class="form-control" name="receivable_status"><option value="">{{ __('Open and overdue') }}</option>@foreach(['open','partial','paid','waived','cancelled'] as $status)<option value="{{ $status }}" @selected(($filters['receivable_status'] ?? '') === $status)>{{ __($status) }}</option>@endforeach</select></div><div class="col-md-2 mb-2 d-flex align-items-end"><button class="btn btn-outline-primary btn-block">{{ __('Filter') }}</button></div></form><div class="table-responsive"><table class="table cf-data-table cf-mobile-card-table mb-0"><thead><tr><th>{{ __('Student') }}</th><th>{{ __('Class') }}</th><th>{{ __('Due date') }}</th><th>{{ __('Days overdue') }}</th><th>{{ __('Outstanding') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>@forelse($receivables as $r)@php($outstanding = max(0, $r->amount_due - $r->amount_paid))@php($daysOverdue = $outstanding > 0 && $r->due_date && $r->due_date->copy()->startOfDay()->lt(today()) ? $r->due_date->copy()->startOfDay()->diffInDays(today()) : 0)<tr><td data-label="{{ __('Student') }}"><span class="cf-primary-line">{{ $r->studentProfile?->student_name ?: '—' }}</span><span class="cf-secondary-line">{{ $r->studentProfile?->admission_no ?: '—' }}</span></td><td data-label="{{ __('Class') }}">{{ trim(($r->studentProfile?->class_name ?? '').' '.($r->studentProfile?->section_name ?? '')) ?: '—' }}</td><td data-label="{{ __('Due date') }}">{{ $r->due_date?->format('Y-m-d') ?: '—' }}</td><td data-label="{{ __('Days overdue') }}">{{ $daysOverdue > 0 ? $daysOverdue : '—' }}</td><td data-label="{{ __('Outstanding') }}"><strong>{{ number_format($outstanding,2) }} {{ $r->currency }}</strong></td><td data-label="{{ __('Status') }}"><span class="badge cf-status-badge badge-{{ $r->status === 'paid' ? 'success' : ($daysOverdue > 0 ? 'warning' : 'info') }}">{{ __($r->status) }}</span></td><td data-label=""><a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.student-collection.show', $r->student_profile_id) }}">{{ __('View') }}</a></td></tr>@empty<tr><td colspan="7"><div class="cf-empty-state">{{ __('No Central Receivables match the selected filters.') }}</div></td></tr>@endforelse</tbody></table></div>@if(method_exists($receivables,'links'))<div class="mt-3">{{ $receivables->links() }}</div>@endif</div></div>
+                {{-- Kept temporarily as unreachable source while the page-specific collection form is retired. The only rendered collection flow is Student Collection. --}}
+                @if(false)
                 <div class="card central-finance-form-card mb-3"><div class="card-body"><h5>{{ __('学生收费') }}</h5><p class="text-muted">{{ __('Student identity is read only from Central Student Financial Profiles synchronized from the School tenant.') }}</p>
                     @if(!$school)
                         <div class="alert alert-info mb-3">{{ __('All Schools is read-only for payment history and totals. Please select a School to collect a payment.') }}</div>
@@ -85,7 +83,7 @@
                     @endif
                 </div></div>
                 <div class="mb-3">@foreach($aging as $currency => $buckets)<div class="card mb-2"><div class="card-body py-2"><strong>{{ $currency }}</strong><div class="row mt-2">@foreach(['current' => __('Current'), '1_30' => __('1–30 overdue'), '31_60' => __('31–60 overdue'), '61_90' => __('61–90 overdue'), 'over_90' => __('Over 90 overdue')] as $bucket => $label)<div class="col-6 col-md mb-2"><small class="text-muted d-block">{{ $label }}</small><strong>{{ number_format($buckets[$bucket] ?? 0,2) }} {{ $currency }}</strong></div>@endforeach</div></div></div>@endforeach</div>
-                <div class="card"><div class="card-body"><div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0">{{ __('Receivables') }}</h5><span class="text-muted small">{{ __('Amounts are calculated from Central Receivables only.') }}</span></div><form method="GET" class="form-row mb-3"><div class="col-md-4 mb-2"><input class="form-control" name="student" value="{{ $filters['student'] ?? '' }}" placeholder="{{ __('Student name or admission number') }}"></div><div class="col-md-2 mb-2"><select class="form-control" name="currency"><option value="">{{ __('All currencies') }}</option>@foreach(['MMK','USD','CNY'] as $currency)<option value="{{ $currency }}" @selected(($filters['currency'] ?? '') === $currency)>{{ $currency }}</option>@endforeach</select></div><div class="col-md-3 mb-2"><select class="form-control" name="receivable_status"><option value="">{{ __('All statuses') }}</option>@foreach(['open','partial','paid','waived','cancelled'] as $status)<option value="{{ $status }}" @selected(($filters['receivable_status'] ?? '') === $status)>{{ __($status) }}</option>@endforeach</select></div><div class="col-md-2 mb-2"><button class="btn btn-outline-primary">{{ __('Filter') }}</button></div></form><div class="table-responsive"><table class="table mb-0"><thead><tr><th>{{ __('Student') }}</th><th>{{ __('Description') }}</th><th>{{ __('Due date') }}</th><th>{{ __('Due') }}</th><th>{{ __('Paid') }}</th><th>{{ __('Outstanding') }}</th><th>{{ __('Status') }}</th><th></th></tr></thead><tbody>@forelse($receivables as $r)<tr><td>{{ $r->studentProfile?->student_name }}</td><td>{{ $r->description }}</td><td>{{ $r->due_date?->format('Y-m-d') ?: '—' }}</td><td>{{ number_format($r->amount_due,2) }} {{ $r->currency }}</td><td>{{ number_format($r->amount_paid,2) }} {{ $r->currency }}</td><td>{{ number_format($r->amount_due-$r->amount_paid,2) }} {{ $r->currency }}</td><td>{{ __($r->status) }}</td><td><a class="btn btn-sm btn-outline-secondary" href="{{ route('central-finance.receivables.show', $r->id) }}">{{ __('Details') }}</a></td></tr>@empty<tr><td colspan="8" class="text-center text-muted">{{ __('No Central Receivables match the selected filters.') }}</td></tr>@endforelse</tbody></table></div>@if(method_exists($receivables,'links'))<div class="mt-3">{{ $receivables->links() }}</div>@endif</div></div>
+                @endif
             @endif
 
             @if(in_array($page, ['expenses', 'other-income'], true))

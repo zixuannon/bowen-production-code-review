@@ -99,16 +99,33 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $route = app('router')->getRoutes()->getByName('central-finance.dashboard');
         $this->assertContains('centralFinance', $route->middleware());
         $this->assertNotContains('SwitchDatabase', $route->middleware());
-        $view=(string)file_get_contents(resource_path('views/central-finance/workspace.blade.php'));
-        $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringContainsString('当前校区：',$view); $this->assertStringContainsString('@php($operation',$view); $this->assertStringContainsString('$showWriteForm',$view); $this->assertStringContainsString('<fieldset @disabled($writeDisabled)>',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
+        $view=(string)file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
+        $this->assertStringContainsString('Central Finance',$view); $this->assertStringContainsString('All Schools',$view); $this->assertStringContainsString('<x-central-finance.page-header',$view); $this->assertStringContainsString('@php($operation',$view); $this->assertStringContainsString('$showWriteForm',$view); $this->assertStringContainsString('<fieldset @disabled($writeDisabled)>',$view); $this->assertStringNotContainsString('Operating Context',$view); $this->assertStringNotContainsString('tenant identity',$view);
         $this->assertStringContainsString('All Schools is read-only for payment history and totals',$view);
-        $this->assertStringContainsString('central-payment-student',$view);
-        $this->assertStringContainsString('central-payment-receivable',$view);
-        $this->assertStringContainsString('当前没有待缴项目',$view);
-        $this->assertStringContainsString('Payment collection is unavailable until Central cutover',$view);
+        $this->assertStringContainsString('cf-mobile-card-table',$view);
+        $this->assertStringContainsString("route('central-finance.student-collection.show'",$view);
+        $this->assertStringContainsString("route('central-finance.student-collection.index')",$view);
         foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
         }
+    }
+
+    public function test_student_collection_views_use_the_single_guided_collection_flow_and_currency_safe_cards(): void
+    {
+        $root = dirname(__DIR__, 2).'/resources/views/central-finance/student-collection/';
+        $index = (string) file_get_contents($root.'index.blade.php');
+        $show = (string) file_get_contents($root.'show.blade.php');
+        $review = (string) file_get_contents($root.'review.blade.php');
+
+        foreach ([$index, $show, $review] as $view) {
+            $this->assertStringContainsString('central-finance.partials.foundation-styles', $view);
+            $this->assertStringContainsString('<x-central-finance.page-header', $view);
+        }
+        $this->assertStringContainsString('currency_totals', $index);
+        $this->assertStringContainsString('currency_totals', $show);
+        $this->assertStringContainsString("route('central-finance.student-collection.review'", $show);
+        $this->assertStringContainsString("route('central-finance.student-collection.collect'", $review);
+        $this->assertStringNotContainsString("route('central-finance.payments.store')", $index);
     }
 
     public function test_central_finance_layout_does_not_query_tenant_session_years_for_a_school_scoped_principal(): void

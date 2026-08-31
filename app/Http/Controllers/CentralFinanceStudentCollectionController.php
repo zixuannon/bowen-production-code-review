@@ -65,8 +65,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $classes = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)
             ->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
         $canCollect = $this->canCollect($actor, $school->id);
+        $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect'));
+        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'cutoverStatus'));
     }
 
     public function show(int $profile): View
@@ -76,8 +77,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $profile->load(['receivables' => fn ($query) => $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy'])]);
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
         $canCollect = $this->canCollect($actor, $school->id);
+        $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect'));
+        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'cutoverStatus'));
     }
 
     public function review(int $profile, int $receivable): View
@@ -89,8 +91,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $this->storeAttempt($attemptUuid, $actor, $school->id, $profile->id, $receivable->id);
         $accounts = $this->workspace->accessibleAccounts($actor, $school->id)
             ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
+        $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.review', compact('school', 'profile', 'receivable', 'accounts', 'attemptUuid'));
+        return view('central-finance.student-collection.review', compact('school', 'profile', 'receivable', 'accounts', 'attemptUuid', 'cutoverStatus'));
     }
 
     public function collect(Request $request, int $profile, int $receivable): RedirectResponse
@@ -129,8 +132,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $payment = CentralFinancePayment::on('mysql')->with(['receipt', 'receivable.studentProfile', 'fundAccount', 'receivedBy'])
             ->where('school_id', $school->id)->findOrFail($payment);
         $receipt = $this->receiptViewModels->make($payment, $school);
+        $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt'));
+        return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt', 'cutoverStatus'));
     }
 
     /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */

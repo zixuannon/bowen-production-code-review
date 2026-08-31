@@ -16,6 +16,7 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
             "{{ __('财务管理') }}",
             "{{ __('支出管理') }}",
             "route('central-finance.dashboard')",
+            "route('central-finance.student-collection.index')",
             "route('central-finance.receivables')",
             "route('central-finance.other-income.index')",
             "route('central-finance.expenses.index')",
@@ -36,6 +37,8 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         $this->assertStringContainsString('resolveTrustedSession($centralStaffContext)', $view);
         $this->assertStringContainsString("contains('id', (int) (\$centralStaffContext['school_id'] ?? 0))", $view);
         $this->assertStringContainsString('$centralFinanceActor = Auth::user();', $view);
+        $this->assertStringContainsString("{{ __('Student Collection') }}", $view);
+        $this->assertStringContainsString("{{ __('Receivables') }}", $view);
 
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
         $this->assertStringContainsString('@if($school && $canAccessAllSchools)', $workspace);
