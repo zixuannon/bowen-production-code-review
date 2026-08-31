@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 final class CentralFinanceSidebarNavigationViewTest extends TestCase
 {
-    public function test_central_finance_navigation_uses_two_collapsible_groups_and_existing_routes(): void
+    public function test_central_finance_navigation_uses_role_gated_workspace_groups_and_existing_routes(): void
     {
         $view = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/layouts/sidebar.blade.php');
 
@@ -39,6 +39,14 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         $this->assertStringContainsString('$centralFinanceActor = Auth::user();', $view);
         $this->assertStringContainsString("{{ __('Student Collection') }}", $view);
         $this->assertStringContainsString("{{ __('Receivables') }}", $view);
+        $this->assertStringContainsString('$centralIsSchoolStaffPrincipal', $view);
+        $this->assertStringContainsString('$centralIsHeadFinance', $view);
+        $this->assertStringContainsString('$centralCanMoveFunds', $view);
+        $this->assertStringContainsString('$centralCanViewSchoolReports', $view);
+        $this->assertStringContainsString('request()->routeIs(\'central-finance.student-collection.*\'', $view);
+        $this->assertStringContainsString('@if($centralIsHeadFinance)', $view);
+        $this->assertStringContainsString('@if($centralIsHeadFinance || $centralCanMoveFunds)', $view);
+        $this->assertStringContainsString("route('central-finance.accounts.statements')", $view);
 
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
         $this->assertStringContainsString('@if($school && $canAccessAllSchools)', $workspace);

@@ -7,6 +7,7 @@ use App\Models\CentralFinanceCategory;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceUser;
+use App\Models\User;
 use App\Services\CentralFinanceWorkspaceService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
@@ -34,17 +35,24 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         DB::purge('mysql'); DB::setDefaultConnection('mysql');
         Schema::connection('mysql')->create('schools', fn (Blueprint $t) => [$t->id(),$t->string('name'),$t->string('code')->nullable(),$t->string('database_name')->nullable(),$t->softDeletes(),$t->timestamps()]);
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(),$t->string('first_name')->nullable(),$t->string('last_name')->nullable(),$t->string('email')->nullable(),$t->unsignedBigInteger('school_id')->nullable(),$t->softDeletes(),$t->timestamps()]);
+        Schema::connection('mysql')->create('staffs', fn (Blueprint $t) => [$t->id(), $t->unsignedBigInteger('user_id')->nullable(), $t->timestamps()]);
         // The header composer may safely inspect Spatie roles even for a
         // role-less Central School Staff principal. Keep this isolated SQLite
         // fixture structurally compatible with the normal central schema.
         Schema::connection('mysql')->create('roles', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('guard_name')->default('web'), $t->timestamps()]);
         Schema::connection('mysql')->create('model_has_roles', fn (Blueprint $t) => [$t->unsignedBigInteger('role_id'), $t->string('model_type'), $t->unsignedBigInteger('model_id')]);
+        Schema::connection('mysql')->create('permissions', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('guard_name')->default('web'), $t->timestamps()]);
+        Schema::connection('mysql')->create('role_has_permissions', fn (Blueprint $t) => [$t->unsignedBigInteger('permission_id'), $t->unsignedBigInteger('role_id')]);
+        Schema::connection('mysql')->create('model_has_permissions', fn (Blueprint $t) => [$t->unsignedBigInteger('permission_id'), $t->string('model_type'), $t->unsignedBigInteger('model_id')]);
+        DB::connection('mysql')->table('permissions')->insert([
+            'name' => 'database-backup', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
         Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
         foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_24_000002_create_central_finance_school_staff_identities.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
         DB::connection('mysql')->table('system_settings')->insert(['name' => 'date_format', 'data' => 'd-m-Y', 'type' => 'text']);
-        DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null]]);
+        DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null],['id'=>400,'first_name'=>'School','last_name'=>'Staff','email'=>'staff@example.test','school_id'=>1]]);
         DB::connection('mysql')->table('finance_groups')->insert(['id'=>1,'code'=>'CENTRAL-QA','name'=>'Central QA','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('finance_group_schools')->insert([['group_id'=>1,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_id'=>1,'school_id'=>2,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]);
         DB::connection('mysql')->table('finance_group_users')->insert([['group_id'=>1,'central_user_id'=>100,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_id'=>1,'central_user_id'=>200,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]);
@@ -126,6 +134,61 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString("route('central-finance.student-collection.review'", $show);
         $this->assertStringContainsString("route('central-finance.student-collection.collect'", $review);
         $this->assertStringNotContainsString("route('central-finance.payments.store')", $index);
+    }
+
+    public function test_sidebar_keeps_school_accountants_in_their_daily_workspace_and_head_finance_in_the_full_workspace(): void
+    {
+        // Render the sidebar under its real Central Finance request path so the
+        // shared view composer does not try to open tenant-only settings.
+        request()->server->set('REQUEST_URI', '/central-finance');
+
+        $headRole = DB::connection('mysql')->table('roles')->insertGetId([
+            'name' => 'Head Finance', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            'role_id' => $headRole, 'model_type' => User::class, 'model_id' => $this->head->id,
+        ]);
+
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $headSidebar = view('layouts.sidebar')->render();
+        $this->assertStringContainsString(route('central-finance.other-income.index'), $headSidebar);
+        $this->assertStringContainsString(route('central-finance.audits'), $headSidebar);
+        $this->assertStringContainsString(route('central-finance.funding'), $headSidebar);
+
+        $uuid = (string) Str::uuid();
+        DB::connection('mysql')->table('users')->where('id', $this->zixuanAccountant->id)->update([
+            'school_id' => 1,
+            'central_finance_principal_type' => 'school_staff_identity',
+        ]);
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert([
+            'identity_uuid' => (string) Str::uuid(), 'school_id' => 1, 'tenant_user_uuid' => $uuid,
+            'central_user_id' => $this->zixuanAccountant->id, 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->zixuanAccountant->refresh();
+        $this->actingAs($this->zixuanAccountant);
+        Session::forget(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY);
+        $schoolSidebar = view('layouts.sidebar')->render();
+        $this->assertStringContainsString(route('central-finance.student-collection.index'), $schoolSidebar);
+        $this->assertStringContainsString(route('central-finance.accounts.statements'), $schoolSidebar);
+        $this->assertStringContainsString(route('central-finance.reports'), $schoolSidebar);
+        $this->assertStringNotContainsString(route('central-finance.other-income.index'), $schoolSidebar);
+        $this->assertStringNotContainsString(route('central-finance.audits'), $schoolSidebar);
+        $this->assertStringNotContainsString(route('central-finance.funding'), $schoolSidebar);
+
+        $superRole = DB::connection('mysql')->table('roles')->insertGetId([
+            'name' => 'Super Admin', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            'role_id' => $superRole, 'model_type' => User::class, 'model_id' => 300,
+        ]);
+
+        $this->actingAs(CentralFinanceUser::on('mysql')->findOrFail(400));
+        $this->assertStringNotContainsString(route('central-finance.dashboard'), view('layouts.sidebar')->render());
+
+        $this->actingAs(CentralFinanceUser::on('mysql')->findOrFail(300));
+        $this->assertStringNotContainsString(route('central-finance.dashboard'), view('layouts.sidebar')->render());
     }
 
     public function test_central_finance_layout_does_not_query_tenant_session_years_for_a_school_scoped_principal(): void
