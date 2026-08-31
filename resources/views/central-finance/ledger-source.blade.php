@@ -11,7 +11,7 @@
             @php($document = $source['model'])
             <dl class="row mb-0">
                 <dt class="col-sm-4">{{ __('Document number') }}</dt><dd class="col-sm-8">{{ $source['document_number'] }}</dd>
-                <dt class="col-sm-4">{{ __('Status') }}</dt><dd class="col-sm-8"><span class="badge badge-{{ in_array($source['status'], ['reversal','reversed']) ? 'warning' : 'success' }}">{{ $source['status'] }}</span></dd>
+                <dt class="col-sm-4">{{ __('Status') }}</dt><dd class="col-sm-8"><span class="badge badge-{{ in_array($source['status'], ['reversal','reversed']) ? 'warning' : 'success' }}">{{ __($source['status']) }}</span></dd>
                 <dt class="col-sm-4">{{ __('Canonical Ledger reference') }}</dt><dd class="col-sm-8">{{ $entry->entry_uuid }}</dd>
                 <dt class="col-sm-4">{{ __('Reference') }}</dt><dd class="col-sm-8">{{ $entry->reference_no ?: '—' }}</dd>
                 @if($document->getAttribute('amount') !== null)<dt class="col-sm-4">{{ __('Amount') }}</dt><dd class="col-sm-8">{{ number_format((float) $document->getAttribute('amount'), 2) }} {{ $document->getAttribute('currency') }}</dd>@endif
@@ -22,7 +22,7 @@
 
             <hr><h6>{{ __('Audit timeline') }}</h6>
             @forelse($audits as $audit)
-                <div class="border-left pl-3 mb-3"><strong>{{ $audit->action }}</strong><br><small class="text-muted">{{ $audit->created_at }} · {{ $audit->reason ?: '—' }}</small></div>
+                <div class="border-left pl-3 mb-3"><strong>{{ __($audit->action) }}</strong><br><small class="text-muted">{{ $audit->created_at }} · {{ $audit->reason ?: '—' }}</small></div>
             @empty
                 <p class="text-muted mb-0">{{ __('No additional document audit event is available for this historical source.') }}</p>
             @endforelse

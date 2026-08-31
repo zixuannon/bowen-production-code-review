@@ -17,7 +17,7 @@
 @section('content')
 <div class="content-wrapper"><div class="central-receipt card"><div class="card-body p-4">
     @include('central-finance.partials.receipt-document', ['receipt' => $receipt])
-    <h6 class="mt-4">{{ __('Audit timeline') }}</h6><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>{{ __('When') }}</th><th>{{ __('Action') }}</th><th>{{ __('Reason') }}</th></tr></thead><tbody>@forelse($audits as $audit)<tr><td>{{ $audit->created_at?->format('Y-m-d H:i') }}</td><td>{{ $audit->action }}</td><td>{{ $audit->reason ?: __('System recorded') }}</td></tr>@empty<tr><td colspan="3" class="text-muted">{{ __('Historical audit entries were not available for this receipt.') }}</td></tr>@endforelse</tbody></table></div>
+    <h6 class="mt-4">{{ __('Audit timeline') }}</h6><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>{{ __('When') }}</th><th>{{ __('Action') }}</th><th>{{ __('Reason') }}</th></tr></thead><tbody>@forelse($audits as $audit)<tr><td>{{ $audit->created_at?->format('Y-m-d H:i') }}</td><td>{{ __($audit->action) }}</td><td>{{ $audit->reason ?: __('System recorded') }}</td></tr>@empty<tr><td colspan="3" class="text-muted">{{ __('Historical audit entries were not available for this receipt.') }}</td></tr>@endforelse</tbody></table></div>
     <div class="central-receipt__actions d-flex justify-content-between mt-4"><a class="btn btn-outline-secondary" href="{{ route('central-finance.payments.index') }}">{{ __('Back to payment history') }}</a><div><span class="small text-muted mr-2">{{ __('PDF: NOT IMPLEMENTED — P1') }}</span><button type="button" class="btn btn-theme" onclick="window.print()">{{ __('打印收据') }}</button></div></div>
 </div></div></div>
 @endsection

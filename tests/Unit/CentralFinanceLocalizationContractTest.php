@@ -35,6 +35,26 @@ class CentralFinanceLocalizationContractTest extends TestCase
         }
     }
 
+    public function test_runtime_status_and_audit_values_use_translation_entries_instead_of_english_formatters(): void
+    {
+        $workspace = (string) file_get_contents($this->basePath('resources/views/central-finance/workspace.blade.php'));
+        $views = $workspace."\n".(string) file_get_contents($this->basePath('resources/views/central-finance/reimbursement-detail.blade.php'));
+        $views .= "\n".(string) file_get_contents($this->basePath('resources/views/central-finance/ledger-source.blade.php'));
+
+        self::assertStringNotContainsString('ucfirst($status)', $views);
+        self::assertStringNotContainsString('strtoupper($document->status)', $views);
+        self::assertStringContainsString('{{ __($cutoverStatus) }}', $workspace);
+        self::assertStringContainsString('{{ __($r->status) }}', $workspace);
+        self::assertStringContainsString('{{ __($document->status) }}', $workspace);
+        self::assertStringContainsString("{{ __('HQ') }}", $workspace);
+
+        $zh = json_decode((string) file_get_contents($this->basePath('resources/lang/zh-cn.json')), true, 512, JSON_THROW_ON_ERROR);
+        foreach (['central', 'legacy', 'ready', 'open', 'partial', 'paid', 'waived', 'cancelled', 'active', 'inactive', 'archived', 'confirmed', 'validation_failed'] as $status) {
+            self::assertArrayHasKey($status, $zh, "Missing zh-cn runtime status label for [{$status}].");
+            self::assertMatchesRegularExpression('/[一-龥]/u', $zh[$status]);
+        }
+    }
+
     /** @return list<string> */
     private function translationSources(): array
     {
