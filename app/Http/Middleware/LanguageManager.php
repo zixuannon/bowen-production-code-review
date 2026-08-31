@@ -26,7 +26,7 @@ class LanguageManager
         try {            
             if (Session::has('locale') && Auth::user() && Session::get('locale') == Auth::user()->language) {
                 // Admin dashboard
-                app()->setLocale(Session::get('locale'));
+                app()->setLocale($this->resolvedLocale($request, (string) Session::get('locale')));
             } else {
                 // When users log in to the system, make sure to set their preferred panel language.
                 if (Auth::user()) {
@@ -34,7 +34,7 @@ class LanguageManager
                     Session::save();
                     $language = Language::where('code', Auth::user()->language)->first();
                     Session::put('language', $language);
-                    app()->setLocale(Auth::user()->language);
+                    app()->setLocale($this->resolvedLocale($request, (string) Auth::user()->language));
                 } else {
                     // Landing page
                     if (Session::has('landing_locale')) {
@@ -55,9 +55,22 @@ class LanguageManager
             }
         } catch (\Throwable $th) {
             if (Session::has('locale')) {
-                app()->setLocale(Session::get('locale'));
+                app()->setLocale($this->resolvedLocale($request, (string) Session::get('locale')));
             }
         }
         return $next($request);
+    }
+
+    /**
+     * The installed School-language record uses the historic `cn` code, while
+     * Central Finance's audited JSON catalog is maintained as `zh-cn`.
+     * Normalize only the Central Finance workspace so legacy School pages keep
+     * their existing locale contract.
+     */
+    private function resolvedLocale(Request $request, string $locale): string
+    {
+        return $request->routeIs('central-finance.*') && strtolower($locale) === 'cn'
+            ? 'zh-cn'
+            : $locale;
     }
 }

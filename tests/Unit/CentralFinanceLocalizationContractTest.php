@@ -35,6 +35,15 @@ class CentralFinanceLocalizationContractTest extends TestCase
         }
     }
 
+    public function test_installed_cn_school_locale_uses_the_audited_zh_cn_catalog_for_central_finance(): void
+    {
+        $middleware = (string) file_get_contents($this->basePath('app/Http/Middleware/LanguageManager.php'));
+
+        self::assertStringContainsString("routeIs('central-finance.*')", $middleware);
+        self::assertStringContainsString("strtolower(\$locale) === 'cn'", $middleware);
+        self::assertStringContainsString("? 'zh-cn'", $middleware);
+    }
+
     public function test_runtime_status_and_audit_values_use_translation_entries_instead_of_english_formatters(): void
     {
         $workspace = (string) file_get_contents($this->basePath('resources/views/central-finance/workspace.blade.php'));
