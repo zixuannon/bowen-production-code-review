@@ -29,6 +29,7 @@ use Illuminate\Validation\ValidationException;
 use App\Repositories\PayrollSetting\PayrollSettingInterface;
 use App\Repositories\StaffSalary\StaffSalaryInterface;
 use App\Services\UserService;
+use App\Services\XiaobailongLifecycleNotifier;
 use Illuminate\Http\UploadedFile;
 
 class TeacherController extends Controller {
@@ -412,8 +413,11 @@ class TeacherController extends Controller {
         ResponseService::noPermissionThenSendJson('teacher-delete');
         try {
             DB::beginTransaction();
-            $this->user->findTrashedById($id)->forceDelete();
+            $teacher = $this->user->findTrashedById($id);
+            $schoolId = (int) $teacher->school_id;
+            $teacher->forceDelete();
             DB::commit();
+            app(XiaobailongLifecycleNotifier::class)->deferStatus($schoolId, (int) $id, 'left');
             ResponseService::successResponse("Data Deleted Permanently");
         } catch (Throwable $e) {
             DB::rollBack();
@@ -441,8 +445,14 @@ class TeacherController extends Controller {
                 }
             }
 
-            $this->user->builder()->where('id',$id)->withTrashed()->update(['status' => $teacher->status == 0 ? 1 : 0,'deleted_at' => $teacher->status == 1 ? now() : null]);
+            $newStatus = $teacher->status == 0 ? 1 : 0;
+            $this->user->builder()->where('id',$id)->withTrashed()->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
             DB::commit();
+            app(XiaobailongLifecycleNotifier::class)->deferStatus(
+                (int) $teacher->school_id,
+                (int) $id,
+                $newStatus === 1 ? 'active' : 'disabled'
+            );
             ResponseService::successResponse('Data Updated Successfully');
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e, 'Status methods -> Teacher controller');
@@ -455,6 +465,7 @@ class TeacherController extends Controller {
         try {
             DB::beginTransaction();
             $userIds = json_decode($request->ids);
+            $lifecycleChanges = [];
             foreach ($userIds as $userId) {
                 $teacher = $this->user->findTrashedById($userId);
                 if ($teacher->status == 0) {
@@ -468,9 +479,14 @@ class TeacherController extends Controller {
                         }
                     }
                 }
-                $this->user->builder()->where('id',$userId)->withTrashed()->update(['status' => $teacher->status == 0 ? 1 : 0,'deleted_at' => $teacher->status == 1 ? now() : null]);
+                $newStatus = $teacher->status == 0 ? 1 : 0;
+                $this->user->builder()->where('id',$userId)->withTrashed()->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
+                $lifecycleChanges[] = [(int) $teacher->school_id, (int) $userId, $newStatus === 1 ? 'active' : 'disabled'];
             }
             DB::commit();
+            foreach ($lifecycleChanges as [$schoolId, $teacherId, $accountStatus]) {
+                app(XiaobailongLifecycleNotifier::class)->deferStatus($schoolId, $teacherId, $accountStatus);
+            }
             ResponseService::successResponse("Status Updated Successfully");
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
