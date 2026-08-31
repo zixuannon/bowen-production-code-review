@@ -59,6 +59,7 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
             '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000005_create_central_finance_school_cutovers.php',
+            '2026_08_26_000001_complete_central_finance_reimbursement_workflow.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -181,7 +182,7 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
     public function test_reimbursement_is_neutral_until_head_finance_approval_then_forms_one_expense(): void
     {
         $reimbursements = app(CentralFinanceReimbursementService::class);
-        $request = $reimbursements->submit($this->zixuanAccountant, 1, $this->zixuanExpense->id, 200, 'MMK', 'ZIX-REQ-1', 'ZIX-REQ-REF', 'Classroom repair');
+        $request = $reimbursements->submit($this->zixuanAccountant, 1, $this->zixuanExpense->id, 200, 'MMK', 'ZIX-REQ-1', 'Classroom repair', 'ZIX-REQ-REF');
         $this->assertSame(CentralFinanceReimbursementRequest::PENDING, $request->status);
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
         $this->assertSame(0.0, app(CentralFinanceFundAccountBalanceService::class)->currentBalance($this->zixuanAccount));

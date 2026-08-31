@@ -68,32 +68,56 @@ final class CentralFinanceLedgerPresentationService
 
     public function direction(CentralFinanceLedgerEntry $entry): string
     {
-        if ($entry->transaction_type === CentralFinanceLedgerEntry::TYPE_INTERNAL_TRANSFER) return 'Internal Transfer';
-        return (float) $entry->money_in > 0 ? 'Money In' : 'Money Out';
+        if ($entry->transaction_type === CentralFinanceLedgerEntry::TYPE_INTERNAL_TRANSFER) return __('Internal Transfer');
+        return (float) $entry->money_in > 0 ? __('Money In') : __('Money Out');
+    }
+
+    public function sourceLabel(string $sourceType): string
+    {
+        return $this->definition($sourceType)['label'] ?? $this->label($sourceType);
+    }
+
+    public function auditDocumentLabel(string $documentType): string
+    {
+        return match ($documentType) {
+            'central_finance_payment' => __('Student Payment'),
+            'central_finance_payment_refund' => __('Payment Refund / Reversal'),
+            'central_finance_expense' => __('Expense'),
+            'central_finance_other_income' => __('Other Income'),
+            'central_finance_reimbursement' => __('Reimbursement'),
+            'central_finance_receivable' => __('Receivable'),
+            'central_finance_receivable_adjustment' => __('Adjustment / Waiver / Void'),
+            'central_finance_fund_account' => __('Fund Account'),
+            'central_finance_internal_transfer' => __('Internal Transfer'),
+            'central_finance_fund_handover' => __('Fund Handover'),
+            'central_finance_hq_funding_request' => __('HQ / School Funding'),
+            'central_finance_import_batch' => __('Import Batch'),
+            default => __('Unknown source (:source)', ['source' => str($documentType)->replace(['_', '-'], ' ')->title()->toString()]),
+        };
     }
 
     public function operating(CentralFinanceLedgerEntry $entry): string
     {
-        if ((float) $entry->operating_income !== 0.0) return 'Income';
-        if ((float) $entry->operating_expense !== 0.0) return 'Expense';
-        return 'Neutral';
+        if ((float) $entry->operating_income !== 0.0) return __('Income');
+        if ((float) $entry->operating_expense !== 0.0) return __('Expense');
+        return __('Neutral');
     }
 
     private function definition(string $sourceType): ?array
     {
         return match ($sourceType) {
-            'central_payment' => ['label' => 'Student Payment', 'query' => fn (string $id) => CentralFinancePayment::on('mysql')->where('payment_uuid', $id)->first()],
-            'central_payment_refund' => ['label' => 'Payment Refund / Reversal', 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
-            'central_expense', 'central_expense_void' => ['label' => $sourceType === 'central_expense_void' ? 'Expense Reversal' : 'Expense', 'query' => fn (string $id) => CentralFinanceExpense::on('mysql')->withTrashed()->where('expense_uuid', $id)->first()],
-            'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? 'Other Income Reversal' : 'Other Income', 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
-            'central_internal_transfer' => ['label' => 'Internal Transfer', 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->where('transfer_uuid', $id)->first()],
+            'central_payment' => ['label' => __('Student Payment'), 'query' => fn (string $id) => CentralFinancePayment::on('mysql')->where('payment_uuid', $id)->first()],
+            'central_payment_refund' => ['label' => __('Payment Refund / Reversal'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
+            'central_expense', 'central_expense_void' => ['label' => $sourceType === 'central_expense_void' ? __('Expense Reversal') : __('Expense'), 'query' => fn (string $id) => CentralFinanceExpense::on('mysql')->withTrashed()->where('expense_uuid', $id)->first()],
+            'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? __('Other Income Reversal') : __('Other Income'), 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
+            'central_internal_transfer' => ['label' => __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->where('transfer_uuid', $id)->first()],
             default => null,
         };
     }
 
     private function label(string $sourceType): string
     {
-        return str($sourceType)->replace(['_', '-'], ' ')->title()->toString();
+        return __('Unknown source (:source)', ['source' => str($sourceType)->replace(['_', '-'], ' ')->title()->toString()]);
     }
 
     private function documentNumber(CentralFinanceLedgerEntry $entry, ?Model $model): string
@@ -117,9 +141,9 @@ final class CentralFinanceLedgerPresentationService
     private function transferOrigin(CentralFinanceInternalTransfer $transfer): array
     {
         return match ($transfer->source_type) {
-            'fund_handover' => ['Fund Handover', CentralFinanceFundHandover::on('mysql')->where('handover_uuid', $transfer->source_id)->first()],
-            'hq_funding' => ['HQ / School Funding', CentralFinanceHqFundingRequest::on('mysql')->where('funding_uuid', $transfer->source_id)->first()],
-            default => ['Internal Transfer', $transfer],
+            'fund_handover' => [__('Fund Handover'), CentralFinanceFundHandover::on('mysql')->where('handover_uuid', $transfer->source_id)->first()],
+            'hq_funding' => [__('HQ / School Funding'), CentralFinanceHqFundingRequest::on('mysql')->where('funding_uuid', $transfer->source_id)->first()],
+            default => [__('Internal Transfer'), $transfer],
         };
     }
 }

@@ -9,7 +9,7 @@
         <a class="btn btn-outline-secondary" href="{{ route('central-finance.ledger') }}">{{ __('Back to Standard Ledger') }}</a>
     </div>
     <div class="card mb-3"><div class="card-body">
-        <div class="d-flex justify-content-between align-items-start"><div><h5 class="mb-1">{{ $entry->readable_source }}</h5><span class="badge badge-{{ $entry->source_status === 'reversal' || $entry->source_status === 'reversed' ? 'warning' : 'success' }}">{{ $entry->source_status }}</span></div><a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.ledger.source', $entry->id) }}">{{ __('Open source document') }}</a></div>
+        <div class="d-flex justify-content-between align-items-start"><div><h5 class="mb-1">{{ $entry->readable_source }}</h5><span class="badge badge-{{ $entry->source_status === 'reversal' || $entry->source_status === 'reversed' ? 'warning' : 'success' }}">{{ __($entry->source_status) }}</span></div><a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.ledger.source', $entry->id) }}">{{ __('Open source document') }}</a></div>
         <dl class="row mt-3 mb-0">
             <dt class="col-sm-4">{{ __('Ledger UUID') }}</dt><dd class="col-sm-8">{{ $entry->entry_uuid }}</dd>
             <dt class="col-sm-4">{{ __('Date / time') }}</dt><dd class="col-sm-8">{{ $entry->occurred_at }}</dd>

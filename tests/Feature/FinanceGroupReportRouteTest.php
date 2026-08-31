@@ -9,11 +9,14 @@ use App\Http\Middleware\CheckForMaintenanceMode;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckSchoolStatus;
 use App\Http\Middleware\CheckTwoFactorAuthenticated;
+use App\Http\Middleware\DemoMiddleware;
+use App\Http\Middleware\InitializeTenantDatabase;
 use App\Http\Middleware\LanguageManager;
 use App\Http\Middleware\MustVerifyEmail;
 use App\Http\Middleware\Status;
 use App\Http\Middleware\SwitchDatabase;
 use App\Http\Middleware\WizardSettings;
+use dacoto\LaravelWizardInstaller\Middleware\ToInstallMiddleware;
 use App\Services\FinanceGroupReportService;
 use App\Services\FinanceGroupScopeService;
 use Illuminate\Support\Facades\Config;
@@ -132,7 +135,8 @@ class FinanceGroupReportRouteTest extends TestCase
         return $this->withoutMiddleware([
             CheckRole::class, CheckSchoolStatus::class, Status::class, SwitchDatabase::class,
             MustVerifyEmail::class, CheckForMaintenanceMode::class, CheckTwoFactorAuthenticated::class,
-            WizardSettings::class, LanguageManager::class,
+            WizardSettings::class, LanguageManager::class, InitializeTenantDatabase::class,
+            DemoMiddleware::class, ToInstallMiddleware::class,
         ]);
     }
 }

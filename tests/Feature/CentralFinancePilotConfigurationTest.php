@@ -46,6 +46,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         foreach ([
             '2026_08_18_000001_create_finance_group_scope_tables.php',
             '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
+            '2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php',
             '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000003_create_central_finance_internal_transfer_documents.php',
