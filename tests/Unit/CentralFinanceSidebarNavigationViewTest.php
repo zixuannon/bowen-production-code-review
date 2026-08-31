@@ -32,6 +32,10 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
 
         $this->assertStringContainsString("hasRole('Super Admin')", $view);
         $this->assertStringNotContainsString("route('group-finance.index')", $view);
+        $this->assertStringContainsString('CentralFinanceSchoolStaffIdentityService::SESSION_KEY', $view);
+        $this->assertStringContainsString('resolveTrustedSession($centralStaffContext)', $view);
+        $this->assertStringContainsString("contains('id', (int) (\$centralStaffContext['school_id'] ?? 0))", $view);
+        $this->assertStringContainsString('$centralFinanceActor = Auth::user();', $view);
 
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
         $this->assertStringContainsString('@if($school && $canAccessAllSchools)', $workspace);

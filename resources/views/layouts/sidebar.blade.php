@@ -22,11 +22,25 @@
         @php
             $centralWorkspace = app(\App\Services\CentralFinanceWorkspaceService::class);
             try {
-                $centralFinanceActor = $centralWorkspace->actor(Auth::user());
-                $hasCentralFinanceIdentity = true;
+                // School pages retain the tenant Auth user. For the Central
+                // Finance navigation entry only, resolve the login-created,
+                // tenant-bound staff context into its Central principal.
+                // This mirrors the Central route middleware without replacing
+                // Auth::user() for the rest of the School sidebar.
+                $centralFinanceActor = Auth::user();
+                $centralStaffContext = session(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+                if ($centralStaffContext !== null) {
+                    $centralFinanceActor = app(\App\Services\CentralFinanceSchoolStaffIdentityService::class)
+                        ->resolveTrustedSession($centralStaffContext);
+                }
+                $centralFinanceActor = $centralWorkspace->actor($centralFinanceActor);
+                $centralAccessibleSchools = $centralWorkspace->accessibleSchools($centralFinanceActor);
+                $hasCentralFinanceIdentity = $centralStaffContext !== null
+                    ? $centralAccessibleSchools->contains('id', (int) ($centralStaffContext['school_id'] ?? 0))
+                    : $centralAccessibleSchools->isNotEmpty();
                 $centralCurrentSchool = $centralWorkspace->currentSchool($centralFinanceActor);
                 $centralCanAccessAllSchools = !$centralWorkspace->isSchoolStaffPrincipal($centralFinanceActor);
-                $centralCanConfigureAnySchool = $centralWorkspace->accessibleSchools($centralFinanceActor)->contains(function ($school) use ($centralFinanceActor) {
+                $centralCanConfigureAnySchool = $centralAccessibleSchools->contains(function ($school) use ($centralFinanceActor) {
                     try { app(\App\Services\CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureSchool($centralFinanceActor, $school); return true; } catch (\Throwable) { return false; }
                 });
             } catch (\Throwable) {
