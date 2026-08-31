@@ -139,6 +139,15 @@ final class CentralFinanceWorkspaceController extends Controller
         return $this->render('accounts', $request ?? request());
     }
 
+    /** Read-only statement hub over the canonical Central Ledger. */
+    public function accountStatements(?Request $request = null): View
+    {
+        $request ??= request();
+
+        return $this->render('account-statements', $request, $request->integer('fund_account_id') ?: null);
+    }
+
+
     public function transfers(?Request $request = null): View
     {
         return $this->render('transfers', $request ?? request());
@@ -828,11 +837,14 @@ final class CentralFinanceWorkspaceController extends Controller
         // Lifecycle history remains readable. Only account-directory/report pages
         // include inactive or archived accounts; transaction selectors still use
         // the active-only Workspace service above.
-        if (in_array($page, ['accounts', 'account-report', 'account-statement'], true)) {
+        if (in_array($page, ['accounts', 'account-report', 'account-statement', 'account-statements'], true)) {
             $accounts = $this->viewableFundAccounts($actor, $school?->id);
         }
         if (in_array($page, ['ledger', 'audits'], true)) {
             $accounts = $this->workspace->readableAccounts($actor, $school?->id);
+        }
+        if ($page === 'account-statements' && $requestedAccountId === null) {
+            $requestedAccountId = $accounts->first()?->id;
         }
         $schoolId=$school?->id;
         $filters=$this->validatedReadFilters($request, $school, $accounts, $schools);
@@ -842,11 +854,6 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $filteredLedger=$this->scopedLedgerQuery($school, $schools, $accounts, $filters);
         $ledger=(clone $filteredLedger)->latest('occurred_at')->paginate(25)->withQueryString();
-        // Account balances and cumulative Money In/Out must use the complete
-        // authorized account history, never the current Ledger page.
-        if ($page === 'accounts') {
-            $ledger = (clone $filteredLedger)->latest('occurred_at')->get();
-        }
         $currencyTotals = $this->currencySummaries->ledger((clone $filteredLedger)->get());
         $canOperate=false; if($school){try{$this->workspace->requireOperatingSchool($actor);$canOperate=$this->cutovers->allowsCentralWrites($school->id);}catch(AuthorizationException){$canOperate=false;}}
         $schoolUsers = $schoolId ? CentralFinanceUser::on('mysql')->whereIn('id',
@@ -925,9 +932,11 @@ final class CentralFinanceWorkspaceController extends Controller
             $accountDirectory = $directoryQuery->orderBy('account_code')->paginate(25, ['*'], 'accounts_page')->withQueryString();
             $accountDirectory->getCollection()->each(fn (CentralFinanceFundAccount $account) => $account->setAttribute('current_balance', $this->balances->currentBalance($account)));
         }
-        $statementEntries = null; $statementOpeningBalance = null; $statementTotals = null;
-        if ($page === 'account-statement' && $accountReport) {
+        $statementEntries = null; $statementOpeningBalance = null; $statementTotals = null; $statementLedgerCategories = [];
+        if (in_array($page, ['account-statement', 'account-statements'], true) && $accountReport) {
             [$statementOpeningBalance, $allStatementEntries] = $this->accountStatementData($school, $schools, $accounts, $filters, $accountReport);
+            $this->ledgerPresentation->decorate($allStatementEntries);
+            $statementLedgerCategories = $this->ledgerCategoryNames($allStatementEntries);
             $pageNumber = LengthAwarePaginator::resolveCurrentPage('statement_page');
             $perPage = 25;
             $statementEntries = new LengthAwarePaginator($allStatementEntries->forPage($pageNumber, $perPage)->values(), $allStatementEntries->count(), $perPage, $pageNumber, ['path' => $request->url(), 'pageName' => 'statement_page', 'query' => $request->query()]);

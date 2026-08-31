@@ -1227,6 +1227,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/reimbursements/{reimbursement}/withdraw', [CentralFinanceWorkspaceController::class, 'withdrawReimbursement'])->name('central-finance.reimbursements.withdraw');
     Route::post('central-finance/reimbursements/{reimbursement}/cancel', [CentralFinanceWorkspaceController::class, 'cancelReimbursement'])->name('central-finance.reimbursements.cancel');
     Route::get('central-finance/fund-accounts', [CentralFinanceWorkspaceController::class, 'accounts'])->name('central-finance.accounts');
+    Route::get('central-finance/account-statements', [CentralFinanceWorkspaceController::class, 'accountStatements'])->name('central-finance.accounts.statements');
     Route::get('central-finance/fund-accounts/{fundAccount}/report', [CentralFinanceWorkspaceController::class, 'fundAccountReport'])->name('central-finance.accounts.report');
     Route::get('central-finance/fund-accounts/{fundAccount}/statement', [CentralFinanceWorkspaceController::class, 'fundAccountStatement'])->name('central-finance.accounts.statement');
     Route::get('central-finance/fund-accounts/{fundAccount}/statement/export/{format}', [CentralFinanceWorkspaceController::class, 'exportFundAccountStatement'])->whereIn('format', ['csv','xlsx'])->name('central-finance.accounts.statement.export');

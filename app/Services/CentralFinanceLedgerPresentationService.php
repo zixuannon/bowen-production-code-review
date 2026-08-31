@@ -63,7 +63,28 @@ final class CentralFinanceLedgerPresentationService
             $entry->setAttribute('source_status', $source['status']);
             $entry->setAttribute('direction_label', $this->direction($entry));
             $entry->setAttribute('operating_label', $this->operating($entry));
+            $this->decorateFundingLeg($entry, $source['model']);
         });
+    }
+
+    /**
+     * Funding remains one neutral canonical transfer. These are read-only
+     * source/destination labels for account statements, never balance inputs.
+     */
+    private function decorateFundingLeg(CentralFinanceLedgerEntry $entry, ?Model $model): void
+    {
+        if (!$model instanceof CentralFinanceHqFundingRequest) {
+            return;
+        }
+
+        $entry->setAttribute('funding_leg', $entry->source_line === 'destination' ? 'incoming' : 'outgoing');
+        $entry->setAttribute('funding_source_account_label', $this->accountLabel($model->sourceAccount));
+        $entry->setAttribute('funding_destination_account_label', $this->accountLabel($model->destinationAccount));
+    }
+
+    private function accountLabel(?\App\Models\CentralFinanceFundAccount $account): string
+    {
+        return $account === null ? '—' : trim($account->account_name.' · '.$account->account_code);
     }
 
     public function direction(CentralFinanceLedgerEntry $entry): string
@@ -142,7 +163,7 @@ final class CentralFinanceLedgerPresentationService
     {
         return match ($transfer->source_type) {
             'fund_handover' => [__('Fund Handover'), CentralFinanceFundHandover::on('mysql')->where('handover_uuid', $transfer->source_id)->first()],
-            'hq_funding' => [__('HQ / School Funding'), CentralFinanceHqFundingRequest::on('mysql')->where('funding_uuid', $transfer->source_id)->first()],
+            'hq_funding' => [__('HQ / School Funding'), CentralFinanceHqFundingRequest::on('mysql')->with(['sourceAccount', 'destinationAccount'])->where('funding_uuid', $transfer->source_id)->first()],
             default => [__('Internal Transfer'), $transfer],
         };
     }

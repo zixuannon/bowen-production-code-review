@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 use App\Support\CentralFinanceCurrency;
 
@@ -32,5 +33,16 @@ class CentralFinanceHqFundingRequest extends Model
             $funding->funding_uuid ??= (string) Str::uuid();
             $funding->currency = CentralFinanceCurrency::normalize((string) $funding->currency);
         });
+    }
+
+    /** The two canonical accounts are retained for read-only statement context. */
+    public function sourceAccount(): BelongsTo
+    {
+        return $this->belongsTo(CentralFinanceFundAccount::class, 'source_account_id');
+    }
+
+    public function destinationAccount(): BelongsTo
+    {
+        return $this->belongsTo(CentralFinanceFundAccount::class, 'destination_account_id');
     }
 }
