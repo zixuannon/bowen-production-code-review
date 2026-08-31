@@ -251,7 +251,11 @@ class TeacherController extends Controller {
         $order = request('order', 'DESC');
         $search = request('search');
         $showDeleted = request('show_deactive');
-        $sql = $this->user->builder()->role('Teacher')->with('staff','staff.staffSalary','extra_student_details.form_field')
+        // A Teacher management row is a tenant User with both the Teacher role
+        // and its staff profile. Historical role-only users are not manageable
+        // teachers and must not make the active/inactive table fail while the
+        // row formatter reads staff fields below.
+        $sql = $this->user->builder()->role('Teacher')->whereHas('staff')->with('staff','staff.staffSalary','extra_student_details.form_field')
             ->where(function ($query) use ($search) {
                 $query->when($search, function ($query) use ($search) {
                 $query->where('id', 'LIKE', "%$search%")
