@@ -44,6 +44,8 @@ class CentralFinanceLocalizationContractTest extends TestCase
         self::assertStringNotContainsString('ucfirst($status)', $views);
         self::assertStringNotContainsString('strtoupper($document->status)', $views);
         self::assertStringContainsString('{{ __($cutoverStatus) }}', $workspace);
+        self::assertStringContainsString("__(\$check['reason']", $workspace);
+        self::assertStringContainsString("\$check['reason_params'] ?? []", $workspace);
         self::assertStringContainsString('{{ __($r->status) }}', $workspace);
         self::assertStringContainsString('{{ __($document->status) }}', $workspace);
         self::assertStringContainsString("{{ __('HQ') }}", $workspace);
@@ -52,6 +54,32 @@ class CentralFinanceLocalizationContractTest extends TestCase
         foreach (['central', 'legacy', 'ready', 'open', 'partial', 'paid', 'waived', 'cancelled', 'active', 'inactive', 'archived', 'confirmed', 'validation_failed'] as $status) {
             self::assertArrayHasKey($status, $zh, "Missing zh-cn runtime status label for [{$status}].");
             self::assertMatchesRegularExpression('/[一-龥]/u', $zh[$status]);
+        }
+    }
+
+    public function test_cutover_readiness_runtime_labels_and_reasons_have_both_locale_entries(): void
+    {
+        $readiness = (string) file_get_contents($this->basePath('app/Services/CentralFinanceCutoverReadinessService.php'));
+        $zh = json_decode((string) file_get_contents($this->basePath('resources/lang/zh-cn.json')), true, 512, JSON_THROW_ON_ERROR);
+        $en = json_decode((string) file_get_contents($this->basePath('resources/lang/en.json')), true, 512, JSON_THROW_ON_ERROR);
+
+        foreach ([
+            'Group and School scope', 'The School is not an active Finance Group member.',
+            'Active Fund Accounts', 'Create at least one active Central School Fund Account.',
+            'Opening Balance audit', 'Every active Fund Account needs a signed initial opening-balance audit matching its configured balance.',
+            'Central Head Finance', 'An authorized Head Finance user must have operate scope and an assigned Fund Account.',
+            'School Accountant', 'An active School Accountant identity with an assigned Fund Account is required.',
+            'Central Finance core services', 'Central Finance schema is incomplete: :tables.',
+            'Fresh Start receivable cutoff', 'Set an explicit approved cutover-effective datetime before Central Receivable readiness.',
+            'Student Profile reconciliation', 'Student Profile reconciliation must have missing=0, stale=0, and mismatched=0.',
+            'Student Profile reconciliation is unavailable for this trusted School source.', 'Resolve failed Student Profile sync events before cutover.',
+            'Receivable sync health', 'Receivable reconciliation must have no missing, stale, mismatched, or blocked paid sources.',
+            'Receivable reconciliation is unavailable for this trusted School source.', 'Resolve failed Receivable sync events before cutover.',
+        ] as $key) {
+            self::assertStringContainsString($key, $readiness);
+            self::assertArrayHasKey($key, $zh);
+            self::assertNotSame($key, $zh[$key]);
+            self::assertArrayHasKey($key, $en);
         }
     }
 

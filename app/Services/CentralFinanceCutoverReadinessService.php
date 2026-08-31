@@ -25,7 +25,7 @@ final class CentralFinanceCutoverReadinessService
      * Read-only, trusted-registry readiness report.  This deliberately calls
      * neither a tenant writer nor a Central Finance document service.
      *
-     * @return list<array{key:string,label:string,status:string,reason:string}>
+     * @return list<array{key:string,label:string,status:string,reason:string,reason_params:array<string,string>}>
      */
     public function checklist(School $requestedSchool): array
     {
@@ -72,7 +72,13 @@ final class CentralFinanceCutoverReadinessService
 
         $coreTables = ['central_finance_payments', 'central_finance_expenses', 'central_finance_other_incomes', 'central_finance_internal_transfers', 'central_finance_fund_handovers', 'central_finance_hq_funding_requests', 'central_finance_ledger_entries'];
         $missingCore = array_values(array_filter($coreTables, fn (string $table): bool => !Schema::connection('mysql')->hasTable($table)));
-        $checks[] = $this->check('finance_safety', 'Central Finance core services', $missingCore === [], $missingCore === [] ? '' : 'Central Finance schema is incomplete: '.implode(', ', $missingCore).'.');
+        $checks[] = $this->check(
+            'finance_safety',
+            'Central Finance core services',
+            $missingCore === [],
+            $missingCore === [] ? '' : 'Central Finance schema is incomplete: :tables.',
+            ['tables' => implode(', ', $missingCore)],
+        );
 
         return $checks;
     }
@@ -86,7 +92,7 @@ final class CentralFinanceCutoverReadinessService
         }
     }
 
-    /** @return list<array{key:string,label:string,status:string,reason:string}> */
+    /** @return list<array{key:string,label:string,status:string,reason:string,reason_params:array<string,string>}> */
     private function syncChecks(School $school): array
     {
         if (!Schema::connection('mysql')->hasTable('central_finance_receivables')
@@ -159,9 +165,15 @@ final class CentralFinanceCutoverReadinessService
         })->exists();
     }
 
-    /** @return array{key:string,label:string,status:string,reason:string} */
-    private function check(string $key, string $label, bool $passes, string $reason): array
+    /** @return array{key:string,label:string,status:string,reason:string,reason_params:array<string,string>} */
+    private function check(string $key, string $label, bool $passes, string $reason, array $reasonParameters = []): array
     {
-        return ['key' => $key, 'label' => $label, 'status' => $passes ? 'pass' : 'blocked', 'reason' => $passes ? '' : $reason];
+        return [
+            'key' => $key,
+            'label' => $label,
+            'status' => $passes ? 'pass' : 'blocked',
+            'reason' => $passes ? '' : $reason,
+            'reason_params' => $passes ? [] : $reasonParameters,
+        ];
     }
 }
