@@ -62,7 +62,11 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertNotSame(7, $identity->central_user_id);
         $this->assertSame([$principal->id], DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id', 1)->where('can_view', true)->pluck('user_id')->all());
         $this->assertSame([1], app(CentralFinanceWorkspaceService::class)->accessibleSchools($principal)->pluck('id')->all());
+        // A real School Login retains this tenant session key. Central
+        // principal resolution must still query the central directory.
+        Session::put('db_connection_name', 'school');
         $this->assertSame($principal->id, $service->resolveTrustedSession(['school_id' => 1, 'user_uuid' => $tenantUuid])->id);
+        Session::forget('db_connection_name');
         Session::forget(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY);
         $this->assertSame(1, app(CentralFinanceWorkspaceService::class)->currentSchool($principal)?->id);
         Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, 999);

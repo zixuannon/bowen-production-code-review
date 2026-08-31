@@ -99,6 +99,13 @@ class LoginController extends Controller
             DB::connection('school')->reconnect();
             DB::setDefaultConnection('school');
 
+            // User::getConnectionName() resolves the tenant connection from
+            // this session key.  Set it before the guard builds its User
+            // query; changing Laravel's default connection alone is not
+            // sufficient for a fresh School Code login.
+            Session::put('db_connection_name', 'school');
+            Auth::forgetUser();
+
             \Log::info('Switched to database: ' . DB::connection('school')->getDatabaseName());
             // Attempt login using the user's credentials within the school's database
             if (
@@ -171,6 +178,9 @@ class LoginController extends Controller
 
                 // return redirect()->intended('/dashboard');
             } else {
+                // A failed tenant attempt must not leave a guest request
+                // pinned to that tenant connection.
+                Session::forget('db_connection_name');
                 \Log::error('Login attempt failed in school database.', ['email_hash' => hash('sha256', strtolower($request->email))]);
             }
         } else {
