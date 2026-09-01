@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Models\User;
+use App\Models\CentralFinanceDocumentAudit;
 use App\Services\FinanceGroupScopeService;
 use App\Services\CentralFinanceSchoolStaffIdentityService;
 use Illuminate\Http\RedirectResponse;
@@ -160,10 +161,16 @@ class FinanceGroupController extends Controller
     public function disableCentralSchoolScope(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
         $this->assertCentralSuperAdmin();
-        $data = $request->validate(['central_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer']]);
+        $data = $request->validate(['central_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:2000']]);
         abort_unless(User::on('mysql')->whereKey((int) $data['central_user_id'])->whereNull('school_id')->exists(), 422);
         abort_unless($financeGroup->schools()->where(['school_id' => (int) $data['school_id'], 'status' => 'active'])->exists(), 422);
+        $before = DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => (int) $data['central_user_id'], 'school_id' => (int) $data['school_id']])->first();
         $this->upsertCentralScope((int) $data['central_user_id'], (int) $data['school_id'], false, false, false, false);
+        CentralFinanceDocumentAudit::on('mysql')->create([
+            'school_id' => (int) $data['school_id'], 'document_type' => 'central_finance_school_scope', 'document_id' => (int) $data['central_user_id'],
+            'action' => 'revoked', 'actor_id' => Auth::id(), 'reason' => trim($data['reason']),
+            'before_values' => $before ? (array) $before : [], 'after_values' => ['can_view' => false, 'can_operate' => false, 'can_approve_reimbursements' => false, 'can_confirm_funding' => false],
+        ]);
         return redirect()->route('finance-groups.index')->with('success', __('Central Finance School scope disabled.'));
     }
 

@@ -23,7 +23,26 @@ final class CentralFinanceImportBatchService
     public const ALLOWED_TYPES = ['expense', 'payment', 'other_income'];
     private const EXPIRY_MINUTES = 30;
 
-    public function __construct(private readonly CentralFinanceWorkspaceService $workspace) {}
+    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinanceDocumentAuditService $audits) {}
+
+    /** Discard only an unconfirmed preview. Confirmed/failed rows remain immutable audit history. */
+    public function discard(CentralFinanceUser $actor, string $token, string $reason): CentralFinanceImportBatch
+    {
+        $reason = trim($reason);
+        if ($reason === '') throw new InvalidArgumentException('An import discard reason is required.');
+        return DB::connection('mysql')->transaction(function () use ($actor, $token, $reason): CentralFinanceImportBatch {
+            $batch = CentralFinanceImportBatch::on('mysql')->where('token', $token)->lockForUpdate()->firstOrFail();
+            $this->workspace->assertCanOperateSchool($actor, (int) $batch->school_id);
+            if ((int) $batch->uploaded_by !== $actor->id || $batch->status !== CentralFinanceImportBatch::STATUS_PENDING) {
+                throw new AuthorizationException('Only the uploader may discard a pending Central Finance import preview.');
+            }
+            $before = $batch->only(['status', 'total_rows', 'valid_rows', 'error_rows', 'file_hash']);
+            $batch->update(['status' => CentralFinanceImportBatch::STATUS_DISCARDED, 'failure_reason' => $reason]);
+            $this->releaseRows($batch);
+            $this->audits->record($actor, $batch, 'import_batch', 'discarded', $reason, $before, $batch->only(['status', 'failure_reason']));
+            return $batch->fresh();
+        });
+    }
 
     /**
      * @param list<array{idempotency_key:string,data:array<string,mixed>,errors?:list<string>}> $rows

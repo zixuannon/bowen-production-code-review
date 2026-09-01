@@ -13,6 +13,7 @@ class CentralFinanceImportBatch extends Model
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
     public const STATUS_EXPIRED = 'expired';
+    public const STATUS_DISCARDED = 'discarded';
 
     protected $connection = 'mysql';
 

@@ -29,13 +29,17 @@ final class CentralFinanceFundAccountAdministrationService
     }
 
     /** @param array<int,int> $assigneeIds */
-    public function syncSchoolAssignments(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $assigneeIds): void
+    public function syncSchoolAssignments(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $assigneeIds, string $reason): void
     {
-        DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $assigneeIds): void {
+        if (trim($reason) === '') throw ValidationException::withMessages(['reason' => [__('A Fund Account scope reason is required.')]]);
+        DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $assigneeIds, $reason): void {
             $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
             $groupUser = $this->groupUserForAccount($actor, $school, $account);
             $this->assertAccountInConfigurationScope($account, $school, (int) $groupUser->group_id);
+            $before = $account->authorizedUsers()->pluck('users.id')->sort()->values()->all();
             $this->syncAssignmentsLocked($actor, $school, $account, $groupUser->group_id, $assigneeIds);
+            $after = $account->authorizedUsers()->pluck('users.id')->sort()->values()->all();
+            $this->audit($school, $account, $actor, 'scope_updated', trim($reason), ['authorized_user_ids' => $before], ['authorized_user_ids' => $after]);
         });
     }
 

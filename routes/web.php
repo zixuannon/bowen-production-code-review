@@ -1209,6 +1209,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/payment-import/template', [CentralFinanceWorkspaceController::class, 'paymentImportTemplate'])->name('central-finance.payment-import.template');
     Route::post('central-finance/payment-import/preview', [CentralFinanceWorkspaceController::class, 'previewPaymentImport'])->name('central-finance.payment-import.preview');
     Route::post('central-finance/payment-import/{batch}/confirm', [CentralFinanceWorkspaceController::class, 'confirmPaymentImport'])->name('central-finance.payment-import.confirm');
+    Route::post('central-finance/payment-import/{batch}/discard', [CentralFinanceWorkspaceController::class, 'discardPaymentImport'])->name('central-finance.payment-import.discard');
     Route::get('central-finance/operations', [CentralFinanceWorkspaceController::class, 'operating'])->name('central-finance.operations');
     Route::get('central-finance/expenses/export/{format}', [CentralFinanceWorkspaceController::class, 'exportOperatingDocuments'])->whereIn('format', ['csv','xlsx'])->defaults('type', 'expense')->name('central-finance.expenses.export');
     Route::get('central-finance/expenses', [CentralFinanceWorkspaceController::class, 'expenses'])->name('central-finance.expenses.index');
@@ -1219,6 +1220,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/expense-import/template', [CentralFinanceWorkspaceController::class, 'expenseImportTemplate'])->name('central-finance.expense-import.template');
     Route::post('central-finance/expense-import/preview', [CentralFinanceWorkspaceController::class, 'previewExpenseImport'])->name('central-finance.expense-import.preview');
     Route::post('central-finance/expense-import/{batch}/confirm', [CentralFinanceWorkspaceController::class, 'confirmExpenseImport'])->name('central-finance.expense-import.confirm');
+    Route::post('central-finance/expense-import/{batch}/discard', [CentralFinanceWorkspaceController::class, 'discardExpenseImport'])->name('central-finance.expense-import.discard');
     Route::get('central-finance/other-income/export/{format}', [CentralFinanceWorkspaceController::class, 'exportOperatingDocuments'])->whereIn('format', ['csv','xlsx'])->defaults('type', 'other_income')->name('central-finance.other-income.export');
     Route::get('central-finance/other-income', [CentralFinanceWorkspaceController::class, 'otherIncomeIndex'])->name('central-finance.other-income.index');
     Route::get('central-finance/other-income/{income}', [CentralFinanceWorkspaceController::class, 'otherIncomeDetail'])->name('central-finance.other-income.show');

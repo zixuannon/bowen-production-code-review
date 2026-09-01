@@ -32,6 +32,7 @@ use App\Services\CentralFinancePaymentRefundService;
 use App\Services\CentralFinanceReceivableAdjustmentService;
 use App\Services\CentralFinancePaymentImportService;
 use App\Services\CentralFinanceExpenseImportService;
+use App\Services\CentralFinanceImportBatchService;
 use App\Services\CentralFinanceReimbursementService;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceCutoverReadinessService;
@@ -71,6 +72,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceReceivableAdjustmentService $receivableAdjustments,
         private readonly CentralFinancePaymentImportService $paymentImports,
         private readonly CentralFinanceExpenseImportService $expenseImports,
+        private readonly CentralFinanceImportBatchService $importBatches,
         private readonly CentralFinanceOperatingDocumentService $documents,
         private readonly CentralFinanceReimbursementService $reimbursements,
         private readonly CentralFinanceInternalTransferService $transfers,
@@ -483,8 +485,8 @@ final class CentralFinanceWorkspaceController extends Controller
     public function syncFundAccountAssignments(Request $request, int $fundAccount): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
-        $data = $request->validate(['authorized_user_ids' => ['nullable', 'array'], 'authorized_user_ids.*' => ['integer', 'distinct']]);
-        $this->accountAdministration->syncSchoolAssignments($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['authorized_user_ids'] ?? []);
+        $data = $request->validate(['authorized_user_ids' => ['nullable', 'array'], 'authorized_user_ids.*' => ['integer', 'distinct'], 'reason' => ['required', 'string', 'max:2000']]);
+        $this->accountAdministration->syncSchoolAssignments($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['authorized_user_ids'] ?? [], $data['reason']);
         return back()->with('success', __('Central Fund Account assignments saved.'));
     }
 
@@ -597,6 +599,14 @@ final class CentralFinanceWorkspaceController extends Controller
         return redirect()->route('central-finance.payments.index')->with('success', __('Central payment import confirmed.'));
     }
 
+    public function discardPaymentImport(Request $request, string $batch): RedirectResponse
+    {
+        [$actor] = $this->currentOperatingContext();
+        $reason = $request->validate(['reason' => ['required', 'string', 'max:2000']])['reason'];
+        $this->importBatches->discard($actor, $batch, $reason);
+        return redirect()->route('central-finance.payments.index')->with('success', __('Central payment import preview discarded.'));
+    }
+
     public function expenseImportTemplate()
     {
         return Excel::download(new CentralExpenseImportTemplateExport(), 'central_expense_import_template_v1.xlsx');
@@ -622,6 +632,14 @@ final class CentralFinanceWorkspaceController extends Controller
         $this->expenseImports->confirm($actor, $batch);
 
         return redirect()->route('central-finance.operations', ['operation' => 'expense'])->with('success', __('Central Expense import confirmed.'));
+    }
+
+    public function discardExpenseImport(Request $request, string $batch): RedirectResponse
+    {
+        [$actor] = $this->currentOperatingContext();
+        $reason = $request->validate(['reason' => ['required', 'string', 'max:2000']])['reason'];
+        $this->importBatches->discard($actor, $batch, $reason);
+        return redirect()->route('central-finance.operations', ['operation' => 'expense'])->with('success', __('Central Expense import preview discarded.'));
     }
 
     public function expense(Request $request): RedirectResponse
