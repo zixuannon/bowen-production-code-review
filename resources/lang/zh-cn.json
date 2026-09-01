@@ -33,6 +33,8 @@
     "create_teacher": "添加教师",
     "list_teacher": "教师列表",
     "edit_teacher": "编辑教师",
+    "Students": "学生",
+    "View only": "仅查看",
     "no": "编号",
     "id": "ID",
     "name": "姓名",
@@ -2567,5 +2569,15 @@
     "Receivable sync health": "应收同步健康状态",
     "Receivable reconciliation must have no missing, stale, mismatched, or blocked paid sources.": "应收对账不得存在 missing、stale、mismatched 或已收款受阻来源。",
     "Receivable reconciliation is unavailable for this trusted School source.": "无法从该可信校区来源执行应收对账。",
-    "Resolve failed Receivable sync events before cutover.": "请在启用前处理失败的应收同步事件。"
+    "Resolve failed Receivable sync events before cutover.": "请在启用前处理失败的应收同步事件。",
+    "Posted amounts, accounts, dates, and references remain immutable. Descriptive changes and reversals are fully audited.": "已记账的金额、账户、日期和参考编号不可修改；说明性变更与冲回均会完整审计。",
+    "Review the posted document above before confirming. The original document and Ledger remain; this creates one append-only reversal.": "确认前请先核对上方已记账单据。原始单据和账本将保留；此操作只会新增一笔不可变更的冲回记录。",
+    "The original receipt remains immutable. This is its append-only correction record.": "原始收据不可修改；这是与其关联的不可变更更正记录。",
+    "Historical payments and receipts cannot be edited here. This correction remains linked to the original receipt and Ledger history.": "历史收款和收据不能在此编辑；本更正记录会持续关联原始收据和账本历史。",
+    "Review the immutable source, payment history, and any audited Central Finance corrections.": "查看不可变更的来源、收款历史以及已审计的中央财务更正记录。",
+    "Review the receivable and history above before confirming a correction. Confirmed corrections remain visible in the audit trail and do not edit historical payments.": "确认更正前请先核对应收与历史。已确认的更正会保留在审计轨迹中，且不会编辑历史收款。",
+    "Days overdue": "逾期天数",
+    "CSV / XLSX": "CSV / XLSX 文件",
+    "Incoming Funding from HQ": "收到总部拨款",
+    "Transfer to School": "调拨至校区"
 }

@@ -151,6 +151,26 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString('funding_leg', $statement);
     }
 
+    public function test_reporting_audit_and_import_workspaces_use_the_shared_read_only_presentation_contract(): void
+    {
+        $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
+        $styles = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/partials/foundation-styles.blade.php');
+
+        foreach (['reports', 'audits', 'imports', 'exports', 'ledger'] as $page) {
+            $this->assertStringContainsString("'{$page}'", $workspace);
+        }
+
+        $this->assertStringContainsString('cf-workspace-toolbar', $workspace);
+        $this->assertStringContainsString('cf-mobile-card-table', $workspace);
+        $this->assertStringContainsString('cf-file-name', $workspace);
+        $this->assertStringContainsString('cf-technical-detail', $workspace);
+        $this->assertStringContainsString('cf-export-card', $workspace);
+        $this->assertStringContainsString('cf-workspace-toolbar', $styles);
+        $this->assertStringContainsString('cf-danger-panel', $styles);
+        $this->assertStringContainsString('cf-history-notice', $styles);
+        $this->assertStringNotContainsString('payments.store', substr($workspace, strpos($workspace, "@if(\$page === 'imports')"), strpos($workspace, "@if(\$page === 'ledger')") - strpos($workspace, "@if(\$page === 'imports')")));
+    }
+
     public function test_sidebar_keeps_school_accountants_in_their_daily_workspace_and_head_finance_in_the_full_workspace(): void
     {
         // Render the sidebar under its real Central Finance request path so the

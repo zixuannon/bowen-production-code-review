@@ -2,15 +2,15 @@
 
 @section('title', __('Receivable details'))
 
+@section('css')
+@include('central-finance.partials.foundation-styles')
+@endsection
+
 @section('content')
-<div class="content-wrapper">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <div class="text-muted small">{{ __('Central Finance') }} · {{ $school->name }}</div>
-            <h4 class="mb-0">{{ __('Receivable details') }}</h4>
-        </div>
+<div class="content-wrapper central-finance-page">
+    <x-central-finance.page-header :title="__('Receivable details')" :description="__('Review the immutable source, payment history, and any audited Central Finance corrections.')" :school="$school" eyebrow="{{ __('学生收费') }}">
         <a class="btn btn-outline-secondary" href="{{ route('central-finance.receivables') }}">{{ __('Back to receivables') }}</a>
-    </div>
+    </x-central-finance.page-header>
 
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -30,9 +30,10 @@
             </div></div>
         </div>
         <div class="col-lg-5 mb-3">
-            <div class="card"><div class="card-body">
+            <div class="card cf-danger-panel"><div class="card-body">
                 <h5>{{ __('Adjustment / Waiver / Void') }}</h5>
                 <p class="small text-muted">{{ __('Changes are append-only audit records. They never alter a tenant Fee Assignment and cannot reduce the receivable below amounts already collected.') }}</p>
+                <div class="cf-history-notice mb-3">{{ __('Review the receivable and history above before confirming a correction. Confirmed corrections remain visible in the audit trail and do not edit historical payments.') }}</div>
                 @if(!$canOperate)
                     <div class="alert alert-secondary mb-0">{{ __('This Central Finance workspace is read-only for your current School and cutover status.') }}</div>
                 @elseif($document->status !== \App\Models\CentralFinanceReceivable::CANCELLED)
@@ -41,7 +42,7 @@
                         <div class="form-group"><label>{{ __('Action') }}</label><select name="type" class="form-control" id="central-receivable-adjustment-type" required><option value="adjustment">{{ __('Amount adjustment') }}</option><option value="discount">{{ __('Discount') }}</option><option value="waiver">{{ __('Waiver') }}</option><option value="void">{{ __('Void unpaid receivable') }}</option></select></div>
                         <div class="form-group" id="central-receivable-adjustment-amount"><label>{{ __('Amount delta') }}</label><input name="amount_delta" type="number" step="0.01" class="form-control" placeholder="{{ __('Use + to increase; − to reduce') }}" required><small class="form-text text-muted">{{ __('Discount and waiver must be negative. Void calculates the required reduction itself.') }}</small></div>
                         <div class="form-group"><label>{{ __('Reason') }}</label><textarea name="reason" class="form-control" maxlength="2000" required></textarea></div>
-                        <button class="btn btn-outline-primary">{{ __('Record audited adjustment') }}</button>
+                        <button class="btn btn-warning">{{ __('Record audited adjustment') }}</button>
                     </form>
                     <script>document.addEventListener('DOMContentLoaded',function(){const type=document.getElementById('central-receivable-adjustment-type'),amount=document.getElementById('central-receivable-adjustment-amount');if(!type||!amount)return;type.addEventListener('change',function(){const isVoid=this.value==='void';amount.classList.toggle('d-none',isVoid);amount.querySelector('input').required=!isVoid;});});</script>
                 @else

@@ -366,5 +366,14 @@
     "Receivable sync health": "Receivable sync health",
     "Receivable reconciliation must have no missing, stale, mismatched, or blocked paid sources.": "Receivable reconciliation must have no missing, stale, mismatched, or blocked paid sources.",
     "Receivable reconciliation is unavailable for this trusted School source.": "Receivable reconciliation is unavailable for this trusted School source.",
-    "Resolve failed Receivable sync events before cutover.": "Resolve failed Receivable sync events before cutover."
+    "Resolve failed Receivable sync events before cutover.": "Resolve failed Receivable sync events before cutover.",
+    "按校区与币种查看只读财务汇总；不同币种绝不合并计算。": "Review read-only financial totals by School and currency. Different currencies are never combined.",
+    "按来源、账户和经办人筛选不可变的中央财务记录。": "Filter immutable Central Finance records by source, account, and operator.",
+    "按时间、经办人和单据追溯操作历史；技术快照保留在次级详情中。": "Trace action history by time, operator, and document; technical snapshots remain secondary details.",
+    "查看导入批次的验证、确认与错误状态，不在此页创建财务单据。": "Review import batch validation, confirmation, and error states. This page does not create financial documents.",
+    "从已授权的只读工作台导出当前范围内的财务数据。": "Export in-scope financial data from authorized read-only workspaces.",
+    "退款和冲回保留原始收据与账本历史，不会覆盖原记录。": "Refunds and reversals preserve the original receipt and Ledger history without overwriting records.",
+    "查看收款、收据与退款历史；所有金额按币种分别显示。": "Review payment, receipt, and refund history; all amounts remain separated by currency.",
+    "查看标准账本": "View Standard Ledger",
+    "资金账户 / 账户流水": "Fund Accounts / Account Statements"
 }

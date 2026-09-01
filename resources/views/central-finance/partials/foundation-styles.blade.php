@@ -35,6 +35,18 @@
     .cf-account-card__details dt { margin: 0; color: var(--cf-muted); font-size: .72rem; font-weight: 700; }
     .cf-account-card__details dd { margin: .12rem 0 0; color: #314553; font-size: .83rem; overflow-wrap: anywhere; }
     .cf-break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+    .cf-workspace-intro { margin-top: 1rem; background: #fbfdff; }
+    .cf-workspace-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .85rem; margin-bottom: 1rem; }
+    .cf-workspace-toolbar__actions { display: flex; flex-wrap: wrap; gap: .45rem; }
+    .cf-file-name { display: block; max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cf-technical-detail summary { color: var(--cf-navy); cursor: pointer; font-size: .8rem; font-weight: 600; }
+    .cf-technical-detail pre { max-width: 30rem; max-height: 14rem; margin: .65rem 0 0; padding: .65rem; overflow: auto; border: 1px solid var(--cf-border); border-radius: .4rem; background: #f8fafc; color: #52616b; white-space: pre-wrap; }
+    .cf-export-card { display: flex; flex-direction: column; min-height: 5.5rem; justify-content: space-between; padding: 1rem; border: 1px solid var(--cf-border); border-radius: .6rem; background: #fff; color: #263b4a; text-decoration: none; }
+    .cf-export-card:hover { border-color: var(--cf-navy); color: var(--cf-navy); text-decoration: none; }
+    .cf-export-card span { color: var(--cf-muted); font-size: .8rem; }
+    .cf-danger-panel { border-color: #f2c2c7 !important; background: #fffafb; }
+    .cf-danger-panel .card-title { color: #8c2735; }
+    .cf-history-notice { border-left: 3px solid #e7b64a; padding: .7rem .85rem; background: #fffaf0; color: #6d5730; font-size: .85rem; }
     @media (max-width: 575.98px) {
         .cf-page-header { align-items: flex-start; padding: .85rem; }
         .cf-page-header__actions { width: 100%; }
@@ -58,5 +70,10 @@
         .cf-account-card__details { grid-template-columns: 1fr; }
         .cf-account-card__details div:last-child { grid-column: auto; }
         .cf-account-statement-workspace .cf-mobile-card-table td { overflow-wrap: anywhere; }
+        .cf-workspace-toolbar__actions { width: 100%; }
+        .cf-workspace-toolbar__actions > * { flex: 1 1 auto; }
+        .cf-file-name { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+        .cf-technical-detail pre { max-width: 100%; }
+        .cf-export-card { min-height: 4.75rem; }
     }
 </style>
