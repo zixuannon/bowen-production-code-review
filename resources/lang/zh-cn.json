@@ -2623,5 +2623,11 @@
     "Expense category or active Fund Account does not match the selected School.": "支出类别或启用的资金账户与所选校区不匹配。",
     "Central Finance supports MMK, USD, and CNY only.": "中央财务仅支持 MMK、USD 和 CNY。",
     "所有导出均只读，并使用当前 School、账户和筛选 scope。": "所有导出均为只读，并使用当前校区、账户和筛选范围。",
-    "no real bank balance": "无真实银行余额"
+    "no real bank balance": "无真实银行余额",
+    "Showing": "显示",
+    "to": "至",
+    "of": "共",
+    "results": "条结果",
+    "Pagination Navigation": "分页导航",
+    "Go to page :page": "前往第 :page 页"
 }

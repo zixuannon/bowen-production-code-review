@@ -425,5 +425,11 @@
     "Expense category or active Fund Account does not match the selected School.": "Expense category or active Fund Account does not match the selected School.",
     "Central Finance supports MMK, USD, and CNY only.": "Central Finance supports MMK, USD, and CNY only.",
     "所有导出均只读，并使用当前 School、账户和筛选 scope。": "All exports are read-only and use the current School, account, and filter scope.",
-    "no real bank balance": "No real bank balance"
+    "no real bank balance": "No real bank balance",
+    "Showing": "Showing",
+    "to": "to",
+    "of": "of",
+    "results": "results",
+    "Pagination Navigation": "Pagination Navigation",
+    "Go to page :page": "Go to page :page"
 }

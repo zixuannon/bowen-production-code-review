@@ -155,6 +155,12 @@ class CentralFinanceLocalizationContractTest extends TestCase
             self::assertMatchesRegularExpression('/[A-Za-z]/', $en[$key]);
         }
 
+        foreach (['Showing', 'to', 'of', 'results', 'Pagination Navigation', 'Go to page :page'] as $key) {
+            self::assertArrayHasKey($key, $zh);
+            self::assertArrayHasKey($key, $en);
+            self::assertNotSame($key, $zh[$key]);
+        }
+
         $zhPagination = require $this->basePath('resources/lang/zh-cn/pagination.php');
         $enPagination = require $this->basePath('resources/lang/en/pagination.php');
         self::assertSame('&laquo; 上一页', $zhPagination['previous']);
