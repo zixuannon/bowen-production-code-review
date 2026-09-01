@@ -8,24 +8,49 @@ return new class extends Migration {
     public function up(): void
     {
         $sqlite = Schema::connection('mysql')->getConnection()->getDriverName() === 'sqlite';
-        Schema::connection('mysql')->table('central_finance_internal_transfers', function (Blueprint $table) use ($sqlite): void {
-            $table->unsignedBigInteger('reversal_of_transfer_id')->nullable()->after('confirmed_at');
-            $table->text('reversal_reason')->nullable()->after('reversal_of_transfer_id');
-            $table->timestamp('reversed_at')->nullable()->after('reversal_reason');
-            $table->unsignedBigInteger('reversed_by_central_user_id')->nullable()->after('reversed_at');
-            $table->unique('reversal_of_transfer_id', 'cfit_reversal_of_unique');
-            $table->index('reversed_by_central_user_id', 'cfit_reversed_by_user_index');
-            if (!$sqlite) $table->foreign('reversal_of_transfer_id', 'cfit_reversal_of_fk')->references('id')->on('central_finance_internal_transfers');
-        });
+        $schema = Schema::connection('mysql');
+
+        // MySQL DDL is not transactional. These guards also allow this additive
+        // migration to recover safely from an interrupted deployment before the
+        // migration history row was recorded.
+        if (!$schema->hasColumn('central_finance_internal_transfers', 'reversal_of_transfer_id')) {
+            $schema->table('central_finance_internal_transfers', function (Blueprint $table): void {
+                $table->unsignedBigInteger('reversal_of_transfer_id')->nullable()->after('confirmed_at');
+                $table->text('reversal_reason')->nullable()->after('reversal_of_transfer_id');
+                $table->timestamp('reversed_at')->nullable()->after('reversal_reason');
+                $table->unsignedBigInteger('reversed_by_central_user_id')->nullable()->after('reversed_at');
+                $table->unique('reversal_of_transfer_id', 'cfit_reversal_of_unique');
+                $table->index('reversed_by_central_user_id', 'cfit_reversed_by_user_index');
+            });
+        }
+        if (!$sqlite && !$this->hasForeignKey('central_finance_internal_transfers', 'cfit_reversal_of_fk')) {
+            $schema->table('central_finance_internal_transfers', fn (Blueprint $table) => $table->foreign('reversal_of_transfer_id', 'cfit_reversal_of_fk')->references('id')->on('central_finance_internal_transfers'));
+        }
 
         foreach (['central_finance_hq_funding_requests', 'central_finance_fund_handovers'] as $tableName) {
             $index = $tableName === 'central_finance_hq_funding_requests' ? 'cfhfr_reversal_transfer_unique' : 'cfh_reversal_transfer_unique';
-            Schema::connection('mysql')->table($tableName, function (Blueprint $table) use ($sqlite, $index): void {
-                $table->unsignedBigInteger('reversal_internal_transfer_id')->nullable();
-                $table->unique('reversal_internal_transfer_id', $index);
-                if (!$sqlite) $table->foreign('reversal_internal_transfer_id')->references('id')->on('central_finance_internal_transfers');
-            });
+            $foreign = $tableName === 'central_finance_hq_funding_requests' ? 'cfhfr_reversal_transfer_fk' : 'cfh_reversal_transfer_fk';
+            if (!$schema->hasColumn($tableName, 'reversal_internal_transfer_id')) {
+                $schema->table($tableName, function (Blueprint $table) use ($index): void {
+                    $table->unsignedBigInteger('reversal_internal_transfer_id')->nullable();
+                    $table->unique('reversal_internal_transfer_id', $index);
+                });
+            }
+            if (!$sqlite && !$this->hasForeignKey($tableName, $foreign)) {
+                $schema->table($tableName, fn (Blueprint $table) => $table->foreign('reversal_internal_transfer_id', $foreign)->references('id')->on('central_finance_internal_transfers'));
+            }
         }
+    }
+
+    private function hasForeignKey(string $table, string $name): bool
+    {
+        foreach (Schema::connection('mysql')->getForeignKeys($table) as $foreignKey) {
+            if (($foreignKey['name'] ?? null) === $name) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function down(): void
@@ -43,9 +68,9 @@ return new class extends Migration {
             Schema::connection('mysql')->table('central_finance_internal_transfers', fn (Blueprint $table) => $table->dropColumn(['reversal_of_transfer_id', 'reversal_reason', 'reversed_at', 'reversed_by_central_user_id']));
             return;
         }
-        foreach (['central_finance_hq_funding_requests' => 'cfhfr_reversal_transfer_unique', 'central_finance_fund_handovers' => 'cfh_reversal_transfer_unique'] as $tableName => $index) {
-            Schema::connection('mysql')->table($tableName, function (Blueprint $table) use ($index): void {
-                $table->dropForeign(['reversal_internal_transfer_id']);
+        foreach (['central_finance_hq_funding_requests' => ['cfhfr_reversal_transfer_unique', 'cfhfr_reversal_transfer_fk'], 'central_finance_fund_handovers' => ['cfh_reversal_transfer_unique', 'cfh_reversal_transfer_fk']] as $tableName => [$index, $foreign]) {
+            Schema::connection('mysql')->table($tableName, function (Blueprint $table) use ($index, $foreign): void {
+                $table->dropForeign($foreign);
                 $table->dropUnique($index);
                 $table->dropColumn('reversal_internal_transfer_id');
             });
