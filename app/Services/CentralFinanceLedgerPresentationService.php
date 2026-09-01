@@ -117,6 +117,15 @@ final class CentralFinanceLedgerPresentationService
         };
     }
 
+    /**
+     * Audit reasons can be operator-entered narrative. Preserve those facts,
+     * while localizing known system and UAT reason keys at presentation time.
+     */
+    public function auditReason(?string $reason): string
+    {
+        return blank($reason) ? '—' : __($reason);
+    }
+
     public function operating(CentralFinanceLedgerEntry $entry): string
     {
         if ((float) $entry->operating_income !== 0.0) return __('Income');

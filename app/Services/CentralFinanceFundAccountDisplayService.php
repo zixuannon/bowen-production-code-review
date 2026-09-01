@@ -16,12 +16,12 @@ final class CentralFinanceFundAccountDisplayService
             $schoolNames[(int) $school->id] = $school->name;
         }
         $owner = $account->owner_type === CentralFinanceFundAccount::OWNER_HQ
-            ? 'HQ'
-            : ($schoolNames[(int) $account->school_id] ?? 'School');
+            ? __('HQ')
+            : ($schoolNames[(int) $account->school_id] ?? __('School'));
         $type = match ($account->account_type) {
-            CentralFinanceFundAccount::TYPE_CASH => 'Cash',
-            CentralFinanceFundAccount::TYPE_BANK => 'Bank',
-            default => 'Other',
+            CentralFinanceFundAccount::TYPE_CASH => __('Cash'),
+            CentralFinanceFundAccount::TYPE_BANK => __('Bank'),
+            default => __('Other'),
         };
         $parts = [sprintf('[%s · %s]', $owner, $type), $account->account_name, $account->account_code];
         if ($account->bank_name) {

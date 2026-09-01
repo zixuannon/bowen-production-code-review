@@ -423,5 +423,7 @@
     "余款 does not match the calculated post-expense balance; it cannot overwrite Central balance.": "Balance does not match the calculated post-expense balance; it cannot overwrite Central balance.",
     "Fund Account is not authorized for this actor.": "Fund Account is not authorized for this actor.",
     "Expense category or active Fund Account does not match the selected School.": "Expense category or active Fund Account does not match the selected School.",
-    "Central Finance supports MMK, USD, and CNY only.": "Central Finance supports MMK, USD, and CNY only."
+    "Central Finance supports MMK, USD, and CNY only.": "Central Finance supports MMK, USD, and CNY only.",
+    "所有导出均只读，并使用当前 School、账户和筛选 scope。": "All exports are read-only and use the current School, account, and filter scope.",
+    "no real bank balance": "No real bank balance"
 }

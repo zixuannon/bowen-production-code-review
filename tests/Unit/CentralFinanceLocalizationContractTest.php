@@ -135,6 +135,34 @@ class CentralFinanceLocalizationContractTest extends TestCase
         }
     }
 
+    public function test_account_labels_audit_reasons_and_pagination_use_locale_catalogs(): void
+    {
+        $display = (string) file_get_contents($this->basePath('app/Services/CentralFinanceFundAccountDisplayService.php'));
+        $presentation = (string) file_get_contents($this->basePath('app/Services/CentralFinanceLedgerPresentationService.php'));
+        $workspace = (string) file_get_contents($this->basePath('resources/views/central-finance/workspace.blade.php'));
+        $zh = json_decode((string) file_get_contents($this->basePath('resources/lang/zh-cn.json')), true, 512, JSON_THROW_ON_ERROR);
+        $en = json_decode((string) file_get_contents($this->basePath('resources/lang/en.json')), true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertStringContainsString("__('Cash')", $display);
+        self::assertStringContainsString("__('Other')", $display);
+        self::assertStringContainsString('function auditReason', $presentation);
+        self::assertStringContainsString('->auditReason($audit->reason)', $workspace);
+
+        foreach (['所有导出均只读，并使用当前 School、账户和筛选 scope。', 'no real bank balance'] as $key) {
+            self::assertArrayHasKey($key, $zh);
+            self::assertArrayHasKey($key, $en);
+            self::assertMatchesRegularExpression('/[一-龥]/u', $zh[$key]);
+            self::assertMatchesRegularExpression('/[A-Za-z]/', $en[$key]);
+        }
+
+        $zhPagination = require $this->basePath('resources/lang/zh-cn/pagination.php');
+        $enPagination = require $this->basePath('resources/lang/en/pagination.php');
+        self::assertSame('&laquo; 上一页', $zhPagination['previous']);
+        self::assertSame('下一页 &raquo;', $zhPagination['next']);
+        self::assertSame('&laquo; Previous', $enPagination['previous']);
+        self::assertSame('Next &raquo;', $enPagination['next']);
+    }
+
     /** @return list<string> */
     private function translationSources(): array
     {
