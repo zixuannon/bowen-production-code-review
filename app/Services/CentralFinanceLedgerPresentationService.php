@@ -33,10 +33,14 @@ final class CentralFinanceLedgerPresentationService
         // Handover or HQ Funding request. Resolve that approved origin
         // explicitly instead of making a URL from a raw source_id.
         if ($model instanceof CentralFinanceInternalTransfer) {
-            [$originLabel, $origin] = $this->transferOrigin($model);
-            if ($origin !== null) {
-                $label = $originLabel;
-                $model = $origin;
+            if ($model->reversal_of_transfer_id !== null) {
+                $label = __('Internal Transfer Reversal');
+            } else {
+                [$originLabel, $origin] = $this->transferOrigin($model);
+                if ($origin !== null) {
+                    $label = $originLabel;
+                    $model = $origin;
+                }
             }
         }
         // A source UUID is not an authorization boundary.  It is globally
@@ -85,6 +89,7 @@ final class CentralFinanceLedgerPresentationService
         }
 
         $entry->setAttribute('transfer_leg', $entry->source_line === 'destination' ? 'incoming' : 'outgoing');
+        $entry->setAttribute('transfer_is_reversal', $model->reversal_of_transfer_id !== null);
         $entry->setAttribute('transfer_source_account_label', $this->accountLabel($model->sourceAccount));
         $entry->setAttribute('transfer_destination_account_label', $this->accountLabel($model->destinationAccount));
     }
@@ -147,7 +152,7 @@ final class CentralFinanceLedgerPresentationService
             'central_payment_refund' => ['label' => __('Payment Refund / Reversal'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
             'central_expense', 'central_expense_void' => ['label' => $sourceType === 'central_expense_void' ? __('Expense Reversal') : __('Expense'), 'query' => fn (string $id) => CentralFinanceExpense::on('mysql')->withTrashed()->where('expense_uuid', $id)->first()],
             'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? __('Other Income Reversal') : __('Other Income'), 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
-            'central_internal_transfer' => ['label' => __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->with(['sourceAccount', 'destinationAccount'])->where('transfer_uuid', $id)->first()],
+            'central_internal_transfer', 'central_internal_transfer_reversal' => ['label' => $sourceType === 'central_internal_transfer_reversal' ? __('Internal Transfer Reversal') : __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->with(['sourceAccount', 'destinationAccount'])->where('transfer_uuid', $id)->first()],
             default => null,
         };
     }

@@ -19,6 +19,7 @@ final class CentralFinanceHqFundingService
         private readonly CentralFinanceFundAccountScopeService $accounts,
         private readonly CentralFinanceLedgerService $ledger,
         private readonly CentralFinanceDocumentAuditService $audits,
+        private readonly CentralFinanceInternalTransferService $transfers,
     ) {}
 
     public function request(CentralFinanceUser $actor, int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination, float $amount, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null): CentralFinanceHqFundingRequest
@@ -75,6 +76,22 @@ final class CentralFinanceHqFundingService
     public function reject(CentralFinanceUser $headFinance, int $fundingId, string $reason, CarbonImmutable $occurredAt): CentralFinanceHqFundingRequest { return $this->resolve($headFinance, $fundingId, CentralFinanceHqFundingRequest::REJECTED, $reason, $occurredAt, true); }
     public function cancel(CentralFinanceUser $actor, int $fundingId, string $reason, CarbonImmutable $occurredAt): CentralFinanceHqFundingRequest { return $this->resolve($actor, $fundingId, CentralFinanceHqFundingRequest::CANCELLED, $reason, $occurredAt, false); }
 
+    public function reverse(CentralFinanceUser $headFinance, int $fundingId, string $reason, CarbonImmutable $occurredAt): CentralFinanceHqFundingRequest
+    {
+        if (trim($reason) === '') throw new InvalidArgumentException('A HQ funding reversal reason is required.');
+        return DB::connection('mysql')->transaction(function () use ($headFinance, $fundingId, $reason, $occurredAt): CentralFinanceHqFundingRequest {
+            $funding = CentralFinanceHqFundingRequest::on('mysql')->lockForUpdate()->findOrFail($fundingId);
+            if ($funding->status !== CentralFinanceHqFundingRequest::CONFIRMED || $funding->internal_transfer_id === null || $funding->reversal_internal_transfer_id !== null) throw new InvalidArgumentException('Only an unreversed confirmed HQ funding document can be reversed.');
+            $this->schools->assertCanConfirmFunding($headFinance, (int) $funding->school_id);
+            $reversal = $this->transfers->reverse($headFinance, (int) $funding->internal_transfer_id, $reason, $occurredAt, ['hq_funding']);
+            $before = $this->snapshot($funding);
+            $funding->reversal_internal_transfer_id = $reversal->id;
+            $funding->save();
+            $this->audits->record($headFinance, $funding, 'hq_funding', 'reversed', trim($reason), $before, $this->snapshot($funding));
+            return $funding;
+        });
+    }
+
     private function resolve(CentralFinanceUser $actor, int $id, string $status, string $reason, CarbonImmutable $occurredAt, bool $mustConfirmFunding): CentralFinanceHqFundingRequest
     {
         if (trim($reason) === '') throw new InvalidArgumentException('A HQ funding resolution reason is required.');
@@ -102,5 +119,5 @@ final class CentralFinanceHqFundingService
     }
     private function assertInput(float $amount, string $idempotencyReference, ?string &$referenceNo): void { $referenceNo=$referenceNo===null?null:trim($referenceNo); if($amount<=0||!is_finite($amount)||!preg_match('/^[A-Za-z0-9_.:-]{2,100}$/',$idempotencyReference)||($referenceNo!==null&&$referenceNo!==''&&!preg_match('/^[A-Za-z0-9_.:-]{1,100}$/',$referenceNo))) throw new InvalidArgumentException('Central HQ funding input is invalid.'); $referenceNo=$referenceNo?:null; }
     private function assertReferenceFree(int $schoolId, ?string $referenceNo): void { if($referenceNo!==null&&CentralFinanceHqFundingRequest::on('mysql')->where(['school_id'=>$schoolId,'reference_no'=>$referenceNo])->exists()) throw new InvalidArgumentException('This HQ funding reference is already reserved for this School.'); }
-    /** @return array<string,mixed> */ private function snapshot(CentralFinanceHqFundingRequest $funding): array { return $funding->only(['school_id','source_account_id','destination_account_id','direction','amount','currency','reference_no','status','internal_transfer_id','resolution_reason']); }
+    /** @return array<string,mixed> */ private function snapshot(CentralFinanceHqFundingRequest $funding): array { return $funding->only(['school_id','source_account_id','destination_account_id','direction','amount','currency','reference_no','status','internal_transfer_id','reversal_internal_transfer_id','resolution_reason']); }
 }

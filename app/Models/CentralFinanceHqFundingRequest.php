@@ -22,7 +22,7 @@ class CentralFinanceHqFundingRequest extends Model
         'funding_uuid', 'school_id', 'source_account_id', 'destination_account_id',
         'direction', 'idempotency_key', 'reference_no', 'funding_date', 'currency',
         'amount', 'status', 'requested_by', 'resolved_by', 'resolved_at',
-        'resolution_reason', 'internal_transfer_id',
+        'resolution_reason', 'internal_transfer_id', 'reversal_internal_transfer_id',
     ];
 
     protected $casts = ['funding_date' => 'date', 'resolved_at' => 'datetime', 'amount' => 'decimal:4'];
@@ -45,4 +45,6 @@ class CentralFinanceHqFundingRequest extends Model
     {
         return $this->belongsTo(CentralFinanceFundAccount::class, 'destination_account_id');
     }
+
+    public function reversalInternalTransfer(): BelongsTo { return $this->belongsTo(CentralFinanceInternalTransfer::class, 'reversal_internal_transfer_id'); }
 }

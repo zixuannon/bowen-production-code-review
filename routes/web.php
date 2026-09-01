@@ -1253,12 +1253,15 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/categories/{category}/toggle', [CentralFinanceWorkspaceController::class, 'toggleCategory'])->name('central-finance.categories.toggle');
     Route::get('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfers'])->name('central-finance.transfers');
     Route::post('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfer'])->name('central-finance.transfers.store');
+    Route::post('central-finance/transfers/{transfer}/reverse', [CentralFinanceWorkspaceController::class, 'reverseTransfer'])->name('central-finance.transfers.reverse');
     Route::get('central-finance/handovers', [CentralFinanceWorkspaceController::class, 'handovers'])->name('central-finance.handovers');
     Route::post('central-finance/handovers', [CentralFinanceWorkspaceController::class, 'handover'])->name('central-finance.handovers.store');
     Route::post('central-finance/handovers/{handover}/{action}', [CentralFinanceWorkspaceController::class, 'resolveHandover'])->whereIn('action', ['confirm', 'reject', 'cancel'])->name('central-finance.handovers.resolve');
+    Route::post('central-finance/handovers/{handover}/reverse', [CentralFinanceWorkspaceController::class, 'reverseHandover'])->name('central-finance.handovers.reverse');
     Route::get('central-finance/funding', [CentralFinanceWorkspaceController::class, 'funding'])->name('central-finance.funding');
     Route::post('central-finance/funding', [CentralFinanceWorkspaceController::class, 'storeFunding'])->name('central-finance.funding.store');
     Route::post('central-finance/funding/{funding}/{action}', [CentralFinanceWorkspaceController::class, 'resolveFunding'])->whereIn('action', ['confirm', 'reject', 'cancel'])->name('central-finance.funding.resolve');
+    Route::post('central-finance/funding/{funding}/reverse', [CentralFinanceWorkspaceController::class, 'reverseFunding'])->name('central-finance.funding.reverse');
     Route::get('central-finance/ledger', [CentralFinanceWorkspaceController::class, 'ledger'])->name('central-finance.ledger');
     Route::get('central-finance/ledger/export/{format}', [CentralFinanceWorkspaceController::class, 'exportLedger'])->whereIn('format', ['csv','xlsx'])->name('central-finance.ledger.export');
     Route::get('central-finance/ledger/{ledger}', [CentralFinanceWorkspaceController::class, 'ledgerDetail'])->name('central-finance.ledger.show');

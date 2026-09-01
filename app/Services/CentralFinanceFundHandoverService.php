@@ -20,6 +20,7 @@ final class CentralFinanceFundHandoverService
         private readonly CentralFinanceFundAccountScopeService $accounts,
         private readonly CentralFinanceLedgerService $ledger,
         private readonly CentralFinanceDocumentAuditService $audits,
+        private readonly CentralFinanceInternalTransferService $transfers,
     ) {}
 
     public function request(CentralFinanceUser $sender, CentralFinanceUser $receiver, int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination, float $amount, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null): CentralFinanceFundHandover
@@ -92,6 +93,24 @@ final class CentralFinanceFundHandoverService
         return $this->resolve($sender, $handoverId, CentralFinanceFundHandover::CANCELLED, $reason, $occurredAt, false);
     }
 
+    public function reverse(CentralFinanceUser $actor, int $handoverId, string $reason, CarbonImmutable $occurredAt): CentralFinanceFundHandover
+    {
+        if (trim($reason) === '') throw new InvalidArgumentException('A Fund Handover reversal reason is required.');
+        return DB::connection('mysql')->transaction(function () use ($actor, $handoverId, $reason, $occurredAt): CentralFinanceFundHandover {
+            $handover = CentralFinanceFundHandover::on('mysql')->lockForUpdate()->findOrFail($handoverId);
+            if ($handover->status !== CentralFinanceFundHandover::CONFIRMED || $handover->internal_transfer_id === null || $handover->reversal_internal_transfer_id !== null) throw new InvalidArgumentException('Only an unreversed confirmed Fund Handover can be reversed.');
+            // Reversal moves both accounts, so the actor must hold the existing
+            // operating scope for both; split-custody confirmation is not reused.
+            $this->schools->assertCanOperate($actor, (int) $handover->school_id);
+            $reversal = $this->transfers->reverse($actor, (int) $handover->internal_transfer_id, $reason, $occurredAt, ['fund_handover']);
+            $before = $this->snapshot($handover);
+            $handover->reversal_internal_transfer_id = $reversal->id;
+            $handover->save();
+            $this->audits->record($actor, $handover, 'fund_handover', 'reversed', trim($reason), $before, $this->snapshot($handover));
+            return $handover;
+        });
+    }
+
     private function resolve(CentralFinanceUser $actor, int $id, string $status, string $reason, CarbonImmutable $occurredAt, bool $receiver): CentralFinanceFundHandover
     {
         if (trim($reason) === '') throw new InvalidArgumentException('A Fund Handover resolution reason is required.');
@@ -117,5 +136,5 @@ final class CentralFinanceFundHandoverService
     }
     private function assertInput(float $amount, string $idempotencyReference, ?string &$referenceNo): void { $referenceNo=$referenceNo===null?null:trim($referenceNo); if($amount<=0||!is_finite($amount)||!preg_match('/^[A-Za-z0-9_.:-]{2,100}$/',$idempotencyReference)||($referenceNo!==null&&$referenceNo!==''&&!preg_match('/^[A-Za-z0-9_.:-]{1,100}$/',$referenceNo))) throw new InvalidArgumentException('Central Fund Handover input is invalid.'); $referenceNo=$referenceNo?:null; }
     private function assertReferenceFree(int $schoolId, ?string $referenceNo): void { if($referenceNo!==null&&CentralFinanceFundHandover::on('mysql')->where(['school_id'=>$schoolId,'reference_no'=>$referenceNo])->exists()) throw new InvalidArgumentException('This Fund Handover reference is already reserved for this School.'); }
-    /** @return array<string,mixed> */ private function snapshot(CentralFinanceFundHandover $handover): array { return $handover->only(['school_id','source_account_id','destination_account_id','sender_user_id','receiver_user_id','amount','currency','reference_no','status','internal_transfer_id','resolution_reason']); }
+    /** @return array<string,mixed> */ private function snapshot(CentralFinanceFundHandover $handover): array { return $handover->only(['school_id','source_account_id','destination_account_id','sender_user_id','receiver_user_id','amount','currency','reference_no','status','internal_transfer_id','reversal_internal_transfer_id','resolution_reason']); }
 }

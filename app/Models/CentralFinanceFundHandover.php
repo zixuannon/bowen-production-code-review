@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 use App\Support\CentralFinanceCurrency;
 
@@ -19,7 +20,7 @@ class CentralFinanceFundHandover extends Model
         'handover_uuid', 'school_id', 'source_account_id', 'destination_account_id',
         'sender_user_id', 'receiver_user_id', 'idempotency_key', 'reference_no',
         'handover_date', 'currency', 'amount', 'status', 'requested_by',
-        'resolved_by', 'resolved_at', 'resolution_reason', 'internal_transfer_id',
+        'resolved_by', 'resolved_at', 'resolution_reason', 'internal_transfer_id', 'reversal_internal_transfer_id',
     ];
 
     protected $casts = ['handover_date' => 'date', 'resolved_at' => 'datetime', 'amount' => 'decimal:4'];
@@ -31,4 +32,6 @@ class CentralFinanceFundHandover extends Model
             $handover->currency = CentralFinanceCurrency::normalize((string) $handover->currency);
         });
     }
+
+    public function reversalInternalTransfer(): BelongsTo { return $this->belongsTo(CentralFinanceInternalTransfer::class, 'reversal_internal_transfer_id'); }
 }

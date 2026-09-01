@@ -46,6 +46,63 @@ final class CentralFinanceInternalTransferService
         });
     }
 
+    /**
+     * Append the sole canonical reversal for a confirmed transfer.  All money
+     * fields and both accounts are derived from the locked original document;
+     * callers cannot forge a partial or re-valued reversal.
+     *
+     * @param list<string> $allowedOriginalSources
+     */
+    public function reverse(CentralFinanceUser $actor, int $transferId, string $reason, CarbonImmutable $occurredAt, array $allowedOriginalSources): CentralFinanceInternalTransfer
+    {
+        $reason = trim($reason);
+        if ($reason === '') throw new InvalidArgumentException('A reversal reason is required.');
+
+        return DB::connection('mysql')->transaction(function () use ($actor, $transferId, $reason, $occurredAt, $allowedOriginalSources): CentralFinanceInternalTransfer {
+            $original = CentralFinanceInternalTransfer::on('mysql')->lockForUpdate()->findOrFail($transferId);
+            if ($original->status !== 'confirmed' || $original->reversal_of_transfer_id !== null || !in_array($original->source_type, $allowedOriginalSources, true)) {
+                throw new InvalidArgumentException('Only an unreversed confirmed original transfer can be reversed.');
+            }
+            if (CentralFinanceInternalTransfer::on('mysql')->where('reversal_of_transfer_id', $original->id)->lockForUpdate()->exists()) {
+                throw new InvalidArgumentException('This transfer already has a canonical reversal.');
+            }
+
+            $this->schools->assertCanOperate($actor, (int) $original->school_id);
+            app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $original->school_id);
+            $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($original->destination_account_id);
+            $destination = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($original->source_account_id);
+            $this->accounts->assertCanOperate($actor, $source);
+            $this->accounts->assertCanOperate($actor, $destination);
+            if ($source->id === $destination->id || strtoupper($source->currency) !== strtoupper($destination->currency) || strtoupper($source->currency) !== strtoupper($original->currency)) {
+                throw new InvalidArgumentException('The canonical transfer can no longer be safely reversed.');
+            }
+
+            $reversal = CentralFinanceInternalTransfer::on('mysql')->create([
+                'school_id' => $original->school_id,
+                'source_account_id' => $source->id,
+                'destination_account_id' => $destination->id,
+                'source_type' => 'internal_transfer_reversal',
+                'source_id' => $original->transfer_uuid,
+                'reference_no' => $original->reference_no,
+                'transfer_date' => $occurredAt->toDateString(),
+                'currency' => $original->currency,
+                'amount' => $original->amount,
+                'status' => 'confirmed',
+                'created_by' => $actor->id,
+                'confirmed_by' => $actor->id,
+                'confirmed_at' => $occurredAt,
+                'reversal_of_transfer_id' => $original->id,
+                'reversal_reason' => $reason,
+                'reversed_at' => $occurredAt,
+                'reversed_by_central_user_id' => $actor->id,
+            ]);
+            $this->ledger->recordInternalTransfer($actor, $source, $destination, (int) $original->school_id, 'central_internal_transfer_reversal', $reversal->transfer_uuid, (float) $original->amount, $occurredAt, $original->reference_no);
+            $this->audits->record($actor, $reversal, 'internal_transfer_reversal', 'confirmed', $reason, null, $this->snapshot($reversal));
+            $this->audits->record($actor, $original, 'internal_transfer', 'reversed', $reason, $this->snapshot($original), ['reversal_transfer_id' => $reversal->id]);
+            return $reversal;
+        });
+    }
+
     private function assertSameOperatingSchool(int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination): void
     {
         if (strtoupper($source->currency) !== strtoupper($destination->currency)) {
