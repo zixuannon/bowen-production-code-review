@@ -582,7 +582,7 @@ final class CentralFinanceWorkspaceController extends Controller
         try {
             $batch = $this->paymentImports->previewUploaded($actor, $school->id, $data['payment_import']);
         } catch (InvalidArgumentException $exception) {
-            return back()->withErrors(['payment_import' => $exception->getMessage()]);
+            return back()->withErrors(['payment_import' => __($exception->getMessage())]);
         }
 
         return redirect()->route('central-finance.payments.index', ['import_batch' => $batch->token])
@@ -609,7 +609,7 @@ final class CentralFinanceWorkspaceController extends Controller
         try {
             $batch = $this->expenseImports->previewUploaded($actor, $school->id, $data['expense_import']);
         } catch (InvalidArgumentException $exception) {
-            return back()->withErrors(['expense_import' => $exception->getMessage()]);
+            return back()->withErrors(['expense_import' => __($exception->getMessage())]);
         }
 
         return redirect()->route('central-finance.operations', ['operation' => 'expense', 'import_batch' => $batch->token])

@@ -83,6 +83,32 @@ class CentralFinanceLocalizationContractTest extends TestCase
         }
     }
 
+    public function test_import_preview_and_receivable_audit_values_are_translated_at_the_presentation_boundary(): void
+    {
+        $workspace = (string) file_get_contents($this->basePath('resources/views/central-finance/workspace.blade.php'));
+        $receivableDetail = (string) file_get_contents($this->basePath('resources/views/central-finance/receivable-detail.blade.php'));
+        $controller = (string) file_get_contents($this->basePath('app/Http/Controllers/CentralFinanceWorkspaceController.php'));
+
+        self::assertStringContainsString('__($expenseImportBatch->status)', $workspace);
+        self::assertStringContainsString('__($paymentImportBatch->status)', $workspace);
+        self::assertStringContainsString("\$translateImportErrors(\$row['errors'])", $workspace);
+        self::assertStringContainsString('__($document->status)', $workspace);
+        self::assertStringContainsString('__($audit->action)', $receivableDetail);
+        self::assertStringNotContainsString('$exception->getMessage()]);', $controller);
+
+        $zh = json_decode((string) file_get_contents($this->basePath('resources/lang/zh-cn.json')), true, 512, JSON_THROW_ON_ERROR);
+        foreach ([
+            'The Central payment import file is invalid or too large.',
+            'Payment exceeds the outstanding receivable amount.',
+            'The Central Expense import file is invalid or too large.',
+            'Reference No is already reserved for this School.',
+            'Fund Account is not authorized for this actor.',
+        ] as $key) {
+            self::assertArrayHasKey($key, $zh);
+            self::assertMatchesRegularExpression('/[一-龥]/u', $zh[$key]);
+        }
+    }
+
     public function test_cutover_readiness_runtime_labels_and_reasons_have_both_locale_entries(): void
     {
         $readiness = (string) file_get_contents($this->basePath('app/Services/CentralFinanceCutoverReadinessService.php'));
