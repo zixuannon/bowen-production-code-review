@@ -1142,7 +1142,7 @@ final class CentralFinanceWorkspaceController extends Controller
         });
 
         $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)
-            ->orderBy('occurred_at')->orderBy('id')->get();
+            ->orderByDesc('occurred_at')->orderByDesc('id')->get();
         $entries->each(fn (CentralFinanceLedgerEntry $entry) => $entry->setAttribute('running_balance', $runningBalances[$entry->id] ?? $openingBalance));
 
         return [$openingBalance, $entries];

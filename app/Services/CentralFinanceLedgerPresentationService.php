@@ -63,7 +63,7 @@ final class CentralFinanceLedgerPresentationService
             $entry->setAttribute('source_status', $source['status']);
             $entry->setAttribute('direction_label', $this->direction($entry));
             $entry->setAttribute('operating_label', $this->operating($entry));
-            $this->decorateFundingLeg($entry, $source['model']);
+            $this->decorateTransferLeg($entry, $source['model']);
         });
     }
 
@@ -71,15 +71,22 @@ final class CentralFinanceLedgerPresentationService
      * Funding remains one neutral canonical transfer. These are read-only
      * source/destination labels for account statements, never balance inputs.
      */
-    private function decorateFundingLeg(CentralFinanceLedgerEntry $entry, ?Model $model): void
+    private function decorateTransferLeg(CentralFinanceLedgerEntry $entry, ?Model $model): void
     {
-        if (!$model instanceof CentralFinanceHqFundingRequest) {
+        if ($model instanceof CentralFinanceHqFundingRequest) {
+            $entry->setAttribute('funding_leg', $entry->source_line === 'destination' ? 'incoming' : 'outgoing');
+            $entry->setAttribute('funding_source_account_label', $this->accountLabel($model->sourceAccount));
+            $entry->setAttribute('funding_destination_account_label', $this->accountLabel($model->destinationAccount));
             return;
         }
 
-        $entry->setAttribute('funding_leg', $entry->source_line === 'destination' ? 'incoming' : 'outgoing');
-        $entry->setAttribute('funding_source_account_label', $this->accountLabel($model->sourceAccount));
-        $entry->setAttribute('funding_destination_account_label', $this->accountLabel($model->destinationAccount));
+        if (!$model instanceof CentralFinanceInternalTransfer) {
+            return;
+        }
+
+        $entry->setAttribute('transfer_leg', $entry->source_line === 'destination' ? 'incoming' : 'outgoing');
+        $entry->setAttribute('transfer_source_account_label', $this->accountLabel($model->sourceAccount));
+        $entry->setAttribute('transfer_destination_account_label', $this->accountLabel($model->destinationAccount));
     }
 
     private function accountLabel(?\App\Models\CentralFinanceFundAccount $account): string
@@ -140,7 +147,7 @@ final class CentralFinanceLedgerPresentationService
             'central_payment_refund' => ['label' => __('Payment Refund / Reversal'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
             'central_expense', 'central_expense_void' => ['label' => $sourceType === 'central_expense_void' ? __('Expense Reversal') : __('Expense'), 'query' => fn (string $id) => CentralFinanceExpense::on('mysql')->withTrashed()->where('expense_uuid', $id)->first()],
             'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? __('Other Income Reversal') : __('Other Income'), 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
-            'central_internal_transfer' => ['label' => __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->where('transfer_uuid', $id)->first()],
+            'central_internal_transfer' => ['label' => __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->with(['sourceAccount', 'destinationAccount'])->where('transfer_uuid', $id)->first()],
             default => null,
         };
     }

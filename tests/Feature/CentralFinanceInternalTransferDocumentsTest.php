@@ -6,11 +6,13 @@ use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundHandover;
 use App\Models\CentralFinanceHqFundingRequest;
 use App\Models\CentralFinanceInternalTransfer;
+use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceUser;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundHandoverService;
 use App\Services\CentralFinanceHqFundingService;
 use App\Services\CentralFinanceInternalTransferService;
+use App\Services\CentralFinanceLedgerPresentationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
@@ -77,6 +79,14 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         $this->assertSame($first->id,$retry->id); $this->assertSame(750.0,$this->balance($this->zixuanA)); $this->assertSame(250.0,$this->balance($this->zixuanB));
         $this->assertSame(1,CentralFinanceInternalTransfer::on('mysql')->count()); $this->assertSame(2,DB::connection('mysql')->table('central_finance_ledger_entries')->count());
         $totals=app(CentralFinanceFundAccountBalanceService::class)->totalsForSchool(1); $this->assertSame(250.0,$totals['money_in']); $this->assertSame(250.0,$totals['money_out']); $this->assertSame(0.0,$totals['operating_income']); $this->assertSame(0.0,$totals['operating_expense']); $this->assertSame(0.0,$totals['operating_net']);
+
+        $legs = CentralFinanceLedgerEntry::on('mysql')->where('source_id', $first->transfer_uuid)->get()->keyBy('source_line');
+        app(CentralFinanceLedgerPresentationService::class)->decorate($legs);
+        $this->assertSame('outgoing', $legs['source']->transfer_leg);
+        $this->assertSame('incoming', $legs['destination']->transfer_leg);
+        $this->assertSame('Zixuan A · ZIX-A', $legs['source']->transfer_source_account_label);
+        $this->assertSame('Zixuan B · ZIX-B', $legs['source']->transfer_destination_account_label);
+        $this->assertNull($legs['source']->funding_leg);
     }
 
     public function test_handover_is_pending_neutral_then_receiver_confirms_one_split_custody_transfer(): void

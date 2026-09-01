@@ -149,6 +149,8 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString('name="operator_id"', $statement);
         $this->assertStringContainsString('cf-mobile-card-table', $statement);
         $this->assertStringContainsString('funding_leg', $statement);
+        $this->assertStringContainsString('transfer_leg', $statement);
+        $this->assertStringContainsString("->orderByDesc('occurred_at')->orderByDesc('id')->get()", (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/CentralFinanceWorkspaceController.php'));
     }
 
     public function test_reporting_audit_and_import_workspaces_use_the_shared_read_only_presentation_contract(): void

@@ -2629,5 +2629,7 @@
     "of": "共",
     "results": "条结果",
     "Pagination Navigation": "分页导航",
-    "Go to page :page": "前往第 :page 页"
+    "Go to page :page": "前往第 :page 页",
+    "Transfer Out to :account": "转出至 :account",
+    "Incoming Transfer from :account": "收到来自 :account 的转账"
 }

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 use RuntimeException;
 use App\Support\CentralFinanceCurrency;
@@ -19,6 +20,18 @@ class CentralFinanceInternalTransfer extends Model
     ];
 
     protected $casts = ['transfer_date' => 'date', 'confirmed_at' => 'datetime', 'amount' => 'decimal:4'];
+
+    /** Read-only presentation relation; never a transfer authorization path. */
+    public function sourceAccount(): BelongsTo
+    {
+        return $this->belongsTo(CentralFinanceFundAccount::class, 'source_account_id');
+    }
+
+    /** Read-only presentation relation; never a transfer authorization path. */
+    public function destinationAccount(): BelongsTo
+    {
+        return $this->belongsTo(CentralFinanceFundAccount::class, 'destination_account_id');
+    }
 
     protected static function booted(): void
     {

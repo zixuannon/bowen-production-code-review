@@ -431,5 +431,7 @@
     "of": "of",
     "results": "results",
     "Pagination Navigation": "Pagination Navigation",
-    "Go to page :page": "Go to page :page"
+    "Go to page :page": "Go to page :page",
+    "Transfer Out to :account": "Transfer Out to :account",
+    "Incoming Transfer from :account": "Incoming Transfer from :account"
 }
