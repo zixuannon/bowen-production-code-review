@@ -136,6 +136,21 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringNotContainsString("route('central-finance.payments.store')", $index);
     }
 
+    public function test_fund_account_directory_links_to_the_selected_account_statement_workspace(): void
+    {
+        $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
+        $statement = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/partials/account-statements.blade.php');
+
+        $this->assertStringContainsString('cf-account-directory', $workspace);
+        $this->assertStringContainsString("route('central-finance.accounts.statements', ['fund_account_id' => \$a->id])", $workspace);
+        $this->assertStringContainsString('cf-account-statement-workspace', $statement);
+        $this->assertStringContainsString('name="fund_account_id"', $statement);
+        $this->assertStringContainsString('name="category_id"', $statement);
+        $this->assertStringContainsString('name="operator_id"', $statement);
+        $this->assertStringContainsString('cf-mobile-card-table', $statement);
+        $this->assertStringContainsString('funding_leg', $statement);
+    }
+
     public function test_sidebar_keeps_school_accountants_in_their_daily_workspace_and_head_finance_in_the_full_workspace(): void
     {
         // Render the sidebar under its real Central Finance request path so the

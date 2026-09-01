@@ -26,6 +26,15 @@
     .cf-empty-state { padding: 2rem 1rem; color: var(--cf-muted); text-align: center; }
     .cf-status-badge { border-radius: 999px; font-size: .72rem; font-weight: 700; padding: .32rem .55rem; }
     .central-finance-page .pagination { flex-wrap: wrap; gap: .2rem; }
+    .cf-account-card { height: 100%; padding: 1rem; border: 1px solid var(--cf-border); border-radius: .65rem; background: #fff; }
+    .cf-account-card__balance { margin: .9rem 0; padding: .75rem; border-radius: .45rem; background: #f8fafc; }
+    .cf-account-card__balance small { display: block; color: var(--cf-muted); font-size: .75rem; font-weight: 600; }
+    .cf-account-card__balance strong { display: block; margin-top: .15rem; color: #243746; font-size: 1.05rem; }
+    .cf-account-card__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem .9rem; }
+    .cf-account-card__details div:last-child { grid-column: 1 / -1; }
+    .cf-account-card__details dt { margin: 0; color: var(--cf-muted); font-size: .72rem; font-weight: 700; }
+    .cf-account-card__details dd { margin: .12rem 0 0; color: #314553; font-size: .83rem; overflow-wrap: anywhere; }
+    .cf-break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     @media (max-width: 575.98px) {
         .cf-page-header { align-items: flex-start; padding: .85rem; }
         .cf-page-header__actions { width: 100%; }
@@ -45,5 +54,9 @@
         .cf-mobile-card-table td:last-child::before { content: none; }
         .cf-mobile-card-table .btn { width: 100%; margin-top: .3rem; }
         .cf-ledger-table { min-width: 760px; }
+        .cf-account-card { padding: .9rem; }
+        .cf-account-card__details { grid-template-columns: 1fr; }
+        .cf-account-card__details div:last-child { grid-column: auto; }
+        .cf-account-statement-workspace .cf-mobile-card-table td { overflow-wrap: anywhere; }
     }
 </style>
