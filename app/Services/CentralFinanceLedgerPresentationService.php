@@ -101,18 +101,18 @@ final class CentralFinanceLedgerPresentationService
     public function auditDocumentLabel(string $documentType): string
     {
         return match ($documentType) {
-            'central_finance_payment' => __('Student Payment'),
-            'central_finance_payment_refund' => __('Payment Refund / Reversal'),
-            'central_finance_expense' => __('Expense'),
-            'central_finance_other_income' => __('Other Income'),
-            'central_finance_reimbursement' => __('Reimbursement'),
-            'central_finance_receivable' => __('Receivable'),
+            'central_finance_payment', 'central_payment' => __('Student Payment'),
+            'central_finance_payment_refund', 'central_payment_refund' => __('Payment Refund / Reversal'),
+            'central_finance_expense', 'expense' => __('Expense'),
+            'central_finance_other_income', 'other_income' => __('Other Income'),
+            'central_finance_reimbursement', 'reimbursement' => __('Reimbursement'),
+            'central_finance_receivable', 'central_receivable' => __('Receivable'),
             'central_finance_receivable_adjustment' => __('Adjustment / Waiver / Void'),
-            'central_finance_fund_account' => __('Fund Account'),
-            'central_finance_internal_transfer' => __('Internal Transfer'),
-            'central_finance_fund_handover' => __('Fund Handover'),
-            'central_finance_hq_funding_request' => __('HQ / School Funding'),
-            'central_finance_import_batch' => __('Import Batch'),
+            'central_finance_fund_account', 'fund_account' => __('Fund Account'),
+            'central_finance_internal_transfer', 'internal_transfer' => __('Internal Transfer'),
+            'central_finance_fund_handover', 'fund_handover' => __('Fund Handover'),
+            'central_finance_hq_funding_request', 'hq_funding' => __('HQ / School Funding'),
+            'central_finance_import_batch', 'import_batch' => __('Import Batch'),
             default => __('Unknown source (:source)', ['source' => str($documentType)->replace(['_', '-'], ' ')->title()->toString()]),
         };
     }

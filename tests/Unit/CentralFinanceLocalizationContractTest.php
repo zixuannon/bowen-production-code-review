@@ -66,6 +66,23 @@ class CentralFinanceLocalizationContractTest extends TestCase
         }
     }
 
+    public function test_audit_action_and_document_type_values_have_readable_locale_entries(): void
+    {
+        $presentation = (string) file_get_contents($this->basePath('app/Services/CentralFinanceLedgerPresentationService.php'));
+        $zh = json_decode((string) file_get_contents($this->basePath('resources/lang/zh-cn.json')), true, 512, JSON_THROW_ON_ERROR);
+        $en = json_decode((string) file_get_contents($this->basePath('resources/lang/en.json')), true, 512, JSON_THROW_ON_ERROR);
+
+        foreach (['requested', 'confirmed', 'cancelled', 'rejected', 'submitted', 'approved', 'withdrawn', 'created', 'updated', 'deleted', 'refund', 'adjustment', 'discount', 'waiver', 'void', 'collected', 'lifecycle_active', 'lifecycle_inactive', 'lifecycle_archived'] as $action) {
+            self::assertArrayHasKey($action, $zh);
+            self::assertNotSame($action, $zh[$action]);
+            self::assertArrayHasKey($action, $en);
+        }
+
+        foreach (['central_payment', 'central_payment_refund', 'expense', 'other_income', 'reimbursement', 'central_receivable', 'fund_account', 'internal_transfer', 'fund_handover', 'hq_funding', 'import_batch'] as $type) {
+            self::assertStringContainsString("'{$type}'", $presentation);
+        }
+    }
+
     public function test_cutover_readiness_runtime_labels_and_reasons_have_both_locale_entries(): void
     {
         $readiness = (string) file_get_contents($this->basePath('app/Services/CentralFinanceCutoverReadinessService.php'));
