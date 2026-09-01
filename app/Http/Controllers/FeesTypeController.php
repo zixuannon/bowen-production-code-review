@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Repositories\FeesType\FeesTypeInterface;
+use App\Models\FeesType;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
 use Illuminate\Http\Request;
@@ -79,11 +80,10 @@ class FeesTypeController extends Controller
         $no = 1;
         foreach ($res as $row) {
             if ($showDeleted) {
-                $operate = BootstrapTableService::restoreButton(route('fees-type.restore', $row->id));
-                $operate .= BootstrapTableService::trashButton(route('fees-type.trash', $row->id));
+                $operate = BootstrapTableService::reactivateButton(route('fees-type.reactivate', $row->id));
             } else {
                 $operate = BootstrapTableService::editButton(route('fees-type.update', $row->id));
-                $operate .= BootstrapTableService::deleteButton(route('fees-type.destroy', $row->id));
+                $operate .= BootstrapTableService::deactivateButton(route('fees-type.deactivate', $row->id));
             }
             $tempRow = $row->toArray();
             $tempRow['no'] = $no++;
@@ -113,40 +113,56 @@ class FeesTypeController extends Controller
 
     public function destroy($id)
     {
+        ResponseService::errorResponse('Fee type configuration must be deactivated through the lifecycle action.');
+    }
+
+    public function deactivate(Request $request, int $id)
+    {
         ResponseService::noFeatureThenSendJson('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-type-delete');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
-            $this->feesType->deleteById($id);
-            ResponseService::successResponse('Data Deleted Successfully');
+            DB::beginTransaction();
+            $feesType = FeesType::query()->where('school_id', auth()->user()->school_id)->findOrFail($id);
+            $feesType->delete();
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(auth()->user(), $feesType, \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE, $data['reason']);
+            DB::commit();
+            ResponseService::successResponse('Fee type configuration deactivated.');
         } catch (Throwable $e) {
+            DB::rollBack();
             ResponseService::logErrorResponse($e, "FeesTypeController -> destroy method");
+            ResponseService::errorResponse();
+        }
+    }
+
+    public function reactivate(Request $request, int $id)
+    {
+        ResponseService::noFeatureThenSendJson('Fees Management');
+        ResponseService::noPermissionThenSendJson('fees-type-delete');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        try {
+            DB::beginTransaction();
+            $feesType = FeesType::withTrashed()->where('school_id', auth()->user()->school_id)->findOrFail($id);
+            $feesType->restore();
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(auth()->user(), $feesType, \App\Models\SchoolRecordLifecycleAudit::REACTIVATE, $data['reason']);
+            DB::commit();
+            ResponseService::successResponse('Fee type configuration reactivated.');
+        } catch (Throwable $e) {
+            DB::rollBack();
+            ResponseService::logErrorResponse($e, "FeesTypeController -> reactivate method");
             ResponseService::errorResponse();
         }
     }
 
     public function restore(int $id)
     {
-        ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noAnyPermissionThenRedirect(['fees-type-delete']);
-        try {
-            $this->feesType->findOnlyTrashedById($id)->restore();
-            ResponseService::successResponse("Data Restored Successfully");
-        } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e, "FeesTypeController -> restore method");
-            ResponseService::errorResponse();
-        }
+        ResponseService::errorResponse('Fee type configuration must be reactivated through the lifecycle action.');
     }
 
     public function trash($id)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-type-delete');
-        try {
-            $this->feesType->findOnlyTrashedById($id)->forceDelete();
-            ResponseService::successResponse("Data Deleted Permanently");
-        } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e, "FeesTypeController -> trash method");
-            ResponseService::errorResponse();
-        }
+        ResponseService::errorResponse('Permanent deletion is not available for fee type configuration. Keep it deactivated instead.');
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankAccount;
+use App\Models\Fee;
 use App\Models\FeesAdvance;
 use App\Models\FeesClassType;
 use App\Models\FinanceCategory;
@@ -349,11 +350,10 @@ class FeesController extends Controller
         foreach ($res as $row) {
             $operate = '';
             if ($showDeleted) {
-                $operate .= BootstrapTableService::restoreButton(route('fees.restore', $row->id));
-                $operate .= BootstrapTableService::trashButton(route('fees.trash', $row->id));
+                $operate .= BootstrapTableService::reactivateButton(route('fees.reactivate', $row->id));
             } else {
                 $operate .= BootstrapTableService::editButton(route('fees.edit', $row->id), false);
-                $operate .= BootstrapTableService::deleteButton(route('fees.destroy', $row->id));
+                $operate .= BootstrapTableService::deactivateButton(route('fees.deactivate', $row->id));
             }
 
             $tempRow = $row->toArray();
@@ -690,37 +690,55 @@ class FeesController extends Controller
 
     public function destroy($id)
     {
+        ResponseService::errorResponse('Fee configuration must be deactivated through the lifecycle action.');
+    }
+
+    public function deactivate(Request $request, int $id)
+    {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-delete');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $classIds = FeesClassType::query()->where('fees_id', $id)->pluck('class_id')->map(fn ($classId) => (int) $classId)->all();
-            $this->fees->deleteById($id);
+            $fee = Fee::query()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $classIds = FeesClassType::query()->where('fees_id', $fee->id)->pluck('class_id')->map(fn ($classId) => (int) $classId)->all();
+            $fee->delete();
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $fee, \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE, $data['reason'], ['class_ids' => $classIds]);
             $sessionYear = $this->cache->getDefaultSessionYear();
-            $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Fees', $id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
+            $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Fees', $fee->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             DB::commit();
-            app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, $classIds);
-            ResponseService::successResponse("Data Deleted Successfully");
+            // Deactivation changes availability for future setup only. It must
+            // not re-project or mutate confirmed Central Finance history.
+            ResponseService::successResponse('Fee configuration deactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e, "FeesController -> Store Method");
+            ResponseService::logErrorResponse($e, 'FeesController -> deactivate');
+            ResponseService::errorResponse();
+        }
+    }
+
+    public function reactivate(Request $request, int $id)
+    {
+        ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenSendJson('fees-delete');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        try {
+            DB::beginTransaction();
+            $fee = Fee::withTrashed()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $fee->restore();
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $fee, \App\Models\SchoolRecordLifecycleAudit::REACTIVATE, $data['reason']);
+            DB::commit();
+            ResponseService::successResponse('Fee configuration reactivated.');
+        } catch (Throwable $e) {
+            DB::rollBack();
+            ResponseService::logErrorResponse($e, 'FeesController -> reactivate');
             ResponseService::errorResponse();
         }
     }
 
     public function restore(int $id)
     {
-        ResponseService::noFeatureThenRedirect('Fees Management');
-        ResponseService::noPermissionThenRedirect('fees-delete');
-        try {
-            $fees = $this->fees->findOnlyTrashedById($id);
-            $fees->restore();
-            app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, [(int) $fees->class_id]);
-            ResponseService::successResponse("Data Restored Successfully");
-        } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e);
-            ResponseService::errorResponse();
-        }
+        ResponseService::errorResponse('Fee configuration must be reactivated through the lifecycle action.');
     }
 
     public function search(Request $request)
@@ -739,13 +757,10 @@ class FeesController extends Controller
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-delete');
-        try {
-            $this->fees->findOnlyTrashedById($id)->forceDelete();
-            ResponseService::successResponse("Data Deleted Permanently");
-        } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e);
-            ResponseService::errorResponse();
-        }
+        // Historical assignment items store snapshots of this configuration.
+        // A soft-deactivated fee remains available to that history; force delete
+        // would make future audit and restore behavior ambiguous.
+        ResponseService::errorResponse('Permanent deletion is not available for fee configuration. Keep it deactivated instead.');
     }
 
     /* END : Fees Module */
@@ -769,14 +784,42 @@ class FeesController extends Controller
 
     public function deleteClassType($id)
     {
+        ResponseService::errorResponse('Fee class type must be deactivated through the lifecycle action.');
+    }
+
+    public function deactivateClassType(Request $request, int $id)
+    {
         ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenSendJson('fees-delete');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $this->feesClassType->DeleteById($id);
+            $item = FeesClassType::query()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $item->delete();
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $item, \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE, $data['reason'], ['fee_id' => $item->fees_id]);
             $sessionYear = $this->cache->getDefaultSessionYear();
-            $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\FeesClassType', $id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
+            $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\FeesClassType', $item->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             DB::commit();
-            ResponseService::successResponse("Data Deleted Successfully");
+            ResponseService::successResponse('Fee class type deactivated.');
+        } catch (Throwable $e) {
+            DB::rollBack();
+            ResponseService::logErrorResponse($e);
+            ResponseService::errorResponse();
+        }
+    }
+
+    public function reactivateClassType(Request $request, int $id)
+    {
+        ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenSendJson('fees-delete');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        try {
+            DB::beginTransaction();
+            $item = FeesClassType::withTrashed()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $item->restore();
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $item, \App\Models\SchoolRecordLifecycleAudit::REACTIVATE, $data['reason'], ['fee_id' => $item->fees_id]);
+            DB::commit();
+            ResponseService::successResponse('Fee class type reactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
             ResponseService::logErrorResponse($e);

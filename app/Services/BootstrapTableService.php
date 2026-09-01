@@ -65,6 +65,22 @@ class BootstrapTableService
         return self::button($iconClass, $url, $customClass, $customAttributes);
     }
 
+    /** Explicit soft-deactivation action; it must target a dedicated lifecycle route. */
+    public static function deactivateButton($url)
+    {
+        return self::button('fa fa-pause', $url, ['deactivate-form', 'btn-gradient-warning'], [
+            'title' => trans('Deactivate'),
+        ]);
+    }
+
+    /** Explicit reactivation action; it must target a dedicated lifecycle route. */
+    public static function reactivateButton($url)
+    {
+        return self::button('fa fa-refresh', $url, ['reactivate-form', 'btn-gradient-success'], [
+            'title' => trans('Reactivate'),
+        ]);
+    }
+
     /**
      * Generates the expense-specific delete trigger consumed by the
      * delete-reason dialog in the Expense view. Keeping the marker here

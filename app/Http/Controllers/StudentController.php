@@ -390,9 +390,6 @@ class StudentController extends Controller
                 $operate .= BootstrapTableService::button('fa fa-check', route('student.change-status', $row->user_id), ['btn-gradient-success', 'activate-student'], ['title' => __('active')]);
             }
 
-            if (Auth::user()->can('student-delete')) {
-                $operate .= BootstrapTableService::trashButton(route('student.trash', $row->user_id));
-            }
             if (Auth::user()->can('student-list') || Auth::user()->can('student-create') || Auth::user()->can('student-edit') || Auth::user()->can('fees-create')) {
                 $operate .= BootstrapTableService::button('fa fa-line-chart', route('students.finance.show', $row->id), ['btn-gradient-info'], ['title' => __('Student Finance')]);
             }
@@ -440,23 +437,19 @@ class StudentController extends Controller
     public function destroy($user_id)
     {
         ResponseService::noPermissionThenSendJson('student-delete');
-        try {
-            $this->user->deleteById($user_id);
-            ResponseService::successResponse('Data Deleted Successfully');
-        } catch (Throwable $e) {
-            DB::rollBack();
-            ResponseService::logErrorResponse($e, "Student Controller -> Delete method");
-            ResponseService::errorResponse();
-        }
+        ResponseService::errorResponse('Student records must be deactivated or withdrawn through the lifecycle action.');
     }
 
-    public function changeStatus($userId)
+    public function changeStatus(Request $request, $userId)
     {
         try {
             // ResponseService::noFeatureThenSendJson('Student Management');
             ResponseService::noPermissionThenRedirect('student-edit');
+            $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
-            $user = $this->user->findTrashedById($userId);
+            $user = $this->user->builder()->withTrashed()
+                ->where('school_id', Auth::user()->school_id)
+                ->findOrFail($userId);
             if ($user->status == 0) {
                 $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
                 // If prepaid plan check student limit
@@ -469,7 +462,18 @@ class StudentController extends Controller
                 }
             }
 
-            $this->user->builder()->where('id', $userId)->withTrashed()->update(['status' => $user->status == 0 ? 1 : 0, 'deleted_at' => $user->status == 1 ? now() : null]);
+            $newStatus = $user->status == 0 ? 1 : 0;
+            $this->user->builder()->withTrashed()
+                ->where('school_id', Auth::user()->school_id)
+                ->where('id', $userId)
+                ->update(['status' => $newStatus, 'deleted_at' => $user->status == 1 ? now() : null]);
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
+                Auth::user(),
+                $this->user->builder()->withTrashed()->findOrFail($userId),
+                $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
+                $data['reason'],
+                ['previous_status' => (int) $user->status, 'status' => $newStatus],
+            );
             DB::commit();
             ResponseService::successResponse('Data Updated Successfully');
         } catch (Throwable $e) {
@@ -484,9 +488,12 @@ class StudentController extends Controller
         // ResponseService::noFeatureThenSendJson('Student Management');
         ResponseService::noPermissionThenRedirect('student-create');
         try {
+            $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
             foreach (json_decode($request->ids, false, 512, JSON_THROW_ON_ERROR) as $key => $userId) {
-                $studentUser = $this->user->findTrashedById($userId);
+                $studentUser = $this->user->builder()->withTrashed()
+                    ->where('school_id', Auth::user()->school_id)
+                    ->findOrFail($userId);
                 if ($studentUser->status == 0) {
                     $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
                     // If prepaid plan check student limit
@@ -499,7 +506,18 @@ class StudentController extends Controller
                     }
                 }
 
-                $this->user->builder()->where('id', $userId)->withTrashed()->update(['status' => $studentUser->status == 0 ? 1 : 0, 'deleted_at' => $studentUser->status == 1 ? now() : null]);
+                $newStatus = $studentUser->status == 0 ? 1 : 0;
+                $this->user->builder()->withTrashed()
+                    ->where('school_id', Auth::user()->school_id)
+                    ->where('id', $userId)
+                    ->update(['status' => $newStatus, 'deleted_at' => $studentUser->status == 1 ? now() : null]);
+                app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
+                    Auth::user(),
+                    $this->user->builder()->withTrashed()->findOrFail($userId),
+                    $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
+                    $data['reason'],
+                    ['previous_status' => (int) $studentUser->status, 'status' => $newStatus],
+                );
             }
             DB::commit();
             ResponseService::successResponse("Status Updated Successfully");
@@ -513,33 +531,9 @@ class StudentController extends Controller
     {
         // ResponseService::noFeatureThenSendJson('Student Management');
         ResponseService::noPermissionThenSendJson('student-delete');
-        try {
-            DB::beginTransaction();
-
-            // Get student record with guardian
-            $student = $this->student->builder()->with('guardian')->where('user_id', $id)->first();
-
-            if ($student && $student->guardian) {
-                // Count total students with same guardian_id
-                $guardianStudentCount = $this->student->builder()->where('guardian_id', $student->guardian_id)->count();
-
-                // If guardian has exactly one student, delete the guardian
-                if ($guardianStudentCount == 1) {
-                    $this->user->builder()->where('id', $student->guardian->id)->withTrashed()->forceDelete();
-                }
-            }
-
-            // Delete student and user records
-            $this->student->builder()->where('user_id', $id)->withTrashed()->forceDelete();
-            $this->user->builder()->where('id', $id)->withTrashed()->forceDelete();
-
-            DB::commit();
-            ResponseService::successResponse("Data Deleted Permanently");
-        } catch (Throwable $e) {
-            DB::rollBack();
-            ResponseService::logErrorResponse($e, "Student Controller ->Trash Method", 'cannot_delete_because_data_is_associated_with_other_data');
-            ResponseService::errorResponse();
-        }
+        // A student may be referenced by academic, guardian, and Central
+        // Finance history. Keep the record and use the existing status flow.
+        ResponseService::errorResponse('Permanent deletion is not available for student records. Deactivate or withdraw the student instead.');
     }
 
     public function createBulkData()
@@ -1072,10 +1066,6 @@ class StudentController extends Controller
                 $operate .= BootstrapTableService::editButton(route('update-application-status', $row->user->id, ['data-id' => $row->id]));
             }
 
-
-            if (Auth::user()->can('student-delete')) {
-                $operate .= BootstrapTableService::trashButton(route('student.trash', $row->user_id));
-            }
 
             $student_gender = $row->user->gender;
             $guardian_gender = $row->guardian->gender;

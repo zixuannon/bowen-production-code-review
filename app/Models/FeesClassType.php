@@ -4,12 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
 use App\Traits\DateFormatTrait;
 
 
 class FeesClassType extends Model {
-    use HasFactory, DateFormatTrait;
+    use HasFactory, DateFormatTrait, SoftDeletes;
 
     protected $fillable = [
         'class_id',
@@ -20,7 +21,6 @@ class FeesClassType extends Model {
         'amount',
         'optional',
         'school_id',
-        'deleted_at',
         'fee_currency',
         'fee_original_amount',
         'fee_exchange_rate_snapshot',

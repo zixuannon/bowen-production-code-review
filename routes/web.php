@@ -763,6 +763,8 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::group(['prefix' => 'fees-type'], static function () {
             Route::put("/{id}/restore", [FeesTypeController::class, 'restore'])->name('fees-type.restore');
             Route::delete("/{id}/deleted", [FeesTypeController::class, 'trash'])->name('fees-type.trash');
+            Route::post("/{id}/deactivate", [FeesTypeController::class, 'deactivate'])->name('fees-type.deactivate');
+            Route::post("/{id}/reactivate", [FeesTypeController::class, 'reactivate'])->name('fees-type.reactivate');
         });
         Route::resource('fees-type', FeesTypeController::class);
 
@@ -770,6 +772,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             // Fees
             Route::put("/{id}/restore", [FeesController::class, 'restore'])->name('fees.restore');
             Route::delete("/{id}/delete", [FeesController::class, 'trash'])->name('fees.trash');
+            Route::post("/{id}/deactivate", [FeesController::class, 'deactivate'])->name('fees.deactivate');
+            Route::post("/{id}/reactivate", [FeesController::class, 'reactivate'])->name('fees.reactivate');
+            Route::post("/class-type/{id}/deactivate", [FeesController::class, 'deactivateClassType'])->name('fees.class-type.deactivate');
+            Route::post("/class-type/{id}/reactivate", [FeesController::class, 'reactivateClassType'])->name('fees.class-type.reactivate');
             Route::delete("/installment/{id}", [FeesController::class, 'deleteInstallment'])->name('fees.installment.delete');
             Route::delete("/class-type/{id}", [FeesController::class, 'deleteClassType'])->name('fees.class-type.delete');
             Route::get("/search", [FeesController::class, 'search'])->name('fees.search');

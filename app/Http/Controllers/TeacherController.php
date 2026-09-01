@@ -288,7 +288,6 @@ class TeacherController extends Controller {
             if ($showDeleted) {
                 //Show Restore and Hard Delete Buttons
                 $operate = BootstrapTableService::menuButton('active',route('teachers.change-status', $row->id),['activate-teacher'],[]);
-                $operate .= BootstrapTableService::menuTrashButton('delete',route('teachers.trash', $row->id));
                 
             } else {
                 //Show Edit and Soft Delete Buttons
@@ -297,7 +296,6 @@ class TeacherController extends Controller {
                 $operate .= BootstrapTableService::menuButton('View Timetable',route('timetable.teacher.show', $row->id),[],[]);
                 $operate .= BootstrapTableService::menuButton('inactive',route('teachers.change-status', $row->id),['deactivate-teacher'],[]);
                 $operate .= BootstrapTableService::menuButton('salary_structure',route('staff.payroll-structure', $row->id),[],[]);
-                $operate .= BootstrapTableService::menuTrashButton('delete',route('teachers.trash', $row->id));
                 
             }
 
@@ -415,27 +413,21 @@ class TeacherController extends Controller {
 
     public function trash($id) {
         ResponseService::noPermissionThenSendJson('teacher-delete');
-        try {
-            DB::beginTransaction();
-            $teacher = $this->user->findTrashedById($id);
-            $schoolId = (int) $teacher->school_id;
-            $teacher->forceDelete();
-            DB::commit();
-            app(XiaobailongLifecycleNotifier::class)->deferStatus($schoolId, (int) $id, 'left');
-            ResponseService::successResponse("Data Deleted Permanently");
-        } catch (Throwable $e) {
-            DB::rollBack();
-            ResponseService::logErrorResponse($e, "Teacher Controller ->trash Method", 'cannot_delete_because_data_is_associated_with_other_data');
-            ResponseService::errorResponse();
-        }
+        // Teacher records can be referenced by classes, payroll, timetables,
+        // and lifecycle notifications. Status change is the supported
+        // reversible lifecycle action; permanent deletion is never safe here.
+        ResponseService::errorResponse('Permanent deletion is not available for teacher records. Deactivate the teacher instead.');
     }
 
-    public function changeStatus($id) {
+    public function changeStatus(Request $request, $id) {
         // ResponseService::noFeatureThenSendJson('Teacher Management');
         ResponseService::noPermissionThenRedirect('teacher-delete');
         try {
+            $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
-            $teacher = $this->user->findTrashedById($id);
+            $teacher = $this->user->builder()->withTrashed()
+                ->where('school_id', Auth::user()->school_id)
+                ->findOrFail($id);
 
             if ($teacher->status == 0) {
                 // If prepaid plan check student limit
@@ -450,7 +442,17 @@ class TeacherController extends Controller {
             }
 
             $newStatus = $teacher->status == 0 ? 1 : 0;
-            $this->user->builder()->where('id',$id)->withTrashed()->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
+            $this->user->builder()->withTrashed()
+                ->where('school_id', Auth::user()->school_id)
+                ->where('id', $id)
+                ->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
+            app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
+                Auth::user(),
+                $this->user->builder()->withTrashed()->findOrFail($id),
+                $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
+                $data['reason'],
+                ['previous_status' => (int) $teacher->status, 'status' => $newStatus],
+            );
             DB::commit();
             app(XiaobailongLifecycleNotifier::class)->deferStatus(
                 (int) $teacher->school_id,
@@ -467,11 +469,14 @@ class TeacherController extends Controller {
         // ResponseService::noFeatureThenSendJson('Teacher Management');
         ResponseService::noPermissionThenRedirect('teacher-delete');
         try {
+            $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
             $userIds = json_decode($request->ids);
             $lifecycleChanges = [];
             foreach ($userIds as $userId) {
-                $teacher = $this->user->findTrashedById($userId);
+                $teacher = $this->user->builder()->withTrashed()
+                    ->where('school_id', Auth::user()->school_id)
+                    ->findOrFail($userId);
                 if ($teacher->status == 0) {
                     // If prepaid plan check student limit
                     $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
@@ -484,7 +489,17 @@ class TeacherController extends Controller {
                     }
                 }
                 $newStatus = $teacher->status == 0 ? 1 : 0;
-                $this->user->builder()->where('id',$userId)->withTrashed()->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
+                $this->user->builder()->withTrashed()
+                    ->where('school_id', Auth::user()->school_id)
+                    ->where('id', $userId)
+                    ->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
+                app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
+                    Auth::user(),
+                    $this->user->builder()->withTrashed()->findOrFail($userId),
+                    $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
+                    $data['reason'],
+                    ['previous_status' => (int) $teacher->status, 'status' => $newStatus],
+                );
                 $lifecycleChanges[] = [(int) $teacher->school_id, (int) $userId, $newStatus === 1 ? 'active' : 'disabled'];
             }
             DB::commit();
