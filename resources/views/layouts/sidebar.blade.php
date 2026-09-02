@@ -112,6 +112,7 @@
                             @if($centralIsHeadFinance)
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.audits','central-finance.audits.*') ? 'active' : '' }}" href="{{ route('central-finance.audits') }}">{{ __('审计日志') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.imports') ? 'active' : '' }}" href="{{ route('central-finance.imports') }}">{{ __('导入批次') }}</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.group-import.*') ? 'active' : '' }}" href="{{ route('central-finance.group-import.index') }}">{{ __('Group Finance Import') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.exports') ? 'active' : '' }}" href="{{ route('central-finance.exports') }}">{{ __('导出中心') }}</a></li>
                             @endif
                         </ul></details></li>

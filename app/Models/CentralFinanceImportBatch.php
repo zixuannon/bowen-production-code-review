@@ -18,7 +18,7 @@ class CentralFinanceImportBatch extends Model
     protected $connection = 'mysql';
 
     protected $fillable = [
-        'batch_uuid', 'token', 'import_type', 'template_version', 'school_id',
+        'batch_uuid', 'token', 'import_type', 'template_version', 'school_id', 'group_import_batch_id',
         'uploaded_by', 'confirmed_by', 'file_name', 'file_hash', 'preview_data',
         'summary', 'status', 'total_rows', 'valid_rows', 'error_rows', 'expires_at',
         'confirmed_at', 'failure_reason',

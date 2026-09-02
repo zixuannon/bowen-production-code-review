@@ -1188,6 +1188,11 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 // The middleware re-resolves the central session on mysql before `auth`; no
 // route here can receive a tenant database or impersonated tenant identity.
 Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
+    Route::get('central-finance/group-import', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'workspace'])->name('central-finance.group-import.index');
+    Route::get('central-finance/group-import/template', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'template'])->name('central-finance.group-import.template');
+    Route::post('central-finance/group-import/preview', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'preview'])->name('central-finance.group-import.preview');
+    Route::get('central-finance/group-import/{batch}/source/{row}', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'source'])->whereNumber('row')->name('central-finance.group-import.source');
+    Route::post('central-finance/group-import/{batch}/confirm', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'confirm'])->name('central-finance.group-import.confirm');
     Route::get('central-finance', [CentralFinanceWorkspaceController::class, 'dashboard'])->name('central-finance.dashboard');
     Route::post('central-finance/school', [CentralFinanceWorkspaceController::class, 'enterSchool'])->name('central-finance.school.enter');
     Route::post('central-finance/all-schools', [CentralFinanceWorkspaceController::class, 'exitSchool'])->name('central-finance.school.exit');

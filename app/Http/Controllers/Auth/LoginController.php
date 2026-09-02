@@ -104,6 +104,11 @@ class LoginController extends Controller
             // query; changing Laravel's default connection alone is not
             // sufficient for a fresh School Code login.
             Session::put('db_connection_name', 'school');
+            // The User model reads the request session via the session()
+            // helper while the guard is resolving credentials. Mirror the
+            // trusted School Code result into that request-bound store before
+            // Auth builds its provider query.
+            session(['db_connection_name' => 'school']);
             Auth::forgetUser();
 
             \Log::info('Switched to database: ' . DB::connection('school')->getDatabaseName());
