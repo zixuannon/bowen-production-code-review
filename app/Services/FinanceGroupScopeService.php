@@ -415,6 +415,20 @@ class FinanceGroupScopeService
     }
 
     /**
+     * Group-wide operations (for example Group Finance Import) deliberately
+     * require the explicit GROUP scope.  A collection of School scopes must
+     * never become an implicit Group-wide authority.
+     */
+    public function hasActiveGroupScope(FinanceGroupUser $groupUser, string $capability): bool
+    {
+        if ($groupUser->status !== 'active') {
+            return false;
+        }
+
+        return $this->activeScopes($groupUser, $capability)->contains('scope_type', 'GROUP');
+    }
+
+    /**
      * Resolve an active mapped tenant identity without exposing the tenant
      * database name. The short-lived tenant connection is restored before the
      * scalar identifiers are returned.

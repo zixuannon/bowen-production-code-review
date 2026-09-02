@@ -1,0 +1,297 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\CentralFinanceCategory;
+use App\Models\CentralFinanceExpense;
+use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceGroupImportBatch;
+use App\Models\CentralFinanceOtherIncome;
+use App\Models\CentralFinanceUser;
+use App\Models\FinanceGroup;
+use App\Models\FinanceGroupUser;
+use App\Services\CentralFinanceGroupImportService;
+use App\Services\CentralFinanceOperatingDocumentService;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\UploadedFile;
+use Illuminate\View\View;
+use InvalidArgumentException;
+use Tests\TestCase;
+
+/**
+ * This uses the real canonical operating-document service on a disposable
+ * central SQLite database.  It characterizes the Group Import orchestrator;
+ * it never creates tenant data or a Student Payment path.
+ */
+final class CentralFinanceGroupImportConfirmTest extends TestCase
+{
+    private string $database;
+    private CentralFinanceUser $head;
+    private FinanceGroup $group;
+    private CentralFinanceFundAccount $zixuanAccount;
+    private CentralFinanceFundAccount $timesAccount;
+    private CentralFinanceCategory $zixuanIncome;
+    private CentralFinanceCategory $timesExpense;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->database = tempnam(sys_get_temp_dir(), 'cf_group_confirm_');
+        Config::set('database.connections.mysql', [
+            'driver' => 'sqlite', 'database' => $this->database, 'prefix' => '',
+            'foreign_key_constraints' => true,
+        ]);
+        DB::purge('mysql');
+        DB::setDefaultConnection('mysql');
+
+        Schema::connection('mysql')->create('schools', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('code');
+            $table->boolean('installed')->default(true);
+            $table->string('status')->default('active');
+            $table->softDeletes();
+            $table->timestamps();
+        });
+        Schema::connection('mysql')->create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('first_name')->nullable();
+            $table->string('last_name')->nullable();
+            $table->softDeletes();
+            $table->timestamps();
+        });
+        foreach ([
+            '2026_08_18_000001_create_finance_group_scope_tables.php',
+            '2026_08_20_000003_create_central_finance_student_sync_tables.php',
+            '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
+            '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
+            '2026_08_21_000002_create_central_finance_operating_documents.php',
+            '2026_08_21_000005_create_central_finance_school_cutovers.php',
+            '2026_08_24_000001_create_central_finance_import_batches.php',
+            '2026_08_24_000004_add_reimbursed_by_to_central_finance_expenses.php',
+            '2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php',
+            '2026_09_02_000001_harden_school_codes_for_group_finance_import.php',
+            '2026_09_02_000002_add_category_codes_for_group_finance_import.php',
+            '2026_09_02_000003_create_central_finance_group_import_previews.php',
+            '2026_09_02_000004_add_group_import_confirm_links.php',
+        ] as $migration) {
+            (require database_path('migrations/'.$migration))->up();
+        }
+
+        DB::connection('mysql')->table('schools')->insert([
+            ['id' => 1, 'name' => 'Zixuan QA', 'code' => 'SCH-ZIX', 'installed' => true, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'name' => 'Times QA', 'code' => 'SCH-TIM', 'installed' => true, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('users')->insert([
+            ['id' => 100, 'first_name' => 'Head', 'last_name' => 'Finance', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
+            ['school_id' => 1, 'status' => 'central', 'cutover_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+            ['school_id' => 2, 'status' => 'central', 'cutover_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $this->head = CentralFinanceUser::on('mysql')->findOrFail(100);
+        $this->group = FinanceGroup::on('mysql')->create(['code' => 'QA', 'name' => 'QA Group', 'status' => 'active']);
+        foreach ([1, 2] as $schoolId) {
+            DB::connection('mysql')->table('finance_group_schools')->insert(['group_id' => $this->group->id, 'school_id' => $schoolId, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+            DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id' => 100, 'school_id' => $schoolId, 'can_view' => true, 'can_operate' => true, 'can_approve_reimbursements' => true, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $member = FinanceGroupUser::on('mysql')->create(['group_id' => $this->group->id, 'central_user_id' => 100, 'status' => 'active']);
+        foreach ([1, 2] as $schoolId) {
+            DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id' => $member->id, 'school_id' => $schoolId, 'scope_type' => 'SCHOOL', 'capability' => 'view_reports', 'scope_key' => 'SCHOOL:'.$schoolId.':view_reports', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+            DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id' => $member->id, 'school_id' => $schoolId, 'scope_type' => 'SCHOOL', 'capability' => 'operate_finance', 'scope_key' => 'SCHOOL:'.$schoolId.':operate_finance', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id' => $member->id, 'school_id' => null, 'scope_type' => 'GROUP', 'capability' => 'operate_finance', 'scope_key' => 'group', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $this->zixuanAccount = $this->account('ZIX-CASH', 'Zixuan Cash', 1);
+        $this->timesAccount = $this->account('TIM-CASH', 'Times Cash', 2);
+        foreach ([$this->zixuanAccount, $this->timesAccount] as $account) {
+            DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id' => $account->id, 'user_id' => 100, 'can_view' => true, 'can_operate' => true, 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->zixuanIncome = $this->category(1, CentralFinanceCategory::INCOME, 'DONATION');
+        $this->timesExpense = $this->category(2, CentralFinanceCategory::EXPENSE, 'RENT');
+    }
+
+    protected function tearDown(): void
+    {
+        DB::purge('mysql');
+        @unlink($this->database);
+        parent::tearDown();
+    }
+
+    public function test_multi_school_mixed_confirm_creates_only_canonical_operating_documents_and_links_rows(): void
+    {
+        $batch = $this->preview([
+            $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-IN-1', 125, 0),
+            $this->row('SCH-TIM', 'Times QA', $this->timesAccount, $this->timesExpense, 'GI-EX-1', 0, 40),
+        ]);
+
+        $confirmed = app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+
+        $this->assertSame('completed', $confirmed->status);
+        $this->assertSame(1, CentralFinanceOtherIncome::on('mysql')->count());
+        $this->assertSame(1, CentralFinanceExpense::on('mysql')->count());
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_payments')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_receipts')->count());
+        $this->assertSame(2, $confirmed->rows()->whereNotNull('canonical_source_id')->count());
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_import_batches')->where('group_import_batch_id', $confirmed->id)->where('status', 'completed')->count());
+        // one canonical document audit plus start/completion batch audit per School
+        $this->assertSame(6, DB::connection('mysql')->table('central_finance_document_audits')->count());
+    }
+
+    public function test_confirm_failure_after_preview_leaves_no_partial_financial_write_and_marks_batch_failed(): void
+    {
+        $batch = $this->preview([
+            $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-ROLL-1', 125, 0),
+            $this->row('SCH-TIM', 'Times QA', $this->timesAccount, $this->timesExpense, 'GI-ROLL-2', 0, 40),
+        ]);
+        $this->timesAccount->update(['is_active' => false, 'status' => 'inactive']);
+
+        try {
+            app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+            $this->fail('Confirm must revalidate the now-inactive account.');
+        } catch (InvalidArgumentException) {
+            $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
+            $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
+            $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+            $this->assertSame('failed', CentralFinanceGroupImportBatch::on('mysql')->findOrFail($batch->id)->status);
+        }
+    }
+
+    public function test_duplicate_confirm_is_exactly_once_and_conflict_after_preview_blocks_all_new_writes(): void
+    {
+        $batch = $this->preview([$this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-ONCE-1', 125, 0)]);
+        app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+        try {
+            app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+            $this->fail('A completed batch cannot confirm twice.');
+        } catch (InvalidArgumentException) {
+            $this->assertSame(1, CentralFinanceOtherIncome::on('mysql')->count());
+            $this->assertSame(1, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+        }
+
+        $conflicted = $this->preview([$this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-CONFLICT-1', 50, 0)]);
+        app(CentralFinanceOperatingDocumentService::class)->createOtherIncome($this->head, 1, $this->zixuanIncome->id, $this->zixuanAccount, 75, 'Cash', CarbonImmutable::parse('2026-09-02', 'Asia/Yangon'), 'external-conflict-1', 'GI-CONFLICT-1');
+        try {
+            app(CentralFinanceGroupImportService::class)->confirm($this->head, $conflicted->token);
+            $this->fail('An immutable reference conflict must block confirmation.');
+        } catch (InvalidArgumentException) {
+            $this->assertSame(2, CentralFinanceOtherIncome::on('mysql')->count());
+            $this->assertSame(2, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+            $this->assertSame('failed', CentralFinanceGroupImportBatch::on('mysql')->findOrFail($conflicted->id)->status);
+        }
+    }
+
+    public function test_confirm_link_migration_is_additive_and_reversible(): void
+    {
+        $migration = require database_path('migrations/2026_09_02_000004_add_group_import_confirm_links.php');
+        $migration->down();
+        $this->assertFalse(Schema::connection('mysql')->hasColumn('central_finance_group_import_batches', 'confirmed_by'));
+        $this->assertFalse(Schema::connection('mysql')->hasColumn('central_finance_group_import_preview_rows', 'canonical_source_id'));
+
+        $migration->up();
+        $this->assertTrue(Schema::connection('mysql')->hasColumn('central_finance_group_import_batches', 'confirmed_by'));
+        $this->assertTrue(Schema::connection('mysql')->hasColumn('central_finance_group_import_preview_rows', 'canonical_source_id'));
+    }
+
+    public function test_school_scoped_operate_finance_cannot_preview_group_import(): void
+    {
+        DB::connection('mysql')->table('users')->insert(['id' => 101, 'first_name' => 'School', 'last_name' => 'Accountant', 'created_at' => now(), 'updated_at' => now()]);
+        $schoolActor = CentralFinanceUser::on('mysql')->findOrFail(101);
+        $schoolMember = FinanceGroupUser::on('mysql')->create(['group_id' => $this->group->id, 'central_user_id' => 101, 'status' => 'active']);
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id' => $schoolMember->id, 'school_id' => 1, 'scope_type' => 'SCHOOL',
+            'capability' => 'operate_finance', 'scope_key' => 'school:1', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceGroupImportService::class)->previewRows(
+            $schoolActor,
+            $this->group,
+            'school-only.xlsx',
+            hash('sha256', 'school-only'),
+            [$this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-SCHOOL-DENIED', 10, 0)],
+        );
+    }
+
+    public function test_http_surface_requires_group_level_operate_finance(): void
+    {
+        $this->withoutMiddleware()->actingAs($this->head);
+        $workspace = app(\App\Http\Controllers\CentralFinanceGroupImportController::class)->workspace(request());
+        $this->assertInstanceOf(View::class, $workspace);
+        $this->assertSame('central-finance.group-import.index', $workspace->name());
+        $this->get(route('central-finance.group-import.template'))->assertOk();
+
+        $schoolActor = $this->schoolOnlyActor();
+        $batch = CentralFinanceGroupImportBatch::on('mysql')->create([
+            'finance_group_id' => $this->group->id,
+            'uploaded_by' => $this->head->id,
+            'file_name' => 'head-only.xlsx',
+            'file_hash' => hash('sha256', 'head-only'),
+            'schema_version' => CentralFinanceGroupImportService::SCHEMA_VERSION,
+            'status' => 'previewed',
+            'total_rows' => 0,
+            'new_rows' => 0,
+            'duplicate_rows' => 0,
+            'conflict_rows' => 0,
+            'error_rows' => 0,
+            'school_summary' => [],
+        ]);
+
+        $this->actingAs($schoolActor);
+        $this->get(route('central-finance.group-import.index'))->assertForbidden();
+        $this->get(route('central-finance.group-import.template'))->assertForbidden();
+        $this->post(route('central-finance.group-import.preview'), [
+            'finance_group_id' => $this->group->id,
+            'group_import' => UploadedFile::fake()->create('school-only.xlsx', 1, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        ])->assertForbidden();
+        $this->post(route('central-finance.group-import.confirm', $batch->token))->assertForbidden();
+        $this->get(route('central-finance.group-import.source', [$batch->token, 1]))->assertForbidden();
+    }
+
+    private function schoolOnlyActor(): CentralFinanceUser
+    {
+        if ($actor = CentralFinanceUser::on('mysql')->find(101)) {
+            return $actor;
+        }
+
+        DB::connection('mysql')->table('users')->insert(['id' => 101, 'first_name' => 'School', 'last_name' => 'Accountant', 'created_at' => now(), 'updated_at' => now()]);
+        $member = FinanceGroupUser::on('mysql')->create(['group_id' => $this->group->id, 'central_user_id' => 101, 'status' => 'active']);
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id' => $member->id, 'school_id' => 1, 'scope_type' => 'SCHOOL',
+            'capability' => 'operate_finance', 'scope_key' => 'school:1', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return CentralFinanceUser::on('mysql')->findOrFail(101);
+    }
+
+    /** @param list<array<string,mixed>> $rows */
+    private function preview(array $rows): CentralFinanceGroupImportBatch
+    {
+        return app(CentralFinanceGroupImportService::class)->previewRows($this->head, $this->group, 'group-import.xlsx', hash('sha256', serialize($rows).Str::uuid()), $rows);
+    }
+
+    /** @return array<string,mixed> */
+    private function row(string $schoolCode, string $schoolLabel, CentralFinanceFundAccount $account, CentralFinanceCategory $category, string $reference, float $income, float $expense): array
+    {
+        return ['School Code' => $schoolCode, '校区' => $schoolLabel, '日期' => '2026-09-02', '报销人' => 'QA', '摘要' => 'Group import QA', 'Fund Account Code' => $account->account_code, 'Fund Account Type' => $account->account_type, 'Account Owner' => $account->owner_type, 'Category Code' => $category->category_code, '付款方式' => 'Cash', '收入' => $income, '支出' => $expense, '余款' => null, 'Reference / 单据号' => $reference, 'Currency' => 'MMK', '备注' => ''];
+    }
+
+    private function account(string $code, string $name, int $schoolId): CentralFinanceFundAccount
+    {
+        return CentralFinanceFundAccount::on('mysql')->create(['account_uuid' => (string) Str::uuid(), 'group_id' => $this->group->id, 'school_id' => $schoolId, 'owner_type' => 'school', 'account_code' => $code, 'account_name' => $name, 'account_type' => 'cash', 'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true, 'status' => 'active']);
+    }
+
+    private function category(int $schoolId, string $type, string $code): CentralFinanceCategory
+    {
+        return CentralFinanceCategory::on('mysql')->create(['school_id' => $schoolId, 'type' => $type, 'name' => $code, 'category_code' => $code, 'is_active' => true]);
+    }
+}

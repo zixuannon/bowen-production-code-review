@@ -23,10 +23,7 @@ final class CentralFinanceGroupImportController extends Controller
     public function workspace(Request $request): View
     {
         $actor = $this->actor();
-        $groups = FinanceGroup::on('mysql')->where('status', 'active')->get()->filter(function (FinanceGroup $group) use ($actor): bool {
-            $member = $group->users()->where('central_user_id', $actor->id)->where('status', 'active')->first();
-            return $member && app(\App\Services\FinanceGroupScopeService::class)->accessibleSchools($member, 'operate_finance')->isNotEmpty();
-        })->values();
+        $groups = $this->imports->authorizedGroups($actor);
         abort_if($groups->isEmpty(), 403);
         $batch = null;
         if ($request->filled('batch')) {
@@ -39,19 +36,27 @@ final class CentralFinanceGroupImportController extends Controller
 
     public function template(): BinaryFileResponse
     {
+        abort_if($this->imports->authorizedGroups($this->actor())->isEmpty(), 403);
         return Excel::download(new CentralFinanceGroupImportTemplateV2Export(), 'group-finance-import-template-v2.xlsx');
     }
 
     public function preview(Request $request): RedirectResponse
     {
         $data = $request->validate(['finance_group_id' => ['required', 'integer'], 'group_import' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:5120']]);
-        $batch = $this->imports->previewUploaded($this->actor(), FinanceGroup::on('mysql')->findOrFail((int) $data['finance_group_id']), $request->file('group_import'));
+        $actor = $this->actor();
+        $group = FinanceGroup::on('mysql')->findOrFail((int) $data['finance_group_id']);
+        $this->imports->assertCanOperateGroup($actor, $group);
+        $batch = $this->imports->previewUploaded($actor, $group, $request->file('group_import'));
         return redirect()->route('central-finance.group-import.index', ['batch' => $batch->token])->with('success', __('Group Import preview completed. No financial document was created.'));
     }
 
     public function confirm(string $batch): RedirectResponse
     {
-        $confirmed = $this->imports->confirm($this->actor(), $batch);
+        $actor = $this->actor();
+        $preview = CentralFinanceGroupImportBatch::on('mysql')->where('token', $batch)->firstOrFail();
+        $this->imports->assertCanOperateGroup($actor, FinanceGroup::on('mysql')->findOrFail($preview->finance_group_id));
+        abort_unless((int) $preview->uploaded_by === (int) $actor->id, 403);
+        $confirmed = $this->imports->confirm($actor, $batch);
         return redirect()->route('central-finance.group-import.index', ['batch' => $confirmed->token])->with('success', __('Group Import confirmed.'));
     }
 
@@ -59,8 +64,10 @@ final class CentralFinanceGroupImportController extends Controller
     public function source(string $batch, int $row): RedirectResponse
     {
         $actor = $this->actor();
+        abort_if($this->imports->authorizedGroups($actor)->isEmpty(), 403);
         $parent = CentralFinanceGroupImportBatch::on('mysql')
             ->where('token', $batch)->where('uploaded_by', $actor->id)->firstOrFail();
+        $this->imports->assertCanOperateGroup($actor, FinanceGroup::on('mysql')->findOrFail($parent->finance_group_id));
         $previewRow = CentralFinanceGroupImportPreviewRow::on('mysql')
             ->where('group_batch_id', $parent->id)->findOrFail($row);
         abort_unless($previewRow->canonical_source_id && in_array($previewRow->canonical_source_type, ['expense', 'other_income'], true), 404);

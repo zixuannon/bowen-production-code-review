@@ -44,6 +44,36 @@ final class CentralFinanceGroupImportService
         private readonly CentralFinanceOperatingDocumentService $documents,
     ) {}
 
+    /** @return Collection<int, FinanceGroup> */
+    public function authorizedGroups(CentralFinanceUser $actor): Collection
+    {
+        return FinanceGroup::on('mysql')->where('status', 'active')->get()
+            ->filter(function (FinanceGroup $group) use ($actor): bool {
+                try {
+                    $this->assertCanOperateGroup($actor, $group);
+                    return true;
+                } catch (AuthorizationException) {
+                    return false;
+                }
+            })
+            ->values();
+    }
+
+    public function assertCanOperateGroup(CentralFinanceUser $actor, FinanceGroup $group): FinanceGroupUser
+    {
+        $groupUser = FinanceGroupUser::on('mysql')->where([
+            'group_id' => $group->id,
+            'central_user_id' => $actor->id,
+            'status' => 'active',
+        ])->first();
+
+        if (!$groupUser || $group->status !== 'active' || !$this->groups->hasActiveGroupScope($groupUser, 'operate_finance')) {
+            throw new AuthorizationException('An active group-level operate_finance scope is required for Group Import.');
+        }
+
+        return $groupUser;
+    }
+
     /**
      * The only financial write path for Group Import.  The outer transaction
      * deliberately spans every routed School; the canonical document service
@@ -58,7 +88,7 @@ final class CentralFinanceGroupImportService
                     throw new InvalidArgumentException('This Group Import preview is not eligible for confirmation.');
                 }
                 $group = FinanceGroup::on('mysql')->findOrFail($batch->finance_group_id);
-                $groupUser = $this->groupUser($actor, $group);
+                $groupUser = $this->assertCanOperateGroup($actor, $group);
                 $rows = CentralFinanceGroupImportPreviewRow::on('mysql')->where('group_batch_id', $batch->id)->orderBy('row_number')->lockForUpdate()->get();
                 $batch->update(['status' => 'confirming', 'failure_reason' => null]);
                 $this->audit($actor, $batch, $rows, 'group_import_confirm_started');
@@ -106,6 +136,10 @@ final class CentralFinanceGroupImportService
         } catch (GroupImportConfirmException $error) {
             $this->markFailed($actor, $token, $error->row, $error->errorCode, $error->getMessage());
             throw $error;
+        } catch (AuthorizationException $error) {
+            // Authorization denials must neither disclose nor mutate a
+            // preview owned by another actor.
+            throw $error;
         } catch (\Throwable $error) {
             $this->markFailed($actor, $token, null, 'CONFIRM_FAILED', $error->getMessage());
             throw $error;
@@ -124,7 +158,7 @@ final class CentralFinanceGroupImportService
     /** @param list<array<string,mixed>> $rows */
     public function previewRows(CentralFinanceUser $actor, FinanceGroup $group, string $fileName, string $fileHash, array $rows): CentralFinanceGroupImportBatch
     {
-        $groupUser = $this->groupUser($actor, $group);
+        $groupUser = $this->assertCanOperateGroup($actor, $group);
         $projected = [];
         $prepared = [];
 
@@ -255,12 +289,6 @@ final class CentralFinanceGroupImportService
         return ['result_status' => 'New', 'error_code' => null, 'error_message' => null, 'idempotency_key' => $key];
     }
 
-    private function groupUser(CentralFinanceUser $actor, FinanceGroup $group): FinanceGroupUser
-    {
-        $groupUser = FinanceGroupUser::on('mysql')->where(['group_id' => $group->id, 'central_user_id' => $actor->id, 'status' => 'active'])->first();
-        if (!$groupUser || $group->status !== 'active' || $this->groups->accessibleSchools($groupUser, 'operate_finance')->isEmpty()) throw new AuthorizationException('An active Group operate_finance scope is required for Group Import preview.');
-        return $groupUser;
-    }
 
     /** @param list<array<string,mixed>> $rows @return array{new:int,duplicate:int,conflict:int,error:int,schools:array<int,array<string,mixed>>,currency_totals:array<string,array<string,array{count:int,amount:float}>>} */
     private function summary(array $rows): array
