@@ -638,6 +638,11 @@
                 showCancelButton: true,
                 confirmButtonColor: '#3085d6',
                 cancelButtonColor: '#d33',
+                input: 'textarea',
+                inputLabel: window.trans['Reason'],
+                inputValidator: function (value) {
+                    return String(value || '').trim() ? undefined : (window.trans['A lifecycle reason is required.'] || 'A reason is required.');
+                },
                 confirmButtonText: window.trans["Yes, Change it"],
                 cancelButtonText: window.trans["Cancel"]
             }).then((result) => {
@@ -645,6 +650,7 @@
                     let url = baseUrl + '/teachers/change-status-bulk';
                     let data = new FormData();
                     data.append("ids", userIds)
+                    data.append("reason", String(result.value || '').trim())
 
                     function successCallback(response) {
                         $('#table_list').bootstrapTable('refresh');

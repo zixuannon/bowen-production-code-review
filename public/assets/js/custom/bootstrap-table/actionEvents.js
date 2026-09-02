@@ -447,6 +447,7 @@ window.studentEvents = {
             confirmButtonText: window.trans["Yes inactive"],
             cancelButtonText: window.trans["Cancel"],
             icon: 'question',
+            reasonRequired: true,
             successCallBack: function () {
                 $('#table_list').bootstrapTable('refresh');
             }
@@ -458,6 +459,7 @@ window.studentEvents = {
             confirmButtonText: window.trans["Yes Activate"],
             cancelButtonText: window.trans["Cancel"],
             icon: 'question',
+            reasonRequired: true,
             successCallBack: function () {
                 $('#table_list').bootstrapTable('refresh');
             }
@@ -900,6 +902,7 @@ window.teacherEvents = {
             text: window.trans["You want to inactive the Teacher"],
             confirmButtonText: window.trans["Yes inactive"],
             icon: 'question',
+            reasonRequired: true,
             successCallBack: function () {
                 $('#table_list').bootstrapTable('refresh');
             }
@@ -910,6 +913,7 @@ window.teacherEvents = {
             text: window.trans["You want to Activate the Teacher"],
             confirmButtonText: window.trans["Yes Activate"],
             icon: 'question',
+            reasonRequired: true,
             successCallBack: function () {
                 $('#table_list').bootstrapTable('refresh');
             }
@@ -2591,4 +2595,3 @@ window.financeCategoryEvents = {
         $('#edit_description').val(row.description || '');
     }
 };
-

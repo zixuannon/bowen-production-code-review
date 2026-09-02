@@ -2631,5 +2631,14 @@
     "Pagination Navigation": "分页导航",
     "Go to page :page": "前往第 :page 页",
     "Transfer Out to :account": "转出至 :account",
-    "Incoming Transfer from :account": "收到来自 :account 的转账"
+    "Incoming Transfer from :account": "收到来自 :account 的转账",
+    "Deactivate": "停用", "Reactivate": "重新启用", "Reason": "原因",
+    "A lifecycle reason is required.": "必须填写生命周期操作原因。", "This record will be deactivated. Historical records remain available.": "此记录将被停用，历史记录仍可查看。", "This record will be reactivated.": "此记录将被重新启用。",
+    "Internal Transfer Reversal": "账户转账冲回", "Incoming Reversal from :account": "收到来自 :account 的冲回款", "Reversal Out to :account": "冲回至 :account", "Creates one append-only paired reversal": "创建一笔不可篡改的双边冲回记录", "Reversal reason": "冲回原因", "Reverse": "冲回",
+    "Central bank transfer reversed.": "中央银行转账已冲回。", "Central Fund Handover reversed.": "中央资金交接已冲回。", "Central HQ Funding reversed.": "中央总部 / 校区拨款已冲回。", "Transfer records": "转账记录", "Confirmed · Reversed": "已确认 · 已冲回",
+    "Preview discarded; no financial document is created": "预览已丢弃；未创建任何财务单据。", "Discard reason": "丢弃原因", "Discard": "丢弃", "Scope change reason": "授权范围变更原因", "Fund Account access updates immediately": "资金账户访问权限将立即更新。", "No Ledger entry will be created": "不会创建账本流水。", "Source / destination": "来源 / 去向",
+    "Approved · one Expense will be created": "已批准 · 将创建一笔支出", "Rejected · no Expense or Ledger entry will be created": "已拒绝 · 不会创建支出或账本流水", "Cancelled · no Expense or Ledger entry will be created": "已取消 · 不会创建支出或账本流水", "Withdrawn · no Expense or Ledger entry will be created": "已撤回 · 不会创建支出或账本流水",
+    "Revocation reason": "撤销原因", "Central Finance School access revoked immediately": "中央财务校区权限已立即撤销。", "Central payment import preview discarded.": "中央收款导入预览已丢弃。", "Central Expense import preview discarded.": "中央支出导入预览已丢弃。", "A Fund Account scope reason is required.": "必须填写资金账户授权范围变更原因。", "An import discard reason is required.": "必须填写导入预览丢弃原因。",
+    "Posted": "已入账", "Voided with append-only reversal": "已作废并追加冲回记录", "Audited adjustment, waiver, or void": "已审计的调整、减免或作废", "Opening balance is an audited baseline and is not a Ledger movement.": "期初余额是经审计的基线，不是账本流水。", "Audited baseline": "已审计基线", "New append-only opening balance audit": "新增不可篡改的期初余额审计记录",
+    "Confirm audited lifecycle action": "确认审计生命周期操作", "Close": "关闭", "This action preserves the original document and its audit history. It cannot be used as a delete action.": "此操作会保留原始单据及其审计历史，不能作为删除操作使用。", "Object": "对象", "Current status": "当前状态", "A reason is required and will be retained in the audit trail.": "必须填写原因，并会保留在审计记录中。", "Confirm action": "确认操作", "Refund with append-only Ledger reversal": "退款并追加账本冲回记录", "Account status changes; statements remain readable": "账户状态将变更，历史流水仍可查看", "New append-only audited record": "新增不可篡改的审计记录"
 }

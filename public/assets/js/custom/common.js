@@ -404,6 +404,32 @@ $(document).on('click', '.delete-form', function (e) {
         }
     })
 })
+$(document).on('click', '.deactivate-form', function (e) {
+    e.preventDefault();
+    showSweetAlertConfirmPopup($(this).attr('href'), 'POST', {
+        text: window.trans['This record will be deactivated. Historical records remain available.'],
+        confirmButtonText: window.trans['Deactivate'],
+        cancelButtonText: window.trans['Cancel'],
+        icon: 'warning',
+        reasonRequired: true,
+        successCallBack: function () {
+            $('#table_list').bootstrapTable('refresh');
+        }
+    });
+})
+$(document).on('click', '.reactivate-form', function (e) {
+    e.preventDefault();
+    showSweetAlertConfirmPopup($(this).attr('href'), 'POST', {
+        text: window.trans['This record will be reactivated.'],
+        confirmButtonText: window.trans['Reactivate'],
+        cancelButtonText: window.trans['Cancel'],
+        icon: 'question',
+        reasonRequired: true,
+        successCallBack: function () {
+            $('#table_list').bootstrapTable('refresh');
+        }
+    });
+})
 $(document).on('click', '.cancel-service', function (e) {
     e.preventDefault();
     showCancelPopupModal($(this).attr('href'), {

@@ -8,6 +8,7 @@ use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundHandover;
 use App\Models\CentralFinanceHqFundingRequest;
+use App\Models\CentralFinanceInternalTransfer;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinancePayment;

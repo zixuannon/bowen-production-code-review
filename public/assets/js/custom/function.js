@@ -285,6 +285,7 @@ function select2Search(searchElement, searchUrl, data, placeHolder, templateDesi
  * @param {string} [options.cancelButtonText] - Cancel
  * @param {function} [options.successCallBack] - function()
  * @param {function} [options.errorCallBack] - function()
+ * @param {boolean} [options.reasonRequired] - require and submit an audited lifecycle reason
  */
 function showSweetAlertConfirmPopup(url, method, options = {}) {
     let opt = {
@@ -300,6 +301,7 @@ function showSweetAlertConfirmPopup(url, method, options = {}) {
         },
         errorCallBack: function (response) {
         },
+        reasonRequired: false,
         ...options,
     }
 
@@ -311,7 +313,13 @@ function showSweetAlertConfirmPopup(url, method, options = {}) {
         confirmButtonColor: opt.showCancelButton,
         cancelButtonColor: opt.cancelButtonColor,
         confirmButtonText: opt.confirmButtonText,
-        cancelButtonText: opt.cancelButtonText
+        cancelButtonText: opt.cancelButtonText,
+        input: opt.reasonRequired ? 'textarea' : undefined,
+        inputLabel: opt.reasonRequired ? window.trans['Reason'] : undefined,
+        inputPlaceholder: opt.reasonRequired ? window.trans['Reason'] : undefined,
+        inputValidator: opt.reasonRequired ? function (value) {
+            return String(value || '').trim() ? undefined : (window.trans['A lifecycle reason is required.'] || 'A reason is required.');
+        } : undefined
     }).then((result) => {
         if (result.isConfirmed) {
             function successCallback(response) {
@@ -325,7 +333,11 @@ function showSweetAlertConfirmPopup(url, method, options = {}) {
                 opt.errorCallBack(response);
             }
 
-            ajaxRequest(method, url, null, null, successCallback, errorCallback);
+            const payload = opt.reasonRequired ? new FormData() : null;
+            if (payload) {
+                payload.append('reason', String(result.value || '').trim());
+            }
+            ajaxRequest(method, url, payload, null, successCallback, errorCallback);
         }
     })
 }
@@ -1348,4 +1360,4 @@ function loadSubjectsByClass(classSelector, subjectSelector, routeUrl, options =
             $subjectSelect.empty().append('<option value="">' + config.disabledText + '</option>');
         }
     });
-} 
+}
