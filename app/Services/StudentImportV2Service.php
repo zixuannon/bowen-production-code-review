@@ -98,9 +98,16 @@ final class StudentImportV2Service
     public function assertPilot(User $actor): School
     {
         if ((int) $actor->school_id < 1) throw new AuthorizationException('A trusted School Student identity is required.');
-        $database = trim((string) config('database.connections.school.database'));
+        // The School Login bootstrap persists the trusted tenant database in
+        // the request session.  Per-request connection configuration can be
+        // rebuilt by middleware, so it is not the identity authority here.
+        // Always cross-check that session-resolved registry School against the
+        // authenticated tenant user's school_id before enabling this pilot.
+        $database = trim((string) session('school_database_name', config('database.connections.school.database')));
         $school = School::on('mysql')->where('database_name', $database)->first();
-        if ($school === null || !hash_equals((string) config('student_import_v2.enabled_school_code'), (string) $school->code)) {
+        if ($school === null
+            || (int) $school->id !== (int) $actor->school_id
+            || !hash_equals((string) config('student_import_v2.enabled_school_code'), (string) $school->code)) {
             throw new AuthorizationException('Student Import V2 is currently available only to the approved Zixuan School.');
         }
         return $school;
