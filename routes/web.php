@@ -577,6 +577,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::post('{studentId}/fee-assignment/add-fee', [StudentFeeAssignmentController::class, 'addFee'])->name('students.fee-assignment.add-fee');
             Route::get('create-bulk', [StudentController::class, 'createBulkData'])->name('students.create-bulk-data');
             Route::post('store-bulk', [StudentController::class, 'storeBulkData'])->name('students.store-bulk-data');
+            Route::get('import-v2', [StudentController::class, 'createBulkDataV2'])->name('students.import-v2');
+            Route::get('import-v2/template', [StudentController::class, 'downloadBulkDataV2Template'])->name('students.import-v2.template');
+            Route::post('import-v2/preview', [StudentController::class, 'previewBulkDataV2'])->name('students.import-v2.preview');
+            Route::post('import-v2/confirm', [StudentController::class, 'confirmBulkDataV2'])->name('students.import-v2.confirm');
 
             // Update bulk profile student & guardian
             Route::get('update-profile', [StudentController::class, 'update_profile'])->name('students.upload-profile');

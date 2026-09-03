@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\StudentDataExport;
+use App\Exports\StudentImportV2TemplateExport;
 use App\Imports\StudentsImport;
 use App\Models\School;
 use App\Repositories\ClassSchool\ClassSchoolInterface;
@@ -18,9 +19,11 @@ use App\Services\CachingService;
 use App\Services\FeaturesService;
 use App\Services\ResponseService;
 use App\Services\SubscriptionService;
+use App\Services\StudentImportV2Service;
 use App\Services\UserService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -541,7 +544,61 @@ class StudentController extends Controller
         ResponseService::noPermissionThenRedirect('student-create');
         $class_section = $this->classSection->all(['*'], ['class', 'class.stream', 'class.shift', 'section', 'medium']);
         $sessionYears = $this->sessionYear->all();
-        return view('students.add_bulk_data', compact('class_section', 'sessionYears'));
+        $studentImportV2Enabled = false;
+        try {
+            app(StudentImportV2Service::class)->assertPilot(Auth::user());
+            $studentImportV2Enabled = true;
+        } catch (AuthorizationException) {
+            // V2 is an explicit Zixuan pilot. Legacy import remains available.
+        }
+        return view('students.add_bulk_data', compact('class_section', 'sessionYears', 'studentImportV2Enabled'));
+    }
+
+    /** Preview-first pilot; legacy CSV import remains unchanged for other Schools. */
+    public function createBulkDataV2(StudentImportV2Service $imports)
+    {
+        ResponseService::noPermissionThenRedirect('student-create');
+        $imports->assertPilot(Auth::user());
+        $class_section = $this->classSection->all(['*'], ['class', 'class.stream', 'class.shift', 'section', 'medium']);
+        $sessionYears = $this->sessionYear->all();
+        return view('students.import_v2', compact('class_section', 'sessionYears'));
+    }
+
+    public function downloadBulkDataV2Template(StudentImportV2Service $imports)
+    {
+        ResponseService::noPermissionThenRedirect('student-create');
+        $imports->assertPilot(Auth::user());
+        return Excel::download(new StudentImportV2TemplateExport(), 'Student_Import_V2.xlsx');
+    }
+
+    public function previewBulkDataV2(Request $request, StudentImportV2Service $imports)
+    {
+        ResponseService::noPermissionThenRedirect('student-create');
+        $data = $request->validate([
+            'session_year_id' => ['required', 'integer'],
+            'class_section_id' => ['required', 'integer'],
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'],
+        ]);
+        try {
+            return response()->json($imports->preview($request->file('file'), Auth::user(), (int) $data['session_year_id'], (int) $data['class_section_id']));
+        } catch (ValidationException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'errors' => $exception->errors()], 422);
+        } catch (AuthorizationException $exception) {
+            abort(403, $exception->getMessage());
+        }
+    }
+
+    public function confirmBulkDataV2(Request $request, StudentImportV2Service $imports)
+    {
+        ResponseService::noPermissionThenRedirect('student-create');
+        $data = $request->validate(['preview_token' => ['required', 'uuid']]);
+        try {
+            return response()->json($imports->confirm($data['preview_token'], Auth::user()));
+        } catch (ValidationException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'errors' => $exception->errors()], 422);
+        } catch (AuthorizationException $exception) {
+            abort(403, $exception->getMessage());
+        }
     }
 
     public function storeBulkData(Request $request)

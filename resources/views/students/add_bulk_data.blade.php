@@ -68,6 +68,13 @@
                                 <strong>{{ __('download_dummy_file') }}</strong>
                             </a>
                         </div>
+                        @if ($studentImportV2Enabled ?? false)
+                            <div class="row form-group col-sm-12 col-md-4 mt-2">
+                                <a class="btn btn-outline-primary form-control" href="{{ route('students.import-v2') }}">
+                                    <strong>{{ __('Student Import V2') }}</strong>
+                                </a>
+                            </div>
+                        @endif
                         <div class="row col-sm-12 col-xs-12">
                             <span style="font-size: 14px">
                                 <b>{{ __('note') }} :- </b>{{ __('First download dummy file and convert to .csv file then upload it') }}.</span>
