@@ -7,18 +7,21 @@ use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use App\Models\User;
+use App\Http\Controllers\CentralFinanceWorkspaceController;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundAccountScopeService;
 use App\Services\CentralFinanceLedgerService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\TestCase;
 
 class CentralFinanceFundAccountLedgerTest extends TestCase
@@ -185,6 +188,68 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         }
     }
 
+    /**
+     * P0 shared-account characterization only. The direct inserts model
+     * already-canonical ledger facts that a future allocation pivot must read;
+     * they deliberately do not relax today's school-owned account writer.
+     */
+    public function test_physical_fund_account_balance_is_counted_once_while_school_activity_stays_separate(): void
+    {
+        $this->seedSharedAccountLedger(1, 'SHARED-ZIX-001', 25);
+        $this->seedSharedAccountLedger(2, 'SHARED-TIM-001', 75);
+
+        $balances = app(CentralFinanceFundAccountBalanceService::class);
+
+        // One physical opening balance plus every canonical ledger leg exactly once.
+        $this->assertSame(200.0, $balances->currentBalance($this->zixuan));
+        $this->assertSame(25.0, $balances->totalsForSchool(1)['money_in']);
+        $this->assertSame(75.0, $balances->totalsForSchool(2)['money_in']);
+        $this->assertSame(2, CentralFinanceLedgerEntry::on('mysql')
+            ->where('fund_account_id', $this->zixuan->id)->count());
+    }
+
+    public function test_statement_read_model_keeps_shared_account_ledger_rows_school_scoped_and_rejects_forged_account_filters(): void
+    {
+        $this->seedSharedAccountLedger(1, 'SHARED-ZIX-READ', 25);
+        $this->seedSharedAccountLedger(2, 'SHARED-TIM-READ', 75);
+        $controller = app(CentralFinanceWorkspaceController::class);
+        $statement = new \ReflectionMethod($controller, 'accountStatementData');
+        $filters = [];
+
+        [, $zixuanEntries] = $statement->invoke(
+            $controller,
+            School::on('mysql')->findOrFail(1),
+            collect([School::on('mysql')->findOrFail(1)]),
+            collect([$this->zixuan]),
+            $filters,
+            $this->zixuan,
+        );
+        [, $timecityEntries] = $statement->invoke(
+            $controller,
+            School::on('mysql')->findOrFail(2),
+            collect([School::on('mysql')->findOrFail(2)]),
+            collect([$this->zixuan]),
+            $filters,
+            $this->zixuan,
+        );
+
+        $this->assertSame(['SHARED-ZIX-READ'], $zixuanEntries->pluck('source_id')->all());
+        $this->assertSame(['SHARED-TIM-READ'], $timecityEntries->pluck('source_id')->all());
+
+        $validatedFilters = new \ReflectionMethod($controller, 'validatedReadFilters');
+        try {
+            $validatedFilters->invoke(
+                $controller,
+                Request::create('/central-finance/account-statements', 'GET', ['fund_account_id' => $this->timecity->id]),
+                School::on('mysql')->findOrFail(1),
+                collect([$this->zixuan]),
+            );
+            $this->fail('A forged Fund Account filter must not bypass the authorized account collection.');
+        } catch (NotFoundHttpException) {
+            $this->assertTrue(true);
+        }
+    }
+
     public function test_central_schema_is_additive_and_reversible_without_tenant_finance_tables(): void
     {
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_fund_accounts'));
@@ -215,6 +280,28 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
             'fund_account_id' => $account->id, 'user_id' => $user->id,
             'can_view' => true, 'can_operate' => true,
             'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function seedSharedAccountLedger(int $schoolId, string $sourceId, float $amount): void
+    {
+        CentralFinanceLedgerEntry::on('mysql')->create([
+            'entry_uuid' => (string) Str::uuid(),
+            'school_id' => $schoolId,
+            'fund_account_id' => $this->zixuan->id,
+            'entry_date' => '2026-09-03',
+            'occurred_at' => CarbonImmutable::parse('2026-09-03 09:00:00', 'Asia/Yangon'),
+            'source_type' => 'shared_account_p0_fixture',
+            'source_id' => $sourceId,
+            'source_line' => 'primary',
+            'reference_no' => $sourceId,
+            'transaction_type' => CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME,
+            'currency' => 'MMK',
+            'money_in' => $amount,
+            'money_out' => 0,
+            'operating_income' => $amount,
+            'operating_expense' => 0,
+            'created_by' => $this->headFinance->id,
         ]);
     }
 }

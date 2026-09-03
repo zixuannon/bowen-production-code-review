@@ -10,7 +10,6 @@ use App\Models\SessionYear;
 use App\Models\User;
 use App\Services\ExpenseImportService;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Config;
@@ -20,9 +19,6 @@ use Tests\TestCase;
 
 class ExpenseImportServiceTest extends TestCase
 {
-    use DatabaseTransactions;
-
-    protected $connectionsToTransact = ['school'];
     private int $schoolId = 1;
     private User $admin;
     private User $cashier;
@@ -30,14 +26,20 @@ class ExpenseImportServiceTest extends TestCase
     private SessionYear $year;
     private BankAccount $account;
     private string $previousConnection;
+    private string $tenantDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->previousConnection = DB::getDefaultConnection();
-        Config::set('database.connections.school.database', config('database.connections.mysql.database'));
+        $this->tenantDatabase = tempnam(sys_get_temp_dir(), 'expense_import_tenant_');
+        Config::set('database.connections.school', [
+            'driver' => 'sqlite',
+            'database' => $this->tenantDatabase,
+            'prefix' => '',
+            'foreign_key_constraints' => true,
+        ]);
         DB::purge('school');
-        DB::connection('school')->getPdo();
         DB::setDefaultConnection('school');
         $this->ensureSchema();
         $suffix = Str::lower(Str::random(8));
@@ -51,7 +53,9 @@ class ExpenseImportServiceTest extends TestCase
 
     protected function tearDown(): void
     {
+        DB::purge('school');
         DB::setDefaultConnection($this->previousConnection);
+        @unlink($this->tenantDatabase);
         parent::tearDown();
     }
 
@@ -185,8 +189,86 @@ class ExpenseImportServiceTest extends TestCase
 
     private function ensureSchema(): void
     {
+        Schema::connection('school')->create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('first_name')->nullable();
+            $table->string('last_name')->nullable();
+            $table->string('email')->unique();
+            $table->string('password')->nullable();
+            $table->unsignedBigInteger('school_id')->nullable();
+            $table->unsignedTinyInteger('status')->default(1);
+            $table->timestamp('email_verified_at')->nullable();
+            $table->rememberToken();
+            $table->softDeletes();
+            $table->timestamps();
+        });
+        Schema::connection('school')->create('roles', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('guard_name');
+            $table->unsignedBigInteger('school_id')->nullable();
+            $table->boolean('custom_role')->default(false);
+            $table->boolean('editable')->default(true);
+            $table->timestamps();
+            $table->unique(['name', 'guard_name', 'school_id']);
+        });
+        Schema::connection('school')->create('model_has_roles', function (Blueprint $table): void {
+            $table->unsignedBigInteger('role_id');
+            $table->string('model_type');
+            $table->unsignedBigInteger('model_id');
+            $table->primary(['role_id', 'model_id', 'model_type']);
+        });
+        Schema::connection('school')->create('bank_accounts', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('school_id');
+            $table->string('account_name');
+            $table->string('account_number')->nullable();
+            $table->string('bank_name')->nullable();
+            $table->string('account_type');
+            $table->string('currency', 3);
+            $table->decimal('opening_balance', 18, 4)->default(0);
+            $table->date('opening_balance_date')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->boolean('is_default')->default(false);
+            $table->text('notes')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->softDeletes();
+            $table->timestamps();
+        });
+        Schema::connection('school')->create('session_years', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->unsignedBigInteger('school_id');
+            $table->boolean('default')->default(false);
+            $table->date('start_date')->nullable();
+            $table->date('end_date')->nullable();
+            $table->softDeletes();
+            $table->timestamps();
+        });
+        Schema::connection('school')->create('expenses', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('school_id');
+            $table->unsignedBigInteger('category_id')->nullable();
+            $table->unsignedBigInteger('finance_category_id')->nullable();
+            $table->unsignedBigInteger('session_year_id')->nullable();
+            $table->unsignedBigInteger('bank_account_id')->nullable();
+            $table->string('title');
+            $table->string('ref_no')->nullable();
+            $table->decimal('amount', 18, 4)->default(0);
+            $table->decimal('amount_mmk', 18, 4)->default(0);
+            $table->decimal('original_amount', 18, 4)->default(0);
+            $table->string('transaction_currency', 3)->nullable();
+            $table->decimal('exchange_rate_snapshot', 18, 4)->nullable();
+            $table->string('payment_method')->nullable();
+            $table->text('description')->nullable();
+            $table->date('date')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->softDeletes();
+            $table->timestamps();
+        });
         foreach (['School Admin', 'Cashier'] as $role) DB::table('roles')->updateOrInsert(['name' => $role, 'guard_name' => 'web', 'school_id' => $this->schoolId], ['custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()]);
-        if (!Schema::hasTable('bank_account_user')) Schema::create('bank_account_user', function (Blueprint $table) { $table->unsignedBigInteger('bank_account_id'); $table->unsignedBigInteger('user_id'); $table->unique(['bank_account_id', 'user_id']); });
+        if (!Schema::hasTable('bank_account_user')) Schema::create('bank_account_user', function (Blueprint $table) { $table->unsignedBigInteger('bank_account_id'); $table->unsignedBigInteger('user_id'); $table->timestamps(); $table->unique(['bank_account_id', 'user_id']); });
         if (!Schema::hasTable('expense_categories')) Schema::create('expense_categories', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('description')->nullable(); $table->unsignedBigInteger('school_id'); $table->timestamps(); $table->softDeletes(); });
         if (!Schema::hasTable('expense_import_batches')) Schema::create('expense_import_batches', function (Blueprint $table) { $table->id(); $table->uuid('token')->unique(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('imported_by'); $table->string('file_name'); $table->string('file_hash', 64); $table->json('preview_data')->nullable(); $table->json('imported_expense_ids')->nullable(); $table->string('status'); $table->unsignedInteger('total_rows')->default(0); $table->unsignedInteger('valid_rows')->default(0); $table->unsignedInteger('error_rows')->default(0); $table->unsignedInteger('imported_rows')->default(0); $table->timestamp('expired_at')->nullable(); $table->timestamp('consumed_at')->nullable(); $table->text('last_error')->nullable(); $table->timestamps(); $table->unique(['school_id', 'file_hash']); });
         if (!Schema::hasColumn('expenses', 'payment_method')) Schema::table('expenses', fn (Blueprint $table) => $table->string('payment_method')->nullable());

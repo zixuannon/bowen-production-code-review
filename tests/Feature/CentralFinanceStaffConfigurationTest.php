@@ -77,7 +77,11 @@ class CentralFinanceStaffConfigurationTest extends TestCase
         $this->actingAs($this->superAdmin);
         $controller = app(FinanceGroupController::class);
         $controller->storeCentralSchoolScope(new Request(['central_user_id' => 3, 'grant_type' => 'school_accountant', 'school_id' => 1]), $this->group);
-        $controller->disableCentralSchoolScope(new Request(['central_user_id' => 3, 'school_id' => 1]), $this->group);
+        $controller->disableCentralSchoolScope(new Request([
+            'central_user_id' => 3,
+            'school_id' => 1,
+            'reason' => 'P0 shared-account scope revocation characterization',
+        ]), $this->group);
         $scope = DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => 3, 'school_id' => 1])->first();
         $this->assertNotNull($scope);
         $this->assertFalse((bool) $scope->can_view || (bool) $scope->can_operate || (bool) $scope->can_approve_reimbursements || (bool) $scope->can_confirm_funding);

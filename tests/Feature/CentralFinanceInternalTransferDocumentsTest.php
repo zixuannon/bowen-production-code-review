@@ -52,6 +52,7 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000003_create_central_finance_internal_transfer_documents.php',
             '2026_08_21_000005_create_central_finance_school_cutovers.php',
+            '2026_09_01_000003_add_central_finance_transfer_reversal_links.php',
         ] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([
             ['id'=>1,'name'=>'Zixuan QA','created_at'=>now(),'updated_at'=>now()], ['id'=>2,'name'=>'Timecity QA','created_at'=>now(),'updated_at'=>now()],
@@ -87,6 +88,36 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         $this->assertSame('Zixuan A · ZIX-A', $legs['source']->transfer_source_account_label);
         $this->assertSame('Zixuan B · ZIX-B', $legs['source']->transfer_destination_account_label);
         $this->assertNull($legs['source']->funding_leg);
+    }
+
+    public function test_direct_bank_transfer_reversal_is_append_only_exactly_once_and_restores_both_balances(): void
+    {
+        $service = app(CentralFinanceInternalTransferService::class);
+        $original = $service->transfer($this->head, 1, $this->zixuanA, $this->zixuanB, 250, $this->at(), 'ZIX-DIRECT-REVERSE', 'ZIX-REV-REF');
+        $reversal = $service->reverse($this->head, $original->id, 'Duplicate bank movement', $this->at()->addMinute(), ['direct_bank_transfer']);
+
+        $this->assertSame($original->id, (int) $reversal->reversal_of_transfer_id);
+        $this->assertSame($this->zixuanB->id, $reversal->source_account_id);
+        $this->assertSame($this->zixuanA->id, $reversal->destination_account_id);
+        $this->assertSame(1000.0, $this->balance($this->zixuanA));
+        $this->assertSame(0.0, $this->balance($this->zixuanB));
+        $this->assertSame(2, CentralFinanceInternalTransfer::on('mysql')->count());
+        $this->assertSame(4, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_ledger_entries')
+            ->where('source_type', 'central_internal_transfer_reversal')
+            ->where('source_id', $reversal->transfer_uuid)->count());
+        $this->assertSame(0.0, app(CentralFinanceFundAccountBalanceService::class)->totalsForSchool(1)['operating_net']);
+        $this->assertSame('confirmed', $original->fresh()->status);
+        $this->assertSame('Duplicate bank movement', DB::connection('mysql')->table('central_finance_document_audits')
+            ->where('document_type', 'internal_transfer')->where('document_id', $original->id)->where('action', 'reversed')->value('reason'));
+
+        try {
+            $service->reverse($this->head, $original->id, 'Attempt two', $this->at()->addMinutes(2), ['direct_bank_transfer']);
+            $this->fail('A direct transfer may have only one canonical reversal.');
+        } catch (InvalidArgumentException) {
+            $this->assertSame(2, CentralFinanceInternalTransfer::on('mysql')->count());
+            $this->assertSame(4, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+        }
     }
 
     public function test_handover_is_pending_neutral_then_receiver_confirms_one_split_custody_transfer(): void
