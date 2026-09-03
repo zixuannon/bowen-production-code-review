@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class StudentImportIdentity extends Model
 {
+    /** This identity is tenant-local and must never fall back to main/Central. */
+    protected $connection = 'school';
+
     protected $fillable = [
         'school_id',
         'student_code',

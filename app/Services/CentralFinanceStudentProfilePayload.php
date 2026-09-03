@@ -29,6 +29,7 @@ final class CentralFinanceStudentProfilePayload
         public readonly ?string $guardianEmail = null,
         public readonly ?string $guardianMobile = null,
         public readonly ?string $tenantUserStatus = null,
+        public readonly ?string $studentCode = null,
     ) {
         if ($this->schoolId < 1 || $this->tenantStudentId < 1) {
             throw new InvalidArgumentException('Central Finance source identities must be positive.');
@@ -47,7 +48,7 @@ final class CentralFinanceStudentProfilePayload
         $fingerprint = hash('sha256', json_encode([
             $this->tenantStudentId, strtolower($this->sourceUuid), $this->classId,
             $this->classSectionId, $this->className, $this->sectionName,
-            $this->admissionNo, $this->studentName, $this->enrollmentStatus,
+            $this->admissionNo, $this->studentCode, $this->studentName, $this->enrollmentStatus,
             $this->guardianName, $this->guardianEmail, $this->guardianMobile,
             $this->tenantUserStatus, $this->sourceDeletedAt?->utc()->format('Y-m-d\\TH:i:s.u\\Z'),
         ], JSON_THROW_ON_ERROR));
@@ -67,6 +68,7 @@ final class CentralFinanceStudentProfilePayload
             'class_name' => $this->className,
             'section_name' => $this->sectionName,
             'admission_no' => $this->admissionNo,
+            'student_code' => $this->studentCode,
             'student_name' => $this->studentName,
             'enrollment_status' => $this->enrollmentStatus,
             'guardian_name' => $this->guardianName,

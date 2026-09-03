@@ -26,11 +26,12 @@ class StudentLedgerController extends Controller
             // e.g. "BowenSchool" → finds "Bowen School", "StudentOne" → finds "Student One"
             $normalizedSearch = preg_replace('/\s+/u', '', $search);
 
-            $students = Students::with(['user', 'class_section.class', 'class_section.section', 'guardian'])
+            $students = Students::with(['user', 'class_section.class', 'class_section.section', 'guardian', 'studentImportIdentity'])
                 ->where('school_id', Auth::user()->school_id)
                 ->where(function ($q) use ($search, $normalizedSearch) {
                     $q->where('admission_no', 'like', "%{$search}%")
                       ->orWhereRaw("REPLACE(admission_no, ' ', '') LIKE ?", ["%{$normalizedSearch}%"])
+                      ->orWhereHas('studentImportIdentity', fn ($identity) => $identity->where('student_code', 'like', "%{$search}%"))
                       ->orWhereHas('user', function ($uq) use ($search, $normalizedSearch) {
                           $uq->where('first_name', 'like', "%{$search}%")
                              ->orWhere('last_name', 'like', "%{$search}%")

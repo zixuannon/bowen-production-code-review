@@ -15,7 +15,7 @@ class CentralFinanceStudentProfile extends Model
 
     protected $fillable = [
         'school_id', 'tenant_student_id', 'source_uuid', 'class_id',
-        'class_section_id', 'class_name', 'section_name', 'admission_no',
+        'class_section_id', 'class_name', 'section_name', 'admission_no', 'student_code',
         'student_name', 'guardian_name', 'guardian_email', 'guardian_mobile',
         'enrollment_status', 'tenant_user_status', 'source_updated_at',
         'source_deleted_at', 'last_synced_at',

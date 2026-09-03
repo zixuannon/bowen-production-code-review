@@ -6,7 +6,6 @@ use App\Models\ClassSection;
 use App\Models\FeesClassType;
 use App\Models\School;
 use App\Models\SessionYear;
-use App\Models\StudentImportIdentity;
 use App\Models\Students;
 use App\Models\User;
 use App\Repositories\Subscription\SubscriptionInterface;
@@ -119,13 +118,7 @@ final class StudentImportV2Service
                     $row['current_address'], $row['permanent_address'], $sessionYear->id, $guardian->id, [], 1, false
                 );
                 $student = Students::query()->where('user_id', $studentUser->id)->lockForUpdate()->firstOrFail();
-                StudentImportIdentity::create([
-                    'school_id' => $actor->school_id,
-                    'student_code' => $row['student_code'],
-                    'student_id' => $student->id,
-                    'user_id' => $studentUser->id,
-                    'created_by' => $actor->id,
-                ]);
+                app(StudentCodeService::class)->assign($student, $actor, $row['student_code']);
                 $assignmentService = app(StudentFeeAssignmentService::class);
                 $draft = $assignmentService->saveDraft($student, $actor, []);
                 $confirmed = $assignmentService->confirm($student, $actor, $draft->uuid);
@@ -233,7 +226,7 @@ final class StudentImportV2Service
 
     private function identityExists(User $actor, string $code): bool
     {
-        return StudentImportIdentity::query()->where('school_id', $actor->school_id)->where('student_code', $code)->exists()
+        return app(StudentCodeService::class)->exists((int) $actor->school_id, $code)
             || Students::query()->where('school_id', $actor->school_id)->where('admission_no', $code)->exists();
     }
 

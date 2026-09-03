@@ -8,7 +8,7 @@
             <div>
                 <small class="text-primary font-weight-bold">{{ __('Student / Finance') }}</small>
                 <h3 class="page-title mb-0">{{ $student->user?->full_name }}</h3>
-                <small class="text-muted">{{ __('Student Code') }}: {{ $student->admission_no }} · {{ __('Academic Year') }}: {{ $student->session_year_id }}</small>
+                <small class="text-muted">{{ __('Student Code') }}: {{ $student->studentImportIdentity?->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $student->admission_no }} · {{ __('Academic Year') }}: {{ $student->session_year_id }}</small>
             </div>
             <a class="btn btn-outline-secondary" href="{{ route('students.index') }}">{{ __('Back to Students') }}</a>
         </div>

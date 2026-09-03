@@ -149,6 +149,22 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 - This change is local only and includes an additive tenant migration that has
   been exercised against disposable SQLite. Production is untouched.
 
+## Student Code School UI — local implementation
+
+- Student Code is now an independent tenant-local School + code identity for
+  manual Student creation, edit/backfill, list search, Student Fee Setup, and
+  Student Finance. It is text-only and preserves leading zeroes; GR admission
+  numbers and stable Central UUIDs remain unchanged.
+- Both manual admission and Student Import V2 call the same
+  `StudentCodeService`, backed by the existing unique
+  `student_import_identities.school_id + student_code` constraint. An assigned
+  code is stable rather than silently changed by an edit request.
+- An additive Central projection migration adds the display-only `student_code`
+  field to Central Finance Student Profiles. The sync source is schema-aware
+  during the transition, so tenants not yet migrated continue to project
+  safely. No payment, receipt, Ledger, balance, assignment, or receivable rule
+  changes are included. Production is untouched.
+
 ## Central Finance Feature Gap P0 — local implementation
 
 - Central Finance now exposes Central-only student ledgers, payment/receipt

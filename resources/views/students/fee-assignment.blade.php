@@ -11,7 +11,7 @@
         @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
         <div class="card mb-3"><div class="card-body">
             <h4>{{ $student->user?->full_name }}</h4>
-            <div class="text-muted">{{ __('Student Code') }}: {{ $student->admission_no }} · {{ __('Academic Year') }}: {{ $student->session_year_id }} · {{ __('Class') }}: {{ $student->class?->name ?? $student->class_id }}</div>
+            <div class="text-muted">{{ __('Student Code') }}: {{ $student->studentImportIdentity?->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $student->admission_no }} · {{ __('Academic Year') }}: {{ $student->session_year_id }} · {{ __('Class') }}: {{ $student->class?->name ?? $student->class_id }}</div>
             @if($finance['available'] ?? false)<div class="mt-3 border-top pt-3"><strong>{{ __('Central Finance') }}</strong>@foreach($finance['currency_totals'] as $currency => $total)<span class="d-block small">{{ $currency }} · {{ __('Assigned / Due') }}: {{ number_format($total['due'],2) }} · {{ __('Paid') }}: {{ number_format($total['paid'],2) }} · {{ __('Outstanding') }}: {{ number_format($total['outstanding'],2) }}</span>@endforeach</div>@else<div class="alert alert-light py-2 mt-3 mb-0">{{ __('Finance synchronization pending. Payment status is not available until Central Finance has the Student profile and Receivables.') }}</div>@endif
         </div></div>
 

@@ -23,7 +23,7 @@ final class StudentFeeAssignmentController extends Controller
     {
         ResponseService::noPermissionThenRedirect('fees-create');
         $student = $this->student($studentId);
-        $student->load(['user', 'class', 'class_section']);
+        $student->load(['user', 'class', 'class_section', 'studentImportIdentity']);
         $confirmed = $student->feeAssignments()->with('items')->where('status', 'confirmed')->latest('confirmed_at')->get();
         $finance = $this->finance->forStudent($student);
         $assignmentSync = $confirmed->mapWithKeys(function ($assignment) use ($finance): array {
@@ -49,7 +49,7 @@ final class StudentFeeAssignmentController extends Controller
     {
         ResponseService::noAnyPermissionThenRedirect(['student-list', 'student-create', 'student-edit', 'fees-create']);
         $student = $this->student($studentId);
-        $student->load(['user', 'class', 'class_section', 'feeAssignments.items']);
+        $student->load(['user', 'class', 'class_section', 'studentImportIdentity', 'feeAssignments.items']);
         $assignments = $student->feeAssignments()
             ->with(['items', 'student'])
             ->where('status', StudentFeeAssignment::CONFIRMED)

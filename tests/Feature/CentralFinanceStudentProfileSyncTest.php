@@ -87,6 +87,21 @@ class CentralFinanceStudentProfileSyncTest extends TestCase
         $this->assertSame('Ben School B', CentralFinanceStudentProfile::on('mysql')->where('school_id', 2)->value('student_name'));
     }
 
+    public function test_student_code_projects_from_the_tenant_identity_without_replacing_gr_admission_number(): void
+    {
+        $this->onTenant($this->schoolADatabase, function (): void {
+            DB::connection('school')->table('student_import_identities')->insert([
+                'school_id' => 1, 'student_code' => '00125', 'student_id' => 11, 'user_id' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+
+        app(CentralFinanceStudentProfileSyncService::class)->syncSchool(School::on('mysql')->findOrFail(1));
+        $profile = CentralFinanceStudentProfile::on('mysql')->where('school_id', 1)->firstOrFail();
+        $this->assertSame('00125', $profile->student_code);
+        $this->assertSame('A-001', $profile->admission_no);
+    }
+
     public function test_newer_source_version_updates_only_its_school_and_stale_delivery_is_neutral(): void
     {
         $sync = app(CentralFinanceStudentProfileSyncService::class);
@@ -285,6 +300,7 @@ class CentralFinanceStudentProfileSyncTest extends TestCase
         });
         (require database_path('migrations/2026_08_20_000003_create_central_finance_student_sync_tables.php'))->up();
         (require database_path('migrations/2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php'))->up();
+        (require database_path('migrations/2026_09_03_000002_add_student_code_to_central_finance_student_profiles.php'))->up();
     }
 
     private function tenantSchema(string $database): void
@@ -303,6 +319,7 @@ class CentralFinanceStudentProfileSyncTest extends TestCase
                 $table->string('application_status')->nullable(); $table->timestamp('created_at')->nullable(); $table->timestamp('updated_at')->nullable(); $table->timestamp('deleted_at')->nullable();
             });
             (require database_path('migrations/schools/2026_08_20_000002_add_central_finance_source_uuid_to_students_table.php'))->up();
+            (require database_path('migrations/schools/2026_09_03_000001_create_student_import_identities_table.php'))->up();
             DB::connection('school')->table('classes')->insert(['id' => 1, 'name' => 'Grade 1']);
             DB::connection('school')->table('sections')->insert(['id' => 1, 'name' => 'A']);
             DB::connection('school')->table('class_sections')->insert(['id' => 1, 'class_id' => 1, 'section_id' => 1]);

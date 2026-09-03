@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /**
@@ -71,7 +72,7 @@ final class CentralFinanceStudentProfileSource
 
     private function payloadQuery(School $school): \Illuminate\Database\Query\Builder
     {
-        return DB::connection('school')->table('students')
+        $query = DB::connection('school')->table('students')
             ->leftJoin('users as student_users', 'student_users.id', '=', 'students.user_id')
             ->leftJoin('users as guardians', 'guardians.id', '=', 'students.guardian_id')
             ->leftJoin('class_sections', 'class_sections.id', '=', 'students.class_section_id')
@@ -84,6 +85,14 @@ final class CentralFinanceStudentProfileSource
                 'guardians.first_name as guardian_first_name', 'guardians.last_name as guardian_last_name', 'guardians.email as guardian_email', 'guardians.mobile as guardian_mobile',
                 'class_sections.class_id', 'classes.name as class_name', 'sections.name as section_name',
             ]);
+        if (Schema::connection('school')->hasTable('student_import_identities')) {
+            $query->leftJoin('student_import_identities', 'student_import_identities.student_id', '=', 'students.id')
+                ->addSelect('student_import_identities.student_code');
+        } else {
+            $query->addSelect(DB::raw('NULL as student_code'));
+        }
+
+        return $query;
     }
 
     private function payload(School $school, object $student): CentralFinanceStudentProfilePayload
@@ -111,6 +120,7 @@ final class CentralFinanceStudentProfileSource
             guardianEmail: $student->guardian_email ? (string) $student->guardian_email : null,
             guardianMobile: $student->guardian_mobile ? (string) $student->guardian_mobile : null,
             tenantUserStatus: $student->tenant_user_status !== null ? (string) $student->tenant_user_status : null,
+            studentCode: $student->student_code ? (string) $student->student_code : null,
         );
     }
 

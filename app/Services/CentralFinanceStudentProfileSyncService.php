@@ -7,6 +7,7 @@ use App\Models\CentralFinanceSyncEvent;
 use App\Models\School;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -106,6 +107,9 @@ final class CentralFinanceStudentProfileSyncService
                 'source_deleted_at' => $payload->sourceDeletedAt,
                 'last_synced_at' => now(),
             ];
+            if (Schema::connection('mysql')->hasColumn('central_finance_student_profiles', 'student_code')) {
+                $attributes['student_code'] = $payload->studentCode;
+            }
             if ($profile === null) {
                 $profile = CentralFinanceStudentProfile::on('mysql')->create($attributes);
                 $result = 'created';
@@ -203,6 +207,7 @@ final class CentralFinanceStudentProfileSyncService
             && $profile->class_name === $payload->className
             && $profile->section_name === $payload->sectionName
             && $profile->admission_no === $payload->admissionNo
+            && (!Schema::connection('mysql')->hasColumn('central_finance_student_profiles', 'student_code') || $profile->student_code === $payload->studentCode)
             && $profile->student_name === $payload->studentName
             && $profile->guardian_name === $payload->guardianName
             && $profile->guardian_email === $payload->guardianEmail

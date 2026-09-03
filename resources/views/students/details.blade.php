@@ -67,6 +67,7 @@
                                         <th scope="col" data-field="no">{{ __('no.') }}</th>
                                         <th scope="col" data-field="user.id" data-visible="false">{{ __('User Id') }}</th>
                                         <th scope="col" data-field="user.full_name" data-formatter="StudentNameFormatter">{{ __('name') }}</th>
+                                        <th scope="col" data-field="student_code">{{ __('Student Code') }}</th>
                                         <th scope="col" data-field="user.dob" >{{ __('dob') }}</th>
                                         <th scope="col" data-field="class_section.full_name">{{ __('class_section') }}</th>
                                         <th scope="col" data-field="roll_number">{{ __('roll_no') }}</th>
@@ -112,6 +113,12 @@
                                     <label>{{ __('admission_no') }} <span class="text-danger">*</span></label>
                                     {!! Form::text('admission_no', null, ['placeholder' => __('admission_no'), 'class' => 'form-control', 'id' => 'edit_admission_no' ,'readonly'=>true]) !!}
 
+                                </div>
+
+                                <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">
+                                    <label>{{ __('Student Code') }} <span class="text-danger">*</span></label>
+                                    <input id="edit_student_code" name="student_code" type="text" inputmode="text" autocomplete="off" maxlength="100" class="form-control" required>
+                                    <small class="text-muted">{{ __('School-specific code. Leading zeroes are kept.') }}</small>
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">

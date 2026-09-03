@@ -15,7 +15,7 @@
     @else
         <form method="GET" class="form-row cf-filter-bar align-items-end">
             <div class="form-group col-md-3"><label>{{ __('Class') }}</label><select name="class" class="form-control"><option value="">{{ __('All Classes') }}</option>@foreach($classes as $item)<option value="{{ $item }}" @selected($class === $item)>{{ $item }}</option>@endforeach</select></div>
-            <div class="form-group col-md-6"><label>{{ __('Student search') }}</label><input name="search" class="form-control" value="{{ $search }}" placeholder="{{ __('Name, admission number, guardian or phone') }}"></div>
+            <div class="form-group col-md-6"><label>{{ __('Student search') }}</label><input name="search" class="form-control" value="{{ $search }}" placeholder="{{ __('Name, Student Code, admission number, guardian or phone') }}"></div>
             <div class="form-group col-md-3"><button class="btn cf-primary-action btn-block">{{ __('Search') }}</button></div>
         </form>
 
@@ -28,7 +28,7 @@
                 @php($totals = $profile->currency_totals ?? [])
                 @php($hasOutstanding = collect($totals)->contains(fn ($total) => (float) ($total['outstanding'] ?? 0) > 0))
                 <tr>
-                    <td data-label="{{ __('Student') }}"><span class="cf-primary-line">{{ $profile->student_name }}</span><span class="cf-secondary-line">{{ $profile->admission_no ?: '—' }}</span></td>
+                    <td data-label="{{ __('Student') }}"><span class="cf-primary-line">{{ $profile->student_name }}</span><span class="cf-secondary-line">{{ __('Student Code') }}: {{ $profile->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $profile->admission_no ?: '—' }}</span></td>
                     <td data-label="{{ __('Class') }}">{{ trim($profile->class_name.' '.$profile->section_name) ?: '—' }}</td>
                     <td data-label="{{ __('Guardian') }}"><span class="cf-primary-line">{{ $profile->guardian_name ?: '—' }}</span><span class="cf-secondary-line">{{ $profile->guardian_mobile ?: '—' }}</span></td>
                     <td data-label="{{ __('Due') }}">@forelse($totals as $currency => $total)<span class="d-block">{{ number_format($total['due'],2) }} {{ $currency }}</span>@empty — @endforelse</td>

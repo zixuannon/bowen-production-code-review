@@ -28,6 +28,12 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-3">
+                                    <label for="student_code">{{ __('Student Code') }} <span class="text-danger">*</span></label>
+                                    <input id="student_code" name="student_code" type="text" inputmode="text" autocomplete="off" maxlength="100" value="{{ old('student_code') }}" class="form-control" required>
+                                    <small class="text-muted">{{ __('School-specific code. Leading zeroes are kept.') }}</small>
+                                </div>
+
+                                <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-3">
                                     <label for="class_section">{{ __('class_section') }} <span class="text-danger">*</span></label>
                                     <select name="class_section_id" id="class_section" class="form-control select2">
                                         <option value="">{{ __('select') . ' ' . __('Class') . ' ' . __('section') }}</option>

@@ -55,6 +55,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
                 $nested->where('student_name', 'like', "%{$search}%")
                     ->orWhere('admission_no', 'like', "%{$search}%")
+                    ->orWhere('student_code', 'like', "%{$search}%")
                     ->orWhere('guardian_name', 'like', "%{$search}%")
                     ->orWhere('guardian_mobile', 'like', "%{$search}%");
             }))

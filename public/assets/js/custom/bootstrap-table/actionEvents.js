@@ -343,6 +343,7 @@ window.studentEvents = {
         $('#edit_dob').val(moment(row.user.dob, schoolSettingsDateFormat).format('DD-MM-YYYY'));
         $('#session_year_id').val(row.session_year_id);
         $('#edit_admission_no').val(row.admission_no);
+        $('#edit_student_code').val(row.student_code || '').prop('readonly', Boolean(row.student_code));
         $('#edit-student-image-tag').attr('src', row.user.image);
         $('#edit-current-address').val(row.user.current_address);
         $('#edit-permanent-address').val(row.user.permanent_address);

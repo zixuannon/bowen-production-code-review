@@ -7,6 +7,7 @@ use App\Services\CachingService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 use App\Models\SessionYearsTracking;
 use App\Traits\DateFormatTrait;
@@ -70,6 +71,11 @@ class Students extends Model
     public function user()
     {
         return $this->belongsTo(User::class)->withTrashed();
+    }
+
+    public function studentImportIdentity(): HasOne
+    {
+        return $this->hasOne(StudentImportIdentity::class, 'student_id');
     }
 
     public function class_section()

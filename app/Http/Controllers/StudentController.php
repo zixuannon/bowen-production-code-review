@@ -20,6 +20,7 @@ use App\Services\FeaturesService;
 use App\Services\ResponseService;
 use App\Services\SubscriptionService;
 use App\Services\StudentImportV2Service;
+use App\Services\StudentCodeService;
 use App\Services\UserService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -133,6 +134,7 @@ class StudentController extends Controller
             'class_section_id' => 'required|numeric',
             /*NOTE : Unique constraint is used because it's not school specific*/
             'admission_no' => 'required|unique:users,email',
+            'student_code' => 'required|string|max:100',
             'admission_date' => 'required',
             'session_year_id' => 'required|numeric',
             'guardian_mode' => 'required|in:new,existing',
@@ -158,6 +160,7 @@ class StudentController extends Controller
         $request->validate($rules, [
             'guardian_email.regex' => 'Please enter a valid guardian email (e.g. user@example.com).',
         ]);
+        $studentCode = app(StudentCodeService::class)->assertAvailable((int) Auth::user()->school_id, $request->input('student_code'));
 
         if ($request->input('guardian_mode') === 'new'
             && $this->user->guardian()->withTrashed()->where('email', $request->guardian_email)->exists()) {
@@ -221,10 +224,15 @@ class StudentController extends Controller
             }
             $is_send_notification = true;
             $studentUser = $userService->createStudentUser($request->first_name, $request->last_name, $request->admission_no, $request->mobile, $request->dob, $request->gender, $request->image, $request->class_section_id, $request->admission_date, $request->current_address, $request->permanent_address, $sessionYear->id, $guardian->id, $request->extra_fields ?? [], $request->status ?? 0, $is_send_notification);
-            $studentId = $this->student->builder()->where('user_id', $studentUser->id)->value('id');
+            $student = $this->student->builder()->where('user_id', $studentUser->id)->firstOrFail();
+            app(StudentCodeService::class)->assign($student, Auth::user(), $studentCode);
+            $studentId = $student->id;
 
             DB::commit();
             ResponseService::successResponse('Data Stored Successfully', null, ['next_url' => $studentId ? route('students.fee-assignment.show', $studentId) : null]);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             // IF Exception is TypeError and message contains Mail keywords then email is not sent successfully
             if (
@@ -257,6 +265,7 @@ class StudentController extends Controller
             'dob' => 'required',
             'session_year_id' => 'required|numeric',
             'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
+            'student_code' => 'required|string|max:100',
         ];
         if (is_numeric($request->guardian_id)) {
             $rules['guardian_email'] = 'required|email|unique:users,email,' . $request->guardian_id;
@@ -270,8 +279,13 @@ class StudentController extends Controller
             $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image, $request->parent_reset_password);
 
             $userService->updateStudentUser($id, $request->first_name, $request->last_name, $request->mobile, $request->dob, $request->gender, $request->image, $sessionYear->id, $request->extra_fields ?? [], $guardian->id, $request->current_address, $request->permanent_address, $request->reset_password, $request->class_section_id);
+            $student = $this->student->builder()->where('user_id', $id)->firstOrFail();
+            app(StudentCodeService::class)->assign($student, Auth::user(), $request->input('student_code'));
             DB::commit();
             ResponseService::successResponse('Data Updated Successfully');
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             DB::rollBack();
             ResponseService::logErrorResponse($e, "Student Controller -> Update method");
@@ -307,13 +321,14 @@ class StudentController extends Controller
                         ->where('application_status', 1); // Only online applications with status 1
                 });
         })
-            ->with('user.extra_student_details.form_field', 'guardian', 'class_section.class.stream', 'class_section.section', 'class_section.class.shift', 'class_section.medium')
+            ->with('user.extra_student_details.form_field', 'guardian', 'studentImportIdentity', 'class_section.class.stream', 'class_section.section', 'class_section.class.shift', 'class_section.medium')
             ->where(function ($query) use ($search) {
                 $query->when($search, function ($query) use ($search) {
                     $query->where(function ($query) use ($search) {
                         $query->where('user_id', 'LIKE', "%$search%")
                             ->orWhere('class_section_id', 'LIKE', "%$search%")
                             ->orWhere('admission_no', 'LIKE', "%$search%")
+                            ->orWhereHas('studentImportIdentity', fn ($identity) => $identity->where('student_code', 'LIKE', "%$search%"))
                             ->orWhere('roll_number', 'LIKE', "%$search%")
                             ->orWhere('admission_date', 'LIKE', date('Y-m-d', strtotime("%$search%")))
                             ->orWhereHas('user', function ($q) use ($search) {
@@ -413,6 +428,7 @@ class StudentController extends Controller
 
             // $tempRow['extra_fields'] = $row->user->extra_student_details()->has('form_field')->with('form_field')->get();
             $tempRow['guardian_data'] = $row->guardian;
+            $tempRow['student_code'] = $row->studentImportIdentity?->student_code;
             $tempRow['extra_fields'] = $row->user->extra_student_details;
             foreach ($row->user->extra_student_details as $key => $field) {
                 $data = '';
