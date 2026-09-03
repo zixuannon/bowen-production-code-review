@@ -575,28 +575,22 @@ class StudentController extends Controller
     {
         ResponseService::noPermissionThenRedirect('student-create');
         $imports->assertPilot(Auth::user());
-        $class_section = $this->classSection->all(['*'], ['class', 'class.stream', 'class.shift', 'section', 'medium']);
-        $sessionYears = $this->sessionYear->all();
-        return view('students.import_v2', compact('class_section', 'sessionYears'));
+        return view('students.import_v2');
     }
 
     public function downloadBulkDataV2Template(StudentImportV2Service $imports)
     {
         ResponseService::noPermissionThenRedirect('student-create');
-        $imports->assertPilot(Auth::user());
-        return Excel::download(new StudentImportV2TemplateExport(), 'Student_Import_V2.xlsx');
+        [$school, $classSections, $academicYears, $customFields] = $imports->templateContext(Auth::user());
+        return Excel::download(new StudentImportV2TemplateExport($classSections, $academicYears, $customFields), 'Student_Import_V2.xlsx');
     }
 
     public function previewBulkDataV2(Request $request, StudentImportV2Service $imports)
     {
         ResponseService::noPermissionThenRedirect('student-create');
-        $data = $request->validate([
-            'session_year_id' => ['required', 'integer'],
-            'class_section_id' => ['required', 'integer'],
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'],
-        ]);
+        $data = $request->validate(['file' => ['required', 'file', 'mimes:xlsx', 'max:10240']]);
         try {
-            return response()->json($imports->preview($request->file('file'), Auth::user(), (int) $data['session_year_id'], (int) $data['class_section_id']));
+            return response()->json($imports->preview($request->file('file'), Auth::user()));
         } catch (ValidationException $exception) {
             return response()->json(['message' => $exception->getMessage(), 'errors' => $exception->errors()], 422);
         } catch (AuthorizationException $exception) {

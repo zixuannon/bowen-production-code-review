@@ -2,44 +2,38 @@
 
 namespace App\Exports;
 
-use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
-use Maatwebsite\Excel\Concerns\WithColumnFormatting;
-use Maatwebsite\Excel\Concerns\WithHeadings;
-use Maatwebsite\Excel\Concerns\WithTitle;
-use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 /** Zixuan Student Import V2: identity and phone fields are explicitly text. */
-final class StudentImportV2TemplateExport implements FromArray, WithHeadings, WithColumnFormatting, ShouldAutoSize, WithTitle
+final class StudentImportV2TemplateExport implements WithMultipleSheets
 {
+    public const HEADINGS = [
+        'Student Code', 'First Name', 'Last Name', 'Mobile', 'Gender', 'Date of Birth', 'Admission Date',
+        'Current Address', 'Permanent Address', 'Guardian Email', 'Guardian First Name',
+        'Guardian Last Name', 'Guardian Mobile', 'Guardian Gender', 'Class Section', 'Academic Year',
+    ];
+
+    /** @param list<array{id:int,name:string}> $classSections @param list<array{id:int,name:string}> $academicYears @param list<array{name:string,type:string,required:bool,values:list<string>}> $customFields */
+    public function __construct(
+        private readonly array $classSections = [],
+        private readonly array $academicYears = [],
+        private readonly array $customFields = [],
+    ) {}
+
     /** @return list<string> */
     public function headings(): array
     {
+        return array_merge(self::HEADINGS, array_map(static fn (array $field): string => $field['name'], $this->customFields));
+    }
+
+    public function sheets(): array
+    {
         return [
-            'Student Code', 'First Name', 'Last Name', 'Mobile', 'Gender', 'Date of Birth', 'Admission Date',
-            'Current Address', 'Permanent Address', 'Guardian Email', 'Guardian First Name',
-            'Guardian Last Name', 'Guardian Mobile', 'Guardian Gender',
+            new StudentImportV2ImportSheet($this->classSections, $this->academicYears, $this->customFields),
+            new StudentImportV2LookupSheet('Class Sections', ['Class Section'], array_map(static fn (array $item): array => [$item['name']], $this->classSections)),
+            new StudentImportV2LookupSheet('Academic Years', ['Academic Year'], array_map(static fn (array $item): array => [$item['name']], $this->academicYears)),
+            new StudentImportV2LookupSheet('Custom Fields', ['Field', 'Type', 'Allowed Values'], array_map(static fn (array $field): array => [$field['name'], $field['type'], implode(', ', $field['values'])], $this->customFields)),
+            new StudentImportV2ValidationListsSheet($this->classSections, $this->academicYears, $this->customFields),
         ];
-    }
-
-    /** @return list<list<string>> */
-    public function array(): array
-    {
-        return [[
-            '00125', 'Student first name', 'Student last name', '0912345678', 'female', '2015-01-31', '2026-09-01',
-            'Current address', 'Permanent address', 'guardian@example.test', 'Guardian first name',
-            'Guardian last name', '0998765432', 'female',
-        ]];
-    }
-
-    public function columnFormats(): array
-    {
-        // Student Code, Student Mobile, and Guardian Mobile must retain leading zeroes.
-        return ['A' => NumberFormat::FORMAT_TEXT, 'D' => NumberFormat::FORMAT_TEXT, 'M' => NumberFormat::FORMAT_TEXT];
-    }
-
-    public function title(): string
-    {
-        return 'Student Import V2';
     }
 }
