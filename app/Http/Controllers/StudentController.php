@@ -564,14 +564,8 @@ class StudentController extends Controller
         try {
             app(StudentImportV2Service::class)->assertPilot(Auth::user());
             $studentImportV2Enabled = true;
-        } catch (AuthorizationException $exception) {
+        } catch (AuthorizationException) {
             // V2 is an explicit Zixuan pilot. Legacy import remains available.
-            \Log::warning('Student Import V2 pilot entry denied.', [
-                'actor_id' => Auth::id(),
-                'actor_school_id' => Auth::user()?->school_id,
-                'reason' => $exception->getMessage(),
-                'tenant_database_hash' => hash('sha256', (string) DB::connection('school')->getDatabaseName()),
-            ]);
         }
         return view('students.add_bulk_data', compact('class_section', 'sessionYears', 'studentImportV2Enabled'));
     }
