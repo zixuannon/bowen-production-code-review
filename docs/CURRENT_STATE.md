@@ -511,6 +511,7 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 - The template has a first Import sheet, readable Class Sections / Academic Years / Custom Fields lookup sheets, and a hidden validation sheet. Student Code, Student Mobile, and Guardian Mobile use Excel Text formatting so leading zeroes survive save/reopen.
 - Preview caches only row metadata and reports New, Duplicate, Error, or Conflict. It writes no Student, Guardian, identity, assignment, receivable, payment, receipt, ledger, or Fund Account record. Confirm is all-or-nothing for New rows, re-checks placement, readiness and compulsory setup, creates only compulsory assignment items, and relies on the established Central profile/receivable publisher after commit.
 - The local BOWEN_QA command correctly refused because this worktree is not a local/test runtime; no environment or database configuration was changed to bypass that guard. Targeted PHPUnit covers real workbook structure/save-reopen, leading-zero formats, School-local mapping, XLSX-only parsing, identity uniqueness, Central profile sync, cutover, fee assignment, receivable, payment and ledger regression.
+- Production pilot access resolves the active named tenant connection when a legacy School session contains an empty database key, then still cross-checks the central School registry, authenticated tenant `school_id`, and fixed Zixuan code. It does not introduce cross-tenant lookup or broaden the pilot.
 
 ## Shared Fund Account P1 — local additive allocation core
 

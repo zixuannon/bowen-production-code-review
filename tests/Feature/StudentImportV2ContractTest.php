@@ -128,6 +128,7 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringContainsString('placementByName', $source);
         $this->assertStringContainsString("where('school_id', \$actor->school_id)", $source);
         $this->assertStringContainsString("session('school_database_name'", $source);
+        $this->assertStringContainsString("DB::connection('school')->getDatabaseName()", $source);
         $this->assertStringContainsString('(int) $school->id !== (int) $actor->school_id', $source);
         $this->assertStringContainsString('assertCentralWritesAllowed', $source);
         $this->assertStringContainsString('assertCompulsorySetup', $source);

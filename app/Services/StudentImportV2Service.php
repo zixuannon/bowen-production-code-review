@@ -103,7 +103,16 @@ final class StudentImportV2Service
         // rebuilt by middleware, so it is not the identity authority here.
         // Always cross-check that session-resolved registry School against the
         // authenticated tenant user's school_id before enabling this pilot.
-        $database = trim((string) session('school_database_name', config('database.connections.school.database')));
+        // A successful School login establishes the tenant connection before
+        // the user provider runs.  Some legacy sessions retain an empty
+        // school_database_name key, so do not treat that empty value as the
+        // identity source; use the already-established named tenant
+        // connection instead.  This remains a trusted server-side context,
+        // then is cross-checked against both the tenant user and registry.
+        $database = trim((string) session('school_database_name'));
+        if ($database === '') {
+            $database = trim((string) DB::connection('school')->getDatabaseName());
+        }
         $school = School::on('mysql')->where('database_name', $database)->first();
         if ($school === null
             || (int) $school->id !== (int) $actor->school_id
