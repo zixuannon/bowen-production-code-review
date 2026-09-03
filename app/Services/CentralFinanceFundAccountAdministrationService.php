@@ -73,7 +73,10 @@ final class CentralFinanceFundAccountAdministrationService
                 if ($schoolId <= 0 || !is_numeric($row['opening_allocation_amount'] ?? null) || (float) $row['opening_allocation_amount'] < 0) {
                     throw ValidationException::withMessages(['allocations' => [__('Each School allocation requires a non-negative opening amount.')]]);
                 }
-                return [$schoolId => ['amount' => round((float) $row['opening_allocation_amount'], 4), 'active' => (bool) ($row['is_active'] ?? true)]];
+                // HTML checkboxes omit an unchecked value entirely.  Treating
+                // that omission as active would silently grant a School access
+                // to this physical account, so absence must fail closed.
+                return [$schoolId => ['amount' => round((float) $row['opening_allocation_amount'], 4), 'active' => (bool) ($row['is_active'] ?? false)]];
             });
             if ($requested->keys()->diff($allowedSchools)->isNotEmpty()) {
                 throw new \Illuminate\Auth\Access\AuthorizationException('A requested School is outside the trusted Finance Group.');

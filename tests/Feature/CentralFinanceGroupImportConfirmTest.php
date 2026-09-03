@@ -13,6 +13,7 @@ use App\Models\FinanceGroup;
 use App\Models\FinanceGroupUser;
 use App\Exports\CentralFinanceGroupImportTemplateV2Export;
 use App\Services\CentralFinanceGroupImportService;
+use App\Services\CentralFinanceFundAccountAdministrationService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
@@ -21,6 +22,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Auth\Access\AuthorizationException;
+use App\Models\School;
+use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\View\View;
 use InvalidArgumentException;
@@ -71,6 +74,18 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             $table->softDeletes();
             $table->timestamps();
         });
+        Schema::connection('mysql')->create('roles', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('guard_name');
+            $table->timestamps();
+        });
+        Schema::connection('mysql')->create('model_has_roles', function (Blueprint $table): void {
+            $table->unsignedBigInteger('role_id');
+            $table->string('model_type');
+            $table->unsignedBigInteger('model_id');
+            $table->primary(['role_id', 'model_id', 'model_type']);
+        });
         foreach ([
             '2026_08_18_000001_create_finance_group_scope_tables.php',
             '2026_08_20_000003_create_central_finance_student_sync_tables.php',
@@ -103,6 +118,12 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         ]);
 
         $this->head = CentralFinanceUser::on('mysql')->findOrFail(100);
+        $headFinanceRoleId = DB::connection('mysql')->table('roles')->insertGetId([
+            'name' => 'Head Finance', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            'role_id' => $headFinanceRoleId, 'model_type' => User::class, 'model_id' => $this->head->id,
+        ]);
         $this->group = FinanceGroup::on('mysql')->create(['code' => 'QA', 'name' => 'QA Group', 'status' => 'active']);
         foreach ([1, 2] as $schoolId) {
             DB::connection('mysql')->table('finance_group_schools')->insert(['group_id' => $this->group->id, 'school_id' => $schoolId, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
@@ -149,6 +170,35 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertSame(2, DB::connection('mysql')->table('central_finance_import_batches')->where('group_import_batch_id', $confirmed->id)->where('status', 'completed')->count());
         // one canonical document audit plus start/completion batch audit per School
         $this->assertSame(6, DB::connection('mysql')->table('central_finance_document_audits')->count());
+    }
+
+    public function test_an_unchecked_school_allocation_checkbox_fails_closed_instead_of_granting_account_access(): void
+    {
+        $this->assertTrue(User::on('mysql')->findOrFail($this->head->id)->hasRole('Head Finance'));
+        app(CentralFinanceFundAccountAdministrationService::class)->syncSchoolAllocations(
+            $this->head,
+            School::on('mysql')->findOrFail(1),
+            $this->zixuanAccount,
+            [
+                ['school_id' => 1, 'opening_allocation_amount' => 0, 'is_active' => true],
+                // Native HTML omits an unchecked checkbox from the request.
+                ['school_id' => 2, 'opening_allocation_amount' => 0],
+            ],
+            'Checkbox omission must not grant School access.',
+        );
+
+        $allocation = CentralFinanceFundAccountSchoolAllocation::on('mysql')->where([
+            'fund_account_id' => $this->zixuanAccount->id,
+            'school_id' => 2,
+        ])->firstOrFail();
+
+        $this->assertFalse((bool) $allocation->is_active);
+        $this->assertSame(CentralFinanceFundAccountSchoolAllocation::STATUS_INACTIVE, $allocation->status);
+        $this->assertSame(1, CentralFinanceFundAccountSchoolAllocation::on('mysql')->where([
+            'fund_account_id' => $this->zixuanAccount->id,
+            'school_id' => 1,
+            'is_active' => true,
+        ])->count());
     }
 
     public function test_v21_saved_workbook_previews_two_school_expense_and_other_income_without_formula_blank_rows(): void
