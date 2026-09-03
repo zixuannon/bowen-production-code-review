@@ -142,7 +142,14 @@ class LoginController extends Controller
 
                 Auth::login($user);
 
+                // Auth may migrate the session during a successful login.
+                // Re-assert the tenant selected by the validated School Code
+                // after the final guard login so every subsequent request
+                // resolves this user on exactly that tenant connection.
+                Session::put('db_connection_name', 'school');
+                session(['db_connection_name' => 'school']);
                 Session::put('school_database_name', $school->database_name);
+                session(['school_database_name' => $school->database_name]);
                 Session::forget(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
                 $staffUuid = (string) ($user->getRawOriginal('central_finance_source_uuid') ?? '');
                 if ($staffUuid !== '' && Str::isUuid($staffUuid)) {
