@@ -281,7 +281,8 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $workspace = app(\App\Http\Controllers\CentralFinanceGroupImportController::class)->workspace(request());
         $this->assertInstanceOf(View::class, $workspace);
         $this->assertSame('central-finance.group-import.index', $workspace->name());
-        $this->get(route('central-finance.group-import.template'))->assertOk();
+        $this->get(route('central-finance.group-import.template', ['finance_group_id' => $this->group->id]))
+            ->assertDownload('group-finance-import-template-v2.1.xlsx');
 
         $schoolActor = $this->schoolOnlyActor();
         $batch = CentralFinanceGroupImportBatch::on('mysql')->create([
