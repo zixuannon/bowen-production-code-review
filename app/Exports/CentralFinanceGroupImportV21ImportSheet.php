@@ -57,7 +57,7 @@ final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithCo
             }
             $this->headerComment($sheet, 'B1', 'Auto-filled from the selected 校区. Do not edit the canonical School Code.');
             $this->headerComment($sheet, 'C1', 'Choose the School display name. School Code will be filled automatically.');
-            $this->headerComment($sheet, 'G1', 'Choose an exact canonical Fund Account Code for the selected School.');
+            $this->headerComment($sheet, 'G1', 'Choose an exact canonical Fund Account Code from the selected School\'s available accounts.');
             $this->headerComment($sheet, 'H1', 'Auto-filled from the selected Fund Account Code.');
             $this->headerComment($sheet, 'I1', 'Auto-filled from the selected Fund Account Code.');
             $this->headerComment($sheet, 'J1', 'Choose an active Category Code after entering Income or Expense.');
@@ -70,12 +70,11 @@ final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithCo
                 $sheet->setCellValue("I{$row}", "=IFERROR(INDEX(FundAccountOwners,MATCH(G{$row},FundAccountCodes,0)),\"\")");
                 $sheet->setCellValue("P{$row}", "=IFERROR(INDEX(FundAccountCurrencies,MATCH(G{$row},FundAccountCodes,0)),\"\")");
                 $this->listValidation($sheet, "C{$row}", '=SchoolNames');
-                // Excel-compatible static lists retain their validation after
-                // users save/reopen in spreadsheet clients that discard an
-                // INDIRECT() validation formula. Both lists are already
-                // restricted to the actor's authorized Finance Group; Preview
-                // remains the canonical exact School/type/account validator.
-                $this->listValidation($sheet, "G{$row}", '=FundAccountCodes');
+                // The account choices must follow the selected School.  The
+                // named ranges are generated from active account allocations,
+                // including one physical account assigned to multiple schools.
+                // Preview remains the canonical exact School/account validator.
+                $this->listValidation($sheet, "G{$row}", "=INDIRECT(\"FundAccounts_\"&\$B{$row})");
                 $this->listValidation($sheet, "J{$row}", '=CategoryCodes');
             }
         }];

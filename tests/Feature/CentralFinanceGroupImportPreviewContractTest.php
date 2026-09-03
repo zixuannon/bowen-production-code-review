@@ -56,7 +56,8 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
                 ['code' => 'SCH202616', 'name' => 'Times City'],
             ],
             accounts: [
-                ['code' => 'ZIX-CASH', 'name' => 'Zixuan Cash', 'school_code' => 'SCH202615', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
+                ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'SCH202615', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
+                ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'SCH202616', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
                 ['code' => 'HQ-MMK', 'name' => 'HQ MMK', 'school_code' => null, 'account_type' => 'bank', 'owner_type' => 'hq', 'currency' => 'MMK'],
             ],
             categories: [
@@ -78,7 +79,9 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $this->assertSame('=IFERROR(INDEX(FundAccountOwners,MATCH(G2,FundAccountCodes,0)),"")', $import->getCell('I2')->getValue());
             $this->assertSame('=IFERROR(INDEX(FundAccountCurrencies,MATCH(G2,FundAccountCodes,0)),"")', $import->getCell('P2')->getValue());
             $this->assertSame('=SchoolNames', $import->getCell('C2')->getDataValidation()->getFormula1());
-            $this->assertSame('=FundAccountCodes', $import->getCell('G2')->getDataValidation()->getFormula1());
+            $this->assertSame('=INDIRECT("FundAccounts_"&$B2)', $import->getCell('G2')->getDataValidation()->getFormula1());
+            $this->assertTrue($import->getCell('C2')->getDataValidation()->getShowDropDown());
+            $this->assertTrue($import->getCell('G2')->getDataValidation()->getShowDropDown());
             $this->assertSame('=CategoryCodes', $import->getCell('J2')->getDataValidation()->getFormula1());
             $this->assertNull($import->getCell('O2')->getValue());
             $this->assertSame('hidden', $workbook->getSheetByName('Validation Lists')->getSheetState());
@@ -86,7 +89,15 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $this->assertNotNull($workbook->getNamedRange('FundAccountCodes'));
             $this->assertNotNull($workbook->getNamedRange('CategoryCodes'));
             $this->assertNotNull($workbook->getNamedRange('FundAccounts_SCH202615'));
+            $this->assertNotNull($workbook->getNamedRange('FundAccounts_SCH202616'));
             $this->assertNotNull($workbook->getNamedRange('Categories_SCH202615_expense'));
+
+            $zixuanAccounts = $workbook->getNamedRange('FundAccounts_SCH202615');
+            $timesCityAccounts = $workbook->getNamedRange('FundAccounts_SCH202616');
+            $zixuanRange = str_replace('$', '', preg_replace('/^.*!/', '', $zixuanAccounts->getRange()));
+            $timesCityRange = str_replace('$', '', preg_replace('/^.*!/', '', $timesCityAccounts->getRange()));
+            $this->assertContains('SHARED-CASH', array_column($zixuanAccounts->getWorksheet()->rangeToArray($zixuanRange), 0));
+            $this->assertContains('SHARED-CASH', array_column($timesCityAccounts->getWorksheet()->rangeToArray($timesCityRange), 0));
 
             $upload = new UploadedFile($path, 'group-finance-import-template-v2.1.xlsx', null, null, true);
             $imported = Excel::toArray([], $upload)[0];
@@ -97,12 +108,23 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $this->assertSame([], $parser->invoke(app(CentralFinanceGroupImportService::class), $upload));
 
             $import->setCellValue('C2', 'Zixuan');
-            $import->setCellValue('G2', 'ZIX-CASH');
+            $import->setCellValue('G2', 'SHARED-CASH');
             $import->setCellValue('J2', 'SUPPLIES-1');
             $import->setCellValue('K2', 'Cash');
             $import->setCellValue('M2', 100);
             $import->setCellValue('O2', 'REF-001');
             IOFactory::createWriter($workbook, 'Xlsx')->save($path);
+
+            $reopened = IOFactory::load($path);
+            try {
+                $reopenedImport = $reopened->getSheetByName('Import');
+                $this->assertSame('=SchoolNames', $reopenedImport->getCell('C2')->getDataValidation()->getFormula1());
+                $this->assertSame('=INDIRECT("FundAccounts_"&$B2)', $reopenedImport->getCell('G2')->getDataValidation()->getFormula1());
+                $this->assertTrue($reopenedImport->getCell('C2')->getDataValidation()->getShowDropDown());
+                $this->assertTrue($reopenedImport->getCell('G2')->getDataValidation()->getShowDropDown());
+            } finally {
+                $reopened->disconnectWorksheets();
+            }
 
             $parsed = $parser->invoke(app(CentralFinanceGroupImportService::class), new UploadedFile($path, 'group-finance-import-template-v2.1.xlsx', null, null, true));
             $this->assertCount(1, $parsed);
