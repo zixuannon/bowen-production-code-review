@@ -30,6 +30,7 @@ final class CentralFinanceExpenseImportService
         private readonly CentralFinanceImportBatchService $batches,
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceFundAccountScopeService $accounts,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceFundAccountBalanceService $balances,
         private readonly CentralFinanceOperatingDocumentService $expenses,
     ) {}
@@ -143,8 +144,9 @@ final class CentralFinanceExpenseImportService
     /** @param array<string,mixed> $data */
     private function account(int $schoolId, array $data): CentralFinanceFundAccount
     {
-        return CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])
-            ->where(fn ($query) => $query->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->orWhere('school_id', $schoolId))->firstOrFail();
+        $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->firstOrFail();
+        $this->availability->assertAccountAvailableForSchool($account, $schoolId);
+        return $account;
     }
 
     /** @param array<string,mixed> $data */

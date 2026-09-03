@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CentralFinanceCategory;
 use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceGroupImportBatch;
 use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinanceUser;
@@ -80,6 +81,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             '2026_08_24_000001_create_central_finance_import_batches.php',
             '2026_08_24_000004_add_reimbursed_by_to_central_finance_expenses.php',
             '2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php',
+            '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_09_02_000001_harden_school_codes_for_group_finance_import.php',
             '2026_09_02_000002_add_category_codes_for_group_finance_import.php',
             '2026_09_02_000003_create_central_finance_group_import_previews.php',
@@ -197,6 +199,49 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    public function test_same_shared_account_routes_two_schools_through_preview_and_confirm_without_duplicate_finance_writes(): void
+    {
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+            'fund_account_id' => $this->zixuanAccount->id, 'school_id' => 2,
+            'opening_allocation_amount' => 0, 'effective_from' => '2026-09-01',
+            'status' => 'active', 'is_active' => true, 'assigned_by' => $this->head->id,
+            'assignment_reason' => 'Shared-account P1 QA.',
+        ]);
+
+        $batch = $this->preview([
+            $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'SHARED-ZIX-1', 125, 0),
+            $this->row('SCH-TIM', 'Times QA', $this->zixuanAccount, $this->timesExpense, 'SHARED-TIM-1', 0, 40),
+        ]);
+        $this->assertSame(2, $batch->new_rows);
+        $this->assertSame(0, $batch->error_rows);
+        $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
+        $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
+
+        app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+        $this->assertSame(1, CentralFinanceExpense::on('mysql')->where('fund_account_id', $this->zixuanAccount->id)->where('school_id', 2)->count());
+        $this->assertSame(1, CentralFinanceOtherIncome::on('mysql')->where('fund_account_id', $this->zixuanAccount->id)->where('school_id', 1)->count());
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_ledger_entries')->where('fund_account_id', $this->zixuanAccount->id)->count());
+
+        $repeat = $this->preview([
+            $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'SHARED-ZIX-1', 125, 0),
+            $this->row('SCH-TIM', 'Times QA', $this->zixuanAccount, $this->timesExpense, 'SHARED-TIM-1', 0, 40),
+        ]);
+        $this->assertSame(2, $repeat->duplicate_rows);
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_ledger_entries')->where('fund_account_id', $this->zixuanAccount->id)->count());
+    }
+
+    public function test_unassigned_school_is_rejected_before_group_import_can_create_a_financial_document(): void
+    {
+        $batch = $this->preview([
+            $this->row('SCH-TIM', 'Times QA', $this->zixuanAccount, $this->timesExpense, 'UNASSIGNED-SHARED-1', 0, 40),
+        ]);
+        $row = $batch->rows()->sole();
+        $this->assertSame('Error', $row->result_status);
+        $this->assertSame('FUND_ACCOUNT_SCOPE_MISMATCH', $row->error_code);
+        $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
+        $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
     }
 
     public function test_confirm_failure_after_preview_leaves_no_partial_financial_write_and_marks_batch_failed(): void

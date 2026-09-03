@@ -17,6 +17,7 @@ final class CentralFinanceHqFundingService
     public function __construct(
         private readonly CentralFinanceSchoolScopeService $schools,
         private readonly CentralFinanceFundAccountScopeService $accounts,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceLedgerService $ledger,
         private readonly CentralFinanceDocumentAuditService $audits,
         private readonly CentralFinanceInternalTransferService $transfers,
@@ -113,8 +114,8 @@ final class CentralFinanceHqFundingService
     {
         if (strtoupper($source->currency) !== strtoupper($destination->currency)) throw new InvalidArgumentException('目前仅支持同币种资金移动，跨币种兑换尚未启用。');
         if ($source->id === $destination->id) throw new InvalidArgumentException('HQ funding requires distinct active accounts.');
-        if ($source->owner_type === CentralFinanceFundAccount::OWNER_HQ && $source->school_id === null && $destination->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $destination->school_id === $schoolId) return CentralFinanceHqFundingRequest::HQ_TO_SCHOOL;
-        if ($destination->owner_type === CentralFinanceFundAccount::OWNER_HQ && $destination->school_id === null && $source->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $source->school_id === $schoolId) return CentralFinanceHqFundingRequest::SCHOOL_TO_HQ;
+        if ($source->owner_type === CentralFinanceFundAccount::OWNER_HQ && $source->school_id === null && $destination->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && $this->availability->isAccountAvailableForSchool($destination, $schoolId)) return CentralFinanceHqFundingRequest::HQ_TO_SCHOOL;
+        if ($destination->owner_type === CentralFinanceFundAccount::OWNER_HQ && $destination->school_id === null && $source->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && $this->availability->isAccountAvailableForSchool($source, $schoolId)) return CentralFinanceHqFundingRequest::SCHOOL_TO_HQ;
         throw new InvalidArgumentException('HQ funding requires exactly one HQ account and one account in the current School.');
     }
     private function assertInput(float $amount, string $idempotencyReference, ?string &$referenceNo): void { $referenceNo=$referenceNo===null?null:trim($referenceNo); if($amount<=0||!is_finite($amount)||!preg_match('/^[A-Za-z0-9_.:-]{2,100}$/',$idempotencyReference)||($referenceNo!==null&&$referenceNo!==''&&!preg_match('/^[A-Za-z0-9_.:-]{1,100}$/',$referenceNo))) throw new InvalidArgumentException('Central HQ funding input is invalid.'); $referenceNo=$referenceNo?:null; }

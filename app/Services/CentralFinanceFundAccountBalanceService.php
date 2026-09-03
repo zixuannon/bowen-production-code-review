@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Support\CentralFinanceCurrency;
 use LogicException;
+use Illuminate\Support\Facades\Schema;
 
 final class CentralFinanceFundAccountBalanceService
 {
@@ -21,6 +23,27 @@ final class CentralFinanceFundAccountBalanceService
     public function hasSufficientBalance(CentralFinanceFundAccount $account, float $amount): bool
     {
         return $amount > 0 && $this->currentBalance($account) >= $amount;
+    }
+
+    /** Physical balance remains exactly once at the account level. */
+    public function schoolOpeningBalance(CentralFinanceFundAccount $account, int $schoolId): float
+    {
+        if ($account->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL) return 0.0;
+        $allocation = Schema::connection('mysql')->hasTable('central_finance_fund_account_school_allocations')
+            ? CentralFinanceFundAccountSchoolAllocation::on('mysql')->where('fund_account_id', $account->id)->where('school_id', $schoolId)->effective()->first()
+            : null;
+        if ($allocation !== null) return (float) $allocation->opening_allocation_amount;
+
+        // Transitional compatibility during phased additive rollout only.
+        return (int) $account->school_id === $schoolId ? (float) $account->opening_balance : 0.0;
+    }
+
+    /** A School sees only its allocation baseline plus its own direct Ledger. */
+    public function schoolBalance(CentralFinanceFundAccount $account, int $schoolId): float
+    {
+        $totals = CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)->where('school_id', $schoolId)
+            ->selectRaw('COALESCE(SUM(money_in), 0) as money_in, COALESCE(SUM(money_out), 0) as money_out')->first();
+        return round($this->schoolOpeningBalance($account, $schoolId) + (float) $totals->money_in - (float) $totals->money_out, 4);
     }
 
     /**

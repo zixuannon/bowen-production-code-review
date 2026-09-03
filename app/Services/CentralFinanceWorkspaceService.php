@@ -7,6 +7,7 @@ use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroupUser;
 use App\Models\School;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ final class CentralFinanceWorkspaceService
     public function __construct(
         private readonly CentralFinanceSchoolScopeService $schools,
         private readonly CentralFinanceFundAccountScopeService $accounts,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly FinanceGroupScopeService $groups,
         private readonly CentralFinanceSchoolStaffIdentityService $staffIdentities,
     ) {}
@@ -146,8 +148,9 @@ final class CentralFinanceWorkspaceService
     {
         $query = $this->accounts->visibleAccounts($actor)->active()->orderBy('account_name');
         if ($schoolId !== null) {
-            $query->where(function ($query) use ($schoolId): void {
-                $query->where('school_id', $schoolId)->orWhere('owner_type', CentralFinanceFundAccount::OWNER_HQ);
+            $query->where(function (Builder $accounts) use ($schoolId): void {
+                $this->availability->scopeAccountsForSchool($accounts, $schoolId)
+                    ->orWhere('owner_type', CentralFinanceFundAccount::OWNER_HQ);
             });
         }
         return $query->get();
@@ -167,11 +170,19 @@ final class CentralFinanceWorkspaceService
         $query = CentralFinanceFundAccount::on('mysql')->orderBy('account_name');
 
         if ($this->isSchoolStaffPrincipal($actor)) {
-            $query->whereIn('school_id', $schools->pluck('id'));
+            $schoolIds = $schools->pluck('id');
+            if ($this->availability->allocationSchemaAvailable()) {
+                $query->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)
+                    ->where(function ($accounts) use ($schoolIds): void {
+                        $accounts->whereIn('school_id', $schoolIds)
+                            ->orWhereHas('schoolAllocations', fn ($allocations) => $allocations->whereIn('school_id', $schoolIds)->effective());
+                    });
+            } else $query->whereIn('school_id', $schoolIds);
         } else {
             $groupIds = $this->groupUsers($actor)->pluck('group_id');
             $query->where(function ($accounts) use ($schools, $groupIds): void {
                 $accounts->whereIn('school_id', $schools->pluck('id'))
+                    ->when($this->availability->allocationSchemaAvailable(), fn ($scoped) => $scoped->orWhereHas('schoolAllocations', fn ($allocations) => $allocations->whereIn('school_id', $schools->pluck('id'))->effective()))
                     ->orWhere(fn ($hq) => $hq->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->whereIn('group_id', $groupIds));
             });
         }
@@ -181,8 +192,7 @@ final class CentralFinanceWorkspaceService
             // available to authorised Head Finance write flows through
             // accessibleAccounts(), but must not inflate this School's
             // dashboard, directory, statements, reports, or Standard Ledger.
-            $query->where('school_id', $schoolId)
-                ->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL);
+            $this->availability->scopeAccountsForSchool($query, $schoolId);
         }
 
         return $query->get();

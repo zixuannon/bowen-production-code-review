@@ -22,6 +22,7 @@ final class CentralFinanceLedgerService
     public function __construct(
         private readonly CentralFinanceFundAccountScopeService $scope,
         private readonly CentralFinanceFundAccountBalanceService $balances,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
     ) {}
 
     public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null): CentralFinanceLedgerEntry
@@ -178,9 +179,11 @@ final class CentralFinanceLedgerService
         if (!in_array($account->owner_type, [CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL], true)) {
             throw new InvalidArgumentException('Central Fund Account ownership is invalid.');
         }
-        if (($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && $account->school_id !== null)
-            || ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== $schoolId)) {
+        if ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && $account->school_id !== null) {
             throw new InvalidArgumentException('The Fund Account cannot be attributed to this School.');
+        }
+        if ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL) {
+            $this->availability->assertAccountAvailableForSchool($account, $schoolId);
         }
     }
 

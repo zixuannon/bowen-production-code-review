@@ -90,4 +90,20 @@ class CentralFinanceFundAccount extends Model
     {
         return $this->hasMany(CentralFinanceLedgerEntry::class, 'fund_account_id');
     }
+
+    /**
+     * School availability is additive.  school_id remains the legacy original
+     * owner for compatibility and never replaces document/ledger attribution.
+     */
+    public function schoolAllocations(): HasMany
+    {
+        return $this->hasMany(CentralFinanceFundAccountSchoolAllocation::class, 'fund_account_id');
+    }
+
+    public function assignedSchools(): BelongsToMany
+    {
+        return $this->belongsToMany(School::class, 'central_finance_fund_account_school_allocations', 'fund_account_id', 'school_id')
+            ->withPivot(['opening_allocation_amount', 'effective_from', 'effective_to', 'status', 'is_active', 'assigned_by', 'assignment_reason'])
+            ->withTimestamps();
+    }
 }

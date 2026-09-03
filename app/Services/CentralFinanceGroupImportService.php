@@ -40,6 +40,7 @@ final class CentralFinanceGroupImportService
     public function __construct(
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceFundAccountScopeService $accountScopes,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $accountAvailability,
         private readonly CentralFinanceFundAccountBalanceService $balances,
         private readonly FinanceGroupScopeService $groups,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
@@ -118,7 +119,12 @@ final class CentralFinanceGroupImportService
         $schoolCodes = $schools->mapWithKeys(static fn (School $school): array => [(int) $school->id => strtoupper(trim((string) $school->code))]);
         $accounts = CentralFinanceFundAccount::on('mysql')->active()
             ->where(function ($query) use ($group, $schoolCodes): void {
-                $query->where(fn ($schoolOwned) => $schoolOwned->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)->whereIn('school_id', $schoolCodes->keys()))
+                $query->where(function ($schoolOwned) use ($schoolCodes): void {
+                    $schoolOwned->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)->where(function ($available) use ($schoolCodes): void {
+                        $available->whereIn('school_id', $schoolCodes->keys());
+                        if ($this->accountAvailability->allocationSchemaAvailable()) $available->orWhereHas('schoolAllocations', fn ($allocations) => $allocations->whereIn('school_id', $schoolCodes->keys())->effective());
+                    });
+                })
                     ->orWhere(fn ($hqOwned) => $hqOwned->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->where('group_id', $group->id));
             })
             ->orderBy('account_code')
@@ -131,14 +137,13 @@ final class CentralFinanceGroupImportService
                     return false;
                 }
             })
-            ->map(static fn (CentralFinanceFundAccount $account): array => [
-                'code' => $account->account_code,
-                'name' => $account->account_name,
-                'school_code' => $account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL ? $schoolCodes->get((int) $account->school_id) : null,
-                'account_type' => $account->account_type,
-                'owner_type' => $account->owner_type,
-                'currency' => $account->currency,
-            ])
+            ->flatMap(function (CentralFinanceFundAccount $account) use ($schoolCodes): array {
+                $base = ['code' => $account->account_code, 'name' => $account->account_name,
+                    'account_type' => $account->account_type, 'owner_type' => $account->owner_type, 'currency' => $account->currency];
+                if ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ) return [$base + ['school_code' => null]];
+                return $schoolCodes->keys()->filter(fn ($schoolId) => $this->accountAvailability->isAccountAvailableForSchool($account, (int) $schoolId))
+                    ->map(fn ($schoolId) => $base + ['school_code' => $schoolCodes->get($schoolId)])->values()->all();
+            })
             ->values()
             ->all();
 
@@ -384,7 +389,7 @@ final class CentralFinanceGroupImportService
         $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->first();
         if (!$account || $data['fund_account_code'] !== $account->account_code) return $error('FUND_ACCOUNT_UNKNOWN', 'Fund Account Code must be an exact active canonical account code.');
         if ($data['fund_account_type'] !== $account->account_type || $data['account_owner'] !== $account->owner_type) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Type or Account Owner does not match the canonical Fund Account.');
-        if (($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== (int) $school->id) || ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && (int) $account->group_id !== (int) $groupUser->group_id)) return $error('FUND_ACCOUNT_SCOPE_MISMATCH', 'Fund Account does not belong to the routed School or active Finance Group HQ.');
+        if (($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && !$this->accountAvailability->isAccountAvailableForSchool($account, (int) $school->id)) || ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && (int) $account->group_id !== (int) $groupUser->group_id)) return $error('FUND_ACCOUNT_SCOPE_MISMATCH', 'Fund Account is not available for the routed School or active Finance Group HQ.');
         try { $this->accountScopes->assertCanOperate($actor, $account); } catch (AuthorizationException) { return $error('FUND_ACCOUNT_SCOPE_DENIED', 'Fund Account is not authorized for operation by this actor.'); }
         if (!CentralFinanceCurrency::same($data['currency'], $account->currency)) return $error('CURRENCY_MISMATCH', 'Currency must match the canonical Fund Account currency.');
         $category = CentralFinanceCategory::on('mysql')->where(['school_id' => $school->id, 'type' => $data['document_type'] === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME, 'category_code' => $data['category_code'], 'is_active' => true])->first();

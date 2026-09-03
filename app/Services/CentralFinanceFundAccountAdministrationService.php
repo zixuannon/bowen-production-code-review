@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceFundAccountOpeningBalanceAudit;
 use App\Models\CentralFinanceDocumentAudit;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -40,6 +42,74 @@ final class CentralFinanceFundAccountAdministrationService
             $this->syncAssignmentsLocked($actor, $school, $account, $groupUser->group_id, $assigneeIds);
             $after = $account->authorizedUsers()->pluck('users.id')->sort()->values()->all();
             $this->audit($school, $account, $actor, 'scope_updated', trim($reason), ['authorized_user_ids' => $before], ['authorized_user_ids' => $after]);
+        });
+    }
+
+    /**
+     * Assign a physical School-owned account to additional Group Schools.
+     * This is not a transfer/reallocation workflow: once a non-zero baseline
+     * has financial history it cannot be redistributed through this surface.
+     * Removing an assignment is an inactivation audit, never a deletion.
+     *
+     * @param array<int,array{school_id:int,opening_allocation_amount:float|int|string,is_active?:bool}> $allocations
+     */
+    public function syncSchoolAllocations(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $allocations, string $reason): void
+    {
+        if (trim($reason) === '') throw ValidationException::withMessages(['reason' => [__('A School allocation reason is required.')]]);
+        DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $allocations, $reason): void {
+            $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
+            if ($account->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('Only School-owned Fund Accounts can have School allocations.');
+            }
+            $groupUser = $this->authorization->assertHeadFinanceCanConfigureSchool($actor, $school);
+            if ((int) $account->group_id !== (int) $groupUser->group_id) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('The Fund Account is outside the configured Finance Group.');
+            }
+
+            $allowedSchools = DB::connection('mysql')->table('finance_group_schools')
+                ->where('group_id', $groupUser->group_id)->where('status', 'active')->pluck('school_id')->map(fn ($id) => (int) $id);
+            $requested = collect($allocations)->mapWithKeys(function (array $row): array {
+                $schoolId = (int) ($row['school_id'] ?? 0);
+                if ($schoolId <= 0 || !is_numeric($row['opening_allocation_amount'] ?? null) || (float) $row['opening_allocation_amount'] < 0) {
+                    throw ValidationException::withMessages(['allocations' => [__('Each School allocation requires a non-negative opening amount.')]]);
+                }
+                return [$schoolId => ['amount' => round((float) $row['opening_allocation_amount'], 4), 'active' => (bool) ($row['is_active'] ?? true)]];
+            });
+            if ($requested->keys()->diff($allowedSchools)->isNotEmpty()) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('A requested School is outside the trusted Finance Group.');
+            }
+
+            $existing = CentralFinanceFundAccountSchoolAllocation::on('mysql')->where('fund_account_id', $account->id)->lockForUpdate()->get()->keyBy('school_id');
+            $hasLedger = $account->ledgerEntries()->exists();
+            $candidate = $existing->mapWithKeys(fn ($item) => [(int) $item->school_id => ['amount' => (float) $item->opening_allocation_amount, 'active' => (bool) $item->is_active && $item->status === CentralFinanceFundAccountSchoolAllocation::STATUS_ACTIVE]]);
+            foreach ($requested as $schoolId => $row) {
+                $current = $existing->get($schoolId);
+                if ($hasLedger && $current !== null && abs((float) $current->opening_allocation_amount - $row['amount']) > 0.0001) {
+                    throw ValidationException::withMessages(['allocations' => [__('Opening allocation changes after Ledger history require the formal School Fund Reallocation workflow.')]]);
+                }
+                if ($hasLedger && $current !== null && (float) $current->opening_allocation_amount > 0 && !$row['active']) {
+                    throw ValidationException::withMessages(['allocations' => [__('A funded School allocation with Ledger history cannot be removed without formal reallocation.')]]);
+                }
+                $candidate[$schoolId] = $row;
+            }
+            if (!$candidate->has((int) $account->school_id)) {
+                throw ValidationException::withMessages(['allocations' => [__('The legacy owner School allocation must remain present.')]]);
+            }
+            $total = $candidate->filter(fn ($row) => $row['active'])->sum('amount');
+            if ($total > (float) $account->opening_balance + 0.0001) {
+                throw ValidationException::withMessages(['allocations' => [__('Active School opening allocations cannot exceed the physical Fund Account opening balance.')]]);
+            }
+
+            foreach ($requested as $schoolId => $row) {
+                $before = $existing->get($schoolId)?->only(['school_id', 'opening_allocation_amount', 'is_active', 'status']);
+                $allocation = CentralFinanceFundAccountSchoolAllocation::on('mysql')->updateOrCreate(
+                    ['fund_account_id' => $account->id, 'school_id' => $schoolId],
+                    ['opening_allocation_amount' => $row['amount'], 'effective_from' => $existing->get($schoolId)?->effective_from?->toDateString() ?? now()->toDateString(),
+                     'effective_to' => $row['active'] ? null : now()->toDateString(), 'status' => $row['active'] ? CentralFinanceFundAccountSchoolAllocation::STATUS_ACTIVE : CentralFinanceFundAccountSchoolAllocation::STATUS_INACTIVE,
+                     'is_active' => $row['active'], 'assigned_by' => $actor->id, 'assignment_reason' => trim($reason)]
+                );
+                $this->audit($school, $account, $actor, $row['active'] ? 'school_allocation_saved' : 'school_allocation_revoked', trim($reason), $before ?? [], $allocation->only(['school_id', 'opening_allocation_amount', 'is_active', 'status']));
+            }
         });
     }
 
@@ -150,6 +220,14 @@ final class CentralFinanceFundAccountAdministrationService
                 'status' => CentralFinanceFundAccount::STATUS_ACTIVE,
                 'notes' => $this->nullableTrim($attributes['notes'] ?? null),
             ]);
+            if ($ownerType === CentralFinanceFundAccount::OWNER_SCHOOL && Schema::connection('mysql')->hasTable('central_finance_fund_account_school_allocations')) {
+                CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+                    'fund_account_id' => $account->id, 'school_id' => $school->id,
+                    'opening_allocation_amount' => $attributes['opening_balance'], 'effective_from' => $attributes['opening_balance_date'],
+                    'status' => CentralFinanceFundAccountSchoolAllocation::STATUS_ACTIVE, 'is_active' => true,
+                    'assigned_by' => $actor->id, 'assignment_reason' => trim($attributes['opening_reason']),
+                ]);
+            }
             CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->create([
                 'fund_account_id' => $account->id, 'change_type' => CentralFinanceFundAccountOpeningBalanceAudit::INITIAL,
                 'old_opening_balance' => null, 'new_opening_balance' => $attributes['opening_balance'],

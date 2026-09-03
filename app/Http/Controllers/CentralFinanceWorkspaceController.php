@@ -21,6 +21,7 @@ use App\Models\CentralFinanceSchoolCutover;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use App\Services\CentralFinanceFundAccountBalanceService;
+use App\Services\CentralFinanceFundAccountSchoolAvailabilityService;
 use App\Services\CentralFinanceLedgerPresentationService;
 use App\Services\CentralFinanceFundAccountAdministrationService;
 use App\Services\CentralFinanceConfigurationAuthorizationService;
@@ -68,6 +69,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function __construct(
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceFundAccountBalanceService $balances,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $accountAvailability,
         private readonly CentralFinancePaymentService $payments,
         private readonly CentralFinancePaymentRefundService $refunds,
         private readonly CentralFinanceReceivableAdjustmentService $receivableAdjustments,
@@ -489,6 +491,20 @@ final class CentralFinanceWorkspaceController extends Controller
         $data = $request->validate(['authorized_user_ids' => ['nullable', 'array'], 'authorized_user_ids.*' => ['integer', 'distinct'], 'reason' => ['required', 'string', 'max:2000']]);
         $this->accountAdministration->syncSchoolAssignments($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['authorized_user_ids'] ?? [], $data['reason']);
         return back()->with('success', __('Central Fund Account assignments saved.'));
+    }
+
+    public function syncFundAccountSchoolAllocations(Request $request, int $fundAccount): RedirectResponse
+    {
+        [$actor, $school] = $this->currentOperatingContext();
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+            'allocations' => ['required', 'array', 'min:1'],
+            'allocations.*.school_id' => ['required', 'integer', 'distinct'],
+            'allocations.*.opening_allocation_amount' => ['required', 'numeric', 'min:0'],
+            'allocations.*.is_active' => ['nullable', 'boolean'],
+        ]);
+        $this->accountAdministration->syncSchoolAllocations($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['allocations'], $data['reason']);
+        return back()->with('success', __('Central Fund Account School allocations saved.'));
     }
 
     public function adjustFundAccountOpeningBalance(Request $request, int $fundAccount): RedirectResponse
@@ -940,7 +956,9 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $accountDirectory = null;
         if ($page === 'accounts') {
-            $directoryQuery = CentralFinanceFundAccount::on('mysql')->with(['custodian', 'authorizedUsers'])
+            $accountRelations = ['custodian', 'authorizedUsers'];
+            if ($this->accountAvailability->allocationSchemaAvailable()) $accountRelations[] = 'schoolAllocations';
+            $directoryQuery = CentralFinanceFundAccount::on('mysql')->with($accountRelations)
                 ->whereIn('id', $accounts->pluck('id'));
             if (!empty($filters['account_owner'])) $directoryQuery->where('owner_type', $filters['account_owner']);
             if (!empty($filters['account_type'])) $directoryQuery->where('account_type', $filters['account_type']);
@@ -949,7 +967,7 @@ final class CentralFinanceWorkspaceController extends Controller
             if (!empty($filters['custodian_user_id'])) $directoryQuery->where('custodian_user_id', (int) $filters['custodian_user_id']);
             if (!empty($filters['account_search'])) $directoryQuery->where(fn ($query) => $query->where('account_code', 'like', '%'.$filters['account_search'].'%')->orWhere('account_name', 'like', '%'.$filters['account_search'].'%'));
             $accountDirectory = $directoryQuery->orderBy('account_code')->paginate(25, ['*'], 'accounts_page')->withQueryString();
-            $accountDirectory->getCollection()->each(fn (CentralFinanceFundAccount $account) => $account->setAttribute('current_balance', $this->balances->currentBalance($account)));
+            $accountDirectory->getCollection()->each(fn (CentralFinanceFundAccount $account) => $account->setAttribute('current_balance', $schoolId ? $this->balances->schoolBalance($account, $schoolId) : $this->balances->currentBalance($account)));
         }
         $statementEntries = null; $statementOpeningBalance = null; $statementTotals = null; $statementLedgerCategories = [];
         if (in_array($page, ['account-statement', 'account-statements'], true) && $accountReport) {
@@ -1152,7 +1170,7 @@ final class CentralFinanceWorkspaceController extends Controller
             $canonical->whereRaw('1 = 0');
         }
 
-        $openingBalance = (float) $account->opening_balance;
+        $openingBalance = $school ? $this->balances->schoolOpeningBalance($account, $school->id) : (float) $account->opening_balance;
         if (!empty($filters['from'])) {
             $prior = (clone $canonical)->whereDate('entry_date', '<', $filters['from']);
             $openingBalance += (float) $prior->sum('money_in') - (float) $prior->sum('money_out');
@@ -1258,8 +1276,7 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         $query = CentralFinanceFundAccount::on('mysql')->whereHas('authorizedUsers', fn ($users) => $users->where('users.id', $actor->id)->where('central_finance_fund_account_users.can_view', true));
         if ($schoolId !== null) {
-            $query->where('school_id', $schoolId)
-                ->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL);
+            $this->accountAvailability->scopeAccountsForSchool($query, $schoolId);
         }
         return $query->orderBy('account_name')->get();
     }

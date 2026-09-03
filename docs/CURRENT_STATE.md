@@ -473,6 +473,13 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 - No active local test-bootstrap blocker. PHP 8.5's `PDO::MYSQL_ATTR_SSL_CA` and PHPUnit XML-schema notices remain non-functional compatibility debt.
 
+## Shared Fund Account P1 — local additive allocation core
+
+- Central Finance now has an additive `central_finance_fund_account_school_allocations` migration. Existing school-owned accounts backfill exactly one active legacy-owner allocation equal to their physical opening balance; HQ accounts receive no automatic allocation. The legacy `central_finance_fund_accounts.school_id`, all Finance documents, and all Ledger rows remain unchanged.
+- `CentralFinanceFundAccountSchoolAvailabilityService` is the canonical account-for-School seam. It permits a School-owned account through an active effective allocation, with a contained legacy-owner fallback only during additive rollout. Expense, Other Income, Payment, both existing import paths, Group Import V2.1, Ledger attribution, and HQ Funding account availability use it while retaining each document/ledger `school_id`.
+- Physical balance remains the existing one-account opening plus all Ledger legs exactly once. A School-scoped balance is an allocation opening plus only that School's direct Ledger entries; selected-School directory and statement openings use this view. Direct normal transfer/handover same-school rules remain unchanged; no School Fund Reallocation has been added.
+- Head Finance can configure multiple School allocations under transaction/row locking and an audited reason. Active opening allocations cannot exceed the physical opening. A historical funded allocation cannot be changed/removed through this P1 configuration surface; it requires the later formal reallocation workflow. Production and staging remain untouched pending the P1 local/staging gates.
+
 ## Roadmap after P1 production verification
 
 1. Head Finance / Cashier / Branch Finance role design

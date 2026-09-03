@@ -23,6 +23,7 @@ final class CentralFinanceOperatingDocumentService
     public function __construct(
         private readonly CentralFinanceSchoolScopeService $schools,
         private readonly CentralFinanceFundAccountScopeService $accounts,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceLedgerService $ledger,
         private readonly CentralFinanceDocumentAuditService $audits,
     ) {}
@@ -42,9 +43,7 @@ final class CentralFinanceOperatingDocumentService
             }
 
             $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
-            if ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== $schoolId) {
-                throw new InvalidArgumentException('A School Fund Account may record only that School\'s expenses.');
-            }
+            $this->availability->assertAccountAvailableForSchool($account, $schoolId);
             $this->category($schoolId, $categoryId, CentralFinanceCategory::EXPENSE);
             $this->assertReferenceFree(CentralFinanceExpense::class, $schoolId, $referenceNo);
             $values = [
@@ -78,6 +77,7 @@ final class CentralFinanceOperatingDocumentService
             }
 
             $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
+            $this->availability->assertAccountAvailableForSchool($account, $schoolId);
             $this->category($schoolId, $categoryId, CentralFinanceCategory::INCOME);
             $this->assertReferenceFree(CentralFinanceOtherIncome::class, $schoolId, $referenceNo);
             $income = CentralFinanceOtherIncome::on('mysql')->create([

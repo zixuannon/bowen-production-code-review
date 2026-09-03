@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
@@ -59,6 +60,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
             $table->timestamps();
         });
         (require database_path('migrations/2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php'))->up();
+        (require database_path('migrations/2026_09_03_000001_create_central_finance_fund_account_school_allocations.php'))->up();
         (require database_path('migrations/2026_08_21_000005_create_central_finance_school_cutovers.php'))->up();
 
         DB::connection('mysql')->table('schools')->insert([
@@ -208,6 +210,45 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
             ->where('fund_account_id', $this->zixuan->id)->count());
     }
 
+    public function test_active_allocation_allows_two_schools_on_one_physical_account_without_balance_or_history_duplication(): void
+    {
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+            'fund_account_id' => $this->zixuan->id, 'school_id' => 2,
+            'opening_allocation_amount' => 0, 'effective_from' => '2026-08-01',
+            'status' => 'active', 'is_active' => true, 'assigned_by' => $this->headFinance->id,
+            'assignment_reason' => 'P1 shared-account characterization.',
+        ]);
+
+        $ledger = app(CentralFinanceLedgerService::class);
+        $at = CarbonImmutable::parse('2026-09-03 09:00:00', 'Asia/Yangon');
+        $ledger->recordOperatingIncome($this->headFinance, $this->zixuan, 2, 'other_income', 'SHARED-TIM-P1', 25, $at, 'SHARED-TIM-P1');
+
+        $balances = app(CentralFinanceFundAccountBalanceService::class);
+        $this->assertSame(125.0, $balances->currentBalance($this->zixuan));
+        $this->assertSame(100.0, $balances->schoolBalance($this->zixuan, 1));
+        $this->assertSame(25.0, $balances->schoolBalance($this->zixuan, 2));
+        $this->assertSame(1, CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $this->zixuan->id)->where('school_id', 2)->count());
+    }
+
+    public function test_additive_allocation_migration_backfills_only_legacy_school_owner_without_rewriting_finance_history(): void
+    {
+        $migration = require database_path('migrations/2026_09_03_000001_create_central_finance_fund_account_school_allocations.php');
+        $migration->down();
+        $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_fund_account_school_allocations'));
+        $beforeLedger = CentralFinanceLedgerEntry::on('mysql')->count();
+        $beforeOpening = (float) $this->zixuan->opening_balance;
+        $migration->up();
+
+        $legacy = CentralFinanceFundAccountSchoolAllocation::on('mysql')->where(['fund_account_id' => $this->zixuan->id, 'school_id' => 1])->firstOrFail();
+        $this->assertSame($beforeOpening, (float) $legacy->opening_allocation_amount);
+        $this->assertTrue((bool) $legacy->is_active);
+        $this->assertNull($legacy->assigned_by);
+        $this->assertSame(0, CentralFinanceFundAccountSchoolAllocation::on('mysql')->where('fund_account_id', $this->hq->id)->count());
+        $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
+        $migration->down(); $migration->up();
+        $this->assertSame(1, CentralFinanceFundAccountSchoolAllocation::on('mysql')->where(['fund_account_id' => $this->zixuan->id, 'school_id' => 1])->count());
+    }
+
     public function test_statement_read_model_keeps_shared_account_ledger_rows_school_scoped_and_rejects_forged_account_filters(): void
     {
         $this->seedSharedAccountLedger(1, 'SHARED-ZIX-READ', 25);
@@ -253,6 +294,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
     public function test_central_schema_is_additive_and_reversible_without_tenant_finance_tables(): void
     {
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_fund_accounts'));
+        $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_fund_account_school_allocations'));
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_fund_account_users'));
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_ledger_entries'));
         $this->assertFalse(Schema::connection('mysql')->hasTable('bank_accounts'));
