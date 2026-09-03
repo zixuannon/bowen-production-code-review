@@ -12,7 +12,7 @@ final class CentralFinanceGroupImportAuthorizationContractTest extends TestCase
         $service = file_get_contents(app_path('Services/CentralFinanceGroupImportService.php'));
         $scope = file_get_contents(app_path('Services/FinanceGroupScopeService.php'));
 
-        $this->assertStringContainsString('authorizedGroups($this->actor())', $controller);
+        $this->assertStringContainsString('$groups = $this->imports->authorizedGroups($actor);', $controller);
         $this->assertSame(3, substr_count($controller, 'assertCanOperateGroup('));
         $this->assertStringContainsString('assertCanOperateGroup($actor, $group)', $service);
         $this->assertStringContainsString("hasActiveGroupScope(\$groupUser, 'operate_finance')", $service);

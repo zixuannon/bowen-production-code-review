@@ -3,8 +3,8 @@
 @section('content')
 <div class="central-finance-page">
   @include('central-finance.partials.foundation-styles')
-  <div class="cf-page-header mb-3"><div><h1 class="h4 mb-1">{{ __('Group Finance Import Preview') }}</h1><p class="text-muted mb-0">{{ __('Validate a multi-School workbook before confirmation. Preview never creates financial documents.') }}</p></div><a class="btn btn-outline-primary" href="{{ route('central-finance.group-import.template') }}">{{ __('Download Template V2') }}</a></div>
-  <div class="card central-finance-form-card mb-3"><div class="card-body"><form method="POST" enctype="multipart/form-data" action="{{ route('central-finance.group-import.preview') }}"><div class="form-row align-items-end">@csrf <div class="form-group col-md-4"><label>{{ __('Finance Group') }}</label><select name="finance_group_id" class="form-control" required>@foreach($groups as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select></div><div class="form-group col-md-5"><label>{{ __('Group Import File') }}</label><input class="form-control-file" type="file" name="group_import" accept=".xlsx,.xls,.csv" required></div><div class="form-group col-md-3"><button class="btn btn-theme btn-block">{{ __('Preview Import') }}</button></div></div></form></div></div>
+  <div class="cf-page-header mb-3"><div><h1 class="h4 mb-1">{{ __('Group Finance Import Preview') }}</h1><p class="text-muted mb-0">{{ __('Validate a multi-School workbook before confirmation. Preview never creates financial documents.') }}</p></div><a id="group-import-template-link" class="btn btn-outline-primary" data-template-url="{{ route('central-finance.group-import.template') }}" href="{{ route('central-finance.group-import.template', ['finance_group_id' => $groups->first()->id]) }}">{{ __('group-import.download_template_v21') }}</a></div>
+  <div class="card central-finance-form-card mb-3"><div class="card-body"><form method="POST" enctype="multipart/form-data" action="{{ route('central-finance.group-import.preview') }}"><div class="form-row align-items-end">@csrf <div class="form-group col-md-4"><label>{{ __('Finance Group') }}</label><select id="group-import-finance-group" name="finance_group_id" class="form-control" required>@foreach($groups as $group)<option value="{{ $group->id }}">{{ $group->name }}</option>@endforeach</select></div><div class="form-group col-md-5"><label>{{ __('Group Import File') }}</label><input class="form-control-file" type="file" name="group_import" accept=".xlsx,.xls,.csv" required></div><div class="form-group col-md-3"><button class="btn btn-theme btn-block">{{ __('Preview Import') }}</button></div></div></form></div></div>
   @if($batch)
     @php($summary = $batch->school_summary ?? [])
     <div class="card"><div class="card-body">
@@ -24,4 +24,16 @@
   @endif
 </div>
 @if($batch)<x-central-finance.lifecycle-confirmation />@endif
+@endsection
+@section('script')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var group = document.getElementById('group-import-finance-group');
+  var link = document.getElementById('group-import-template-link');
+  if (!group || !link) return;
+  group.addEventListener('change', function () {
+    link.href = link.dataset.templateUrl + '?finance_group_id=' + encodeURIComponent(group.value);
+  });
+});
+</script>
 @endsection

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exports\CentralFinanceGroupImportTemplateV2Export;
+use App\Imports\CentralFinanceGroupImportFormulaReader;
 use App\Models\CentralFinanceCategory;
 use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceDocumentAudit;
@@ -13,6 +14,7 @@ use App\Models\CentralFinanceImportBatch;
 use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
+use App\Models\FinanceGroupSchool;
 use App\Models\FinanceGroupUser;
 use App\Models\School;
 use App\Support\CentralFinanceCurrency;
@@ -72,6 +74,95 @@ final class CentralFinanceGroupImportService
         }
 
         return $groupUser;
+    }
+
+    /**
+     * Build read-only, actor-scoped master-data lookup rows for the V2.1
+     * workbook. These rows are convenience choices only: preview/confirm
+     * keeps the existing canonical exact-match and authorization validation.
+     *
+     * @return array{schools:list<array{code:string,name:string}>,accounts:list<array{code:string,name:string,school_code:?string,account_type:string,owner_type:string,currency:string}>,categories:list<array{school_code:string,type:string,category_code:string,name:string}>}
+     */
+    public function templateLookups(CentralFinanceUser $actor, FinanceGroup $group): array
+    {
+        $groupUser = $this->assertCanOperateGroup($actor, $group);
+        $today = now()->toDateString();
+        $memberSchoolIds = FinanceGroupSchool::on('mysql')
+            ->where('group_id', $group->id)
+            ->where('status', 'active')
+            ->where(fn ($query) => $query->whereNull('active_from')->orWhereDate('active_from', '<=', $today))
+            ->where(fn ($query) => $query->whereNull('active_to')->orWhereDate('active_to', '>=', $today))
+            ->orderBy('school_id')
+            ->pluck('school_id')
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(fn (int $schoolId): bool => $this->groups->canAccessSchool($groupUser, $schoolId, 'operate_finance'))
+            ->values()
+            ->all();
+
+        $schools = School::on('mysql')
+            ->whereIn('id', $memberSchoolIds)
+            ->where('installed', true)
+            ->whereIn('status', ['1', 'active'])
+            ->orderBy('code')
+            ->get(['id', 'code', 'name'])
+            ->filter(function (School $school) use ($actor): bool {
+                try {
+                    $this->workspace->assertCanOperateSchool($actor, (int) $school->id);
+                    return true;
+                } catch (AuthorizationException) {
+                    return false;
+                }
+            })
+            ->values();
+
+        $schoolCodes = $schools->mapWithKeys(static fn (School $school): array => [(int) $school->id => strtoupper(trim((string) $school->code))]);
+        $accounts = CentralFinanceFundAccount::on('mysql')->active()
+            ->where(function ($query) use ($group, $schoolCodes): void {
+                $query->where(fn ($schoolOwned) => $schoolOwned->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)->whereIn('school_id', $schoolCodes->keys()))
+                    ->orWhere(fn ($hqOwned) => $hqOwned->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->where('group_id', $group->id));
+            })
+            ->orderBy('account_code')
+            ->get()
+            ->filter(function (CentralFinanceFundAccount $account) use ($actor): bool {
+                try {
+                    $this->accountScopes->assertCanOperate($actor, $account);
+                    return true;
+                } catch (AuthorizationException) {
+                    return false;
+                }
+            })
+            ->map(static fn (CentralFinanceFundAccount $account): array => [
+                'code' => $account->account_code,
+                'name' => $account->account_name,
+                'school_code' => $account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL ? $schoolCodes->get((int) $account->school_id) : null,
+                'account_type' => $account->account_type,
+                'owner_type' => $account->owner_type,
+                'currency' => $account->currency,
+            ])
+            ->values()
+            ->all();
+
+        $categories = CentralFinanceCategory::on('mysql')
+            ->whereIn('school_id', $schoolCodes->keys())
+            ->where('is_active', true)
+            ->orderBy('school_id')
+            ->orderBy('type')
+            ->orderBy('category_code')
+            ->get(['school_id', 'type', 'category_code', 'name'])
+            ->map(static fn (CentralFinanceCategory $category): array => [
+                'school_code' => $schoolCodes->get((int) $category->school_id),
+                'type' => $category->type,
+                'category_code' => $category->category_code,
+                'name' => $category->name,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'schools' => $schools->map(static fn (School $school): array => ['code' => strtoupper(trim((string) $school->code)), 'name' => $school->name])->all(),
+            'accounts' => $accounts,
+            'categories' => $categories,
+        ];
     }
 
     /**
@@ -224,11 +315,35 @@ final class CentralFinanceGroupImportService
     /** @return list<array<string,mixed>> */
     private function rowsFromFile(UploadedFile $file): array
     {
-        $sheet = Excel::toArray([], $file)[0] ?? [];
+        $sheet = Excel::toArray(new CentralFinanceGroupImportFormulaReader(), $file)[0] ?? [];
         if (count($sheet) < 2) throw new InvalidArgumentException('The Group Finance Import must contain a heading row and at least one data row.');
         $headings = array_map(static fn ($value) => trim((string) $value), array_shift($sheet));
         if ($headings !== (new CentralFinanceGroupImportTemplateV2Export())->headings()) throw new InvalidArgumentException('Group Finance Import headings do not match Template V2.');
-        return array_values(array_filter(array_map(static fn (array $values): array => array_combine($headings, array_pad($values, count($headings), null)), $sheet), static fn (array $row): bool => collect($row)->filter(static fn ($value): bool => $value !== null && trim((string) $value) !== '')->isNotEmpty()));
+        return array_values(array_filter(
+            array_map(static fn (array $values): array => array_combine($headings, array_pad($values, count($headings), null)), $sheet),
+            fn (array $row): bool => $this->containsUserSuppliedValue($row),
+        ));
+    }
+
+    /**
+     * V2.1 leaves formula-driven identity cells ready for the user. Laravel
+     * Excel reads those untouched formulas as literal strings, whereas Excel
+     * itself renders them blank. Treat only those generated placeholders as
+     * empty; all user-entered canonical values continue through unchanged V2
+     * validation below.
+     *
+     * @param array<string,mixed> $row
+     */
+    private function containsUserSuppliedValue(array $row): bool
+    {
+        foreach (['序号', 'School Code', 'Fund Account Type', 'Account Owner', 'Currency'] as $derivedHeading) {
+            $value = $row[$derivedHeading] ?? null;
+            if (is_string($value) && str_starts_with(trim($value), '=')) {
+                $row[$derivedHeading] = null;
+            }
+        }
+
+        return collect($row)->filter(static fn ($value): bool => $value !== null && trim((string) $value) !== '')->isNotEmpty();
     }
 
     /** @param array<string,mixed> $row @return array<string,mixed> */

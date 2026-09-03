@@ -34,10 +34,27 @@ final class CentralFinanceGroupImportController extends Controller
         return view('central-finance.group-import.index', compact('groups', 'batch'));
     }
 
-    public function template(): BinaryFileResponse
+    public function template(Request $request): BinaryFileResponse
     {
-        abort_if($this->imports->authorizedGroups($this->actor())->isEmpty(), 403);
-        return Excel::download(new CentralFinanceGroupImportTemplateV2Export(), 'group-finance-import-template-v2.xlsx');
+        $actor = $this->actor();
+        $groups = $this->imports->authorizedGroups($actor);
+        abort_if($groups->isEmpty(), 403);
+
+        $requestedGroupId = $request->integer('finance_group_id');
+        if ($requestedGroupId > 0) {
+            $group = $groups->firstWhere('id', $requestedGroupId);
+            abort_if($group === null, 403);
+        } else {
+            abort_unless($groups->count() === 1, 422, 'Choose a Finance Group before downloading its lookup template.');
+            $group = $groups->sole();
+        }
+
+        $lookups = $this->imports->templateLookups($actor, $group);
+
+        return Excel::download(
+            new CentralFinanceGroupImportTemplateV2Export($lookups['schools'], $lookups['accounts'], $lookups['categories']),
+            'group-finance-import-template-v2.1.xlsx',
+        );
     }
 
     public function preview(Request $request): RedirectResponse
