@@ -35,6 +35,7 @@ final class CentralFinanceGroupImportV21ValidationListsSheet implements FromArra
             $workbook->addNamedRange(new NamedRange('FundAccountTypes', $sheet, "\$D\$2:\$D\${$max}"));
             $workbook->addNamedRange(new NamedRange('FundAccountOwners', $sheet, "\$E\$2:\$E\${$max}"));
             $workbook->addNamedRange(new NamedRange('FundAccountCurrencies', $sheet, "\$F\$2:\$F\${$max}"));
+            $workbook->addNamedRange(new NamedRange('CategoryCodes', $sheet, "\$G\$2:\$G\${$max}"));
             $this->addSchoolAccountRanges($workbook, $sheet); $this->addCategoryRanges($workbook, $sheet);
             $sheet->setSheetState(Worksheet::SHEETSTATE_HIDDEN);
         }];

@@ -70,8 +70,13 @@ final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithCo
                 $sheet->setCellValue("I{$row}", "=IFERROR(INDEX(FundAccountOwners,MATCH(G{$row},FundAccountCodes,0)),\"\")");
                 $sheet->setCellValue("P{$row}", "=IFERROR(INDEX(FundAccountCurrencies,MATCH(G{$row},FundAccountCodes,0)),\"\")");
                 $this->listValidation($sheet, "C{$row}", '=SchoolNames');
-                $this->listValidation($sheet, "G{$row}", '=INDIRECT("FundAccounts_"&SUBSTITUTE($B'.$row.',"-","_"))');
-                $this->listValidation($sheet, "J{$row}", '=INDIRECT("Categories_"&SUBSTITUTE($B'.$row.',"-","_")&"_"&IF($L'.$row.'>0,"income",IF($M'.$row.'>0,"expense","")))');
+                // Excel-compatible static lists retain their validation after
+                // users save/reopen in spreadsheet clients that discard an
+                // INDIRECT() validation formula. Both lists are already
+                // restricted to the actor's authorized Finance Group; Preview
+                // remains the canonical exact School/type/account validator.
+                $this->listValidation($sheet, "G{$row}", '=FundAccountCodes');
+                $this->listValidation($sheet, "J{$row}", '=CategoryCodes');
             }
         }];
     }

@@ -10,6 +10,7 @@ use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
 use App\Models\FinanceGroupUser;
+use App\Exports\CentralFinanceGroupImportTemplateV2Export;
 use App\Services\CentralFinanceGroupImportService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use Carbon\CarbonImmutable;
@@ -22,6 +23,9 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\View\View;
 use InvalidArgumentException;
+use Maatwebsite\Excel\Excel as ExcelFormat;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 /**
@@ -143,6 +147,56 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertSame(2, DB::connection('mysql')->table('central_finance_import_batches')->where('group_import_batch_id', $confirmed->id)->where('status', 'completed')->count());
         // one canonical document audit plus start/completion batch audit per School
         $this->assertSame(6, DB::connection('mysql')->table('central_finance_document_audits')->count());
+    }
+
+    public function test_v21_saved_workbook_previews_two_school_expense_and_other_income_without_formula_blank_rows(): void
+    {
+        $lookups = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
+        $path = tempnam(sys_get_temp_dir(), 'cf_group_v21_');
+        file_put_contents($path, Excel::raw(new CentralFinanceGroupImportTemplateV2Export(
+            $lookups['schools'], $lookups['accounts'], $lookups['categories'],
+        ), ExcelFormat::XLSX));
+
+        try {
+            $workbook = IOFactory::load($path);
+            $import = $workbook->getSheetByName('Import');
+            $this->assertNotFalse($import);
+            $this->assertEqualsCanonicalizing(['Zixuan QA', 'Times QA'], array_column($lookups['schools'], 'name'));
+            $this->assertContains('Zixuan Cash', array_column($workbook->getSheetByName('Fund Accounts')->rangeToArray('B2:B10', null, true, false, false), 0));
+            $this->assertContains('DONATION', array_column($workbook->getSheetByName('Categories')->rangeToArray('C2:C10', null, true, false, false), 0));
+
+            // The user types only the visible/selectable values; V2.1 fills the
+            // canonical routing and account metadata formulas itself.
+            foreach ([
+                'C2' => 'Zixuan QA', 'D2' => '2026-09-03', 'E2' => 'QA Claimant', 'F2' => 'V2.1 income QA', 'G2' => 'ZIX-CASH', 'J2' => 'DONATION', 'K2' => 'Cash', 'L2' => 125, 'O2' => 'V21-IN-001',
+                'C3' => 'Times QA', 'D3' => '2026-09-03', 'E3' => 'QA Claimant', 'F3' => 'V2.1 expense QA', 'G3' => 'TIM-CASH', 'J3' => 'RENT', 'K3' => 'Cash', 'M3' => 40, 'O3' => 'V21-EX-001',
+            ] as $cell => $value) {
+                $import->setCellValue($cell, $value);
+            }
+            $workbook->getCalculationEngine()->clearCalculationCache();
+            IOFactory::createWriter($workbook, 'Xlsx')->save($path);
+            $workbook->disconnectWorksheets();
+
+            $this->withoutMiddleware()->actingAs($this->head);
+            $this->post(route('central-finance.group-import.preview'), [
+                'finance_group_id' => $this->group->id,
+                'group_import' => new UploadedFile($path, 'group-finance-import-template-v2.1.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            ])->assertRedirect();
+            $batch = CentralFinanceGroupImportBatch::on('mysql')->latest('id')->firstOrFail();
+            $rows = $batch->rows()->orderBy('row_number')->get();
+
+            $this->assertSame('previewed', $batch->status);
+            $this->assertSame(2, $batch->total_rows);
+            $this->assertSame(2, $batch->new_rows);
+            $this->assertSame(0, $batch->error_rows);
+            $this->assertSame(['other_income', 'expense'], $rows->pluck('document_type')->all());
+            $this->assertSame(['SCH-ZIX', 'SCH-TIM'], $rows->pluck('normalized_data')->map(fn (array $row): string => $row['school_code'])->all());
+            $this->assertSame(['ZIX-CASH', 'TIM-CASH'], $rows->pluck('normalized_data')->map(fn (array $row): string => $row['fund_account_code'])->all());
+            $this->assertSame(['MMK', 'MMK'], $rows->pluck('normalized_data')->map(fn (array $row): string => $row['currency'])->all());
+            $this->assertSame(['V21-IN-001', 'V21-EX-001'], $rows->pluck('reference_no')->all());
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_confirm_failure_after_preview_leaves_no_partial_financial_write_and_marks_batch_failed(): void

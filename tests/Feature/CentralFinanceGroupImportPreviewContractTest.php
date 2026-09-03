@@ -78,11 +78,13 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $this->assertSame('=IFERROR(INDEX(FundAccountOwners,MATCH(G2,FundAccountCodes,0)),"")', $import->getCell('I2')->getValue());
             $this->assertSame('=IFERROR(INDEX(FundAccountCurrencies,MATCH(G2,FundAccountCodes,0)),"")', $import->getCell('P2')->getValue());
             $this->assertSame('=SchoolNames', $import->getCell('C2')->getDataValidation()->getFormula1());
-            $this->assertStringContainsString('FundAccounts_', $import->getCell('G2')->getDataValidation()->getFormula1());
-            $this->assertStringContainsString('Categories_', $import->getCell('J2')->getDataValidation()->getFormula1());
+            $this->assertSame('=FundAccountCodes', $import->getCell('G2')->getDataValidation()->getFormula1());
+            $this->assertSame('=CategoryCodes', $import->getCell('J2')->getDataValidation()->getFormula1());
             $this->assertNull($import->getCell('O2')->getValue());
             $this->assertSame('hidden', $workbook->getSheetByName('Validation Lists')->getSheetState());
             $this->assertNotNull($workbook->getNamedRange('SchoolCodes'));
+            $this->assertNotNull($workbook->getNamedRange('FundAccountCodes'));
+            $this->assertNotNull($workbook->getNamedRange('CategoryCodes'));
             $this->assertNotNull($workbook->getNamedRange('FundAccounts_SCH202615'));
             $this->assertNotNull($workbook->getNamedRange('Categories_SCH202615_expense'));
 
