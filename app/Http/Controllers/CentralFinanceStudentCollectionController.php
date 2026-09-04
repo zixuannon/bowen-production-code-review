@@ -18,7 +18,6 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -90,25 +89,13 @@ final class CentralFinanceStudentCollectionController extends Controller
         if ($canCollect) {
             try {
                 $optionalItems = $this->optionalFees->eligible($actor, $profile);
-                Log::warning('Central optional fee eligibility resolved.', [
-                    'central_actor_id' => $actor->id,
-                    'school_id' => $school->id,
-                    'student_profile_id' => $profile->id,
-                    'eligible_item_count' => $optionalItems->count(),
-                ]);
                 if ($optionalItems->isNotEmpty()) {
                     $optionalAttemptUuid = (string) Str::uuid();
                     $this->storeOptionalAttempt($optionalAttemptUuid, $actor, $school->id, $profile->id);
                 }
-            } catch (AuthorizationException $exception) {
+            } catch (AuthorizationException) {
                 // A read-capable Principal or an unavailable mapped Head
                 // tenant identity must never turn this read page into a 500.
-                Log::warning('Central optional fee eligibility was denied.', [
-                    'central_actor_id' => $actor->id,
-                    'school_id' => $school->id,
-                    'student_profile_id' => $profile->id,
-                    'reason' => $exception->getMessage(),
-                ]);
             }
         }
 

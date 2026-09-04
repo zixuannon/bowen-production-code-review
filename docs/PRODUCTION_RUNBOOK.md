@@ -30,6 +30,19 @@ Confirm:
 
 Confirm local targeted tests, relevant local Playwright QA, and diff review have passed before preparing this preflight.
 
+## Atomic release runtime refresh
+
+Application uploads and compiled Blade views must be shared across releases.
+After an atomic release switch, preserve the existing shared `public/storage`
+target and use a shared writable `VIEW_COMPILED_PATH`; never point compiled
+views into a release directory that will later be removed.
+
+Clear configuration, route, and view caches after the switch, then reload the
+PHP-FPM master serving the active Nginx vhost. Determine that master/socket from
+the vhost's included PHP configuration and PID file—do not assume a similarly
+named virtual-host socket is the serving pool. Verify one fresh browser request
+is rendered by the intended release before starting acceptance QA.
+
 ## Prohibited broad operations
 
 Do not use:
