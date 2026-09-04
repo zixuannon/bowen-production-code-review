@@ -45,7 +45,7 @@
 <script src="{{ asset('/assets/js/custom/function.js') }}"></script>
 <script src="{{ asset('/assets/js/custom/common.js') }}"></script>
 <script src="{{ asset('/assets/js/custom/custom.js') }}?v={{ hash_file('sha256', public_path('assets/js/custom/custom.js')) }}"></script>
-<script src="{{ asset('/assets/js/custom/bootstrap-table/actionEvents.js') }}"></script>
+<script src="{{ asset('/assets/js/custom/bootstrap-table/actionEvents.js') }}?v={{ hash_file('sha256', public_path('assets/js/custom/bootstrap-table/actionEvents.js')) }}"></script>
 <script src="{{ asset('/assets/js/custom/bootstrap-table/formatter.js') }}"></script>
 <script src="{{ asset('/assets/js/custom/bootstrap-table/queryParams.js') }}"></script>
 
