@@ -26,6 +26,7 @@ final class CentralFinanceSchoolStaffIdentityService
     /** School-facing role labels may retain their existing internal names. */
     private const PRINCIPAL_ROLE_NAMES = ['Principal'];
     private const ACCOUNTANT_ROLE_NAMES = ['School Accountant', 'Accountant', 'Cashier'];
+    private const FRONT_DESK_ROLE_NAMES = ['Front Desk', 'Admissions & Collection'];
 
     public function __construct(private readonly FinanceGroupScopeService $groups) {}
 
@@ -73,7 +74,13 @@ final class CentralFinanceSchoolStaffIdentityService
         return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false);
     }
 
-    private function grantSchoolStaffFinanceAccess(FinanceGroup $group, int $schoolId, int $tenantUserId, bool $requestedOperate): CentralFinanceUser
+    /** A Front Desk identity may submit Pending Collections, never operate Finance generally. */
+    public function grantSchoolFrontDesk(FinanceGroup $group, int $schoolId, int $tenantUserId): CentralFinanceUser
+    {
+        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false, true);
+    }
+
+    private function grantSchoolStaffFinanceAccess(FinanceGroup $group, int $schoolId, int $tenantUserId, bool $requestedOperate, bool $requestedCollectionSubmit = false): CentralFinanceUser
     {
         $school = School::on('mysql')->whereKey($schoolId)->firstOrFail();
         if (!$group->schools()->where(['school_id' => $school->id, 'status' => 'active'])->exists()) {
@@ -102,7 +109,8 @@ final class CentralFinanceSchoolStaffIdentityService
 
         $isPrincipal = $this->hasAnyRole($staff->role_names ?? [], self::PRINCIPAL_ROLE_NAMES);
         $isAccountant = $this->hasAnyRole($staff->role_names ?? [], self::ACCOUNTANT_ROLE_NAMES);
-        if (($requestedOperate && !$isAccountant) || (!$requestedOperate && !$isPrincipal)) {
+        $isFrontDesk = $this->hasAnyRole($staff->role_names ?? [], self::FRONT_DESK_ROLE_NAMES);
+        if (($requestedOperate && !$isAccountant) || ($requestedCollectionSubmit && !$isFrontDesk) || (!$requestedOperate && !$requestedCollectionSubmit && !$isPrincipal)) {
             throw ValidationException::withMessages(['tenant_user_id' => [__('The selected Staff member does not hold the required School role for this Central Finance access.')]]);
         }
 
@@ -113,7 +121,7 @@ final class CentralFinanceSchoolStaffIdentityService
         // role by itself must never silently escalate the Central scope.
         $canOperate = $requestedOperate;
 
-        return DB::connection('mysql')->transaction(function () use ($group, $school, $staff, $canOperate): CentralFinanceUser {
+        return DB::connection('mysql')->transaction(function () use ($group, $school, $staff, $canOperate, $requestedCollectionSubmit): CentralFinanceUser {
             $identity = CentralFinanceSchoolStaffIdentity::on('mysql')->where(['school_id' => $school->id, 'tenant_user_uuid' => $staff->central_finance_source_uuid])->lockForUpdate()->first();
             if ($identity) {
                 $principal = CentralFinanceUser::on('mysql')->findOrFail($identity->central_user_id);
@@ -138,9 +146,16 @@ final class CentralFinanceSchoolStaffIdentityService
             if ($canOperate) {
                 $this->groups->grantScope($groupUser, 'operate_finance', 'SCHOOL', $school->id);
             }
+            $scopeValues = ['can_view' => true, 'can_operate' => $canOperate, 'can_approve_reimbursements' => false, 'can_confirm_funding' => false, 'created_at' => now(), 'updated_at' => now()];
+            // Keeps existing migration-rehearsal fixtures compatible while
+            // Production always receives the additive column before the new
+            // Front Desk grant can be used.
+            if (Schema::connection('mysql')->hasColumn('central_finance_user_school_scopes', 'can_submit_collections')) {
+                $scopeValues['can_submit_collections'] = $requestedCollectionSubmit;
+            }
             DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
                 ['user_id' => $principal->id, 'school_id' => $school->id],
-                ['can_view' => true, 'can_operate' => $canOperate, 'can_approve_reimbursements' => false, 'can_confirm_funding' => false, 'created_at' => now(), 'updated_at' => now()]
+                $scopeValues
             );
             return $principal;
         });

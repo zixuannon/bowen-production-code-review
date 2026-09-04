@@ -126,6 +126,14 @@ final class CentralFinanceWorkspaceService
         return $this->isSchoolStaffPrincipal($actor);
     }
 
+    /** Pending Collection confirmation is intentionally Head Finance only. */
+    public function assertHeadFinance(CentralFinanceUser $actor): void
+    {
+        if (!$this->groupUsers($actor)->contains(fn (FinanceGroupUser $groupUser): bool => $this->groups->isCentralHeadFinance($groupUser))) {
+            throw new AuthorizationException('Only Head Finance can review Pending Collections.');
+        }
+    }
+
     public function requireOperatingSchool(CentralFinanceUser $actor): School
     {
         $school = $this->currentSchool($actor);
@@ -150,6 +158,15 @@ final class CentralFinanceWorkspaceService
         if (!$this->groupUsers($actor)->contains(fn (FinanceGroupUser $groupUser): bool => $this->groups->canAccessSchool($groupUser, $school->id, 'operate_finance'))) {
             throw new AuthorizationException('The Central Finance actor has no operating Group scope for this School.');
         }
+        return $school;
+    }
+
+    /** A Front Desk collection submission is deliberately narrower than Finance operation. */
+    public function assertCanSubmitCollectionsSchool(CentralFinanceUser $actor, int $schoolId): School
+    {
+        $school = $this->accessibleSchools($actor)->firstWhere('id', $schoolId);
+        if ($school === null) throw new AuthorizationException('The Central Finance actor cannot access this School.');
+        $this->schools->assertCanSubmitCollections($actor, $school->id);
         return $school;
     }
 

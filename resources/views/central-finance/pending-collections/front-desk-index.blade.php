@@ -1,0 +1,5 @@
+@extends('layouts.master')
+@section('title', __('Pending collections'))
+@section('content')
+<div class="container-fluid py-3"><div class="card"><div class="card-body"><p class="text-uppercase text-muted mb-1">{{ __('School Finance') }}</p><h3>{{ __('My pending collections') }}</h3><p class="text-muted">{{ $school->name }} · {{ __('A pending acknowledgement is not an official receipt.') }}</p><div class="table-responsive"><table class="table cf-data-table"><thead><tr><th>{{ __('Acknowledgement') }}</th><th>{{ __('Student') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Submitted') }}</th></tr></thead><tbody>@forelse($pending as $row)<tr><td>{{ $row->acknowledgement_no }}</td><td>{{ $row->studentProfile?->student_name }}</td><td>{{ number_format($row->amount,2) }} {{ $row->currency }}</td><td><span class="badge cf-status-badge badge-light">{{ __($row->status) }}</span></td><td>{{ $row->submitted_at?->format('Y-m-d H:i') }}</td></tr>@empty<tr><td colspan="5" class="text-muted">{{ __('No pending collections.') }}</td></tr>@endforelse</tbody></table></div>{{ $pending->links() }}</div></div></div>
+@endsection

@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
@@ -193,11 +194,27 @@ class FinanceGroupController extends Controller
         return redirect()->route('finance-groups.index')->with('success', __('School Principal granted read-only Finance access.'));
     }
 
-    private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm): void
+    /** Grant a trusted School Front Desk user pending-collection access only. */
+    public function storeSchoolStaffFrontDesk(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
+        $this->staffIdentities->grantSchoolFrontDesk($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id']);
+
+        return redirect()->route('finance-groups.index')->with('success', __('School Front Desk granted pending collection access.'));
+    }
+
+    private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm, bool $submitCollections = false): void
+    {
+        $values = [
+            'can_view' => $view, 'can_operate' => $operate, 'can_approve_reimbursements' => $operate && $approve, 'can_confirm_funding' => $operate && $confirm, 'created_at' => now(), 'updated_at' => now(),
+        ];
+        if (Schema::connection('mysql')->hasColumn('central_finance_user_school_scopes', 'can_submit_collections')) {
+            $values['can_submit_collections'] = $view && $submitCollections;
+        }
         DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
             ['user_id' => $userId, 'school_id' => $schoolId],
-            ['can_view' => $view, 'can_operate' => $operate, 'can_approve_reimbursements' => $operate && $approve, 'can_confirm_funding' => $operate && $confirm, 'created_at' => now(), 'updated_at' => now()],
+            $values,
         );
     }
 

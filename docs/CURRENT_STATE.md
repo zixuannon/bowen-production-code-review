@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-08-25
+Last updated: 2026-09-04
 
 ## Active production target
 
@@ -13,6 +13,13 @@ Last updated: 2026-08-25
 ## Current area
 
 Finance V2
+
+## Phase 5.5A — local Pending Collection candidate
+
+- Added an additive Central `central_finance_pending_collections` lifecycle document and a narrow Front Desk submission scope.
+- Front Desk submission records only a Pending acknowledgement and audit record; it cannot write Payments, Receipts, Ledger entries, or Fund Account balances.
+- Head Finance-only confirmation reuses `CentralFinancePaymentService` with the Pending UUID as its idempotency identity.
+- This candidate has not been deployed or migrated in Production.
 
 ## Pending local hotfix — Teacher activation status
 
@@ -601,6 +608,13 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 ## Backlog
 
 - No active local test-bootstrap blocker. PHP 8.5's `PDO::MYSQL_ATTR_SSL_CA` and PHPUnit XML-schema notices remain non-functional compatibility debt.
+
+## Front Desk Pending Collection — Phase 5.5A (local candidate)
+
+- Added the additive Central migration `2026_09_04_000001_create_central_finance_pending_collections`. A Front Desk declaration is an auditable, idempotent Pending Collection and never creates a canonical Payment, Receipt, Ledger entry, or Fund Account balance movement.
+- A trusted School `Front Desk` / `Admissions & Collection` role receives only the explicit `can_submit_collections` school scope. School Accountants no longer have the student-payment confirmation path; only Head Finance can select the actual Fund Account and invoke the existing canonical `CentralFinancePaymentService` at confirmation.
+- Optional Fee selection remains the existing Fee Setup adapter, now available to Front Desk under the same School/year/class/optional-only validation. Amount and currency remain server-side Fee Setup values.
+- Hold/reject require a Head Finance reason. Confirmation preserves collected-by (Front Desk) and confirmed-by (Head Finance) separately, is idempotent, and retains original Pending history. No Production deployment or migration has been performed.
 
 ## Zixuan Optional Fee Collection — Phase 5 (Production)
 

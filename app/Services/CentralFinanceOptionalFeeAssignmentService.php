@@ -101,7 +101,16 @@ final class CentralFinanceOptionalFeeAssignmentService
     /** @template T @param callable(Students):T $operation @return T */
     private function withinTenant(CentralFinanceUser $actor, CentralFinanceStudentProfile $profile, callable $operation): mixed
     {
-        $school = $this->workspace->requireOperatingSchool($actor);
+        $school = $this->workspace->currentSchool($actor);
+        if ($school === null) throw new AuthorizationException('Select an authorized School before adding optional items.');
+        try {
+            $this->workspace->assertCanOperateSchool($actor, (int) $school->id);
+        } catch (AuthorizationException) {
+            // Front Desk has a deliberately narrow submit-only grant. It may
+            // use this canonical Fee Setup adapter, but cannot collect money
+            // or operate any other Finance document.
+            $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $school->id);
+        }
         if ((int) $school->id !== (int) $profile->school_id) {
             throw new AuthorizationException('The Student does not belong to the active School.');
         }

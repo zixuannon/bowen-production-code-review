@@ -47,7 +47,7 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $service = (string) file_get_contents($root.'/app/Services/CentralFinanceOptionalFeeAssignmentService.php');
         $identity = (string) file_get_contents($root.'/app/Services/CentralFinanceSchoolStaffIdentityService.php');
 
-        $this->assertStringContainsString('requireOperatingSchool($actor)', $service);
+        $this->assertStringContainsString('assertCanSubmitCollectionsSchool', $service);
         $this->assertStringContainsString('assertCentralWritesAllowed', $service);
         $this->assertStringContainsString('executeAsTenantIdentity', $service);
         $this->assertStringContainsString('executeOperatingFinanceAsTenantIdentity', $service);

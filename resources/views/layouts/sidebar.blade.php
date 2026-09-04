@@ -26,6 +26,8 @@
             $centralCanOperateCurrentSchool = false;
             $centralCanMoveFunds = false;
             $centralCanViewSchoolReports = false;
+            $centralCanSubmitPendingCollections = false;
+            $centralIsFrontDesk = false;
             $usesCentralFinanceDailyWorkspace = false;
             try {
                 // School pages retain the tenant Auth user. For the Central
@@ -63,6 +65,13 @@
                         $centralCanOperateCurrentSchool = false;
                         $centralCanMoveFunds = false;
                     }
+                    try {
+                        $centralWorkspace->assertCanSubmitCollectionsSchool($centralFinanceActor, $centralCurrentSchool->id);
+                        $centralCanSubmitPendingCollections = true;
+                        $centralIsFrontDesk = !$centralCanOperateCurrentSchool;
+                    } catch (\Throwable) {
+                        $centralCanSubmitPendingCollections = false;
+                    }
                 }
             } catch (\Throwable) {
                 $hasCentralFinanceIdentity = false;
@@ -81,6 +90,17 @@
             $sidebarRoleName = Auth::check() ? (string) Auth::user()->getRoleNames()->first() : '';
         @endphp
         @if ($hasCentralFinanceIdentity)
+            @if($centralIsFrontDesk)
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
+                        <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ __('School Finance') }}</span><i class="menu-arrow"></i>
+                    </a>
+                    <div class="collapse {{ request()->routeIs('central-finance.*') ? 'show' : '' }}" id="central-finance-menu"><ul class="nav flex-column sub-menu">
+                        <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.student-collection.*') ? 'active' : '' }}" href="{{ route('central-finance.student-collection.index') }}">{{ __('Student Collection') }}</a></li>
+                        <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.pending-collections.front-desk.*') ? 'active' : '' }}" href="{{ route('central-finance.pending-collections.front-desk.index') }}">{{ __('My pending collections') }}</a></li>
+                    </ul></div>
+                </li>
+            @else
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
                     <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ $centralIsSchoolStaffPrincipal ? __('School Finance') : __('Central Finance') }}</span><i class="menu-arrow"></i>
@@ -93,6 +113,9 @@
                             <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.receivables*') && request('view') !== 'adjustments' ? 'active' : '' }}" href="{{ route('central-finance.receivables') }}">{{ __('Receivables') }}</a></li>
                             <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.payments.*') && request('view') !== 'refunds' ? 'active' : '' }}" href="{{ route('central-finance.payments.index') }}">{{ __('收款 / 收据') }}</a></li>
                             <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.student-ledger') ? 'active' : '' }}" href="{{ route('central-finance.student-ledger') }}">{{ __('学生账本') }}</a></li>
+                            @if($centralIsHeadFinance && \Illuminate\Support\Facades\Route::has('central-finance.pending-collections.head-finance.index'))
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.pending-collections.head-finance.*') ? 'active' : '' }}" href="{{ route('central-finance.pending-collections.head-finance.index') }}">{{ __('Pending collections') }}</a></li>
+                            @endif
                             @if($centralIsHeadFinance)
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.payments.*') && request('view') === 'refunds' ? 'active' : '' }}" href="{{ route('central-finance.payments.index', ['view' => 'refunds']) }}">{{ __('退款 / 冲回') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.receivables*') && request('view') === 'adjustments' ? 'active' : '' }}" href="{{ route('central-finance.receivables', ['view' => 'adjustments']) }}">{{ __('应收调整 / 减免') }}</a></li>
@@ -143,6 +166,7 @@
                     @endif
                 </ul></div>
             </li>
+            @endif
         @endif
         {{-- XIAOBAILONG-INTEGRATION: keep this teacher workspace entry during deployments. --}}
         @if (config('xiaobailong.enabled') && Auth::check() && Auth::user()->hasRole('Teacher') && Auth::user()->can('xiaobailong-use'))

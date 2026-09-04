@@ -70,9 +70,10 @@ final class CentralFinanceStudentCollectionController extends Controller
         $classes = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)
             ->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
         $canCollect = $this->canCollect($actor, $school->id);
+        $canSubmitPending = $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'cutoverStatus', 'schoolFinanceFacade'));
+        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'canSubmitPending', 'cutoverStatus', 'schoolFinanceFacade'));
     }
 
     public function show(int $profile): View
@@ -82,11 +83,12 @@ final class CentralFinanceStudentCollectionController extends Controller
         $profile->load(['receivables' => fn ($query) => $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy'])]);
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
         $canCollect = $this->canCollect($actor, $school->id);
+        $canSubmitPending = $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
         $optionalItems = collect();
         $optionalAttemptUuid = null;
-        if ($canCollect) {
+        if ($canCollect || $canSubmitPending) {
             try {
                 $optionalItems = $this->optionalFees->eligible($actor, $profile);
                 if ($optionalItems->isNotEmpty()) {
@@ -99,7 +101,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             }
         }
 
-        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'cutoverStatus', 'schoolFinanceFacade', 'optionalItems', 'optionalAttemptUuid'));
+        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'canSubmitPending', 'cutoverStatus', 'schoolFinanceFacade', 'optionalItems', 'optionalAttemptUuid'));
     }
 
     public function review(int $profile, int $receivable): View
@@ -161,7 +163,7 @@ final class CentralFinanceStudentCollectionController extends Controller
 
     public function addOptionalItems(Request $request, int $profile): RedirectResponse
     {
-        [$actor, $school] = $this->operatingContext();
+        [$actor, $school] = $this->optionalItemContext();
         $profile = $this->profileForSchool($profile, $school->id);
         $data = $request->validate([
             'optional_attempt_uuid' => ['required', 'uuid'],
@@ -194,6 +196,7 @@ final class CentralFinanceStudentCollectionController extends Controller
     {
         $actor = $this->actor();
         $school = $this->workspace->requireOperatingSchool($actor);
+        $this->workspace->assertHeadFinance($actor);
         $this->cutovers->assertCentralWritesAllowed($school->id);
         return [$actor, $school];
     }
@@ -222,10 +225,37 @@ final class CentralFinanceStudentCollectionController extends Controller
     {
         try {
             $this->workspace->assertCanOperateSchool($actor, $schoolId);
+            $this->workspace->assertHeadFinance($actor);
             return $this->cutovers->allowsCentralWrites($schoolId);
         } catch (AuthorizationException) {
             return false;
         }
+    }
+
+    private function canSubmitPending(CentralFinanceUser $actor, int $schoolId): bool
+    {
+        try {
+            $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
+            return $this->cutovers->allowsCentralWrites($schoolId);
+        } catch (AuthorizationException) {
+            return false;
+        }
+    }
+
+    /** @return array{0:CentralFinanceUser,1:\App\Models\School} */
+    private function optionalItemContext(): array
+    {
+        $actor = $this->actor();
+        $school = $this->workspace->currentSchool($actor);
+        abort_unless($school !== null, 403);
+        try {
+            $this->workspace->assertCanOperateSchool($actor, $school->id);
+            $this->workspace->assertHeadFinance($actor);
+        } catch (AuthorizationException) {
+            $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
+        }
+        $this->cutovers->assertCentralWritesAllowed($school->id);
+        return [$actor, $school];
     }
 
     private function storeAttempt(string $attemptUuid, CentralFinanceUser $actor, int $schoolId, int $profileId, int $receivableId): void

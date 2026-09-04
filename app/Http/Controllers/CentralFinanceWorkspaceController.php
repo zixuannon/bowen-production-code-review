@@ -543,6 +543,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function collect(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
+        $this->workspace->assertHeadFinance($actor);
         $data = $request->validate([
             'receivable_id' => ['required', 'integer'], 'fund_account_id' => ['required', 'integer'],
             'amount' => ['required', 'numeric', 'gt:0'], 'payment_method' => ['required', 'string', 'max:40'],
