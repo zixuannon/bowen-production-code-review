@@ -602,6 +602,22 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 - No active local test-bootstrap blocker. PHP 8.5's `PDO::MYSQL_ATTR_SSL_CA` and PHPUnit XML-schema notices remain non-functional compatibility debt.
 
+## Zixuan Optional Fee Collection — Phase 5 (Production)
+
+- The School Finance facade now exposes only eligible optional Fee Setup items
+  to an explicitly scoped School Accountant. Selection creates a confirmed
+  tenant fee-assignment item and its canonical Central receivable; it creates
+  no Payment, Receipt, Ledger entry, or Fund Account balance movement.
+- Production QA on the marked Zixuan UAT student verified a 500 MMK optional
+  receivable, partial 100 MMK and 200 MMK collections, an overpayment rejection,
+  and a final 200 MMK settlement. The canonical result is three Payments, three
+  receipts, and three Central Ledger money-in entries totaling 500 MMK. These
+  are retained QA history; no generic financial deletion was used.
+- The trusted School-session tenant bridge rehydrates the authoritative Central
+  School record before resolving tenant staff identity. This preserves strict
+  School isolation while allowing School Accountant collection actions through
+  the existing Central authorization and finance services.
+
 ## Zixuan Student Import V2 — Phase 2 (local)
 
 - Student Import V2 is XLSX-only and remains a Zixuan-only pilot. The workbook is School-local: it contains no School routing field, and Class Section plus Academic Year are human-readable dropdowns resolved and re-validated against the authenticated tenant.
