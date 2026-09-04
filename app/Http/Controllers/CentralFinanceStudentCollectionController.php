@@ -90,6 +90,12 @@ final class CentralFinanceStudentCollectionController extends Controller
         if ($canCollect) {
             try {
                 $optionalItems = $this->optionalFees->eligible($actor, $profile);
+                Log::warning('Central optional fee eligibility resolved.', [
+                    'central_actor_id' => $actor->id,
+                    'school_id' => $school->id,
+                    'student_profile_id' => $profile->id,
+                    'eligible_item_count' => $optionalItems->count(),
+                ]);
                 if ($optionalItems->isNotEmpty()) {
                     $optionalAttemptUuid = (string) Str::uuid();
                     $this->storeOptionalAttempt($optionalAttemptUuid, $actor, $school->id, $profile->id);
