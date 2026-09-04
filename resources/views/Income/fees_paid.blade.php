@@ -5,20 +5,23 @@
 @endsection
 
 @section('content')
+    @php($historicalLegacyWorkspace = app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
     <div class="content-wrapper">
-        @if(app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
+        @if($historicalLegacyWorkspace)
             @include('components.central-finance-legacy-historical-notice')
         @endif
         <div class="page-header">
             <h3 class="page-title">
                 {{ __('manage') . ' ' . __('fees') }} {{ __('paid') }}
             </h3>
+            @unless($historicalLegacyWorkspace)
             <nav aria-label="breadcrumb">
                 <button type="button" class="btn btn-theme btn-sm float-right" id="btn-import-excel"
                     onclick="openImportModal()">
                     <i class="fa fa-upload mr-1"></i> {{ __('Import Excel') }}
                 </button>
             </nav>
+            @endunless
         </div>
         <div class="row">
             {{-- Total Fees --}}
@@ -181,7 +184,9 @@
                                     <th scope="col" data-field="fees_status" data-sortable="false" data-formatter="feesPaidStatusFormatter" data-align="center"> {{ __('Fees Status') }}</th>
                                     <th scope="col" data-field="fees_paid.date"  data-sortable="false" data-align="center">{{ __('Date') }}</th>
                                     <th scope="col" data-field="paid_amount" data-sortable="false" data-formatter="feesPaidAmountFormatter">{{ __('paid_amount') }}</th>
-                                    <th scope="col" data-field="operate" data-sortable="false" data-events="feesPaidEvents" data-align="center" data-escape="false"> {{ __('Action') }}</th>
+                                    @unless($historicalLegacyWorkspace)
+                                        <th scope="col" data-field="operate" data-sortable="false" data-events="feesPaidEvents" data-align="center" data-escape="false"> {{ __('Action') }}</th>
+                                    @endunless
                                 </tr>
                             </thead>
                         </table>
@@ -191,6 +196,7 @@
         </div>
     </div>
 
+    @unless($historicalLegacyWorkspace)
     {{-- ============ Import Excel Modal ============ --}}
     <div class="modal fade" id="importExcelModal" tabindex="-1" role="dialog" aria-labelledby="importExcelLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg" role="document">
@@ -289,6 +295,7 @@
             </div>
         </div>
     </div>
+    @endunless
 
 @endsection
 @section('js')

@@ -5,8 +5,9 @@
 @endsection
 
 @section('content')
+    @php($historicalLegacyWorkspace = app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
     <div class="content-wrapper">
-        @if(app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
+        @if($historicalLegacyWorkspace)
             @include('components.central-finance-legacy-historical-notice')
         @endif
         <div class="page-header">
@@ -15,6 +16,7 @@
             </h3>
         </div>
 
+        @unless($historicalLegacyWorkspace)
         {{-- Create Form --}}
         <div class="row">
             <div class="col-md-12 grid-margin stretch-card">
@@ -103,6 +105,8 @@
             </div>
         </div>
 
+        @endunless
+
         {{-- List Table --}}
         <div class="row">
             <div class="col-md-12 grid-margin stretch-card">
@@ -139,9 +143,11 @@
                                         data-formatter="balanceFormatter">{{ __('Current Balance') }}</th>
                                     <th scope="col" data-field="status_badge" data-escape="false">{{ __('Status') }}</th>
                                     <th scope="col" data-field="default_badge" data-escape="false">{{ __('Default') }}</th>
-                                    <th scope="col" data-field="operate" data-events="bankAccountEvents" data-escape="false">
-                                        {{ __('Action') }}
-                                    </th>
+                                    @unless($historicalLegacyWorkspace)
+                                        <th scope="col" data-field="operate" data-events="bankAccountEvents" data-escape="false">
+                                            {{ __('Action') }}
+                                        </th>
+                                    @endunless
                                 </tr>
                             </thead>
                         </table>
@@ -150,6 +156,7 @@
             </div>
         </div>
 
+        @unless($historicalLegacyWorkspace)
         {{-- Edit Modal --}}
         <div class="modal fade" id="editModal" tabindex="-1" role="dialog" aria-labelledby="editModalLabel"
             aria-hidden="true">
@@ -257,6 +264,7 @@
                 </div>
             </div>
         </div>
+        @endunless
 
     </div>
 @endsection

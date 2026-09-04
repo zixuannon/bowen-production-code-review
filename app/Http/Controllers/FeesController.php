@@ -1287,6 +1287,9 @@ class FeesController extends Controller
                     $tempRow['payment_method'] = $row->fees_paid->compulsory_fee[0]->mode_name;
                 }
 
+                if (app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace()) {
+                    $operate = '';
+                }
                 $tempRow['operate'] = $operate;
                 $rows[] = $tempRow;
             }

@@ -54,6 +54,20 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
 
         $this->assertStringContainsString('Historical School Finance Record', (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/components/central-finance-legacy-historical-notice.blade.php'));
 
+        foreach ([
+            'resources/views/expense/index.blade.php',
+            'resources/views/bank-account/index.blade.php',
+            'resources/views/Income/fees_paid.blade.php',
+        ] as $legacyView) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2).'/'.$legacyView);
+            $this->assertStringContainsString('$historicalLegacyWorkspace', $source);
+            $this->assertStringContainsString('@unless($historicalLegacyWorkspace)', $source);
+        }
+
+        $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/ExpenseController.php'));
+        $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/BankAccountController.php'));
+        $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/FeesController.php'));
+
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
         $this->assertStringContainsString('@if($school && $canAccessAllSchools)', $workspace);
     }

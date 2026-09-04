@@ -9,11 +9,13 @@
     $schoolSettings = getSchoolSettings();
     $usdRate = (float)($schoolSettings['usd_exchange_rate'] ?? 3500);
     $cnyRate = (float)($schoolSettings['cny_exchange_rate'] ?? 500);
+    $historicalLegacyWorkspace = app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)
+        ->usesCentralFinanceDailyWorkspace();
 @endphp
 
 @section('content')
     <div class="content-wrapper">
-        @if(app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
+        @if($historicalLegacyWorkspace)
             @include('components.central-finance-legacy-historical-notice')
         @endif
         <div class="page-header">
@@ -21,6 +23,7 @@
                 {{ __('manage') . ' ' . __('expense') }}
             </h3>
         </div>
+        @unless($historicalLegacyWorkspace)
         <div class="row">
             <div class="col-md-12 grid-margin stretch-card">
                 <div class="card">
@@ -125,9 +128,12 @@
                         </form>
                     </div>
                 </div>
-            </div>
+	            </div>
+	        </div>
+	        @endunless
 
-            <div class="col-md-12 grid-margin stretch-card">
+	        <div class="row">
+	            <div class="col-md-12 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body">
                         <h4 class="card-title">{{ __('list') . ' ' . __('expense') }}</h4>
@@ -180,17 +186,21 @@
                                         data-formatter="amountFormatter" data-footer-formatter="totalAmountFormatter">
                                         {{ __('Amount') }} ({{ __('MMK') }})
                                     </th>
-                                    <th scope="col" data-field="operate" data-events="expenseEvents" data-escape="false">
-                                        {{ __('action') }}
-                                    </th>
+                                    @unless($historicalLegacyWorkspace)
+                                        <th scope="col" data-field="operate" data-events="expenseEvents" data-escape="false">
+                                            {{ __('action') }}
+                                        </th>
+                                    @endunless
                                 </tr>
                             </thead>
                         </table>
                     </div>
-                </div>
-            </div>
+	                </div>
+	            </div>
+	        </div>
 
-            <!-- Modal -->
+            @unless($historicalLegacyWorkspace)
+	            <!-- Modal -->
             <div class="modal fade" id="expenseImportModal" tabindex="-1" role="dialog" aria-labelledby="expenseImportTitle" aria-hidden="true">
                 <div class="modal-dialog modal-lg" role="document"><div class="modal-content">
                     <div class="modal-header"><h5 class="modal-title" id="expenseImportTitle">{{ __('Expense Excel Import') }}</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div>
@@ -202,7 +212,9 @@
                     </div>
                 </div></div>
             </div>
+            @endunless
 
+            @unless($historicalLegacyWorkspace)
             <!-- Modal -->
             <div class="modal fade" id="editModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel"
                 aria-hidden="true">
@@ -322,9 +334,10 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-@endsection
+	        </div>
+	            @endunless
+	    </div>
+	@endsection
 @section('js')
     <script>
         let sessionYearFullData = @json($sessionYearFullData);

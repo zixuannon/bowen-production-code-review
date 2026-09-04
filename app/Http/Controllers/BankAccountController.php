@@ -86,7 +86,8 @@ class BankAccountController extends Controller
             $operate = '';
             if (!$row->trashed()) {
                 $operate .= BootstrapTableService::viewButton(route('bank-accounts.show', $row->id));
-                if (app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user())) {
+                if (!app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace()
+                    && app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user())) {
                     $operate .= BootstrapTableService::editButton(route('bank-accounts.edit', $row->id));
                     if (!$row->is_default) {
                         $operate .= BootstrapTableService::deleteButton(route('bank-accounts.destroy', $row->id));

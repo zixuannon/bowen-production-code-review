@@ -146,9 +146,10 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   server-side Central principal/scope checks remain the only route to current
   Finance operations.
 - Retained legacy Finance GET views now carry a conspicuous historical-only
-  notice. They do not combine tenant values with Central values. No Finance
-  posting, balance, scope, cutover, schema, or historical data behavior was
-  changed.
+  notice and suppress current create/import/edit/delete controls and row
+  actions after cutover; server-side tenant write guards remain authoritative.
+  They do not combine tenant values with Central values. No Finance posting,
+  balance, scope, cutover, schema, or historical data behavior was changed.
 
 ## Zixuan Student Import V2 — local implementation
 

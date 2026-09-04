@@ -16,6 +16,7 @@ use App\Services\ExpenseImportService;
 use App\Services\ExpenseCreationService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
+use App\Services\CentralFinanceSchoolFinanceNavigationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -185,7 +186,7 @@ class ExpenseController extends Controller
 
         foreach ($res as $row) {
             $operate = '';
-            if (!$row->month) {
+            if (!$row->month && !app(CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace()) {
                 $operate .= BootstrapTableService::editButton(route('expense.update', $row->id));
                 $operate .= BootstrapTableService::deleteButtonWithReason(route('expense.destroy', $row->id));
             }
