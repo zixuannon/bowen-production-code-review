@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -193,13 +194,22 @@ final class CentralFinanceSchoolStaffIdentityService
         }
 
         return $this->inSchool($school, function () use ($identity, $school, $operation) {
-            if (!Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')) {
-                throw new AuthorizationException('This School requires the Central Finance Staff UUID migration.');
+            try {
+                $tenant = User::on('school')->where([
+                    'school_id' => $school->id,
+                    'central_finance_source_uuid' => $identity->tenant_user_uuid,
+                ])->whereNull('deleted_at')->first();
+            } catch (QueryException $exception) {
+                // Do not let a schema-introspection cache cause a valid mapped
+                // School Accountant to be treated as unauthorised. Missing
+                // tenant UUID schema still fails closed through the canonical
+                // query, rather than falling back to another connection.
+                if (str_contains(strtolower($exception->getMessage()), 'central_finance_source_uuid')) {
+                    throw new AuthorizationException('This School requires the Central Finance Staff UUID migration.');
+                }
+
+                throw $exception;
             }
-            $tenant = User::on('school')->where([
-                'school_id' => $school->id,
-                'central_finance_source_uuid' => $identity->tenant_user_uuid,
-            ])->whereNull('deleted_at')->first();
             if ($tenant === null) {
                 throw new AuthorizationException('The mapped School Staff user is unavailable.');
             }
