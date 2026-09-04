@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Throwable;
 use TypeError;
 use App\Exports\TeacherDataExport;
@@ -73,7 +74,7 @@ class TeacherController extends Controller {
     }
 
     public function store(Request $request) {
-        ResponseService::noAnyPermissionThenSendJson(['teacher-create', 'teacher-edit']);
+        abort_unless(Auth::user()?->canany(['teacher-create', 'teacher-edit']), 403);
         $request->validate([
             'first_name'        => 'required',
             'last_name'         => 'required',
@@ -84,7 +85,7 @@ class TeacherController extends Controller {
             'qualification'     => 'required',
             'current_address'   => 'required',
             'permanent_address' => 'required',
-            'status'            => 'nullable|in:0,1',
+            'status'            => ['required', 'boolean'],
             'image'             => 'nullable|image|mimes:jpeg,png,jpg,svg,gif,webp',
         ]);
 
@@ -138,9 +139,9 @@ class TeacherController extends Controller {
                 ...$request->all(),
                 'password'          => Hash::make($request->mobile),
                 'image'             => $request->file('image'),
-                'status'            => $request->status ?? 0,
+                'status'            => (int) $request->input('status'),
                 'dob'               => date('Y-m-d',strtotime($request->dob)),
-                'deleted_at'        => $request->status == 1 ? null : '1970-01-01 01:00:00',
+                'deleted_at'        => (int) $request->input('status') === 1 ? null : now(),
                 'two_factor_enabled' => 0,
                 'two_factor_secret' => null,
                 'two_factor_expires_at' => null,
@@ -313,14 +314,19 @@ class TeacherController extends Controller {
 
 
     public function edit($id) {
-        $teacher = $this->staff->findById($id);
-        return response($teacher);
+        abort_unless(Auth::user()?->can('teacher-edit'), 403);
+        $teacher = $this->teacherForCurrentSchool((int) $id);
+        abort_unless($teacher->staff !== null, 404);
+
+        return response($teacher->staff);
     }
 
 
     public function update(Request $request, $id) {
         // ResponseService::noFeatureThenSendJson('Teacher Management');
-        ResponseService::noPermissionThenSendJson('teacher-edit');
+        abort_unless(Auth::user()?->can('teacher-edit'), 403);
+        $teacher = $this->teacherForCurrentSchool((int) $id);
+        abort_unless($teacher->staff !== null, 404);
         $validator = Validator::make($request->all(), [
             'first_name'        => 'required',
             'last_name'         => 'required',
@@ -331,14 +337,25 @@ class TeacherController extends Controller {
             'qualification'     => 'required',
             'current_address'   => 'required',
             'permanent_address' => 'required',
+            'status'            => ['required', 'boolean'],
+            'status_reason'     => [
+                'nullable',
+                'string',
+                'max:2000',
+                Rule::requiredIf((int) $request->input('status') !== (int) $teacher->status),
+            ],
         ]);
         if ($validator->fails()) {
             ResponseService::errorResponse($validator->errors()->first());
         }
         try {
             DB::beginTransaction();
+            $newStatus = (int) $request->input('status');
+            $statusChanged = $newStatus !== (int) $teacher->status;
             $user_data = array(
                 ...$request->all(),
+                'status' => $newStatus,
+                'deleted_at' => $newStatus === 1 ? null : now(),
             );
             if ($request->file('image')) {
                 $user_data['image'] = $request->file('image');
@@ -356,6 +373,13 @@ class TeacherController extends Controller {
                 $user_data['two_factor_secret'] = null;
                 $user_data['two_factor_expires_at'] = null;
                 $user_data['two_factor_enabled'] = 0;
+            }
+
+            // The repository intentionally resolves the normal (non-trashed)
+            // model. Restore inside this transaction first so an Inactive →
+            // Active edit follows the same canonical persistence path.
+            if ($teacher->trashed()) {
+                $teacher->restore();
             }
 
             //Call store function of User Repository and get the User Data
@@ -397,7 +421,24 @@ class TeacherController extends Controller {
             //Call store function of User Repository and get the User Data
             $this->staff->update($user->staff->id, array('qualification' => $request->qualification, 'salary' => $request->salary,'joining_date'   => $joining_date));
 
+            if ($statusChanged) {
+                app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
+                    Auth::user(),
+                    $user,
+                    $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
+                    $request->input('status_reason'),
+                    ['previous_status' => (int) $teacher->status, 'status' => $newStatus],
+                );
+            }
+
             DB::commit();
+            if ($statusChanged) {
+                app(XiaobailongLifecycleNotifier::class)->deferStatus(
+                    (int) $user->school_id,
+                    (int) $user->id,
+                    $newStatus === 1 ? 'active' : 'disabled'
+                );
+            }
             ResponseService::successResponse('Data Updated Successfully');
         } catch (Throwable $e) {
             if ($e instanceof TypeError && Str::contains($e->getMessage(), ['Mail', 'Mailer', 'MailManager'])) {
@@ -408,6 +449,16 @@ class TeacherController extends Controller {
                 ResponseService::errorResponse();
             }
         }
+    }
+
+    private function teacherForCurrentSchool(int $id): \App\Models\User
+    {
+        $teacher = $this->user->builder()->withTrashed()->with('staff')->findOrFail($id);
+        if ($schoolId = Auth::user()?->school_id) {
+            abort_unless((int) $teacher->school_id === (int) $schoolId, 403);
+        }
+
+        return $teacher;
     }
 
 

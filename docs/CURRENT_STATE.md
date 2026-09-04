@@ -14,6 +14,15 @@ Last updated: 2026-08-25
 
 Finance V2
 
+## Pending local hotfix — Teacher activation status
+
+- The Teacher edit modal now carries the canonical `status` value, requires a
+  lifecycle reason only when it changes, and keeps `users.status` and
+  `deleted_at` synchronized. The update path is explicitly permission- and
+  School-scoped, records the existing lifecycle audit, and preserves the
+  Xiaobailong status notifier. This hotfix is local only pending isolated
+  browser QA; it has no Finance behavior.
+
 ## Phase 4A — Zixuan daily Finance navigation
 
 - Zixuan (`SCH202615`) uses the Central Finance daily read workspace after

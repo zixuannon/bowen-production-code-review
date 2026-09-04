@@ -450,6 +450,31 @@
                                 {!! Form::text('joining_date', null, ['placeholder' => __('joining_date'), 'class' => 'datepicker-popup form-control','autocomplete'=>'off','id' => 'edit_joining_date']) !!}
                             </div>
 
+                            <div class="form-group col-sm-12 col-md-4">
+                                <label>{{ __('status') }} <span class="text-danger">*</span></label><br>
+                                <div class="d-flex flex-wrap">
+                                    <div class="form-check form-check-inline">
+                                        <label class="form-check-label" for="edit_teacher_status_active">
+                                            {!! Form::radio('status', 1, null, ['class' => 'form-check-input edit-teacher-status', 'id' => 'edit_teacher_status_active', 'required']) !!}
+                                            {{ __('Active') }}
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <label class="form-check-label" for="edit_teacher_status_inactive">
+                                            {!! Form::radio('status', 0, null, ['class' => 'form-check-input edit-teacher-status', 'id' => 'edit_teacher_status_inactive']) !!}
+                                            {{ __('inactive') }}
+                                        </label>
+                                    </div>
+                                </div>
+                                <span class="text-danger small">{{ __('Note :- Activating this will consider in your current subscription cycle') }}</span>
+                            </div>
+
+                            <div class="form-group col-sm-12 col-md-8 d-none" id="teacher-status-reason-group">
+                                <label for="teacher-status-reason">{{ __('Reason') }} <span class="text-danger">*</span></label>
+                                <textarea class="form-control" name="status_reason" id="teacher-status-reason" rows="2" maxlength="2000" placeholder="{{ __('Reason') }}"></textarea>
+                                <small class="form-text text-muted">{{ __('A lifecycle reason is required.') }}</small>
+                            </div>
+
                             @if(!empty($extraFields))
 
                                 {{-- Loop the FormData --}}
@@ -630,6 +655,20 @@
                 updateUserStatus("#table_list", '#update-status');
             }
         });
+
+        function syncTeacherStatusReason() {
+            const form = $('#editdata');
+            const currentStatus = String(form.data('teacher-status'));
+            const selectedStatus = String(form.find('input[name="status"]:checked').val());
+            const changed = currentStatus !== '' && selectedStatus !== '' && currentStatus !== selectedStatus;
+            $('#teacher-status-reason-group').toggleClass('d-none', !changed);
+            $('#teacher-status-reason').prop('required', changed);
+            if (!changed) {
+                $('#teacher-status-reason').val('');
+            }
+        }
+
+        $('#editdata').on('change', '.edit-teacher-status', syncTeacherStatusReason);
         $("#update-status").on('click', function (e) {
             Swal.fire({
                 title: window.trans["Are you sure"],

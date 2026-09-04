@@ -816,6 +816,10 @@ window.teacherEvents = {
         $('#qualification').val(row.staff.qualification);
         $('#edit-teacher-image-tag').attr('src', row.image);
         $('#edit_salary').val(row.staff.salary);
+        $('#editdata').data('teacher-status', String(row.status));
+        $('#teacher-status-reason').val('');
+        $('input[name=status].edit-teacher-status').prop('checked', false);
+        $('input[name=status].edit-teacher-status[value=' + row.status + ']').prop('checked', true).trigger('change');
         if (row.joining_date_org) {
             $('#edit_joining_date').val(moment(row.joining_date_org, 'YYYY-MM-DD').format('DD-MM-YYYY'));
         } else {
