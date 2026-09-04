@@ -179,6 +179,11 @@ final class CentralFinanceSchoolStaffIdentityService
     public function executeAsTenantIdentity(CentralFinanceUser $principal, School $school, callable $operation): mixed
     {
         $principal = CentralFinanceUser::on('mysql')->findOrFail($principal->id);
+        // Workspace scope lists intentionally select presentation-safe School
+        // columns. Rehydrate from the trusted Central registry before any
+        // tenant connection is configured; the browser never supplies this
+        // database identity.
+        $school = School::on('mysql')->whereKey($school->id)->where('installed', 1)->firstOrFail();
         if (!$this->isActivePrincipal($principal)
             || (int) $principal->getRawOriginal('school_id') !== (int) $school->id) {
             throw new AuthorizationException('The School Staff Finance identity is not authorized.');

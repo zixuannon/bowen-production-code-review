@@ -174,4 +174,19 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertSame('mysql', DB::getDefaultConnection());
         $this->assertNull(session('db_connection_name'));
     }
+
+    public function test_verified_school_staff_operation_rehydrates_the_trusted_school_before_selecting_the_tenant_connection(): void
+    {
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Bowen QA', 'code' => 'BOWEN_QA', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        $service = app(CentralFinanceSchoolStaffIdentityService::class);
+        $principal = $service->grantSchoolAccountant($group, 1, 7);
+
+        // Central workspace lists intentionally omit database_name. The bridge
+        // must reload it from Central, never infer it from a request payload.
+        $presentationSchool = School::on('mysql')->select(['id', 'name', 'code', 'installed'])->findOrFail(1);
+        $result = $service->executeAsTenantIdentity($principal, $presentationSchool, fn ($tenant): int => (int) $tenant->id);
+
+        $this->assertSame(7, $result);
+    }
 }
