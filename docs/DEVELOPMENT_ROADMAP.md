@@ -74,6 +74,15 @@ Do not start Branch Finance, transfer handover, daily closing, reconciliation, r
 - [x] Cashier assignment removal on role removal; server-side forged/cross-school/inactive rejection
 - [x] BOWEN_QA PHPUnit and authenticated local browser acceptance
 
+## Student & Finance V2 Phase 3 — Roles + Permissions
+
+- [x] Keep tenant School roles separate from Central Finance principals and scopes
+- [x] Explicit Principal read-only and School Accountant operating Central grants
+- [x] Server-side tenant role validation through trusted Staff UUID identity mapping
+- [x] Scope revocation immediately blocks Central workspace access while preserving School role/history
+- [x] Multi-role and School Admin / Super Admin boundary characterization
+- [x] Central Finance, Student Import, authorization, localization, and scope regression
+
 ## P3 — Transfer Handover + Receiver Confirmation
 
  - [x] Extend internal transfers into custody-aware handover

@@ -119,7 +119,6 @@ class FinanceGroupController extends Controller
         ]);
         $grantType = $data['grant_type'] ?? 'custom';
         $centralUser = User::on('mysql')->findOrFail((int) $data['central_user_id']);
-        abort_unless($centralUser->school_id === null, 422);
         $groupUser = $this->groups->addUser($financeGroup, (int) $data['central_user_id']);
         if ($grantType === 'head_finance_all') {
             abort_unless($this->groups->isCentralHeadFinance($groupUser), 422);
@@ -131,6 +130,7 @@ class FinanceGroupController extends Controller
         } else {
             $schoolId = (int) ($data['school_id'] ?? 0);
             abort_unless($schoolId > 0 && $financeGroup->schools()->where(['school_id' => $schoolId, 'status' => 'active'])->exists(), 422);
+            $this->assertCentralScopePrincipalForSchool($centralUser, $schoolId);
             if ($grantType === 'school_accountant') {
                 abort_unless(!$this->groups->isCentralHeadFinance($groupUser), 422);
                 $otherSchoolScopeExists = DB::connection('mysql')->table('central_finance_user_school_scopes')
@@ -162,8 +162,9 @@ class FinanceGroupController extends Controller
     {
         $this->assertCentralSuperAdmin();
         $data = $request->validate(['central_user_id' => ['required', 'integer'], 'school_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:2000']]);
-        abort_unless(User::on('mysql')->whereKey((int) $data['central_user_id'])->whereNull('school_id')->exists(), 422);
         abort_unless($financeGroup->schools()->where(['school_id' => (int) $data['school_id'], 'status' => 'active'])->exists(), 422);
+        $centralUser = User::on('mysql')->findOrFail((int) $data['central_user_id']);
+        $this->assertCentralScopePrincipalForSchool($centralUser, (int) $data['school_id']);
         $before = DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => (int) $data['central_user_id'], 'school_id' => (int) $data['school_id']])->first();
         $this->upsertCentralScope((int) $data['central_user_id'], (int) $data['school_id'], false, false, false, false);
         CentralFinanceDocumentAudit::on('mysql')->create([
@@ -182,12 +183,38 @@ class FinanceGroupController extends Controller
         return redirect()->route('finance-groups.index')->with('success', __('School Staff granted Accountant Finance access.'));
     }
 
+    /** Grant a trusted School Principal a read-only Central Finance scope. */
+    public function storeSchoolStaffPrincipal(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
+        $this->staffIdentities->grantSchoolPrincipal($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id']);
+
+        return redirect()->route('finance-groups.index')->with('success', __('School Principal granted read-only Finance access.'));
+    }
+
     private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm): void
     {
         DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
             ['user_id' => $userId, 'school_id' => $schoolId],
             ['can_view' => $view, 'can_operate' => $operate, 'can_approve_reimbursements' => $operate && $approve, 'can_confirm_funding' => $operate && $confirm, 'created_at' => now(), 'updated_at' => now()],
         );
+    }
+
+    /**
+     * Central staff identities are single-School principals. They may be
+     * configured only for their own trusted School; ordinary Central users
+     * remain global-directory identities with no tenant school_id. This keeps
+     * the configuration surface aligned with the runtime authorization model.
+     */
+    private function assertCentralScopePrincipalForSchool(User $centralUser, int $schoolId): void
+    {
+        $type = $centralUser->getRawOriginal('central_finance_principal_type') ?? 'central_user';
+        $isCentralDirectoryUser = $type === 'central_user' && $centralUser->getRawOriginal('school_id') === null;
+        $isSchoolStaffPrincipal = $type === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE
+            && (int) $centralUser->getRawOriginal('school_id') === $schoolId;
+
+        abort_unless($isCentralDirectoryUser || $isSchoolStaffPrincipal, 422);
     }
 
     /** @return array<string, mixed> */
@@ -199,7 +226,7 @@ class FinanceGroupController extends Controller
         return [
             'group' => $group,
             'schools' => School::on('mysql')->orderBy('name')->get(['id', 'name', 'code', 'status']),
-            'centralUsers' => User::on('mysql')->whereNull('school_id')->with('roles')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']),
+            'centralUsers' => User::on('mysql')->with('roles')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email', 'school_id', 'central_finance_principal_type']),
             'centralScopes' => DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
                 ->join('users as users', 'users.id', '=', 'scopes.user_id')
                 ->join('schools as schools', 'schools.id', '=', 'scopes.school_id')

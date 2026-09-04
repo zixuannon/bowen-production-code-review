@@ -11,14 +11,17 @@ class TeacherXiaobailongLifecycleContractTest extends TestCase
         return file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/TeacherController.php');
     }
 
-    public function test_teacher_delete_emits_a_departed_lifecycle_event_only_after_commit(): void
+    public function test_teacher_hard_delete_is_fail_closed_and_deactivation_notifies_only_after_commit(): void
     {
         $controller = $this->controller();
 
         $this->assertStringContainsString("ResponseService::noPermissionThenSendJson('teacher-delete')", $controller);
-        $this->assertStringContainsString('$teacher = $this->user->findTrashedById($id);', $controller);
-        $this->assertStringContainsString('$teacher->forceDelete();', $controller);
-        $this->assertStringContainsString("app(XiaobailongLifecycleNotifier::class)->deferStatus(\$schoolId, (int) \$id, 'left');", $controller);
+        $this->assertStringContainsString('Permanent deletion is not available for teacher records.', $controller);
+        $this->assertStringNotContainsString('forceDelete();', $controller);
+        $this->assertMatchesRegularExpression(
+            '/DB::commit\(\);\s+app\(XiaobailongLifecycleNotifier::class\)->deferStatus\(\s*\(int\) \$teacher->school_id,\s*\(int\) \$id,\s*\$newStatus === 1 \? \'active\' : \'disabled\'/s',
+            $controller,
+        );
     }
 
     public function test_single_teacher_status_change_notifies_the_committed_status(): void

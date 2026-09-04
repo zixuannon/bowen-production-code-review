@@ -166,6 +166,26 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   use the canonical compulsory assignment and Central Receivable flow with no
   Payment, Receipt, Ledger, or Fund Account effect.
 
+## Student & Finance V2 Phase 3 — roles and permissions (local implementation)
+
+- A tenant School role and a Central Finance principal/scope are now distinct
+  requirements. A School Admin receives no Central Finance authority from the
+  School role alone. Principal may be explicitly granted a read-only Central
+  principal for that School; School Accountant/Cashier may separately receive
+  an explicit operating Central scope.
+- The Super Admin configuration page grants those trusted tenant Staff
+  identities through their stable UUID mapping. It validates the actual tenant
+  role server-side, does not replace tenant `Auth::user()`, and preserves the
+  established Head Finance group identity path. Multi-role Staff require the
+  specific corresponding Central grant; a Principal grant never silently adds
+  operating authority.
+- Revoking the Central School scope removes the Staff member's Central
+  workspace access immediately while retaining their School role and history.
+  Runtime routes continue to require Central principal, active Group scope,
+  explicit School scope, and existing capability checks; UI visibility is not
+  an authorization boundary. No Finance posting, balance, cutover, schema, or
+  Production/Staging data behavior changed.
+
 ## Student Code School UI — local implementation
 
 - Student Code is now an independent tenant-local School + code identity for

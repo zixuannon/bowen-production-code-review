@@ -19,7 +19,7 @@ class BankAccountListCashFlowViewTest extends TestCase
         $this->assertStringContainsString("{{ __('Money In') }}", $view);
         $this->assertStringContainsString('data-field="money_out_total"', $view);
         $this->assertStringContainsString("{{ __('Money Out') }}", $view);
-        $this->assertSame('流入合计', $translations['Money In']);
-        $this->assertSame('流出合计', $translations['Money Out']);
+        $this->assertSame('资金流入', $translations['Money In']);
+        $this->assertSame('资金流出', $translations['Money Out']);
     }
 }

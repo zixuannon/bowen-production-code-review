@@ -43,7 +43,8 @@ final class CentralFinanceWorkspaceService
         if (($type === 'central_user' && $actor->getRawOriginal('school_id') !== null)
             || ($type === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE && !$this->staffIdentities->isActivePrincipal($actor))
             || !in_array($type, ['central_user', CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE], true)
-            || $this->groupUsers($actor)->isEmpty()) {
+            || $this->groupUsers($actor)->isEmpty()
+            || $this->accessibleSchools($actor)->isEmpty()) {
             throw new AuthorizationException('A Central Finance identity is required.');
         }
         return $actor;

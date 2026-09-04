@@ -43,6 +43,7 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         $this->assertStringContainsString('$centralIsHeadFinance', $view);
         $this->assertStringContainsString('$centralCanMoveFunds', $view);
         $this->assertStringContainsString('$centralCanViewSchoolReports', $view);
+        $this->assertStringContainsString('School pages retain the tenant Auth user.', $view);
         $this->assertStringContainsString('request()->routeIs(\'central-finance.student-collection.*\'', $view);
         $this->assertStringContainsString('@if($centralIsHeadFinance)', $view);
         $this->assertStringContainsString('@if($centralIsHeadFinance || $centralCanMoveFunds)', $view);

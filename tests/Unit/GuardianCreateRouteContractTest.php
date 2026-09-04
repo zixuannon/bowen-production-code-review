@@ -67,11 +67,11 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString('student-admission-guardian.js', file_get_contents(resource_path('views/students/create.blade.php')));
 
         $pageController = file_get_contents(public_path('assets/js/custom/student-admission-guardian.js'));
-        $this->assertStringContainsString('Select2 supplies only a Guardian id', $pageController);
+        $this->assertStringContainsString('Select2 chooses only an id', $pageController);
         $this->assertStringContainsString('admission-details', $pageController);
-        $this->assertStringContainsString('const syncSelectedGuardian = (guardian)', $pageController);
-        $this->assertStringContainsString('state = { id, status: \'loading\' }', $pageController);
-        $this->assertStringContainsString('if (request) request.abort()', $pageController);
+        $this->assertStringContainsString('const applyStateToForm = () =>', $pageController);
+        $this->assertStringContainsString("state.mode = 'existing'; state.guardianId = field(id);", $pageController);
+        $this->assertStringContainsString('if (state.request) state.request.abort()', $pageController);
         $this->assertStringContainsString('The selected Guardian is still loading', $pageController);
     }
 

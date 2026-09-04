@@ -27,12 +27,12 @@ class CentralFinanceStaffConfigurationTest extends TestCase
         Config::set('database.connections.mysql', ['driver' => 'sqlite', 'database' => $this->database, 'prefix' => '', 'foreign_key_constraints' => true]);
         DB::purge('mysql'); DB::setDefaultConnection('mysql');
         Schema::connection('mysql')->create('schools', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('code'); $table->string('database_name'); $table->string('status')->default('active'); $table->softDeletes(); $table->timestamps(); });
-        Schema::connection('mysql')->create('users', function (Blueprint $table): void { $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->softDeletes(); $table->timestamps(); });
+        Schema::connection('mysql')->create('users', function (Blueprint $table): void { $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->string('central_finance_principal_type')->nullable(); $table->softDeletes(); $table->timestamps(); });
         Schema::connection('mysql')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamps(); });
         Schema::connection('mysql')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
         foreach (['2026_08_18_000001_create_finance_group_scope_tables.php', '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php', '2026_08_21_000002_create_central_finance_operating_documents.php', '2026_08_21_000003_create_central_finance_internal_transfer_documents.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id' => 1, 'name' => 'Zixuan', 'code' => 'ZIX', 'database_name' => 'qa_zixuan', 'status' => 'active'], ['id' => 2, 'name' => 'Timecity', 'code' => 'TIM', 'database_name' => 'qa_timecity', 'status' => 'active']]);
-        DB::connection('mysql')->table('users')->insert([['id' => 1, 'first_name' => 'Super', 'last_name' => 'Admin', 'school_id' => null], ['id' => 2, 'first_name' => 'Head', 'last_name' => 'Finance', 'school_id' => null], ['id' => 3, 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'school_id' => null]]);
+        DB::connection('mysql')->table('users')->insert([['id' => 1, 'first_name' => 'Super', 'last_name' => 'Admin', 'school_id' => null, 'central_finance_principal_type' => null], ['id' => 2, 'first_name' => 'Head', 'last_name' => 'Finance', 'school_id' => null, 'central_finance_principal_type' => null], ['id' => 3, 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'school_id' => null, 'central_finance_principal_type' => null], ['id' => 4, 'first_name' => 'Zixuan', 'last_name' => 'Principal', 'school_id' => 1, 'central_finance_principal_type' => 'school_staff_identity']]);
         DB::connection('mysql')->table('roles')->insert([['id' => 1, 'name' => 'Super Admin', 'guard_name' => 'web'], ['id' => 2, 'name' => 'Head Finance', 'guard_name' => 'web']]);
         foreach ([[1, 1], [2, 2]] as [$userId, $roleId]) DB::connection('mysql')->table('model_has_roles')->insert(['model_id' => $userId, 'role_id' => $roleId, 'model_type' => User::class]);
         $scope = app(FinanceGroupScopeService::class);
@@ -87,6 +87,31 @@ class CentralFinanceStaffConfigurationTest extends TestCase
         $this->assertFalse((bool) $scope->can_view || (bool) $scope->can_operate || (bool) $scope->can_approve_reimbursements || (bool) $scope->can_confirm_funding);
     }
 
+    public function test_super_admin_can_revoke_a_school_staff_principal_only_for_its_own_school(): void
+    {
+        $this->actingAs($this->superAdmin);
+        $controller = app(FinanceGroupController::class);
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->insert([
+            'user_id' => 4, 'school_id' => 1, 'can_view' => true, 'can_operate' => false,
+            'can_approve_reimbursements' => false, 'can_confirm_funding' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $controller->disableCentralSchoolScope(new Request([
+            'central_user_id' => 4, 'school_id' => 1, 'reason' => 'Principal access no longer required',
+        ]), $this->group);
+        $this->assertFalse((bool) DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => 4, 'school_id' => 1])->value('can_view'));
+
+        try {
+            $controller->disableCentralSchoolScope(new Request([
+                'central_user_id' => 4, 'school_id' => 2, 'reason' => 'Forged other-school revoke',
+            ]), $this->group);
+            $this->fail('A School Staff Central identity must remain single-School.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+    }
+
     public function test_configuration_ui_separates_group_home_staff_scopes_and_legacy_mapping_without_changing_post_targets(): void
     {
         $home = (string) file_get_contents(resource_path('views/finance-groups/index.blade.php'));
@@ -99,9 +124,11 @@ class CentralFinanceStaffConfigurationTest extends TestCase
         $this->assertStringContainsString('route(\'finance-groups.central-school-scopes.store\', $group)', $manage);
         $this->assertStringContainsString('route(\'finance-groups.central-school-scopes.disable\', $group)', $manage);
         $this->assertStringContainsString('route(\'finance-groups.school-staff-accountants.store\', $group)', $manage);
+        $this->assertStringContainsString('route(\'finance-groups.school-staff-principals.store\', $group)', $manage);
         $this->assertStringContainsString('tenant_user_id', $manage);
         $this->assertStringContainsString('stable Staff UUID', $manage);
         $this->assertStringContainsString('Authorize All Group Schools', $manage);
+        $this->assertStringContainsString('Grant Principal Read-only Access', $manage);
         $this->assertStringContainsString('Legacy / Transition only', $manage);
     }
 }
