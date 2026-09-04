@@ -13,6 +13,9 @@
 
 @section('content')
     <div class="content-wrapper">
+        @if(app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
+            @include('components.central-finance-legacy-historical-notice')
+        @endif
         <div class="page-header">
             <h3 class="page-title">
                 {{ __('manage') . ' ' . __('expense') }}

@@ -26,6 +26,7 @@
             $centralCanOperateCurrentSchool = false;
             $centralCanMoveFunds = false;
             $centralCanViewSchoolReports = false;
+            $usesCentralFinanceDailyWorkspace = false;
             try {
                 // School pages retain the tenant Auth user. For the Central
                 // Finance navigation entry only, resolve the login-created,
@@ -68,6 +69,13 @@
                 $centralCurrentSchool = null;
                 $centralCanAccessAllSchools = false;
                 $centralCanConfigureAnySchool = false;
+            }
+            try {
+                $usesCentralFinanceDailyWorkspace = app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)
+                    ->usesCentralFinanceDailyWorkspace();
+            } catch (\Throwable) {
+                // A sidebar must fail closed to the established tenant menu.
+                $usesCentralFinanceDailyWorkspace = false;
             }
             $centralCanManageGroups = Auth::check() && Auth::user()->hasRole('Super Admin') && Auth::user()->getRawOriginal('school_id') === null;
             $sidebarRoleName = Auth::check() ? (string) Auth::user()->getRoleNames()->first() : '';
@@ -736,6 +744,20 @@
         {{-- Fees --}}
 
         @canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'finance-dashboard-view', 'finance-payment-view', 'fees-paid'])
+            @if ($usesCentralFinanceDailyWorkspace)
+                {{-- Fee Setup remains tenant academic/master data after Central cutover. --}}
+                @canany(['fees-list', 'fees-type-list'])
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="collapse" href="#fee-setup-menu" aria-expanded="false" aria-controls="fee-setup-menu">
+                            <i class="fa fa-cog menu-icon"></i><span class="menu-title">{{ __('Fee Setup') }}</span><i class="menu-arrow"></i>
+                        </a>
+                        <div class="collapse" id="fee-setup-menu"><ul class="nav flex-column sub-menu">
+                            @can('fees-list')<li class="nav-item"><a href="{{ route('fees.index') }}" class="nav-link">{{ __('Manage Fees') }}</a></li>@endcan
+                            @can('fees-type-list')<li class="nav-item"><a href="{{ route('fees-type.index') }}" class="nav-link">{{ __('Fee Types') }}</a></li>@endcan
+                        </ul></div>
+                    </li>
+                @endcanany
+            @else
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#fees-menu" aria-expanded="false"
                     aria-controls="fees-menu" data-access="@hasFeatureAccess('Fees Management')">
@@ -827,10 +849,11 @@
                     </ul>
                 </div>
             </li>
+            @endif
         @endcanany
 
         {{-- Expense --}}
-        @if (Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
+        @if (!$usesCentralFinanceDailyWorkspace && Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
             'finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create', 'finance-fund-account-view', 'finance-transfer-view', 'finance-handover-view', 'finance-staff-manage']))
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"

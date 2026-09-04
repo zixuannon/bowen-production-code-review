@@ -133,6 +133,23 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 
 ## Current phase
 
+## Phase 4A — Zixuan School Finance navigation and read unification (local implementation)
+
+- The Zixuan School sidebar now switches daily Finance navigation only when
+  its *trusted current tenant connection* resolves to the Central registry,
+  the School is explicitly approved for the UI rollout, and its Central
+  Finance cutover state is `central`. Non-cutover Schools retain the existing
+  tenant Finance navigation.
+- For this approved Zixuan rollout, the legacy daily Finance and Expenses
+  menus are removed; tenant Fee Setup remains visible because it is School
+  academic/master data, not a Central financial writer. Central menu and
+  server-side Central principal/scope checks remain the only route to current
+  Finance operations.
+- Retained legacy Finance GET views now carry a conspicuous historical-only
+  notice. They do not combine tenant values with Central values. No Finance
+  posting, balance, scope, cutover, schema, or historical data behavior was
+  changed.
+
 ## Zixuan Student Import V2 — local implementation
 
 - Student Import V2 is an explicit Zixuan (`SCH202615`) pilot. It uses a

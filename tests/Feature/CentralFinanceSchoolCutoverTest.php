@@ -6,6 +6,7 @@ use App\Models\School;
 use App\Models\CentralFinanceUser;
 use App\Models\User;
 use App\Services\CentralFinanceSchoolCutoverService;
+use App\Services\CentralFinanceSchoolFinanceNavigationService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
@@ -95,6 +96,24 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         Config::set('database.connections.school.database', 'local_timecity');
         $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(2));
         $this->assertSame('legacy', $cutovers->statusForSchool(2));
+    }
+
+    public function test_only_the_explicit_zixuan_rollout_school_uses_central_daily_navigation_after_cutover(): void
+    {
+        $cutovers = app(CentralFinanceSchoolCutoverService::class);
+        $zixuan = School::on('mysql')->findOrFail(1);
+        $navigation = app(CentralFinanceSchoolFinanceNavigationService::class);
+
+        Config::set('central_finance.school_finance_navigation_rollout_codes', ['SCH202615']);
+        Config::set('database.connections.school.database', 'local_zixuan');
+        $this->assertFalse($navigation->usesCentralFinanceDailyWorkspace());
+
+        $cutovers->transition($this->headFinance, $zixuan, 'ready');
+        $cutovers->transition($this->headFinance, $zixuan, 'central');
+        $this->assertTrue($navigation->usesCentralFinanceDailyWorkspace());
+
+        Config::set('database.connections.school.database', 'local_timecity');
+        $this->assertFalse($navigation->usesCentralFinanceDailyWorkspace());
     }
 
     public function test_central_to_legacy_rollback_is_allowed_only_before_real_central_financial_activity(): void

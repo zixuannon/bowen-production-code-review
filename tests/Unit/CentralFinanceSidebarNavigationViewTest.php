@@ -43,11 +43,16 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         $this->assertStringContainsString('$centralIsHeadFinance', $view);
         $this->assertStringContainsString('$centralCanMoveFunds', $view);
         $this->assertStringContainsString('$centralCanViewSchoolReports', $view);
+        $this->assertStringContainsString('CentralFinanceSchoolFinanceNavigationService::class', $view);
+        $this->assertStringContainsString('$usesCentralFinanceDailyWorkspace', $view);
+        $this->assertStringContainsString('Fee Setup remains tenant academic/master data after Central cutover.', $view);
         $this->assertStringContainsString('School pages retain the tenant Auth user.', $view);
         $this->assertStringContainsString('request()->routeIs(\'central-finance.student-collection.*\'', $view);
         $this->assertStringContainsString('@if($centralIsHeadFinance)', $view);
         $this->assertStringContainsString('@if($centralIsHeadFinance || $centralCanMoveFunds)', $view);
         $this->assertStringContainsString("route('central-finance.accounts.statements')", $view);
+
+        $this->assertStringContainsString('Historical School Finance Record', (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/components/central-finance-legacy-historical-notice.blade.php'));
 
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
         $this->assertStringContainsString('@if($school && $canAccessAllSchools)', $workspace);
