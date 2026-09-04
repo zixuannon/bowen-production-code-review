@@ -49,7 +49,7 @@ final class StudentFeeAssignmentController extends Controller
     {
         ResponseService::noAnyPermissionThenRedirect(['student-list', 'student-create', 'student-edit', 'fees-create']);
         $student = $this->student($studentId);
-        $student->load(['user', 'class', 'class_section', 'studentImportIdentity', 'feeAssignments.items']);
+        $student->load(['user.school', 'class', 'class_section', 'session_year', 'studentImportIdentity', 'feeAssignments.items']);
         $assignments = $student->feeAssignments()
             ->with(['items', 'student'])
             ->where('status', StudentFeeAssignment::CONFIRMED)

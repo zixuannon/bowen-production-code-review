@@ -26,6 +26,7 @@
             <div class="table-responsive"><table class="table cf-data-table cf-mobile-card-table mb-0"><thead><tr><th>{{ __('Student') }}</th><th>{{ __('Class') }}</th><th>{{ __('Guardian') }}</th><th>{{ __('Due') }}</th><th>{{ __('Paid') }}</th><th>{{ __('Outstanding') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
             @forelse($profiles as $profile)
                 @php($totals = $profile->currency_totals ?? [])
+                @php($hasReceivables = collect($totals)->contains(fn ($total) => (float) ($total['due'] ?? 0) > 0))
                 @php($hasOutstanding = collect($totals)->contains(fn ($total) => (float) ($total['outstanding'] ?? 0) > 0))
                 <tr>
                     <td data-label="{{ __('Student') }}"><span class="cf-primary-line">{{ $profile->student_name }}</span><span class="cf-secondary-line">{{ __('Student Code') }}: {{ $profile->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $profile->admission_no ?: '—' }}</span></td>
@@ -34,7 +35,7 @@
                     <td data-label="{{ __('Due') }}">@forelse($totals as $currency => $total)<span class="d-block">{{ number_format($total['due'],2) }} {{ $currency }}</span>@empty — @endforelse</td>
                     <td data-label="{{ __('Paid') }}">@forelse($totals as $currency => $total)<span class="d-block">{{ number_format($total['paid'],2) }} {{ $currency }}</span>@empty — @endforelse</td>
                     <td data-label="{{ __('Outstanding') }}">@forelse($totals as $currency => $total)<strong class="d-block">{{ number_format($total['outstanding'],2) }} {{ $currency }}</strong>@empty — @endforelse</td>
-                    <td data-label="{{ __('Status') }}"><span class="badge cf-status-badge badge-{{ $hasOutstanding ? 'warning' : 'success' }}">{{ $hasOutstanding ? __('Outstanding') : __('Paid') }}</span></td>
+                    <td data-label="{{ __('Status') }}"><span class="badge cf-status-badge badge-{{ $hasOutstanding ? 'warning' : ($hasReceivables ? 'success' : 'light') }}">{{ $hasOutstanding ? __('Outstanding') : ($hasReceivables ? __('Paid') : __('No receivables')) }}</span></td>
                     <td data-label=""><a class="btn btn-sm {{ $canCollect && $hasOutstanding ? 'cf-primary-action' : 'btn-outline-primary' }}" href="{{ route('central-finance.student-collection.show', $profile->id) }}">{{ $canCollect && $hasOutstanding ? __('Collect') : __('View') }}</a></td>
                 </tr>
             @empty

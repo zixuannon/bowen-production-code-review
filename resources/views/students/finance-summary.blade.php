@@ -8,7 +8,7 @@
             <div>
                 <small class="text-primary font-weight-bold">{{ __('Student / Finance') }}</small>
                 <h3 class="page-title mb-0">{{ $student->user?->full_name }}</h3>
-                <small class="text-muted">{{ __('Student Code') }}: {{ $student->studentImportIdentity?->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $student->admission_no }} · {{ __('Academic Year') }}: {{ $student->session_year_id }}</small>
+                <small class="text-muted">{{ __('Student Code') }}: {{ $student->studentImportIdentity?->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $student->admission_no }} · {{ __('Class') }}: {{ $student->class?->name ?: '—' }}{{ $student->class_section?->name ? ' / '.$student->class_section->name : '' }} · {{ __('Academic Year') }}: {{ $student->session_year?->name ?: '—' }} · {{ __('School') }}: {{ $student->user?->school?->name ?: '—' }}</small>
             </div>
             <a class="btn btn-outline-secondary" href="{{ route('students.index') }}">{{ __('Back to Students') }}</a>
         </div>
@@ -23,7 +23,15 @@
                 <p class="text-muted mb-0">{{ __('Finance synchronization pending. Payment status is not available until Central Finance has the Student profile and Receivables.') }}</p>
             @else
                 <div class="row">@foreach($finance['currency_totals'] as $currency => $total)<div class="col-md-4 mb-2"><strong>{{ $currency }}</strong><span class="d-block">{{ __('Assigned / Due') }}: {{ number_format($total['due'], 2) }}</span><span class="d-block">{{ __('Paid') }}: {{ number_format($total['paid'], 2) }}</span><span class="d-block">{{ __('Outstanding') }}: {{ number_format($total['outstanding'], 2) }}</span><span class="badge badge-{{ $total['outstanding'] > 0 && $total['paid'] > 0 ? 'warning' : ($total['outstanding'] > 0 ? 'secondary' : 'success') }}">{{ $total['outstanding'] > 0 && $total['paid'] > 0 ? __('Partial') : ($total['outstanding'] > 0 ? __('Unpaid') : __('Fully Paid')) }}</span></div>@endforeach</div>
-                @if($finance['profile'] ?? null)<a class="btn btn-outline-primary mr-2" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}">{{ __('View Student Finance') }}</a>@if($canCollect)<a class="btn btn-theme" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}">{{ __('Collect Payment') }}</a>@endif@endif
+                @if($finance['profile'] ?? null)
+                    <div class="d-flex flex-wrap" style="gap:.5rem">
+                        <a class="btn btn-outline-primary" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}">{{ __('View Student Finance') }}</a>
+                        <a class="btn btn-outline-primary" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}#receivable-items">{{ __('View Receivables') }}</a>
+                        <a class="btn btn-outline-primary" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}#payment-history">{{ __('Payment History') }}</a>
+                        <a class="btn btn-outline-secondary" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}#payment-history">{{ __('Receipts') }}</a>
+                        @if($canCollect)<a class="btn btn-theme" href="{{ route('central-finance.student-collection.show', $finance['profile']->id) }}#receivable-items">{{ __('Collect Payment') }}</a>@endif
+                    </div>
+                @endif
             @endif
         </div></div>
 

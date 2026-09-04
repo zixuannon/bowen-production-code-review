@@ -921,7 +921,8 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->when($filters['currency'] ?? null, fn ($query, $currency) => $query->where('currency', $currency))
                 ->when($filters['student'] ?? null, fn ($query, $student) => $query->whereHas('studentProfile', fn ($profile) => $profile->where(fn ($nested) => $nested
                     ->where('student_name', 'like', "%{$student}%")
-                    ->orWhere('admission_no', 'like', "%{$student}%"))));
+                    ->orWhere('admission_no', 'like', "%{$student}%")
+                    ->orWhere('student_code', 'like', "%{$student}%"))));
         }
         $receivables = $receivableQuery ? (clone $receivableQuery)->orderBy('due_date')->paginate(25, ['*'], 'receivables_page')->withQueryString() : collect();
         $receivableCurrencyTotals = $this->currencySummaries->receivables($receivableQuery ? (clone $receivableQuery)->get() : []);
@@ -930,7 +931,7 @@ final class CentralFinanceWorkspaceController extends Controller
             $today = CarbonImmutable::today();
             $aging = collect($this->currencySummaries->aging((clone $receivableQuery)->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])->get(['due_date', 'amount_due', 'amount_paid', 'currency']), $today));
         }
-        $profiles=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()->with('payments.receipt')])->where('school_id',$schoolId)->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
+        $profiles=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()->with('payments.receipt')])->where('school_id',$schoolId)->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")->orWhere('student_code','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
         if ($profiles instanceof LengthAwarePaginator) {
             $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         }
@@ -941,10 +942,11 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->when($filters['payment_class'] ?? null, fn ($query, $class) => $query->where('class_name', $class))
                 ->when($filters['payment_student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested
                     ->where('student_name', 'like', "%{$student}%")
-                    ->orWhere('admission_no', 'like', "%{$student}%")))
+                    ->orWhere('admission_no', 'like', "%{$student}%")
+                    ->orWhere('student_code', 'like', "%{$student}%")))
                 ->with('receivables');
         }
-        $paymentProfiles = $paymentProfileQuery ? $paymentProfileQuery->orderBy('student_name')->get(['id','student_name','admission_no','class_name','section_name']) : collect();
+        $paymentProfiles = $paymentProfileQuery ? $paymentProfileQuery->orderBy('student_name')->get(['id','student_name','student_code','admission_no','class_name','section_name']) : collect();
         $paymentProfiles->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         $paymentClasses = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId)->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name') : collect();
         $paymentReceivables=$schoolId ? CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->whereIn('status',['open','partial'])->orderBy('student_profile_id')->orderBy('due_date')->get(['id','student_profile_id','description','amount_due','amount_paid','currency']) : collect();

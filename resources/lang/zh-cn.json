@@ -2664,5 +2664,9 @@
     "School Principal granted read-only Finance access.": "已授予校区校长只读财务权限。",
     "Select Principal": "选择校长",
     "group-import.download_template_v21": "下载集团财务导入模板 V2.1",
-    "Finance Group": "财务集团"
+    "Finance Group": "财务集团",
+    "View Receivables": "查看应收",
+    "Receipts": "收据",
+    "Received by": "收款人",
+    "No receivables": "暂无应收款"
 }

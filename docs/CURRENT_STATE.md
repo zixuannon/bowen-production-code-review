@@ -171,6 +171,22 @@ Release asset portability now has a versioned, checksum-verified contract in `re
   They do not combine tenant values with Central values. No Finance posting,
   balance, scope, cutover, schema, or historical data behavior was changed.
 
+## Phase 4B — Zixuan Student Finance cutover UX (local implementation)
+
+- The School Student Finance summary remains a read bridge to the canonical
+  Central Student Finance workspace. It now exposes distinct links for the
+  student summary, receivables, payment history, receipts, and (only for an
+  explicitly authorised Central operator) collection. No link writes to the
+  legacy `fees_paids` path.
+- Central receivable, payment, and student-ledger searches accept the stable
+  Student Code as well as name and GR/admission number. Student Collection
+  distinguishes a student with no receivables from a fully paid student, and
+  its canonical payment history surfaces payment method, receiver, Fund
+  Account, and receipt.
+- This is presentation/read-query work only: Payment, Receipt, Ledger,
+  balances, Fund Account scope, cutover checks, exactly-once keys, and legacy
+  historical boundaries are unchanged. No migration is required.
+
 ## Zixuan Student Import V2 — local implementation
 
 - Student Import V2 is an explicit Zixuan (`SCH202615`) pilot. It uses a
