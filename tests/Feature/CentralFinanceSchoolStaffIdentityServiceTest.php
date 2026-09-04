@@ -156,4 +156,22 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertStringContainsString('data-name="{{ $sidebarRoleName }}"', $sidebar);
         $this->assertStringNotContainsString('getRoleNames()[0]', $sidebar);
     }
+
+    public function test_verified_school_staff_operation_uses_only_the_mapped_tenant_and_restores_the_central_connection(): void
+    {
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Bowen QA', 'code' => 'BOWEN_QA', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        $service = app(CentralFinanceSchoolStaffIdentityService::class);
+        $principal = $service->grantSchoolAccountant($group, 1, 7);
+        $school = School::on('mysql')->findOrFail(1);
+
+        DB::setDefaultConnection('mysql');
+        $result = $service->executeAsTenantIdentity($principal, $school, function ($tenant): array {
+            return ['id' => (int) $tenant->id, 'school_id' => (int) $tenant->school_id, 'connection' => DB::getDefaultConnection()];
+        });
+
+        $this->assertSame(['id' => 7, 'school_id' => 1, 'connection' => 'school'], $result);
+        $this->assertSame('mysql', DB::getDefaultConnection());
+        $this->assertNull(session('db_connection_name'));
+    }
 }

@@ -2670,5 +2670,17 @@
     "View Receivables": "查看应收",
     "Receipts": "收据",
     "Received by": "收款人",
-    "No receivables": "暂无应收款"
+    "No receivables": "暂无应收款",
+    "+ Add Item": "+ 添加项目",
+    "Add optional items": "添加可选收费项目",
+    "Only active Fee Setup items for this student’s School, academic year, and class are available. Amounts and currency come from Fee Setup.": "仅显示该学生所在校区、学年和班级已启用的收费设置项目；金额和币种以收费设置为准。",
+    "Item": "项目",
+    "Fee Type": "收费类型",
+    "Select": "选择",
+    "Add selected items": "添加所选项目",
+    "Select at least one eligible optional item.": "请至少选择一项可用的可选收费项目。",
+    "Selected optional items are not valid for this Student.": "所选可选收费项目不适用于该学生。",
+    "The optional item was saved but is awaiting Central Receivable synchronization. Retry this action after synchronization succeeds.": "可选收费项目已保存，正在等待中央应收款同步完成；同步成功后请重试此操作。",
+    "Optional fee items are already available in Student Collection.": "可选收费项目已在学生收费工作台中可用。",
+    "Optional fee items were added to Student Collection.": "可选收费项目已添加到学生收费工作台。"
 }

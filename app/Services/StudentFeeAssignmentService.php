@@ -40,7 +40,7 @@ final class StudentFeeAssignmentService
             ->whereNotIn('id', $assigned);
         if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
         return $query->get()
-            ->filter(fn (FeesClassType $item) => $item->fee !== null && (int) $item->fee->session_year_id === (int) $student->session_year_id)
+            ->filter(fn (FeesClassType $item) => $item->fee !== null && $item->fee->getRawOriginal('deleted_at') === null && (int) $item->fee->session_year_id === (int) $student->session_year_id)
             ->values();
     }
 
@@ -59,6 +59,28 @@ final class StudentFeeAssignmentService
     public function availableAdditionalItems(Students $student): Collection
     {
         return $this->availableItems($student)->where('optional', true)->values();
+    }
+
+    /**
+     * Canonical optional templates for the Student's present School/year/class.
+     * Unlike availableAdditionalItems(), this retains already-assigned rows so
+     * an idempotent Central request can re-project a previously confirmed item
+     * without treating its client supplied id as a new price or fee source.
+     *
+     * @return Collection<int, FeesClassType>
+     */
+    public function configuredAdditionalItems(Students $student): Collection
+    {
+        $this->assertStudentShape($student);
+        $query = FeesClassType::query()->with(['fee', 'fees_type'])
+            ->where('class_id', $this->studentClassId($student))
+            ->where('school_id', $student->school_id)
+            ->where('optional', true);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
+
+        return $query->get()
+            ->filter(fn (FeesClassType $item) => $item->fee !== null && $item->fee->getRawOriginal('deleted_at') === null && (int) $item->fee->session_year_id === (int) $student->session_year_id)
+            ->values();
     }
 
     /** @param list<mixed> $requestedOptionalIds */

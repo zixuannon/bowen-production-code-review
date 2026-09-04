@@ -166,12 +166,67 @@ final class CentralFinanceSchoolStaffIdentityService
             && CentralFinanceSchoolStaffIdentity::on('mysql')->where(['central_user_id' => $principal->id, 'school_id' => $principal->getRawOriginal('school_id'), 'status' => 'active'])->exists();
     }
 
+    /**
+     * Run one internal School-Finance operation as the tenant Staff member
+     * behind an already verified School Staff Central principal.  Request data
+     * never supplies either a tenant id or a database name.
+     *
+     * @template T
+     * @param callable(User, School):T $operation
+     * @return T
+     */
+    public function executeAsTenantIdentity(CentralFinanceUser $principal, School $school, callable $operation): mixed
+    {
+        $principal = CentralFinanceUser::on('mysql')->findOrFail($principal->id);
+        if (!$this->isActivePrincipal($principal)
+            || (int) $principal->getRawOriginal('school_id') !== (int) $school->id) {
+            throw new AuthorizationException('The School Staff Finance identity is not authorized.');
+        }
+
+        $identity = CentralFinanceSchoolStaffIdentity::on('mysql')->where([
+            'central_user_id' => $principal->id,
+            'school_id' => $school->id,
+            'status' => 'active',
+        ])->first();
+        if ($identity === null) {
+            throw new AuthorizationException('The School Staff Finance identity is not authorized.');
+        }
+
+        return $this->inSchool($school, function () use ($identity, $school, $operation) {
+            if (!Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')) {
+                throw new AuthorizationException('This School requires the Central Finance Staff UUID migration.');
+            }
+            $tenant = User::on('school')->where([
+                'school_id' => $school->id,
+                'central_finance_source_uuid' => $identity->tenant_user_uuid,
+            ])->whereNull('deleted_at')->first();
+            if ($tenant === null) {
+                throw new AuthorizationException('The mapped School Staff user is unavailable.');
+            }
+
+            return $operation($tenant, $school);
+        });
+    }
+
     /** @template T @param callable():T $callback @return T */
     private function inSchool(School $school, callable $callback): mixed
     {
         $original = Config::get('database.connections.school.database');
-        try { Config::set('database.connections.school.database', $school->database_name); DB::purge('school'); return $callback(); }
-        finally { Config::set('database.connections.school.database', $original); DB::purge('school'); }
+        $default = DB::getDefaultConnection();
+        $connection = session('db_connection_name');
+        try {
+            Config::set('database.connections.school.database', $school->database_name);
+            DB::purge('school');
+            DB::connection('school')->reconnect();
+            DB::setDefaultConnection('school');
+            session(['db_connection_name' => 'school']);
+            return $callback();
+        } finally {
+            DB::purge('school');
+            Config::set('database.connections.school.database', $original);
+            DB::setDefaultConnection($default);
+            if ($connection === null) session()->forget('db_connection_name'); else session(['db_connection_name' => $connection]);
+        }
     }
 
     /** @return array<int, string> */

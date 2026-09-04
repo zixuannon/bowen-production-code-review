@@ -8,6 +8,7 @@ use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
 use App\Services\CentralFinanceCurrencySummaryService;
+use App\Services\CentralFinanceOptionalFeeAssignmentService;
 use App\Services\CentralFinancePaymentService;
 use App\Services\CentralFinanceReceiptViewModelFactory;
 use App\Services\CentralFinanceSchoolCutoverService;
@@ -28,6 +29,7 @@ use Illuminate\View\View;
 final class CentralFinanceStudentCollectionController extends Controller
 {
     private const ATTEMPTS_SESSION_KEY = 'central_finance_student_collection_attempts';
+    private const OPTIONAL_ATTEMPTS_SESSION_KEY = 'central_finance_student_optional_item_attempts';
 
     public function __construct(
         private readonly CentralFinanceWorkspaceService $workspace,
@@ -35,6 +37,7 @@ final class CentralFinanceStudentCollectionController extends Controller
         private readonly CentralFinanceSchoolCutoverService $cutovers,
         private readonly CentralFinanceCurrencySummaryService $currencySummaries,
         private readonly CentralFinanceReceiptViewModelFactory $receiptViewModels,
+        private readonly CentralFinanceOptionalFeeAssignmentService $optionalFees,
     ) {}
 
     public function collection(Request $request): View
@@ -81,8 +84,22 @@ final class CentralFinanceStudentCollectionController extends Controller
         $canCollect = $this->canCollect($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
+        $optionalItems = collect();
+        $optionalAttemptUuid = null;
+        if ($canCollect) {
+            try {
+                $optionalItems = $this->optionalFees->eligible($actor, $profile);
+                if ($optionalItems->isNotEmpty()) {
+                    $optionalAttemptUuid = (string) Str::uuid();
+                    $this->storeOptionalAttempt($optionalAttemptUuid, $actor, $school->id, $profile->id);
+                }
+            } catch (AuthorizationException) {
+                // A read-capable Principal or an unavailable mapped Head
+                // tenant identity must never turn this read page into a 500.
+            }
+        }
 
-        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'cutoverStatus', 'schoolFinanceFacade'));
+        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'cutoverStatus', 'schoolFinanceFacade', 'optionalItems', 'optionalAttemptUuid'));
     }
 
     public function review(int $profile, int $receivable): View
@@ -140,6 +157,27 @@ final class CentralFinanceStudentCollectionController extends Controller
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
 
         return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt', 'cutoverStatus', 'schoolFinanceFacade'));
+    }
+
+    public function addOptionalItems(Request $request, int $profile): RedirectResponse
+    {
+        [$actor, $school] = $this->operatingContext();
+        $profile = $this->profileForSchool($profile, $school->id);
+        $data = $request->validate([
+            'optional_attempt_uuid' => ['required', 'uuid'],
+            'optional_fee_ids' => ['required', 'array', 'min:1'],
+            'optional_fee_ids.*' => ['required', 'integer'],
+        ]);
+        $attempt = $this->assertOptionalAttempt($data['optional_attempt_uuid'], $actor, $school->id, $profile->id);
+        if (!empty($attempt['receivableIds'])) {
+            return redirect()->route('central-finance.student-collection.show', $profile->id)
+                ->with('success', __('Optional fee items are already available in Student Collection.'));
+        }
+        $receivables = $this->optionalFees->add($actor, $profile, $data['optional_fee_ids']);
+        session()->put(self::OPTIONAL_ATTEMPTS_SESSION_KEY.'.'.$data['optional_attempt_uuid'].'.receivableIds', $receivables->pluck('id')->all());
+
+        return redirect()->route('central-finance.student-collection.show', $profile->id)
+            ->with('success', __('Optional fee items were added to Student Collection.'));
     }
 
     /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */
@@ -203,5 +241,21 @@ final class CentralFinanceStudentCollectionController extends Controller
             && (int) ($attempt['schoolId'] ?? 0) === $schoolId
             && (int) ($attempt['profileId'] ?? 0) === $profileId
             && (int) ($attempt['receivableId'] ?? 0) === $receivableId, 403);
+    }
+
+    private function storeOptionalAttempt(string $attemptUuid, CentralFinanceUser $actor, int $schoolId, int $profileId): void
+    {
+        session()->put(self::OPTIONAL_ATTEMPTS_SESSION_KEY.'.'.$attemptUuid, compact('schoolId', 'profileId') + ['actorId' => $actor->id]);
+    }
+
+    /** @return array<string,mixed> */
+    private function assertOptionalAttempt(string $attemptUuid, CentralFinanceUser $actor, int $schoolId, int $profileId): array
+    {
+        $attempt = session(self::OPTIONAL_ATTEMPTS_SESSION_KEY.'.'.$attemptUuid);
+        abort_unless(is_array($attempt)
+            && (int) ($attempt['actorId'] ?? 0) === (int) $actor->id
+            && (int) ($attempt['schoolId'] ?? 0) === $schoolId
+            && (int) ($attempt['profileId'] ?? 0) === $profileId, 403);
+        return $attempt;
     }
 }
