@@ -101,6 +101,34 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame(['ZIX-CASH'],$workspace->accessibleAccounts($this->zixuanAccountant,1)->pluck('account_code')->all());
     }
 
+    public function test_hq_funding_workspace_is_head_finance_only_even_for_an_operating_school_accountant(): void
+    {
+        $this->actingAs($this->zixuanAccountant);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);
+
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceWorkspaceController::class)->funding();
+    }
+
+    public function test_hq_funding_mutations_cannot_bypass_the_head_finance_workspace_gate(): void
+    {
+        $this->actingAs($this->zixuanAccountant);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);
+        $controller = app(CentralFinanceWorkspaceController::class);
+
+        foreach ([
+            fn () => $controller->storeFunding(new Request()),
+            fn () => $controller->resolveFunding(new Request(), 999999, 'cancel'),
+        ] as $attempt) {
+            try {
+                $attempt();
+                $this->fail('A School Accountant must not bypass the HQ Funding authorization gate.');
+            } catch (AuthorizationException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_workspace_routes_and_ui_have_no_tenant_operating_context_dependency(): void
     {
         foreach(['central-finance.dashboard','central-finance.receivables','central-finance.student-ledger','central-finance.payments.index','central-finance.operations','central-finance.accounts','central-finance.accounts.report','central-finance.staff','central-finance.categories','central-finance.audits','central-finance.transfers','central-finance.handovers','central-finance.funding','central-finance.ledger','central-finance.reports'] as $name) $this->assertNotNull(app('router')->getRoutes()->getByName($name));

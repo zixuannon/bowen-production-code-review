@@ -165,6 +165,7 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function funding(?Request $request = null): View
     {
+        $this->currentHeadFinanceOperatingContext();
         return $this->render('funding', $request ?? request());
     }
 
@@ -781,14 +782,14 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function storeFunding(Request $request): RedirectResponse
     {
-        [$actor,$school]=$this->currentOperatingContext(); $data=$request->validate(['source_account_id'=>['required','integer'],'destination_account_id'=>['required','integer','different:source_account_id'],'amount'=>['required','numeric','gt:0'],'reference_no'=>['nullable','string','max:100']]);
+        [$actor,$school]=$this->currentHeadFinanceOperatingContext(); $data=$request->validate(['source_account_id'=>['required','integer'],'destination_account_id'=>['required','integer','different:source_account_id'],'amount'=>['required','numeric','gt:0'],'reference_no'=>['nullable','string','max:100']]);
         $this->funding->request($actor,$school->id,CentralFinanceFundAccount::on('mysql')->findOrFail($data['source_account_id']),CentralFinanceFundAccount::on('mysql')->findOrFail($data['destination_account_id']),(float)$data['amount'],CarbonImmutable::now(),$this->workspace->idempotencyReference('ui-funding'),$data['reference_no'] ?? null);
         return back()->with('success', __('Central HQ Funding is pending.'));
     }
 
     public function resolveFunding(Request $request, int $funding, string $action): RedirectResponse
     {
-        [$actor,$school]=$this->currentOperatingContext(); $document=CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$school->id)->findOrFail($funding);
+        [$actor,$school]=$this->currentHeadFinanceOperatingContext(); $document=CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$school->id)->findOrFail($funding);
         if ($action === 'confirm') $this->funding->confirm($actor,$document->id,CarbonImmutable::now());
         elseif ($action === 'reject') $this->funding->reject($actor,$document->id,$request->validate(['reason'=>['required','string','max:255']])['reason'],CarbonImmutable::now());
         else $this->funding->cancel($actor,$document->id,$request->validate(['reason'=>['required','string','max:255']])['reason'],CarbonImmutable::now());
@@ -797,6 +798,13 @@ final class CentralFinanceWorkspaceController extends Controller
 
     /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */
     private function currentOperatingContext(): array { $actor=$this->actor(); return [$actor,$this->workspace->requireOperatingSchool($actor)]; }
+    /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */
+    private function currentHeadFinanceOperatingContext(): array
+    {
+        [$actor, $school] = $this->currentOperatingContext();
+        $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $school);
+        return [$actor, $school];
+    }
     private function actor(): CentralFinanceUser { $user=Auth::user(); abort_unless($user,403); return $this->workspace->actor($user); }
 
     /** @return array{0:CentralFinanceUser,1:?\App\Models\School,2:\Illuminate\Support\Collection,3:\Illuminate\Support\Collection,4:array<string,mixed>} */

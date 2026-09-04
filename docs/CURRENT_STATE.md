@@ -14,6 +14,17 @@ Last updated: 2026-08-25
 
 Finance V2
 
+## Phase 4A — Zixuan daily Finance navigation
+
+- Zixuan (`SCH202615`) uses the Central Finance daily read workspace after
+  cutover; tenant Fee Setup remains the canonical School/Tenant workspace.
+- Legacy School Finance remains available only for historical/read-only data
+  with server-side legacy write guards. Current Central and legacy totals are
+  not combined.
+- HQ / School Funding is a Head Finance-only workflow. School Accountants do
+  not receive the menu entry and its direct workspace or mutation endpoints
+  are server-authorized as 403.
+
 ## Pending local change — selected-School read parity and receipt branding
 
 - A selected Central Finance School now has a strict **read** account scope:
