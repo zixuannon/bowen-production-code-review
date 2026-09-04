@@ -22,6 +22,17 @@ final class CentralFinanceSchoolFinanceNavigationService
         // configuration may be restored before rendering, so prefer this
         // trusted session context over an ambient/default connection.
         $context = session(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+        if (is_array($context)) {
+            try {
+                $principal = app(CentralFinanceSchoolStaffIdentityService::class)->resolveTrustedSession($context);
+                $school = app(CentralFinanceWorkspaceService::class)->currentSchool($principal);
+                if ($school !== null) {
+                    return $school;
+                }
+            } catch (\Throwable) {
+                // Fall through to the session's registry key/database lookup.
+            }
+        }
         $schoolId = is_array($context) ? (int) ($context['school_id'] ?? 0) : 0;
         if ($schoolId > 0) {
             $school = School::on('mysql')->whereKey($schoolId)->first();

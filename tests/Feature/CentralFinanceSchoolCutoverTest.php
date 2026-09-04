@@ -20,6 +20,7 @@ use Tests\TestCase;
 final class CentralFinanceSchoolCutoverTest extends TestCase
 {
     private string $database;
+    private string $schoolStaffUuid;
     private CentralFinanceUser $headFinance;
 
     protected function setUp(): void
@@ -54,7 +55,8 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         DB::connection('mysql')->table('central_finance_fund_account_opening_balance_audits')->insert(['fund_account_id'=>1,'change_type'=>'initial','new_opening_balance'=>0,'effective_date'=>'2026-08-21','reason'=>'Signed zero opening','created_by'=>100,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>100,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>101,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
-        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>(string) Str::uuid(),'school_id'=>1,'tenant_user_uuid'=>(string) Str::uuid(),'central_user_id'=>101,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+        $this->schoolStaffUuid = (string) Str::uuid();
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>(string) Str::uuid(),'school_id'=>1,'tenant_user_uuid'=>$this->schoolStaffUuid,'central_user_id'=>101,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
             ['school_id'=>1,'status'=>'legacy','receivable_sync_effective_at'=>'2026-08-21 00:00:00','receivable_sync_effective_by'=>100,'receivable_sync_effective_reason'=>'Approved Fresh Start QA boundary','created_at'=>now(),'updated_at'=>now()],
             ['school_id'=>2,'status'=>'legacy','receivable_sync_effective_at'=>'2026-08-21 00:00:00','receivable_sync_effective_by'=>100,'receivable_sync_effective_reason'=>'Approved Fresh Start QA boundary','created_at'=>now(),'updated_at'=>now()],
@@ -120,7 +122,7 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         // saved this trusted context. It must not fall back to a default or
         // stale tenant connection when the config value is no longer present.
         Config::set('database.connections.school.database', '');
-        app('session')->put(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY, ['school_id' => 1, 'user_uuid' => (string) Str::uuid()]);
+        app('session')->put(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY, ['school_id' => 1, 'user_uuid' => $this->schoolStaffUuid]);
         app('session')->put('school_database_name', 'local_zixuan');
         $this->assertSame(1, (int) session(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY)['school_id']);
         $this->assertSame(1, $navigation->currentTenantSchool()?->id);
