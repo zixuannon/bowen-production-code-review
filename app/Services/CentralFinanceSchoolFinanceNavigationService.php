@@ -17,6 +17,19 @@ final class CentralFinanceSchoolFinanceNavigationService
 
     public function currentTenantSchool(): ?School
     {
+        // A School Login records this value only after a validated School Code
+        // has selected its single tenant.  On sidebar requests the connection
+        // configuration may be restored before rendering, so prefer this
+        // trusted session context over an ambient/default connection.
+        $context = session(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+        $schoolId = is_array($context) ? (int) ($context['school_id'] ?? 0) : 0;
+        if ($schoolId > 0) {
+            $school = School::on('mysql')->whereKey($schoolId)->first();
+            if ($school !== null) {
+                return $school;
+            }
+        }
+
         $database = trim((string) config('database.connections.school.database'));
         if ($database === '') {
             return null;
