@@ -149,6 +149,23 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 - This change is local only and includes an additive tenant migration that has
   been exercised against disposable SQLite. Production is untouched.
 
+## Zixuan Student Import V2.1 — simplified template (local implementation)
+
+- The official Zixuan V2.1 XLSX uses one human-readable Student Name and one
+  Guardian Name instead of culturally unsafe first/last-name splitting. It
+  keeps only Student Code, placement, core identity/contact fields, optional
+  Student Mobile and optional Guardian Email, Notes, and supported configured
+  custom fields. Payment and fee-amount columns are absent.
+- A tenant additive, forward-only migration makes `users.email` and
+  `users.last_name` nullable and adds `students.notes`; existing users are not
+  rewritten. Email remains required by existing School Admin, Staff, Teacher,
+  Finance Staff, and login validation flows.
+- V2.1 reuses a Guardian only when a real Email is supplied. Email-less rows
+  emit only a possible-match warning and always create a new Guardian, never
+  mutate an existing profile. Preview stays cache-only; Confirm continues to
+  use the canonical compulsory assignment and Central Receivable flow with no
+  Payment, Receipt, Ledger, or Fund Account effect.
+
 ## Student Code School UI — local implementation
 
 - Student Code is now an independent tenant-local School + code identity for

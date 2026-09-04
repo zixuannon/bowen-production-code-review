@@ -24,6 +24,7 @@ class Students extends Model
         'admission_no',
         'roll_number',
         'admission_date',
+        'notes',
         'guardian_id',
         'school_id',
         'session_year_id',
@@ -228,7 +229,10 @@ class Students extends Model
     {
         $fullName = '';
         if ($this->relationLoaded('user')) {
-            $fullName .= $this->user->first_name . ' ' . $this->user->last_name;
+            $fullName .= trim(implode(' ', array_filter([
+                $this->user->first_name,
+                $this->user->last_name,
+            ], static fn ($part): bool => $part !== null && $part !== '')));
         }
         return $fullName;
     }

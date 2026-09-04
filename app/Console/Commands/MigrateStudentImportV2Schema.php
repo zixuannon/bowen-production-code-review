@@ -13,6 +13,7 @@ final class MigrateStudentImportV2Schema extends Command
 {
     public const SCHOOL_CODE = 'SCH202615';
     public const TENANT_MIGRATION = '2026_09_03_000001_create_student_import_identities_table';
+    public const TENANT_V21_MIGRATION = '2026_09_03_000002_make_student_import_v21_identity_fields_nullable';
     public const CENTRAL_MIGRATION = '2026_09_03_000002_add_student_code_to_central_finance_student_profiles';
 
     protected $signature = 'student-import-v2:migrate {--execute : Apply only the exact additive Zixuan V2 migrations}';
@@ -32,7 +33,8 @@ final class MigrateStudentImportV2Schema extends Command
             if (!$this->option('execute')) return self::SUCCESS;
             if ($central === 'eligible' && !$this->migrate('mysql', database_path('migrations/'.self::CENTRAL_MIGRATION.'.php'))) return self::FAILURE;
             if ($this->centralState() !== 'complete') return $this->fail('Central Student Import V2 migration did not verify.');
-            if ($tenant === 'eligible' && !$this->migrate('school', database_path('migrations/schools/'.self::TENANT_MIGRATION.'.php'))) return self::FAILURE;
+            if (!$this->tenantMigration(self::TENANT_MIGRATION) && !$this->migrate('school', database_path('migrations/schools/'.self::TENANT_MIGRATION.'.php'))) return self::FAILURE;
+            if (!$this->tenantMigration(self::TENANT_V21_MIGRATION) && !$this->migrate('school', database_path('migrations/schools/'.self::TENANT_V21_MIGRATION.'.php'))) return self::FAILURE;
             return $this->tenantState() === 'complete' ? self::SUCCESS : $this->fail('Zixuan Student Import V2 tenant migration did not verify.');
         } catch (\Throwable $exception) {
             return $this->fail('Student Import V2 migration preflight failed: '.get_class($exception));
@@ -59,9 +61,25 @@ final class MigrateStudentImportV2Schema extends Command
     }
     private function tenantState(): string
     {
-        $recorded = DB::connection('school')->table('migrations')->where('migration', self::TENANT_MIGRATION)->exists();
+        $recorded = $this->tenantMigration(self::TENANT_MIGRATION);
+        $v21Recorded = $this->tenantMigration(self::TENANT_V21_MIGRATION);
         $table = Schema::connection('school')->hasTable('student_import_identities');
-        return !$recorded && !$table ? 'eligible' : ($recorded && $table && $this->identityIndex() ? 'complete' : 'unexpected');
+        $notes = Schema::connection('school')->hasColumn('students', 'notes');
+        if ($recorded && $table && $this->identityIndex() && $v21Recorded && $this->v21Fields()) return 'complete';
+        if ((!$recorded && !$table && !$v21Recorded && !$notes) || ($recorded && $table && $this->identityIndex() && !$v21Recorded && !$notes)) return 'eligible';
+        return 'unexpected';
+    }
+    private function tenantMigration(string $migration): bool { return DB::connection('school')->table('migrations')->where('migration', $migration)->exists(); }
+    private function v21Fields(): bool
+    {
+        try {
+            $columns = collect(Schema::connection('school')->getColumns('users'))->keyBy('name');
+            return Schema::connection('school')->hasColumn('students', 'notes')
+                && (bool) ($columns->get('email')['nullable'] ?? false)
+                && (bool) ($columns->get('last_name')['nullable'] ?? false);
+        } catch (\Throwable) {
+            return false;
+        }
     }
     private function identityIndex(): bool
     {

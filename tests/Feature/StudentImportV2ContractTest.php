@@ -12,6 +12,8 @@ use Illuminate\Http\UploadedFile;
 use Maatwebsite\Excel\Excel as ExcelFormat;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Tests\TestCase;
 
 final class StudentImportV2ContractTest extends TestCase
@@ -35,7 +37,7 @@ final class StudentImportV2ContractTest extends TestCase
         @unlink($this->schoolDatabase);
         parent::tearDown();
     }
-    public function test_template_requires_a_text_student_code_and_preserves_the_v2_admission_fields(): void
+    public function test_v21_template_keeps_only_school_admin_fields_and_preserves_text_safe_identity_values(): void
     {
         $export = new StudentImportV2TemplateExport(
             [['id' => 31, 'name' => 'Grade 1 - A']],
@@ -43,9 +45,8 @@ final class StudentImportV2ContractTest extends TestCase
             [['name' => 'Nationality', 'type' => 'dropdown', 'required' => true, 'values' => ['Myanmar', 'China']]],
         );
         $this->assertSame([
-            'Student Code', 'First Name', 'Last Name', 'Mobile', 'Gender', 'Date of Birth', 'Admission Date',
-            'Current Address', 'Permanent Address', 'Guardian Email', 'Guardian First Name',
-            'Guardian Last Name', 'Guardian Mobile', 'Guardian Gender', 'Class Section', 'Academic Year', 'Nationality',
+            'Student Code *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期', '学生电话',
+            '家长/监护人姓名 *', '家长/监护人电话 *', '家长 Email', '备注', 'Nationality',
         ], $export->headings());
 
         $path = tempnam(sys_get_temp_dir(), 'student-import-v2-');
@@ -55,23 +56,23 @@ final class StudentImportV2ContractTest extends TestCase
             $this->assertSame('Import', $book->getSheet(0)->getTitle());
             $this->assertSame(['Import', 'Class Sections', 'Academic Years', 'Custom Fields', 'Validation Lists'], $book->getSheetNames());
             $sheet = $book->getSheet(0);
-            $this->assertSame('Student Code', (string) $sheet->getCell('A1')->getValue());
+            $this->assertSame('Student Code *', (string) $sheet->getCell('A1')->getValue());
             $this->assertSame('@', $sheet->getStyle('A2')->getNumberFormat()->getFormatCode());
-            $this->assertSame('@', $sheet->getStyle('D2')->getNumberFormat()->getFormatCode());
-            $this->assertSame('@', $sheet->getStyle('M2')->getNumberFormat()->getFormatCode());
-            $this->assertSame('=StudentImportClassSections', $sheet->getCell('O2')->getDataValidation()->getFormula1());
-            $this->assertSame('=StudentImportAcademicYears', $sheet->getCell('P2')->getDataValidation()->getFormula1());
+            $this->assertSame('@', $sheet->getStyle('H2')->getNumberFormat()->getFormatCode());
+            $this->assertSame('@', $sheet->getStyle('J2')->getNumberFormat()->getFormatCode());
+            $this->assertSame('=StudentImportClassSections', $sheet->getCell('C2')->getDataValidation()->getFormula1());
+            $this->assertSame('=StudentImportAcademicYears', $sheet->getCell('D2')->getDataValidation()->getFormula1());
             $this->assertSame('=StudentImportGenders', $sheet->getCell('E2')->getDataValidation()->getFormula1());
             $this->assertSame(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN, $book->getSheetByName('Validation Lists')->getSheetState());
             $sheet->setCellValueExplicit('A2', '00125', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            $sheet->setCellValueExplicit('D2', '0912345678', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('H2', '0912345678', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
             $book->disconnectWorksheets();
             $book = IOFactory::load($path);
             $sheet = $book->getSheetByName('Import');
             $this->assertSame('00125', (string) $sheet->getCell('A2')->getValue());
-            $this->assertSame('0912345678', (string) $sheet->getCell('D2')->getValue());
-            $this->assertSame('=StudentImportClassSections', $sheet->getCell('O2')->getDataValidation()->getFormula1());
+            $this->assertSame('0912345678', (string) $sheet->getCell('H2')->getValue());
+            $this->assertSame('=StudentImportClassSections', $sheet->getCell('C2')->getDataValidation()->getFormula1());
         } finally {
             $book->disconnectWorksheets();
             @unlink($path);
@@ -139,6 +140,70 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringContainsString("'file' => ['required', 'file', 'mimes:xlsx'", $controller);
         $this->assertStringContainsString('accept=".xlsx"', $view);
         $this->assertStringNotContainsString('name="school_code"', $view);
+    }
+
+    public function test_v21_contract_uses_single_names_and_never_fakes_or_fuzzy_merges_email_less_guardians(): void
+    {
+        $source = file_get_contents(app_path('Services/StudentImportV2Service.php'));
+        $users = file_get_contents(app_path('Services/UserService.php'));
+        $migration = file_get_contents(database_path('migrations/schools/2026_09_03_000002_make_student_import_v21_identity_fields_nullable.php'));
+
+        $this->assertStringContainsString('SIMPLIFIED_REQUIRED_HEADERS', $source);
+        $this->assertStringContainsString('Possible existing Guardian match', $source);
+        $this->assertStringContainsString('createGuardianForStudentImport', $source);
+        $this->assertStringContainsString("'last_name' => null", $users);
+        $this->assertStringContainsString('\'email\' => $email', $users);
+        $this->assertStringContainsString("string('email')->nullable()->change()", $migration);
+        $this->assertStringContainsString("string('last_name', 128)->nullable()->change()", $migration);
+        $this->assertStringNotContainsString('no-email@', $source.$users);
+    }
+
+    public function test_staff_and_login_email_contracts_remain_required_after_nullable_student_guardian_schema_change(): void
+    {
+        $staffImport = file_get_contents(app_path('Imports/StaffImport.php'));
+        $teacherImport = file_get_contents(app_path('Imports/TeacherImport.php'));
+        $financeStaff = file_get_contents(app_path('Http/Controllers/FinanceStaffController.php'));
+        $login = file_get_contents(app_path('Http/Controllers/Auth/LoginController.php'));
+
+        $this->assertStringContainsString("'*.email'      => 'required|email'", $staffImport);
+        $this->assertStringContainsString("'*.email'             => 'required|email'", $teacherImport);
+        $this->assertStringContainsString("'email'=>['required','email'", $financeStaff);
+        $this->assertStringContainsString("'email' => 'required|string'", $login);
+    }
+
+    public function test_simplified_workbook_parser_accepts_single_names_and_optional_contact_fields_without_formula_or_number_coercion(): void
+    {
+        $book = new Spreadsheet();
+        $sheet = $book->getActiveSheet();
+        $sheet->fromArray(StudentImportV2TemplateExport::HEADINGS, null, 'A1');
+        $sheet->setCellValueExplicit('A2', '00125', DataType::TYPE_STRING);
+        $sheet->setCellValue('B2', '张 三');
+        $sheet->setCellValue('C2', 'Grade 1 - A');
+        $sheet->setCellValue('D2', '2026');
+        $sheet->setCellValue('G2', '2026-09-03');
+        $sheet->setCellValueExplicit('H2', '0912345678', DataType::TYPE_STRING);
+        $sheet->setCellValue('I2', '王 母亲');
+        $sheet->setCellValueExplicit('J2', '0998765432', DataType::TYPE_STRING);
+        $path = tempnam(sys_get_temp_dir(), 'student-import-v21-parser-');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
+
+        try {
+            $uploaded = new UploadedFile($path, 'Student_Import_V2_1.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+            $service = app(StudentImportV2Service::class);
+            $readRows = new \ReflectionMethod($service, 'readRows');
+            $readRows->setAccessible(true);
+            $rows = $readRows->invoke($service, $uploaded);
+            $this->assertSame('00125', $rows[0]['student_code']);
+            $this->assertSame('张 三', $rows[0]['student_name']);
+            $this->assertSame('0912345678', $rows[0]['mobile']);
+            $this->assertSame('0998765432', $rows[0]['guardian_mobile']);
+            $this->assertSame('', $rows[0]['guardian_email'] ?? '');
+            $this->assertSame('', $rows[0]['gender'] ?? '');
+            $this->assertSame('', $rows[0]['date_of_birth'] ?? '');
+        } finally {
+            $book->disconnectWorksheets();
+            @unlink($path);
+        }
     }
 
     public function test_identity_migration_keeps_school_plus_text_code_unique_without_replacing_legacy_identifiers(): void

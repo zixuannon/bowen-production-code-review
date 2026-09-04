@@ -50,6 +50,17 @@ When unrelated pending migrations exist, use targeted migration paths rather tha
 
 Verify each tenant after migration.
 
+### Zixuan Student Import V2.1 targeted runner
+
+`student-import-v2:migrate` is verification-only by default and is limited to
+the trusted Zixuan registry code `SCH202615`. The V2.1 tenant migration is
+forward-only: it makes `users.email` and `users.last_name` nullable and adds
+`students.notes`, without rewriting historical users or Finance records.
+Before any approved execution, verify a tenant backup, the exact migration
+history, nullable column state, and the `students.notes` column. Do not use a
+broad tenant migrate command or run its `--execute` option without a Production
+deployment/migration Human Gate.
+
 ### Finance P2/P3 targeted runner
 
 `finance:p2-p3-migration-safety` is the only approved runner for the P2/P3

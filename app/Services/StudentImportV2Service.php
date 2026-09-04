@@ -34,7 +34,13 @@ final class StudentImportV2Service
     private const CACHE_PREFIX = 'student-import-v2:';
 
     /** @var list<string> */
-    private const REQUIRED_HEADERS = [
+    private const SIMPLIFIED_REQUIRED_HEADERS = [
+        'student_code', 'student_name', 'class_section', 'academic_year',
+        'admission_date', 'guardian_name', 'guardian_mobile',
+    ];
+
+    /** V2.0 upload compatibility is retained while V2.1 is the downloaded template. */
+    private const LEGACY_REQUIRED_HEADERS = [
         'student_code', 'first_name', 'last_name', 'gender', 'date_of_birth',
         'admission_date', 'current_address', 'permanent_address', 'guardian_email',
         'guardian_first_name', 'guardian_last_name', 'guardian_mobile', 'guardian_gender', 'class_section', 'academic_year',
@@ -146,21 +152,14 @@ final class StudentImportV2Service
                 $this->assertStudentCapacity($actor);
                 [$sessionYear, $classSection] = $this->placementById($actor, (int) $row['academic_year_id'], (int) $row['class_section_id']);
                 $this->assertCompulsorySetup($actor, $sessionYear, $classSection);
-                $guardian = User::query()->role('Guardian')->where('school_id', $actor->school_id)->where('email', $row['guardian_email'])->first();
-                if ($guardian === null) {
-                    if (User::query()->where('school_id', $actor->school_id)->where('email', $row['guardian_email'])->exists()) {
-                        throw ValidationException::withMessages(['guardian_email' => 'Guardian Email belongs to a non-Guardian user in this School.']);
-                    }
-                    $guardian = app(UserService::class)->createOrUpdateParent(
-                        $row['guardian_first_name'], $row['guardian_last_name'], $row['guardian_email'],
-                        $row['guardian_mobile'], $row['guardian_gender']
-                    );
-                }
+                $guardian = app(UserService::class)->createGuardianForStudentImport(
+                    $row['guardian_name'], $row['guardian_email'] ?: null, $row['guardian_mobile']
+                );
                 $admissionNo = $this->legacyAdmissionNo($actor, $sessionYear);
                 $studentUser = app(UserService::class)->createStudentUser(
-                    $row['first_name'], $row['last_name'], $admissionNo, $row['mobile'] ?: null,
+                    $row['student_first_name'], $row['student_last_name'], $admissionNo, $row['mobile'] ?: null,
                     $row['date_of_birth'], $row['gender'], null, $classSection->id, $row['admission_date'],
-                    $row['current_address'], $row['permanent_address'], $sessionYear->id, $guardian->id, $row['custom_fields'] ?? [], 1, false
+                    null, null, $sessionYear->id, $guardian->id, $row['custom_fields'] ?? [], 1, false, $row['notes'] ?: null
                 );
                 $student = Students::query()->where('user_id', $studentUser->id)->lockForUpdate()->firstOrFail();
                 app(StudentCodeService::class)->assign($student, $actor, $row['student_code']);
@@ -214,10 +213,8 @@ final class StudentImportV2Service
         // blank stay blank rows; formula identities are separately rejected.
         $raw = $sheet->toArray(null, true, false, false);
         if ($raw === []) throw ValidationException::withMessages(['file' => 'The workbook is empty.']);
-        $headers = array_map(fn ($value) => $this->header((string) $value), array_shift($raw));
-        foreach (self::REQUIRED_HEADERS as $required) if (!in_array($required, $headers, true)) {
-            throw ValidationException::withMessages(['file' => "Student Import V2 requires the {$required} column."]);
-        }
+        $headers = array_map(fn ($value) => $this->canonicalHeader((string) $value), array_shift($raw));
+        $this->assertHeaderContract($headers);
         $rows = [];
         foreach ($raw as $rowIndex => $values) {
             $row = [];
@@ -241,25 +238,39 @@ final class StudentImportV2Service
         $warnings = [];
         foreach (($row['__formula_errors'] ?? []) as $column) $errors[] = ucfirst($column).' must be a literal Text value, not an Excel formula.';
         $code = $this->text($row['student_code'] ?? null, 'Student Code', $errors, true);
-        $mobile = $this->phone($row['mobile'] ?? null, 'Mobile', $errors, false);
+        $mobile = $this->phone($row['mobile'] ?? null, 'Student Mobile', $errors, false);
         $guardianMobile = $this->phone($row['guardian_mobile'] ?? null, 'Guardian Mobile', $errors, true);
+        $isLegacy = !array_key_exists('student_name', $row);
+        $studentFirstName = $isLegacy
+            ? $this->requiredText($row['first_name'] ?? null, 'First Name', $errors)
+            : $this->requiredText($row['student_name'] ?? null, 'Student Name', $errors);
+        $studentName = $isLegacy
+            ? $this->legacyName($row['first_name'] ?? null, $row['last_name'] ?? null, 'Student Name', $errors)
+            : $studentFirstName;
+        $guardianName = $isLegacy
+            ? $this->legacyName($row['guardian_first_name'] ?? null, $row['guardian_last_name'] ?? null, 'Guardian Name', $errors)
+            : $this->requiredText($row['guardian_name'] ?? null, 'Guardian Name', $errors);
         $prepared = [
-            'line' => $line, 'student_code' => $code, 'first_name' => $this->requiredText($row['first_name'] ?? null, 'First Name', $errors),
-            'last_name' => $this->requiredText($row['last_name'] ?? null, 'Last Name', $errors), 'mobile' => $mobile,
-            'gender' => $this->gender($row['gender'] ?? null, 'Gender', $errors),
-            'date_of_birth' => $this->date($row['date_of_birth'] ?? null, 'Date of Birth', $errors),
+            'line' => $line, 'student_code' => $code, 'student_name' => $studentName,
+            'student_first_name' => $studentFirstName,
+            // V2.1 preserves the supplied cultural full name without splitting it.
+            'student_last_name' => $isLegacy ? trim((string) ($row['last_name'] ?? '')) ?: null : null,
+            'mobile' => $mobile,
+            'gender' => $this->gender($row['gender'] ?? null, 'Gender', $errors, false),
+            'date_of_birth' => $this->optionalDate($row['date_of_birth'] ?? null, 'Date of Birth', $errors),
             'admission_date' => $this->date($row['admission_date'] ?? null, 'Admission Date', $errors),
-            'current_address' => $this->requiredText($row['current_address'] ?? null, 'Current Address', $errors),
-            'permanent_address' => $this->requiredText($row['permanent_address'] ?? null, 'Permanent Address', $errors),
             'guardian_email' => strtolower(trim((string) ($row['guardian_email'] ?? ''))),
-            'guardian_first_name' => $this->requiredText($row['guardian_first_name'] ?? null, 'Guardian First Name', $errors),
-            'guardian_last_name' => $this->requiredText($row['guardian_last_name'] ?? null, 'Guardian Last Name', $errors),
-            'guardian_mobile' => $guardianMobile, 'guardian_gender' => $this->gender($row['guardian_gender'] ?? null, 'Guardian Gender', $errors),
+            'guardian_name' => $guardianName,
+            'guardian_mobile' => $guardianMobile,
+            'notes' => trim((string) ($row['notes'] ?? '')),
         ];
         $placement = $this->placementByName($row, $classSections, $academicYears, $errors);
         $prepared = array_merge($prepared, $placement);
         $prepared['custom_fields'] = $this->customFields($row, $customFields, $errors);
-        if (!filter_var($prepared['guardian_email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Guardian Email must be valid.';
+        if ($prepared['guardian_email'] !== '' && !filter_var($prepared['guardian_email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Guardian Email must be valid.';
+        if ($prepared['guardian_email'] === '' && $prepared['guardian_name'] !== '' && $prepared['guardian_mobile'] !== '') {
+            $warnings[] = 'Possible existing Guardian match: import will create a new Guardian because no Email was supplied.';
+        }
         if ($code !== '' && isset($seen[$code])) $warnings[] = 'Duplicate Student Code in this workbook.';
         if ($code !== '' && $this->identityExists($actor, $code)) $warnings[] = 'Student Code already exists in this School.';
         if ($this->secondaryMatch($prepared, (int) $actor->school_id)) $warnings[] = 'A Student with the same name, date of birth, and Guardian email may already exist.';
@@ -331,8 +342,8 @@ final class StudentImportV2Service
     /** @param array<string,mixed> $row */
     private function secondaryMatch(array $row, int $schoolId): bool
     {
-        if ($row['first_name'] === '' || $row['last_name'] === '' || $row['date_of_birth'] === '' || $row['guardian_email'] === '') return false;
-        return Students::query()->where('school_id', $schoolId)->whereHas('user', fn ($q) => $q->where('first_name', $row['first_name'])->where('last_name', $row['last_name'])->whereDate('dob', $row['date_of_birth']))
+        if ($row['student_name'] === '' || $row['date_of_birth'] === '' || $row['guardian_email'] === '') return false;
+        return Students::query()->where('school_id', $schoolId)->whereHas('user', fn ($q) => $q->where('first_name', $row['student_first_name'])->whereDate('dob', $row['date_of_birth']))
             ->whereHas('guardian', fn ($q) => $q->where('email', $row['guardian_email']))->exists();
     }
 
@@ -373,9 +384,40 @@ final class StudentImportV2Service
         return collect($row)->filter(fn ($value) => trim((string) $value) !== '')->isEmpty();
     }
 
+    /** @param list<string> $headers */
+    private function assertHeaderContract(array $headers): void
+    {
+        $required = in_array('student_name', $headers, true)
+            ? self::SIMPLIFIED_REQUIRED_HEADERS
+            : self::LEGACY_REQUIRED_HEADERS;
+        foreach ($required as $header) {
+            if (!in_array($header, $headers, true)) {
+                throw ValidationException::withMessages(['file' => "Student Import V2 requires the {$header} column."]);
+            }
+        }
+    }
+
+    private function canonicalHeader(string $value): string
+    {
+        $header = $this->header($value);
+        return [
+            '学生姓名' => 'student_name',
+            '班级' => 'class_section',
+            '学年' => 'academic_year',
+            '性别' => 'gender',
+            '出生日期' => 'date_of_birth',
+            '入学日期' => 'admission_date',
+            '学生电话' => 'mobile',
+            '家长_监护人姓名' => 'guardian_name',
+            '家长_监护人电话' => 'guardian_mobile',
+            '家长_email' => 'guardian_email',
+            '备注' => 'notes',
+        ][$header] ?? $header;
+    }
+
     private function header(string $value): string
     {
-        return Str::of(trim($value))->lower()->replace(['-', '/'], ' ')->squish()->replace(' ', '_')->toString();
+        return Str::of(trim($value))->replace('*', '')->lower()->replace(['-', '/'], ' ')->squish()->replace(' ', '_')->toString();
     }
 
     /** @param list<string> $errors */
@@ -392,6 +434,14 @@ final class StudentImportV2Service
     private function requiredText(mixed $value, string $label, array &$errors): string { return $this->text($value, $label, $errors, true); }
 
     /** @param list<string> $errors */
+    private function legacyName(mixed $firstName, mixed $lastName, string $label, array &$errors): string
+    {
+        $first = $this->requiredText($firstName, $label, $errors);
+        $last = $this->text($lastName, $label, $errors, false);
+        return trim(implode(' ', array_filter([$first, $last], static fn (string $part): bool => $part !== '')));
+    }
+
+    /** @param list<string> $errors */
     private function phone(mixed $value, string $label, array &$errors, bool $required): string
     {
         $phone = $this->text($value, $label, $errors, $required);
@@ -400,9 +450,9 @@ final class StudentImportV2Service
     }
 
     /** @param list<string> $errors */
-    private function gender(mixed $value, string $label, array &$errors): string
+    private function gender(mixed $value, string $label, array &$errors, bool $required = true): string
     {
-        $gender = strtolower($this->text($value, $label, $errors, true));
+        $gender = strtolower($this->text($value, $label, $errors, $required));
         if ($gender !== '' && !in_array($gender, ['male', 'female'], true)) $errors[] = "{$label} must be male or female.";
         return $gender;
     }
@@ -415,5 +465,12 @@ final class StudentImportV2Service
             try { return SpreadsheetDate::excelToDateTimeObject((float) $value)->format('Y-m-d'); } catch (\Throwable) { $errors[] = "{$label} is invalid."; return ''; }
         }
         try { return CarbonImmutable::parse(trim((string) $value))->format('Y-m-d'); } catch (\Throwable) { $errors[] = "{$label} is invalid."; return ''; }
+    }
+
+    /** @param list<string> $errors */
+    private function optionalDate(mixed $value, string $label, array &$errors): ?string
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) return null;
+        return $this->date($value, $label, $errors);
     }
 }

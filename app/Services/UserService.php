@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use JsonException;
 use Throwable;
 
@@ -98,6 +99,46 @@ class UserService {
     }
 
     /**
+     * Creates a Guardian for Student Import V2.1 without mutating an existing
+     * Guardian from ambiguous contact data. A real email remains the sole
+     * automatic reuse key; email-less Guardians are always newly created.
+     */
+    public function createGuardianForStudentImport(string $fullName, ?string $email, string $mobile): Model
+    {
+        $schoolId = (int) Auth::user()->school_id;
+        $email = $email !== null && trim($email) !== '' ? strtolower(trim($email)) : null;
+
+        if ($email !== null) {
+            $guardian = $this->user->guardian()
+                ->where('school_id', $schoolId)
+                ->where('email', $email)
+                ->first();
+            if ($guardian !== null) {
+                return $guardian;
+            }
+
+            if ($this->user->builder()->where('school_id', $schoolId)->where('email', $email)->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'guardian_email' => 'Guardian Email belongs to a non-Guardian user in this School.',
+                ]);
+            }
+        }
+
+        $guardian = $this->user->create([
+            'first_name' => $fullName,
+            'last_name' => null,
+            'email' => $email,
+            'mobile' => $mobile,
+            'gender' => null,
+            'school_id' => $schoolId,
+            'password' => Hash::make($this->makeParentPassword($mobile)),
+        ]);
+        $guardian->assignRole('Guardian');
+
+        return $guardian;
+    }
+
+    /**
      * @param string $first_name
      * @param string $last_name
      * @param string $admission_no
@@ -118,15 +159,18 @@ class UserService {
      * @throws Throwable
      */
 
-    public function createStudentUser(string $first_name, string $last_name, string $admission_no, string|null $mobile, string $dob, string $gender, \Symfony\Component\HttpFoundation\File\UploadedFile|null $image, int $classSectionID, string $admissionDate, $current_address, $permanent_address, int $sessionYearID, int $guardianID, array $extraFields, int $status, $is_send_notification = null) {
-        $password = $this->makeStudentPassword($dob);
+    public function createStudentUser(string $first_name, ?string $last_name, string $admission_no, string|null $mobile, ?string $dob, ?string $gender, \Symfony\Component\HttpFoundation\File\UploadedFile|null $image, int $classSectionID, string $admissionDate, $current_address, $permanent_address, int $sessionYearID, int $guardianID, array $extraFields, int $status, $is_send_notification = null, ?string $notes = null) {
+        // V2.1 can create a student before a date of birth is known. This is
+        // not a user-supplied default: no notification is sent and the random
+        // credential is unusable until the normal account lifecycle sets one.
+        $password = $dob !== null && trim($dob) !== '' ? $this->makeStudentPassword($dob) : Str::random(64);
         //Create Student User First
         $user = $this->user->create([
             'first_name'        => $first_name,
             'last_name'         => $last_name,
             'email'             => $admission_no,
             'mobile'            => $mobile,
-            'dob'               => date('Y-m-d', strtotime($dob)),
+            'dob'               => $dob !== null && trim($dob) !== '' ? date('Y-m-d', strtotime($dob)) : null,
             'gender'            => $gender,
             'password'          => Hash::make($password),
             'school_id'         => Auth::user()->school_id,
@@ -142,7 +186,7 @@ class UserService {
         $roll_number_db = $roll_number_db['max(roll_number)'];
         $roll_number = $roll_number_db + 1;
 
-        $student = $this->student->updateOrCreate( ['user_id' => $user->id] ,[
+        $studentPayload = [
             'user_id'          => $user->id,
             'class_section_id' => $classSectionID,
             'admission_no'     => $admission_no,
@@ -151,8 +195,12 @@ class UserService {
             'guardian_id'      => $guardianID,
             'session_year_id'  => $sessionYearID,
             'join_session_year_id' => $sessionYearID,
-            'leave_session_year_id' => null 
-        ]);
+            'leave_session_year_id' => null,
+        ];
+        if (Schema::hasColumn('students', 'notes')) {
+            $studentPayload['notes'] = $notes;
+        }
+        $student = $this->student->updateOrCreate(['user_id' => $user->id], $studentPayload);
 
         // Store Session Years Tracking
         $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Student', $student->id, $user->id, $sessionYearID, Auth::user()->school_id, null);

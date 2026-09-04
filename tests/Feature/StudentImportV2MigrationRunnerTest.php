@@ -23,8 +23,8 @@ final class StudentImportV2MigrationRunnerTest extends TestCase
         Schema::connection('mysql')->create('central_finance_student_profiles', fn (Blueprint $table) => $table->increments('id')->string('admission_no')->nullable());
         DB::connection('mysql')->table('schools')->insert(['code'=>MigrateStudentImportV2Schema::SCHOOL_CODE, 'database_name'=>$this->tenant]);
         Schema::connection('school')->create('migrations', function (Blueprint $table): void { $table->increments('id'); $table->string('migration'); $table->integer('batch'); });
-        Schema::connection('school')->create('students', fn (Blueprint $table) => $table->increments('id'));
-        Schema::connection('school')->create('users', fn (Blueprint $table) => $table->increments('id'));
+        Schema::connection('school')->create('students', function (Blueprint $table): void { $table->increments('id'); $table->date('admission_date')->nullable(); });
+        Schema::connection('school')->create('users', function (Blueprint $table): void { $table->increments('id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->unique(); });
     }
     protected function tearDown(): void { DB::purge('mysql'); DB::purge('school'); Config::set('database.connections.mysql',$this->mysql); Config::set('database.connections.school',$this->school); @unlink($this->central); @unlink($this->tenant); parent::tearDown(); }
 
@@ -35,6 +35,12 @@ final class StudentImportV2MigrationRunnerTest extends TestCase
         $this->artisan('student-import-v2:migrate', ['--execute'=>true])->assertExitCode(0);
         $this->assertTrue(Schema::connection('mysql')->hasColumn('central_finance_student_profiles','student_code'));
         $this->assertTrue(Schema::connection('school')->hasTable('student_import_identities'));
+        $this->assertTrue(Schema::connection('school')->hasColumn('students', 'notes'));
+        DB::connection('school')->table('users')->insert([
+            ['first_name' => '学生甲', 'last_name' => null, 'email' => null],
+            ['first_name' => '学生乙', 'last_name' => null, 'email' => null],
+        ]);
+        $this->assertSame(2, DB::connection('school')->table('users')->whereNull('email')->count());
         $this->artisan('student-import-v2:migrate')->assertExitCode(0);
     }
     public function test_partial_tenant_state_fails_closed_without_running_migrations(): void

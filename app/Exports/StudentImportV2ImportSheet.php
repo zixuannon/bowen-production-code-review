@@ -24,7 +24,7 @@ final class StudentImportV2ImportSheet implements FromArray, WithColumnWidths, W
     public function title(): string { return 'Import'; }
     public function headings(): array { return array_merge(StudentImportV2TemplateExport::HEADINGS, array_map(static fn (array $field): string => $field['name'], $this->customFields)); }
     public function array(): array { return array_fill(0, self::ENTRY_ROWS, array_fill(0, count($this->headings()), null)); }
-    public function columnWidths(): array { return ['A'=>18,'B'=>20,'C'=>20,'D'=>18,'E'=>14,'F'=>15,'G'=>16,'H'=>28,'I'=>28,'J'=>28,'K'=>20,'L'=>20,'M'=>18,'N'=>16,'O'=>28,'P'=>18]; }
+    public function columnWidths(): array { return ['A'=>18,'B'=>24,'C'=>28,'D'=>16,'E'=>14,'F'=>15,'G'=>16,'H'=>18,'I'=>24,'J'=>20,'K'=>28,'L'=>32]; }
 
     public function registerEvents(): array
     {
@@ -34,17 +34,18 @@ final class StudentImportV2ImportSheet implements FromArray, WithColumnWidths, W
             $sheet->getStyle("A1:{$lastColumn}1")->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
             $sheet->getStyle("A1:{$lastColumn}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF174A72');
             $sheet->getStyle("A2:{$lastColumn}{$lastRow}")->getAlignment()->setVertical('top');
-            foreach (['A','D','M'] as $column) $sheet->getStyle("{$column}2:{$column}{$lastRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+            foreach (['A','H','J'] as $column) $sheet->getStyle("{$column}2:{$column}{$lastRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
             foreach (['F','G'] as $column) $sheet->getStyle("{$column}2:{$column}{$lastRow}")->getNumberFormat()->setFormatCode('yyyy-mm-dd');
             for ($index = 1; $index <= Coordinate::columnIndexFromString($lastColumn); $index++) { $column = Coordinate::stringFromColumnIndex($index); $sheet->getStyle("{$column}2:{$column}{$lastRow}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF8DB'); }
             $this->comment($sheet, 'A1', 'Required. Text format preserves leading zeroes, for example 00125.');
-            $this->comment($sheet, 'D1', 'Text format preserves leading zeroes, for example 0912345678.');
-            $this->comment($sheet, 'O1', 'Choose a Class Section for this School. Server-side ownership validation remains authoritative.');
-            $this->comment($sheet, 'P1', 'Choose an Academic Year for this School. Server-side ownership validation remains authoritative.');
+            $this->comment($sheet, 'H1', 'Optional. Text format preserves leading zeroes, for example 0912345678.');
+            $this->comment($sheet, 'J1', 'Required. Text format preserves leading zeroes, for example 0912345678.');
+            $this->comment($sheet, 'C1', 'Choose a Class Section for this School. Server-side ownership validation remains authoritative.');
+            $this->comment($sheet, 'D1', 'Choose an Academic Year for this School. Server-side ownership validation remains authoritative.');
             for ($row = 2; $row <= $lastRow; $row++) {
-                $this->list($sheet, "E{$row}", '=StudentImportGenders'); $this->list($sheet, "N{$row}", '=StudentImportGenders');
-                $this->list($sheet, "O{$row}", '=StudentImportClassSections'); $this->list($sheet, "P{$row}", '=StudentImportAcademicYears');
-                foreach ($this->customFields as $offset => $field) if ($field['values'] !== []) $this->list($sheet, $this->column(17 + $offset).$row, '=StudentImportCustom'.($offset + 1));
+                $this->list($sheet, "E{$row}", '=StudentImportGenders');
+                $this->list($sheet, "C{$row}", '=StudentImportClassSections'); $this->list($sheet, "D{$row}", '=StudentImportAcademicYears');
+                foreach ($this->customFields as $offset => $field) if ($field['values'] !== []) $this->list($sheet, $this->column(13 + $offset).$row, '=StudentImportCustom'.($offset + 1));
             }
         }];
     }
