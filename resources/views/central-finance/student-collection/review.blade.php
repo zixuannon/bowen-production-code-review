@@ -1,6 +1,6 @@
 @extends('layouts.master')
 
-@section('title', __('Review Payment'))
+@section('title', $schoolFinanceFacade ? __('School Finance') : __('Review Payment'))
 
 @section('css')
 @include('central-finance.partials.foundation-styles')
@@ -8,7 +8,7 @@
 
 @section('content')
 <div class="content-wrapper central-finance-page">
-    <x-central-finance.page-header :title="__('Review collection')" :school="$school" :status="$cutoverStatus" :eyebrow="__('Student Finance')">
+    <x-central-finance.page-header :title="__('Review collection')" :school="$school" :status="$cutoverStatus" :eyebrow="__('Student Finance')" :school-finance-facade="$schoolFinanceFacade">
         <a class="btn btn-outline-secondary" href="{{ route('central-finance.student-collection.show', $profile->id) }}">{{ __('Back to student') }}</a>
     </x-central-finance.page-header>
     <div class="card"><div class="card-body"><div class="alert alert-info mb-4"><strong>{{ $profile->student_name }}</strong><span class="d-block small">{{ __('Student Code') }}: {{ $profile->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $profile->admission_no ?: '—' }}</span><span class="d-block">{{ $receivable->description }}</span><span class="d-block mt-1">{{ __('Outstanding') }}: <strong>{{ number_format($receivable->amount_due-$receivable->amount_paid,2) }} {{ $receivable->currency }}</strong></span></div>

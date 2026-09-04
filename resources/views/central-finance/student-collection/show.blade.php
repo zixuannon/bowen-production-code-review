@@ -1,6 +1,6 @@
 @extends('layouts.master')
 
-@section('title', __('Student Finance'))
+@section('title', $schoolFinanceFacade ? __('School Finance') : __('Student Finance'))
 
 @section('css')
 @include('central-finance.partials.foundation-styles')
@@ -8,7 +8,7 @@
 
 @section('content')
 <div class="content-wrapper central-finance-page">
-    <x-central-finance.page-header :title="$profile->student_name" :description="__('Student Code').': '.($profile->student_code ?: '—').' · '.__('Gr Number').': '.($profile->admission_no ?: '—').' · '.(trim($profile->class_name.' '.$profile->section_name) ?: '—')" :school="$school" :status="$cutoverStatus" :eyebrow="__('Student Finance')">
+    <x-central-finance.page-header :title="$profile->student_name" :description="__('Student Code').': '.($profile->student_code ?: '—').' · '.__('Gr Number').': '.($profile->admission_no ?: '—').' · '.(trim($profile->class_name.' '.$profile->section_name) ?: '—')" :school="$school" :status="$cutoverStatus" :eyebrow="__('Student Finance')" :school-finance-facade="$schoolFinanceFacade">
         <a class="btn btn-outline-secondary" href="{{ route('central-finance.student-collection.index') }}">{{ __('Back to students') }}</a>
     </x-central-finance.page-header>
 

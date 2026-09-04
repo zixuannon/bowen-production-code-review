@@ -42,8 +42,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $actor = $this->actor();
         $school = $this->workspace->currentSchool($actor);
         $schools = $this->workspace->accessibleSchools($actor);
+        $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
         if ($school === null) {
-            return view('central-finance.student-collection.index', compact('school', 'schools'));
+            return view('central-finance.student-collection.index', compact('school', 'schools', 'schoolFinanceFacade'));
         }
 
         $search = trim((string) $request->query('search', ''));
@@ -68,7 +69,7 @@ final class CentralFinanceStudentCollectionController extends Controller
         $canCollect = $this->canCollect($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'cutoverStatus'));
+        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'cutoverStatus', 'schoolFinanceFacade'));
     }
 
     public function show(int $profile): View
@@ -79,8 +80,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
         $canCollect = $this->canCollect($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
+        $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
 
-        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'cutoverStatus'));
+        return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'cutoverStatus', 'schoolFinanceFacade'));
     }
 
     public function review(int $profile, int $receivable): View
@@ -93,8 +95,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         $accounts = $this->workspace->accessibleAccounts($actor, $school->id)
             ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
+        $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
 
-        return view('central-finance.student-collection.review', compact('school', 'profile', 'receivable', 'accounts', 'attemptUuid', 'cutoverStatus'));
+        return view('central-finance.student-collection.review', compact('school', 'profile', 'receivable', 'accounts', 'attemptUuid', 'cutoverStatus', 'schoolFinanceFacade'));
     }
 
     public function collect(Request $request, int $profile, int $receivable): RedirectResponse
@@ -134,8 +137,9 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->where('school_id', $school->id)->findOrFail($payment);
         $receipt = $this->receiptViewModels->make($payment, $school);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
+        $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
 
-        return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt', 'cutoverStatus'));
+        return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt', 'cutoverStatus', 'schoolFinanceFacade'));
     }
 
     /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */

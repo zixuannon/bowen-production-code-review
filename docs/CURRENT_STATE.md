@@ -186,6 +186,12 @@ Release asset portability now has a versioned, checksum-verified contract in `re
 - This is presentation/read-query work only: Payment, Receipt, Ledger,
   balances, Fund Account scope, cutover checks, exactly-once keys, and legacy
   historical boundaries are unchanged. No migration is required.
+- School Accountant and Principal identities now use an explicit **School
+  Finance** facade over those same Central services: their School is fixed by
+  trusted scope, their navigation and headers are School-branded, and their
+  reports and Fund Account balances remain School-scoped. Head Finance retains
+  the full Central Finance workspace. Group surfaces and physical shared
+  account totals are not exposed through the School facade.
 
 ## Zixuan Student Import V2 — local implementation
 

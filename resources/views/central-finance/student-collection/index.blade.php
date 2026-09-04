@@ -1,6 +1,6 @@
 @extends('layouts.master')
 
-@section('title', __('Student Collection'))
+@section('title', $schoolFinanceFacade ? __('School Finance') : __('Student Collection'))
 
 @section('css')
 @include('central-finance.partials.foundation-styles')
@@ -8,7 +8,7 @@
 
 @section('content')
 <div class="content-wrapper central-finance-page">
-    <x-central-finance.page-header :title="__('Student Collection')" :school="$school" :status="$cutoverStatus ?? null" :eyebrow="__('Student Finance')" />
+    <x-central-finance.page-header :title="__('Student Collection')" :school="$school" :status="$cutoverStatus ?? null" :eyebrow="__('Student Finance')" :school-finance-facade="$schoolFinanceFacade" />
 
     @if(!$school)
         <div class="alert alert-info">{{ __('All Schools is read-only. Select an authorized School before searching students or collecting payment.') }}</div>

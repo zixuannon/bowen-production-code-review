@@ -117,6 +117,15 @@ final class CentralFinanceWorkspaceService
         return $actor->getRawOriginal('central_finance_principal_type') === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE;
     }
 
+    /**
+     * School staff identities use Central canonical services behind a
+     * single-School facade. Authorization remains server-side.
+     */
+    public function usesSchoolFinanceFacade(CentralFinanceUser $actor): bool
+    {
+        return $this->isSchoolStaffPrincipal($actor);
+    }
+
     public function requireOperatingSchool(CentralFinanceUser $actor): School
     {
         $school = $this->currentSchool($actor);

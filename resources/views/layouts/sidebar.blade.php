@@ -83,7 +83,7 @@
         @if ($hasCentralFinanceIdentity)
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
-                    <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ __('Central Finance') }}</span><i class="menu-arrow"></i>
+                    <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ $centralIsSchoolStaffPrincipal ? __('School Finance') : __('Central Finance') }}</span><i class="menu-arrow"></i>
                 </a>
                 <div class="collapse {{ request()->routeIs('central-finance.*') ? 'show' : '' }}" id="central-finance-menu">
                     <ul class="nav flex-column sub-menu">
@@ -110,12 +110,12 @@
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.funding') ? 'active' : '' }}" href="{{ route('central-finance.funding') }}">{{ __('总部 / 校区调拨') }}</a></li>
                             @endif
                         </ul></details></li>
-                        <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.ledger','central-finance.ledger.*','central-finance.audits','central-finance.audits.*','central-finance.reports','central-finance.imports','central-finance.exports')) open @endif><summary class="nav-link">{{ $centralIsHeadFinance ? __('报表与数据') : __('校区 / 集团报表') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu">
+                        <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.ledger','central-finance.ledger.*','central-finance.audits','central-finance.audits.*','central-finance.reports','central-finance.imports','central-finance.exports')) open @endif><summary class="nav-link">{{ $centralIsHeadFinance ? __('报表与数据') : __('School Reports') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu">
                             @if($centralIsHeadFinance)
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.ledger','central-finance.ledger.*') ? 'active' : '' }}" href="{{ route('central-finance.ledger') }}">{{ __('标准流水账') }}</a></li>
                             @endif
                             @if($centralCanViewSchoolReports)
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.reports') ? 'active' : '' }}" href="{{ route('central-finance.reports') }}">{{ __('校区 / 集团报表') }}</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.reports') ? 'active' : '' }}" href="{{ route('central-finance.reports') }}">{{ $centralIsHeadFinance ? __('校区 / 集团报表') : __('School Reports') }}</a></li>
                             @endif
                             @if($centralIsHeadFinance)
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.audits','central-finance.audits.*') ? 'active' : '' }}" href="{{ route('central-finance.audits') }}">{{ __('审计日志') }}</a></li>
