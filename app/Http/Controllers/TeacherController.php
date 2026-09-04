@@ -287,8 +287,11 @@ class TeacherController extends Controller {
         $no = 1;
         foreach ($res as $row) {
             if ($showDeleted) {
-                //Show Restore and Hard Delete Buttons
-                $operate = BootstrapTableService::menuButton('active',route('teachers.change-status', $row->id),['activate-teacher'],[]);
+                // Inactive teachers remain editable. The update flow loads the
+                // soft-deleted tenant record and requires a lifecycle reason
+                // whenever its status changes.
+                $operate = BootstrapTableService::menuEditButton('edit', route('teachers.update', $row->id));
+                $operate .= BootstrapTableService::menuButton('active',route('teachers.change-status', $row->id),['activate-teacher'],[]);
                 
             } else {
                 //Show Edit and Soft Delete Buttons

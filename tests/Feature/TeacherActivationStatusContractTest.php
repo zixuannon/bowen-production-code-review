@@ -106,6 +106,8 @@ class TeacherActivationStatusContractTest extends TestCase
         $this->assertStringContainsString("'deleted_at' => \$newStatus === 1 ? null : now()", $controller);
         $this->assertStringContainsString('teacherForCurrentSchool', $controller);
         $this->assertStringContainsString('if ($teacher->trashed())', $controller);
+        $this->assertStringContainsString("if (\$showDeleted)", $controller);
+        $this->assertStringContainsString("menuEditButton('edit', route('teachers.update', \$row->id))", $controller);
         $this->assertStringContainsString("abort_unless(Auth::user()?->can('teacher-edit'), 403)", $controller);
         $this->assertStringContainsString('abort_unless((int) $teacher->school_id === (int) $schoolId, 403)', $controller);
         $this->assertStringContainsString('return response($teacher->staff);', $controller);
