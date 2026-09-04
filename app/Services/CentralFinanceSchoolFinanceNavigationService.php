@@ -30,7 +30,9 @@ final class CentralFinanceSchoolFinanceNavigationService
             }
         }
 
-        $database = trim((string) config('database.connections.school.database'));
+        // Login also persists the resolved database name for the tenant User
+        // provider. It is set server-side only after School Code validation.
+        $database = trim((string) (session('school_database_name') ?: config('database.connections.school.database')));
         if ($database === '') {
             return null;
         }

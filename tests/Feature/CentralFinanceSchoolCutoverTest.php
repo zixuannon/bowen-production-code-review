@@ -121,10 +121,12 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         // stale tenant connection when the config value is no longer present.
         Config::set('database.connections.school.database', '');
         app('session')->put(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY, ['school_id' => 1, 'user_uuid' => (string) Str::uuid()]);
+        app('session')->put('school_database_name', 'local_zixuan');
         $this->assertSame(1, (int) session(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY)['school_id']);
         $this->assertSame(1, $navigation->currentTenantSchool()?->id);
         $this->assertTrue($navigation->usesCentralFinanceDailyWorkspace());
         Session::forget(\App\Services\CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+        Session::forget('school_database_name');
     }
 
     public function test_central_to_legacy_rollback_is_allowed_only_before_real_central_financial_activity(): void
