@@ -98,6 +98,7 @@ class TeacherActivationStatusContractTest extends TestCase
         $view = file_get_contents($project . '/resources/views/teacher/index.blade.php');
         $events = file_get_contents($project . '/public/assets/js/custom/bootstrap-table/actionEvents.js');
         $ajax = file_get_contents($project . '/public/assets/js/custom/function.js');
+        $routes = file_get_contents($project . '/routes/web.php');
 
         $this->assertStringContainsString("'status'", $controller);
         $this->assertStringContainsString("'boolean'", $controller);
@@ -113,6 +114,8 @@ class TeacherActivationStatusContractTest extends TestCase
         $this->assertStringContainsString('teacher-status-reason', $view);
         $this->assertStringContainsString('syncTeacherStatusReason', $view);
         $this->assertStringContainsString("data('teacher-status', String(row.status))", $events);
+        $this->assertSame(2, substr_count($events, "showSweetAlertConfirmPopup($(e.currentTarget).attr('href'), 'POST'"));
+        $this->assertStringContainsString("Route::post(\"change/status/{id}\", [TeacherController::class, 'changeStatus'])->name('teachers.change-status-post')", $routes);
         $this->assertStringContainsString('showErrorToast(response.message)', $ajax);
     }
 

@@ -903,7 +903,7 @@ window.teacherEvents = {
         }
     }, 'click .deactivate-teacher': function (e) {
         e.preventDefault();
-        showSweetAlertConfirmPopup($(e.currentTarget).attr('href'), 'PUT', {
+        showSweetAlertConfirmPopup($(e.currentTarget).attr('href'), 'POST', {
             text: window.trans["You want to inactive the Teacher"],
             confirmButtonText: window.trans["Yes inactive"],
             icon: 'question',
@@ -914,7 +914,7 @@ window.teacherEvents = {
         })
     }, 'click .activate-teacher': function (e) {
         e.preventDefault();
-        showSweetAlertConfirmPopup($(e.currentTarget).attr('href'), 'PUT', {
+        showSweetAlertConfirmPopup($(e.currentTarget).attr('href'), 'POST', {
             text: window.trans["You want to Activate the Teacher"],
             confirmButtonText: window.trans["Yes Activate"],
             icon: 'question',

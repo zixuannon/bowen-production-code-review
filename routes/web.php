@@ -554,6 +554,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::put("/{id}/restore", [TeacherController::class, 'restore'])->name('teachers.restore');
             Route::delete("/{id}/deleted", [TeacherController::class, 'trash'])->name('teachers.trash');
             Route::put("change/status/{id}", [TeacherController::class, 'changeStatus'])->name('teachers.change-status');
+            // Browser FormData is parsed reliably by PHP for POST. Keep the
+            // existing PUT route for backwards compatibility, while the
+            // reason-required lifecycle confirmation uses this POST route.
+            Route::post("change/status/{id}", [TeacherController::class, 'changeStatus'])->name('teachers.change-status-post');
             Route::post("/change-status-bulk", [TeacherController::class, 'changeStatusBulk'])->name('staff.change-status-bulk');
             Route::get('download-dummy-file', [TeacherController::class, 'downloadSampleFile'])->name('teachers.bulk-data-sample');
             Route::get("create-bulk-upload", [TeacherController::class, 'bulkUploadIndex'])->name('teachers.create-bulk-upload');
