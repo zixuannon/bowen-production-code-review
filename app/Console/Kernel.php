@@ -10,7 +10,8 @@ class Kernel extends ConsoleKernel
 
     protected $commands = [
         Commands\SubscriptionBillCron::class,
-        Commands\DeleteNotifications::class
+        Commands\DeleteNotifications::class,
+        Commands\ProvisionFrontDeskRole::class,
     ];
 
     /**
