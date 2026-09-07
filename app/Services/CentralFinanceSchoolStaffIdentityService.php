@@ -26,7 +26,11 @@ final class CentralFinanceSchoolStaffIdentityService
     /** School-facing role labels may retain their existing internal names. */
     private const PRINCIPAL_ROLE_NAMES = ['Principal'];
     private const ACCOUNTANT_ROLE_NAMES = ['School Accountant', 'Accountant', 'Cashier'];
-    private const FRONT_DESK_ROLE_NAMES = ['Front Desk', 'Admissions & Collection'];
+    private const FRONT_DESK_ROLE_NAMES = [
+        'Front Desk',
+        'Admissions & Collection',
+        'Front Desk / Admissions & Collection',
+    ];
 
     public function __construct(private readonly FinanceGroupScopeService $groups) {}
 
