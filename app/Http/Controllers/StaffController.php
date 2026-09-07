@@ -123,7 +123,10 @@ class StaffController extends Controller
     {
         ResponseService::noFeatureThenRedirect('Staff Management');
         ResponseService::noPermissionThenRedirect('staff-list');
-        $roles = Role::where(function ($query) {
+        // Super Admin onboarding must enumerate centrally provisioned tenant
+        // roles across schools; the Role model's tenant global scope would
+        // otherwise hide roles provisioned for a specific School.
+        $roles = Role::withoutGlobalScopes()->where(function ($query) {
             $query->where('custom_role', 1)->orWhere('name', 'Front Desk / Admissions & Collection');
         })->whereNot('name', 'Teacher')->get();
         $schools = array();
