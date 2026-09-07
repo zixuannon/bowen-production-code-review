@@ -23,6 +23,13 @@ class ProvisionFrontDeskRole extends Command
         foreach ($schools as $school) {
             $this->line(($this->option('dry-run') ? '[DRY RUN] ' : '') . $school->code);
             if ($this->option('dry-run')) continue;
+            // Super Admin staff onboarding uses the central identity store.
+            // Keep the tenant role definition in both stores, without granting
+            // any Central Finance capability here.
+            Role::withoutGlobalScopes()->updateOrCreate([
+                'name' => 'Front Desk / Admissions & Collection',
+                'school_id' => $school->id,
+            ], ['custom_role' => 0, 'editable' => 0, 'guard_name' => 'web']);
             Config::set('database.connections.school.database', $school->database_name);
             DB::purge('school');
             DB::connection('school')->reconnect();
