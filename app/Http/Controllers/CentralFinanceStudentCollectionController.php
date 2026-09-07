@@ -55,6 +55,7 @@ final class CentralFinanceStudentCollectionController extends Controller
         $profiles = CentralFinanceStudentProfile::on('mysql')
             ->with('receivables')
             ->where('school_id', $school->id)
+            ->whereNull('source_deleted_at')
             ->when($class !== '', fn ($query) => $query->where('class_name', $class))
             ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
                 $nested->where('student_name', 'like', "%{$search}%")
@@ -68,6 +69,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->withQueryString();
         $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         $classes = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)
+            ->whereNull('source_deleted_at')
             ->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
         $canCollect = $this->canCollect($actor, $school->id);
         $canSubmitPending = $this->canSubmitPending($actor, $school->id);
