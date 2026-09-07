@@ -81,4 +81,27 @@ final class CentralFinanceCollectionHandoverContractTest extends TestCase
         $this->assertStringNotContainsString("'actual_received_amount'", $service);
         $this->assertStringNotContainsString("'review_reason'", $service);
     }
+
+    public function test_batch_contract_covers_limits_and_fail_closed_lifecycle(): void
+    {
+        $service = $this->source('app/Services/CentralFinanceCollectionHandoverService.php');
+        $confirm = $this->source('app/Services/CentralFinanceHeadFinanceHandoverConfirmService.php');
+        $this->assertStringContainsString('MAX_ITEMS = 50', $service);
+        $this->assertStringContainsString('items()->count() >= self::MAX_ITEMS', $service);
+        $this->assertStringContainsString('Declared amount must equal the server-calculated expected amount.', $service);
+        $this->assertStringContainsString('Pending collection is not eligible for this handover.', $service);
+        $this->assertStringContainsString('Only submitted handovers can be confirmed.', $confirm);
+        $this->assertStringContainsString('actual_handed_over_amount', $confirm);
+    }
+
+    public function test_routes_expose_review_actions_without_front_desk_financial_writes(): void
+    {
+        $routes = $this->source('routes/web.php');
+        $controller = $this->source('app/Http/Controllers/CentralFinanceCollectionHandoverController.php');
+        foreach (['collection-handovers', 'submit', 'confirm', 'hold', 'reject', 'cancel'] as $route) {
+            $this->assertStringContainsString($route, $routes);
+        }
+        $this->assertStringContainsString('CentralFinanceCollectionHandoverService', $controller);
+        $this->assertStringNotContainsString('CentralFinancePaymentService', $controller);
+    }
 }
