@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 class ProvisionFrontDeskRole extends Command
 {
-    protected $signature = 'school:provision-front-desk-role {school_code} {--dry-run}';
+    protected $signature = 'school:provision-front-desk-role {school_code?} {--dry-run}';
     protected $description = 'Provision the non-financial Front Desk tenant role using the normal school connection';
 
     public function handle(): int
