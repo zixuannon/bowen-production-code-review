@@ -123,7 +123,9 @@ class StaffController extends Controller
     {
         ResponseService::noFeatureThenRedirect('Staff Management');
         ResponseService::noPermissionThenRedirect('staff-list');
-        $roles = Role::where('custom_role', 1)->whereNot('name', 'Teacher')->get();
+        $roles = Role::where(function ($query) {
+            $query->where('custom_role', 1)->orWhere('name', 'Front Desk / Admissions & Collection');
+        })->whereNot('name', 'Teacher')->get();
         $schools = array();
         if (!Auth::user()->school_id) {
             $schools = $this->school->active()->pluck('name', 'id');
@@ -174,7 +176,9 @@ class StaffController extends Controller
                 'last_name' => 'required',
                 'mobile' => 'required|digits_between:6,15',
                 'email' => 'required||email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
-                'role_id' => 'required|numeric',
+                'role_id' => 'nullable|numeric|required_without:role_ids',
+                'role_ids' => 'nullable|array|min:1',
+                'role_ids.*' => 'integer',
                 'status' => 'nullable|in:0,1',
                 'dob' => 'required',
                 'image' => self::STAFF_IMAGE_RULES,
@@ -221,12 +225,14 @@ class StaffController extends Controller
                 }
             }
 
-            $role = Role::findOrFail($request->role_id);
+            $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
+            $roles = Role::whereIn('id', $roleIds)->get();
+            abort_if($roles->count() !== $roleIds->count(), 403, 'Invalid staff role assignment.');
 
             /*If Super admin creates the staff then make it active by default*/
             if (!empty(Auth::user()->school_id)) {
                 $data = array(
-                    ...$request->except('school_id'),
+                    ...$request->except('school_id', 'role_ids'),
                     'password' => Hash::make($request->mobile),
                     'image' => $request->file('image'),
                     'status' => $request->status ?? 0,
@@ -238,7 +244,7 @@ class StaffController extends Controller
             } else {
                 /*If School Admin creates the Staff then active/inactive staff based on status*/
                 $data = array(
-                    ...$request->except('school_id'),
+                    ...$request->except('school_id', 'role_ids'),
                     'password' => Hash::make($request->mobile),
                     'image' => $request->file('image'),
                     'status' => 1,
@@ -273,7 +279,7 @@ class StaffController extends Controller
                 $this->extraFormFields->createBulk($extraDetails);
             }
 
-            $user->assignRole($role);
+            $user->syncRoles($roles);
             if ($user->school_id) {
                 $leave_permission = [
                     'leave-list',
@@ -534,7 +540,9 @@ class StaffController extends Controller
                 'last_name' => 'required',
                 'mobile' => 'required|digits_between:6,15',
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $id,
-                'role_id' => 'required|numeric',
+                'role_id' => 'nullable|numeric|required_without:role_ids',
+                'role_ids' => 'nullable|array|min:1',
+                'role_ids.*' => 'integer',
                 'dob' => 'required',
                 'image' => self::STAFF_IMAGE_RULES,
             ];
@@ -548,7 +556,10 @@ class StaffController extends Controller
                 ResponseService::validationError($validator->errors()->first());
             }
             DB::beginTransaction();
-            $data = $request->except('school_id');
+            $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
+            $roles = Role::whereIn('id', $roleIds)->get();
+            abort_if($roles->count() !== $roleIds->count(), 403, 'Invalid staff role assignment.');
+            $data = $request->except('school_id', 'role_ids');
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image');
             }
@@ -596,12 +607,7 @@ class StaffController extends Controller
             }
             $this->extraFormFields->upsert($extraDetails, ['id'], ['data']);
 
-            $oldRole = $user->roles;
-            if ($oldRole[0]->id !== $request->role_id) {
-                $newRole = Role::findById($request->role_id);
-                $user->removeRole($oldRole[0]);
-                $user->assignRole($newRole);
-            }
+            $user->syncRoles($roles);
             
             if ($request->joining_date) {
                 $joining_date = date('Y-m-d', strtotime($request->joining_date));
