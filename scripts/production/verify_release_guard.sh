@@ -44,6 +44,23 @@ expect "$homepage_assets_sha" "$(read_json "$baseline_file" approved_homepage_as
 expect "$homepage_assets_sha" "$actual_homepage_assets_sha" actual_homepage_assets_sha256
 test -f "$release_dir/resources/views/bowen-school/home.blade.php" || { echo "GUARD_FAIL: homepage view missing" >&2; exit 1; }
 test -d "$release_dir/public/assets/bowen-school" || { echo "GUARD_FAIL: homepage assets missing" >&2; exit 1; }
+
+# Verify the rendered host-specific root branch, not just source hashes. This
+# catches a stale route/config/vhost path that would otherwise serve the legacy
+# SaaS landing page while all homepage files remain present.
+render_probe=$(mktemp)
+trap 'rm -f "$render_probe"' EXIT
+curl --fail --silent --show-error --max-time 20 -H 'Host: school.mmbowen.com' \
+  "${RELEASE_GUARD_RENDER_URL:-http://127.0.0.1/}" -o "$render_probe" \
+  || { echo "GUARD_FAIL: homepage render probe failed" >&2; exit 1; }
+grep -Fq '让每一种成长，都通向更广阔的世界' "$render_probe" \
+  || { echo "GUARD_FAIL: rendered Bowen homepage fingerprint missing" >&2; exit 1; }
+grep -Fq 'BOWEN INTERNATIONAL EDUCATION' "$render_probe" \
+  || { echo "GUARD_FAIL: rendered Bowen homepage section missing" >&2; exit 1; }
+if grep -Fq 'eSchool-Saas - Manage Your School' "$render_probe" || grep -Fq '/assets/home_page/' "$render_probe"; then
+  echo "GUARD_FAIL: rendered legacy landing page detected" >&2
+  exit 1
+fi
 actual_sha=$(git -C "$source_repo" rev-parse HEAD)
 expect "$manifest_sha" "$actual_sha" manifest_commit_sha
 git -C "$source_repo" merge-base --is-ancestor "$(read_json "$baseline_file" accepted_production_sha)" "$actual_sha" || { echo "GUARD_FAIL: candidate is not an accepted-baseline descendant" >&2; exit 1; }
