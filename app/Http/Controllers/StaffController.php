@@ -229,7 +229,14 @@ class StaffController extends Controller
             }
 
             $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
-            $roles = Role::whereIn('id', $roleIds)->get();
+            $roleQuery = Auth::user()->school_id
+                ? Role::whereIn('id', $roleIds)
+                : Role::withoutGlobalScopes()->whereIn('id', $roleIds);
+            $roles = $roleQuery->get();
+            if (!Auth::user()->school_id) {
+                $allowedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($id) => (int) $id);
+                abort_if($roles->contains(fn ($role) => $role->school_id !== null && !$allowedSchoolIds->contains((int) $role->school_id)), 403, 'Invalid staff role assignment.');
+            }
             abort_if($roles->count() !== $roleIds->count(), 403, 'Invalid staff role assignment.');
 
             /*If Super admin creates the staff then make it active by default*/
@@ -560,7 +567,14 @@ class StaffController extends Controller
             }
             DB::beginTransaction();
             $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
-            $roles = Role::whereIn('id', $roleIds)->get();
+            $roleQuery = Auth::user()->school_id
+                ? Role::whereIn('id', $roleIds)
+                : Role::withoutGlobalScopes()->whereIn('id', $roleIds);
+            $roles = $roleQuery->get();
+            if (!Auth::user()->school_id) {
+                $allowedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($id) => (int) $id);
+                abort_if($roles->contains(fn ($role) => $role->school_id !== null && !$allowedSchoolIds->contains((int) $role->school_id)), 403, 'Invalid staff role assignment.');
+            }
             abort_if($roles->count() !== $roleIds->count(), 403, 'Invalid staff role assignment.');
             $data = $request->except('school_id', 'role_ids');
             if ($request->hasFile('image')) {
