@@ -1,0 +1,12 @@
+{
+  "production_host": "43.160.241.126",
+  "php_binary": "/usr/bin/php83",
+  "php_fpm_socket": "/tmp/php-cgi-83.sock",
+  "release_root": "/www/wwwroot/releases",
+  "accepted_production_sha": "79f56c8337785a5672b54800615e02b4a58098b7",
+  "accepted_phase": "5.5A",
+  "github_ref": "main",
+  "shared_env_target": "/www/wwwroot/shared/eschool/.env",
+  "shared_storage_target": "/www/wwwroot/shared/eschool/storage",
+  "required_manifest": ".release-manifest.json"
+}
