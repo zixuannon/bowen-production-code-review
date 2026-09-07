@@ -56,6 +56,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->with('receivables')
             ->where('school_id', $school->id)
             ->whereNull('source_deleted_at')
+            ->whereHas('receivables')
             ->when($class !== '', fn ($query) => $query->where('class_name', $class))
             ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
                 $nested->where('student_name', 'like', "%{$search}%")
