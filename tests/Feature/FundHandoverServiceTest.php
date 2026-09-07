@@ -44,6 +44,7 @@ class FundHandoverServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->ensureSchoolFixture();
         $this->ensureOtherIncomesTable();
         $this->ensureHandoverTable();
         $this->ensurePivotTable();
@@ -55,6 +56,32 @@ class FundHandoverServiceTest extends TestCase
         $this->headAccount = $this->account($this->accountPrefix . ' head source', 1, 1000);
         $this->cashierAccount = $this->account($this->accountPrefix . ' cashier destination', 1, 100);
         $this->cashierA->authorized_bank_accounts()->sync([$this->cashierAccount->id]);
+    }
+
+    private function ensureSchoolFixture(): void
+    {
+        if (!Schema::hasTable('schools')) {
+            Schema::create('schools', function (Blueprint $table): void {
+                $table->id();
+                $table->string('name');
+                $table->string('address')->nullable();
+                $table->string('support_phone')->nullable();
+                $table->string('support_email')->nullable();
+                $table->string('tagline')->nullable();
+                $table->string('logo')->nullable();
+                $table->string('status')->default('active');
+                $table->boolean('installed')->default(true);
+                $table->string('database_name')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        foreach ([1 => 'Handover QA School', 2 => 'Handover Foreign QA School'] as $id => $name) {
+            DB::table('schools')->updateOrInsert(
+                ['id' => $id],
+                ['name' => $name, 'address' => 'QA', 'support_phone' => '000', 'support_email' => "qa{$id}@example.test", 'tagline' => 'QA', 'logo' => '', 'status' => 'active', 'installed' => 1, 'database_name' => env('DB_SCHOOL_DATABASE', 'school_testing'), 'updated_at' => now(), 'created_at' => now()]
+            );
+        }
     }
 
     public function test_pending_handover_has_no_balance_or_ledger_effect_until_receiver_confirms(): void
