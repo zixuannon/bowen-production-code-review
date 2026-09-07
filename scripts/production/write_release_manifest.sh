@@ -15,7 +15,7 @@ release_name=$(basename "$release_dir")
 php_version=$($php_bin -r 'echo PHP_VERSION;')
 built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 homepage_view_sha256=$(sha256sum "$release_dir/resources/views/bowen-school/home.blade.php" | awk '{print $1}')
-homepage_assets_sha256=$(find "$release_dir/public/assets/bowen-school" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+homepage_assets_sha256=$(cd "$release_dir/public/assets/bowen-school" && find . -type f -print0 | sort -z | while IFS= read -r -d '' f; do printf '%s %s\n' "${f#./}" "$(sha256sum "$f" | awk '{print $1}')"; done | sha256sum | awk '{print $1}')
 
 cat > "$release_dir/.release-manifest.json" <<EOF
 {

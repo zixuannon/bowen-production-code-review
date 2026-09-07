@@ -34,12 +34,14 @@ baseline_sha=$(read_json "$manifest" baseline_sha)
 github_ref=$(read_json "$manifest" github_ref)
 homepage_view_sha=$(read_json "$manifest" homepage_view_sha256)
 homepage_assets_sha=$(read_json "$manifest" homepage_assets_sha256)
+actual_homepage_assets_sha=$(cd "$release_dir/public/assets/bowen-school" && find . -type f -print0 | sort -z | while IFS= read -r -d '' f; do printf '%s %s\n' "${f#./}" "$(sha256sum "$f" | awk '{print $1}')"; done | sha256sum | awk '{print $1}')
 expect "$manifest_name" "$(basename "$release_dir")" release_name
 expect "$manifest_php" "/usr/bin/php83" manifest_php_binary
 expect "$manifest_fpm" "/tmp/php-cgi-83.sock" manifest_php_fpm_socket
 expect "$manifest_root" "/www/wwwroot/releases" manifest_release_root
 expect "$homepage_view_sha" "$(read_json "$baseline_file" approved_homepage_view_sha256)" homepage_view_sha256
 expect "$homepage_assets_sha" "$(read_json "$baseline_file" approved_homepage_assets_sha256)" homepage_assets_sha256
+expect "$homepage_assets_sha" "$actual_homepage_assets_sha" actual_homepage_assets_sha256
 test -f "$release_dir/resources/views/bowen-school/home.blade.php" || { echo "GUARD_FAIL: homepage view missing" >&2; exit 1; }
 test -d "$release_dir/public/assets/bowen-school" || { echo "GUARD_FAIL: homepage assets missing" >&2; exit 1; }
 actual_sha=$(git -C "$source_repo" rev-parse HEAD)
