@@ -58,6 +58,8 @@ return [
 
     'asset_url' => env('ASSET_URL', null),
 
+    'bowen_public_site_host' => env('BOWEN_PUBLIC_SITE_HOST', 'school.mmbowen.com'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

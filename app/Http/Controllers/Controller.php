@@ -92,6 +92,11 @@ class Controller extends BaseController
         if (Auth::user()) {
             return redirect('/dashboard');
         }
+
+        if ($this->isBowenPublicSiteRequest()) {
+            return view('bowen-school.home');
+        }
+
         $currentDatabaseName = DB::connection()->getDatabaseName();
         // School website
         $fullDomain = $_SERVER['HTTP_HOST'];
@@ -296,6 +301,14 @@ class Controller extends BaseController
         }
 
         return false;
+    }
+
+    private function isBowenPublicSiteRequest(): bool
+    {
+        $requestHost = strtolower(request()->getHost());
+        $bowenPublicSiteHost = strtolower((string) config('app.bowen_public_site_host'));
+
+        return $requestHost === $bowenPublicSiteHost;
     }
 
 

@@ -14,6 +14,8 @@ commit_sha=$(git -C "$source_repo" rev-parse HEAD)
 release_name=$(basename "$release_dir")
 php_version=$($php_bin -r 'echo PHP_VERSION;')
 built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+homepage_view_sha256=$(sha256sum "$release_dir/resources/views/bowen-school/home.blade.php" | awk '{print $1}')
+homepage_assets_sha256=$(find "$release_dir/public/assets/bowen-school" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
 
 cat > "$release_dir/.release-manifest.json" <<EOF
 {
@@ -23,6 +25,8 @@ cat > "$release_dir/.release-manifest.json" <<EOF
   "php_version": "$php_version",
   "baseline_sha": "$baseline_sha",
   "github_ref": "$github_ref",
+  "homepage_view_sha256": "$homepage_view_sha256",
+  "homepage_assets_sha256": "$homepage_assets_sha256",
   "production_host": "43.160.241.126",
   "php_binary": "/usr/bin/php83",
   "php_fpm_socket": "/tmp/php-cgi-83.sock",
