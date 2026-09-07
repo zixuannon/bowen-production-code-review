@@ -249,12 +249,28 @@ class SchoolDataService
 
         // Phase 4: Optional default HR role (convenience, not required)
         $this->createHrRole($school);
+
+        // Collection workflow role is provisioned for every tenant, but does
+        // not grant Central Finance capabilities by itself. Those are granted
+        // explicitly through the Finance Group scope workflow.
+        $this->createFrontDeskRole($school);
     }
 
     public function defaultRoles($school)
     {
         Role::updateOrCreate(['name' => 'Guardian', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 0]);
         Role::updateOrCreate(['name' => 'Student', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 0]);
+    }
+
+    public function createFrontDeskRole($school)
+    {
+        return Role::withoutGlobalScope('school')->updateOrCreate([
+            'name' => 'Front Desk / Admissions & Collection',
+            'school_id' => $school->id,
+        ], [
+            'custom_role' => 0,
+            'editable' => 0,
+        ]);
     }
 
     public function createDatabaseMigration($schoolData)
@@ -861,4 +877,3 @@ class SchoolDataService
     }
 
 }
-

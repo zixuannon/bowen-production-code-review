@@ -22,7 +22,7 @@
                             <div class="row">
                                 <div class="form-group col-sm-12 col-md-4">
                                     <label for="role_id">{{ __('role') }} <span class="text-danger">*</span></label>
-                                    <select name="role_id" id="role_id" class="form-control" required>
+                                    <select name="role_ids[]" id="role_id" class="form-control" multiple required>
                                         @foreach($roles as $role)
                                             <option value="{{$role->id}}">{{$role->name}}</option>
                                         @endforeach
@@ -407,7 +407,7 @@
                                 <div class="row">
                                     <div class="form-group col-sm-12 col-md-4">
                                         <label for="edit_role_id">{{ __('role') }} <span class="text-danger">*</span></label>
-                                        <select name="role_id" id="edit_role_id" class="form-control" required>
+                                        <select name="role_ids[]" id="edit_role_id" class="form-control" multiple required>
                                             @foreach($roles as $role)
                                                 <option value="{{$role->id}}">{{$role->name}}</option>
                                             @endforeach
