@@ -80,6 +80,13 @@
                     <div class="form-group col-md-3"><label>{{ __('Existing School user ID') }}</label><input class="form-control" type="number" min="1" name="tenant_user_id" required></div>
                     <div class="form-group col-md-2"><button class="btn btn-outline-primary" type="submit">{{ __('Save identity') }}</button></div>
                 </form>
+                <form class="row align-items-end border rounded p-3 mt-3" method="POST" action="{{ route('finance-groups.tenant-staff.reset-password', $group) }}">@csrf
+                    <div class="col-md-3"><label>{{ __('School') }}</label><select class="form-control" name="school_id" required><option value="">{{ __('Select School') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
+                    <div class="col-md-3"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select School Staff') }}</option>@foreach($schoolStaff as $staff)<option value="{{ $staff->tenant_user_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}</option>@endforeach</select></div>
+                    <div class="col-md-2"><label>{{ __('Temporary Password') }}</label><input class="form-control" type="password" name="temporary_password" minlength="12" required></div>
+                    <div class="col-md-2"><label>{{ __('Confirm Password') }}</label><input class="form-control" type="password" name="temporary_password_confirmation" minlength="12" required></div>
+                    <div class="col-md-2"><button class="btn btn-outline-danger" type="submit">{{ __('Reset Temporary Password') }}</button></div>
+                </form>
                 <small class="text-muted d-block mb-2">{{ __('The selected existing School user is verified server-side in that School before this mapping is saved.') }}</small>
                 <ul class="mb-0">
                     @foreach($group->users as $groupUser)

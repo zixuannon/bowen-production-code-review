@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceSchoolStaffIdentity;
+use App\Models\CentralFinanceDocumentAudit;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
 use App\Models\School;
@@ -82,6 +83,22 @@ final class CentralFinanceSchoolStaffIdentityService
     public function grantSchoolFrontDesk(FinanceGroup $group, int $schoolId, int $tenantUserId): CentralFinanceUser
     {
         return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false, true);
+    }
+
+    /** Reset an existing tenant staff credential; caller supplies the temporary password once. */
+    public function resetTenantStaffPassword(FinanceGroup $group, int $schoolId, int $tenantUserId, string $password): void
+    {
+        $school = School::on('mysql')->whereKey($schoolId)->firstOrFail();
+        abort_unless($group->schools()->where(['school_id' => $school->id, 'status' => 'active'])->exists(), 422);
+        $this->inSchool($school, function () use ($school, $tenantUserId, $password): void {
+            $user = User::on('school')->whereKey($tenantUserId)->where('school_id', $school->id)->whereNull('deleted_at')->whereHas('staff')->firstOrFail();
+            $user->forceFill(['password' => Hash::make($password), 'remember_token' => null])->save();
+        });
+        CentralFinanceDocumentAudit::on('mysql')->create([
+            'school_id' => $school->id, 'document_type' => 'tenant_staff_credential', 'document_id' => $tenantUserId,
+            'action' => 'temporary_password_reset', 'actor_id' => auth()->id(), 'reason' => 'Super Admin temporary credential reset',
+            'before_values' => [], 'after_values' => ['password_reset' => true],
+        ]);
     }
 
     private function grantSchoolStaffFinanceAccess(FinanceGroup $group, int $schoolId, int $tenantUserId, bool $requestedOperate, bool $requestedCollectionSubmit = false): CentralFinanceUser

@@ -204,6 +204,18 @@ class FinanceGroupController extends Controller
         return redirect()->route('finance-groups.index')->with('success', __('School Front Desk granted pending collection access.'));
     }
 
+    public function resetTenantStaffPassword(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate([
+            'school_id' => ['required', 'integer'],
+            'tenant_user_id' => ['required', 'integer'],
+            'temporary_password' => ['required', 'string', 'min:12', 'max:128', 'confirmed'],
+        ]);
+        $this->staffIdentities->resetTenantStaffPassword($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id'], $data['temporary_password']);
+        return redirect()->route('finance-groups.show', $financeGroup)->with('success', __('Temporary password reset. Share it only through a secure channel.'));
+    }
+
     private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm, bool $submitCollections = false): void
     {
         $values = [
