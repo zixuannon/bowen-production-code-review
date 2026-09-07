@@ -19,6 +19,7 @@ return new class extends Migration {
                 $table->string('payment_channel', 40);
                 $table->string('handover_type', 40)->default('collection');
                 $table->decimal('expected_amount', 20, 4);
+                $table->decimal('declared_handed_over_amount', 20, 4);
                 $table->decimal('actual_handed_over_amount', 20, 4)->nullable();
                 $table->decimal('difference_amount', 20, 4)->nullable();
                 $table->string('status', 20)->index();
