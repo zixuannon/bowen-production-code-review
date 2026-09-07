@@ -92,9 +92,14 @@ class Controller extends BaseController
         if (Auth::user()) {
             return redirect('/dashboard');
         }
+
+        if ($this->isBowenPublicSiteRequest()) {
+            return view('bowen-school.home');
+        }
+
         $currentDatabaseName = DB::connection()->getDatabaseName();
         // School website
-        $fullDomain = $_SERVER['HTTP_HOST'];
+        $fullDomain = request()->getHost();
         $fullDomain = str_replace("www.", "", $fullDomain);
         $parts = explode('.', $fullDomain);
         $subdomain = $parts[0];
@@ -293,6 +298,50 @@ class Controller extends BaseController
 
         if ($isLocal) {
             return true;
+        }
+
+        return false;
+    }
+
+    private function isBowenPublicSiteRequest(): bool
+    {
+        $configuredHost = strtolower(trim((string) config('app.bowen_public_site_host')));
+        if ($configuredHost === '') {
+            return false;
+        }
+
+        // Some production FastCGI setups populate SERVER_NAME with the
+        // address of the vhost rather than the original Host header. Prefer
+        // Laravel's resolved host, but also inspect the forwarded/original
+        // host values so the public-site branch cannot fall through merely
+        // because of proxy parameter normalization.
+        $hosts = [
+            request()->getHost(),
+            request()->header('host'),
+            request()->header('x-forwarded-host'),
+            request()->header('x-original-host'),
+            request()->header('x-forwarded-server'),
+            request()->server('HTTP_HOST'),
+            request()->server('HTTP_X_ORIGINAL_HOST'),
+            request()->server('HTTP_X_FORWARDED_SERVER'),
+            request()->server('SERVER_NAME'),
+        ];
+
+        foreach ($hosts as $host) {
+            $host = strtolower(trim((string) $host));
+            if ($host === '') {
+                continue;
+            }
+
+            // Forwarded hosts may be comma-separated and may include ports.
+            foreach (explode(',', $host) as $candidate) {
+                $candidate = trim($candidate);
+                $candidate = preg_replace('/:\\d+$/', '', $candidate) ?? $candidate;
+                $candidate = rtrim($candidate, '.');
+                if ($candidate === $configuredHost) {
+                    return true;
+                }
+            }
         }
 
         return false;
