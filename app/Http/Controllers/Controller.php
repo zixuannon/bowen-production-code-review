@@ -319,7 +319,11 @@ class Controller extends BaseController
             request()->getHost(),
             request()->header('host'),
             request()->header('x-forwarded-host'),
+            request()->header('x-original-host'),
+            request()->header('x-forwarded-server'),
             request()->server('HTTP_HOST'),
+            request()->server('HTTP_X_ORIGINAL_HOST'),
+            request()->server('HTTP_X_FORWARDED_SERVER'),
             request()->server('SERVER_NAME'),
         ];
 
