@@ -1,0 +1,14 @@
+{
+  "production_host": "43.160.241.126",
+  "php_binary": "/usr/bin/php83",
+  "php_fpm_socket": "/tmp/php-cgi-83.sock",
+  "release_root": "/www/wwwroot/releases",
+  "accepted_production_sha": "79f56c8337785a5672b54800615e02b4a58098b7",
+  "accepted_phase": "5.5A",
+  "github_ref": "main",
+  "approved_homepage_view_sha256": "b3521d15a87881564bfcf07f5e4f756922c8d1ab3bb89ef7372d0781d7ee4c75",
+  "approved_homepage_assets_sha256": "6d319169dad8139d39fbee347406ba6544449f7971de66a12ef9e967eb74ed53",
+  "shared_env_target": "/www/wwwroot/shared/eschool/.env",
+  "shared_storage_target": "/www/wwwroot/shared/eschool/storage",
+  "required_manifest": ".release-manifest.json"
+}

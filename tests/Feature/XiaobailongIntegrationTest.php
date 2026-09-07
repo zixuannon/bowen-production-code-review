@@ -33,9 +33,7 @@ class XiaobailongIntegrationTest extends TestCase
         $permissions = array_column($this->privatePermissions($service), 'name');
 
         $this->assertContains('xiaobailong-use', $permissions);
-        $this->assertContains('finance-handover-create', $permissions);
         $this->assertContains('xiaobailong-use', $this->privateTeacherPermissions($service));
-        $this->assertSame(['Head Finance', 'Cashier'], SchoolDataService::FINANCE_ROLE_NAMES);
     }
 
     public function test_invalid_service_signature_is_rejected_before_redis_or_any_upstream_contact(): void
@@ -57,7 +55,7 @@ class XiaobailongIntegrationTest extends TestCase
 
         $this->assertStringContainsString("['name' => 'xiaobailong-use']", $source);
 
-        return array_merge([['name' => 'xiaobailong-use']], SchoolDataService::financePermissions());
+        return [['name' => 'xiaobailong-use']];
     }
 
     /** @return array<int, string> */

@@ -92,6 +92,10 @@ class Controller extends BaseController
         if (Auth::user()) {
             return redirect('/dashboard');
         }
+
+        if ($this->isBowenPublicSiteRequest()) {
+            return view('bowen-school.home');
+        }
         $currentDatabaseName = DB::connection()->getDatabaseName();
         // School website
         $fullDomain = $_SERVER['HTTP_HOST'];
@@ -220,6 +224,20 @@ class Controller extends BaseController
             }
         }
         // End school website
+    }
+
+    private function isBowenPublicSiteRequest(): bool
+    {
+        $configuredHost = strtolower(trim((string) config('app.bowen_public_site_host')));
+        if ($configuredHost === '') {
+            return false;
+        }
+
+        // request()->getHost() is resolved by Laravel's trusted-proxy
+        // middleware. Raw forwarded headers are intentionally ignored.
+        $requestHost = strtolower(trim((string) request()->getHost()));
+        $requestHost = preg_replace('/:\\d+$/', '', $requestHost) ?? $requestHost;
+        return rtrim($requestHost, '.') === $configuredHost;
     }
 
     public function school_website($school)
