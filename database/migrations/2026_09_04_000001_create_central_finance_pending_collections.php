@@ -21,7 +21,7 @@ return new class extends Migration {
             $table->unsignedBigInteger('school_id')->index();
             $table->unsignedBigInteger('student_profile_id')->index();
             $table->unsignedBigInteger('receivable_id')->index();
-            $table->unsignedBigInteger('intended_fund_account_id')->nullable()->index();
+            $table->unsignedBigInteger('intended_fund_account_id')->nullable();
             $table->unsignedBigInteger('confirmed_payment_id')->nullable();
             $table->string('idempotency_key', 64);
             $table->string('acknowledgement_no', 100);
@@ -47,6 +47,7 @@ return new class extends Migration {
             $table->unique('confirmed_payment_id', 'cfpc_payment_unique');
             $table->unique('idempotency_key', 'cfpc_idempotency_unique');
             $table->unique('acknowledgement_no', 'cfpc_ack_unique');
+            $table->index('intended_fund_account_id', 'cfpc_fund_account_index');
             });
         } else {
             $schema->table('central_finance_pending_collections', function (Blueprint $table): void {

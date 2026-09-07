@@ -45,6 +45,21 @@ expect "$homepage_assets_sha" "$actual_homepage_assets_sha" actual_homepage_asse
 test -f "$release_dir/resources/views/bowen-school/home.blade.php" || { echo "GUARD_FAIL: homepage view missing" >&2; exit 1; }
 test -d "$release_dir/public/assets/bowen-school" || { echo "GUARD_FAIL: homepage assets missing" >&2; exit 1; }
 
+# Accepted Xiaobailong and sidebar contracts must remain in every candidate.
+for required in \
+  app/Http/Controllers/XiaobailongController.php \
+  app/Http/Controllers/Api/XiaobailongExchangeController.php \
+  app/Http/Middleware/XiaobailongServiceAuth.php \
+  config/xiaobailong.php \
+  app/Console/Commands/XiaobailongReconcilePermissions.php; do
+  test -f "$release_dir/$required" || { echo "GUARD_FAIL: Xiaobailong component missing ($required)" >&2; exit 1; }
+done
+grep -Fq "xiaobailong-use" "$release_dir/routes/web.php" || { echo "GUARD_FAIL: Xiaobailong permission route missing" >&2; exit 1; }
+grep -Fq "XiaobailongServiceAuth" "$release_dir/routes/api.php" || { echo "GUARD_FAIL: Xiaobailong service auth wiring missing" >&2; exit 1; }
+grep -Fq "xiaobailong:reconcile-permissions" "$release_dir/app/Console/Kernel.php" || { echo "GUARD_FAIL: Xiaobailong scheduler missing" >&2; exit 1; }
+test -f "$release_dir/resources/views/layouts/sidebar.blade.php" || { echo "GUARD_FAIL: sidebar missing" >&2; exit 1; }
+grep -Fq "menu-icon" "$release_dir/resources/views/layouts/sidebar.blade.php" || { echo "GUARD_FAIL: sidebar icon contract missing" >&2; exit 1; }
+
 # Host selection must flow through Laravel's trusted-proxy resolution. Raw
 # forwarded-host/server headers in the controller are an authorization/routing
 # bypass and fail the release closed.
