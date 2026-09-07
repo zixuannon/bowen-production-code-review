@@ -9,6 +9,7 @@ use App\Models\CentralFinanceStudentProfile;
 use App\Services\CentralFinancePendingCollectionConfirmationService;
 use App\Services\CentralFinancePendingCollectionService;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Services\FinanceOperatingContextService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,12 +22,16 @@ final class CentralFinancePendingCollectionController extends Controller
 {
     private const ATTEMPTS_SESSION_KEY = 'central_finance_pending_collection_attempts';
 
-    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinancePendingCollectionService $pending, private readonly CentralFinancePendingCollectionConfirmationService $confirmation) {}
+    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinancePendingCollectionService $pending, private readonly CentralFinancePendingCollectionConfirmationService $confirmation, private readonly FinanceOperatingContextService $operatingContext) {}
 
     public function frontDeskIndex(): View
     {
         $actor = $this->workspace->actor(Auth::user());
         $school = $this->workspace->currentSchool($actor);
+        if ($school === null) {
+            $school = $this->operatingContext->currentSchool(Auth::user());
+            if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
+        }
         abort_unless($school !== null, 403);
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
         $pending = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable'])
@@ -38,6 +43,10 @@ final class CentralFinancePendingCollectionController extends Controller
     {
         $actor = $this->workspace->actor(Auth::user());
         $school = $this->workspace->currentSchool($actor);
+        if ($school === null) {
+            $school = $this->operatingContext->currentSchool(Auth::user());
+            if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
+        }
         abort_unless($school !== null, 403);
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
         $profile = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)->findOrFail($profile);
