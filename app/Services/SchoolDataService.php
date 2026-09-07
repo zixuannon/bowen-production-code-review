@@ -256,12 +256,21 @@ class SchoolDataService
 
         // Phase 4: Optional default HR role (convenience, not required)
         $this->createHrRole($school);
+        $this->createFrontDeskRole($school);
     }
 
     public function defaultRoles($school)
     {
         Role::updateOrCreate(['name' => 'Guardian', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 0]);
         Role::updateOrCreate(['name' => 'Student', 'school_id' => $school->id, 'custom_role' => 0, 'editable' => 0]);
+    }
+
+    public function createFrontDeskRole($school)
+    {
+        return Role::withoutGlobalScope('school')->updateOrCreate([
+            'name' => 'Front Desk / Admissions & Collection',
+            'school_id' => $school->id,
+        ], ['custom_role' => 0, 'editable' => 0]);
     }
 
     /**
