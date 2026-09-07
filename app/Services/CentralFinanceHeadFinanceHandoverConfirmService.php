@@ -34,7 +34,7 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
             $this->cutovers->assertCentralWritesAllowed((int) $batch->school_id);
             if ($batch->status === CentralFinanceCollectionHandoverBatch::CONFIRMED) return $batch;
             if ($batch->status !== CentralFinanceCollectionHandoverBatch::SUBMITTED) throw new InvalidArgumentException('Only submitted handovers can be confirmed.');
-            $this->assertAccount($account, $batch);
+            $this->assertAccount($actor, $account, $batch);
             $expected = (float) $batch->expected_amount;
             if (abs((float) $actualAmount - $expected) > 0.00005 || abs((float) $batch->declared_handed_over_amount - $expected) > 0.00005) throw new InvalidArgumentException('Expected, declared, and actual amounts must match.');
             foreach ($batch->items->sortBy('id') as $item) {
@@ -44,13 +44,13 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
                 $item->update(['status' => CentralFinanceCollectionHandoverItem::CONFIRMED, 'confirmed_payment_id' => $pending->fresh()->confirmed_payment_id]);
             }
             $before = $batch->toArray();
-            $batch->update(['status' => CentralFinanceCollectionHandoverBatch::CONFIRMED, 'actual_received_amount' => $actualAmount, 'confirmed_by' => $actor->id, 'confirmed_at' => $confirmedAt, 'review_reason' => trim($reason)]);
+            $batch->update(['status' => CentralFinanceCollectionHandoverBatch::CONFIRMED, 'actual_handed_over_amount' => $actualAmount, 'difference_amount' => (float) $actualAmount - $expected, 'confirmed_by' => $actor->id, 'confirmed_at' => $confirmedAt]);
             $this->audits->record($actor, $batch, 'collection_handover', 'confirmed', trim($reason), $before, $batch->fresh()->toArray());
             return $batch->fresh();
         });
     }
 
-    private function assertAccount(CentralFinanceFundAccount $account, CentralFinanceCollectionHandoverBatch $batch): void
+    private function assertAccount(CentralFinanceUser $actor, CentralFinanceFundAccount $account, CentralFinanceCollectionHandoverBatch $batch): void
     {
         if (!$account->exists || !$account->getRawOriginal('is_active')) throw new InvalidArgumentException('Fund Account is not active.');
         $this->availability->assertAccountAvailableForSchool($account, (int) $batch->school_id);

@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 final class CentralFinanceCollectionHandoverItem extends Model
 {
+    public const ATTACHED = 'attached';
+    public const CONFIRMED = 'confirmed';
     protected $connection = 'mysql';
     protected $fillable = [
         'handover_batch_id', 'pending_collection_id', 'expected_amount_snapshot',

@@ -56,7 +56,7 @@ final class CentralFinanceCollectionHandoverService
             }
             if ($batch->items()->where('pending_collection_id', $pending->id)->exists()) return $batch->items()->where('pending_collection_id', $pending->id)->first();
             if (CentralFinanceCollectionHandoverItem::on('mysql')->where('pending_collection_id', $pending->id)->whereHas('batch', fn ($q) => $q->whereNotIn('status', [CentralFinanceCollectionHandoverBatch::REJECTED, CentralFinanceCollectionHandoverBatch::CANCELLED]))->exists()) throw new InvalidArgumentException('Pending collection already belongs to a handover.');
-            return CentralFinanceCollectionHandoverItem::on('mysql')->create(['batch_id' => $batch->id, 'pending_collection_id' => $pending->id, 'amount_snapshot' => $pending->amount, 'currency_snapshot' => $pending->currency, 'status' => CentralFinanceCollectionHandoverItem::ATTACHED]);
+            return CentralFinanceCollectionHandoverItem::on('mysql')->create(['handover_batch_id' => $batch->id, 'pending_collection_id' => $pending->id, 'expected_amount_snapshot' => $pending->amount, 'currency_snapshot' => $pending->currency, 'status' => CentralFinanceCollectionHandoverItem::ATTACHED]);
         });
     }
 
@@ -66,7 +66,7 @@ final class CentralFinanceCollectionHandoverService
             $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->with('items')->findOrFail($batch->id);
             $this->assertOwner($actor, $batch);
             if ($batch->status !== CentralFinanceCollectionHandoverBatch::DRAFT || $batch->items->isEmpty()) throw new InvalidArgumentException('A non-empty draft handover is required.');
-            $expected = $batch->items->sum(fn ($item) => (float) $item->amount_snapshot);
+            $expected = $batch->items->sum(fn ($item) => (float) $item->expected_amount_snapshot);
             if (bccomp((string) $expected, (string) $batch->declared_handed_over_amount, 4) !== 0) throw new InvalidArgumentException('Declared amount must equal the server-calculated expected amount.');
             $batch->update(['status' => CentralFinanceCollectionHandoverBatch::SUBMITTED, 'expected_amount' => $expected, 'submitted_by' => $actor->id, 'submitted_at' => now()]);
             $this->audits->record($actor, $batch, 'collection_handover', 'submitted', null, null, $batch->fresh()->toArray());
