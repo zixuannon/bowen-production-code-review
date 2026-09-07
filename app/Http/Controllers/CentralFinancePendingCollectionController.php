@@ -73,7 +73,13 @@ final class CentralFinancePendingCollectionController extends Controller
     {
         $actor = $this->workspace->actor(Auth::user());
         $this->workspace->assertHeadFinance($actor);
-        $school = $this->workspace->requireOperatingSchool($actor);
+        $school = $this->workspace->currentSchool($actor);
+        if ($school === null) {
+            $school = $this->operatingContext->currentSchool(Auth::user());
+            if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
+        }
+        abort_unless($school !== null, 403);
+        $this->workspace->assertHeadFinance($actor);
         $pending = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable', 'intendedFundAccount'])
             ->where('school_id', $school->id)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])->latest('submitted_at')->paginate(30);
         $accounts = $this->workspace->accessibleAccounts($actor, $school->id);
