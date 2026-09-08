@@ -31,6 +31,9 @@ cleanup() { if [[ "$switch" != "--switch" ]]; then git -C "$repo" worktree remov
 trap cleanup EXIT
 ln -s "$(readlink "$active_link/.env")" "$release_dir/.env"
 ln -s "$(readlink "$active_link/storage")" "$release_dir/storage"
+if [[ -L "$release_dir/public/storage" || -e "$release_dir/public/storage" ]]; then
+  rm -f "$release_dir/public/storage"
+fi
 ln -s "$(readlink "$active_link/public/storage")" "$release_dir/public/storage"
 mkdir -p "$release_dir/bootstrap/cache"
 git -C "$repo" rev-parse HEAD >/dev/null
