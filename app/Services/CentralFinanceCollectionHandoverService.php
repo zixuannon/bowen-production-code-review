@@ -74,6 +74,50 @@ final class CentralFinanceCollectionHandoverService
         });
     }
 
+    public function hold(CentralFinanceUser $actor, CentralFinanceCollectionHandoverBatch $batch, string $reason): CentralFinanceCollectionHandoverBatch
+    {
+        return $this->review($actor, $batch, CentralFinanceCollectionHandoverBatch::HELD, $reason);
+    }
+
+    public function reject(CentralFinanceUser $actor, CentralFinanceCollectionHandoverBatch $batch, string $reason): CentralFinanceCollectionHandoverBatch
+    {
+        return $this->review($actor, $batch, CentralFinanceCollectionHandoverBatch::REJECTED, $reason);
+    }
+
+    public function cancel(CentralFinanceUser $actor, CentralFinanceCollectionHandoverBatch $batch, string $reason): CentralFinanceCollectionHandoverBatch
+    {
+        if (trim($reason) === '') throw new InvalidArgumentException('A cancellation reason is required.');
+        return DB::connection('mysql')->transaction(function () use ($actor, $batch, $reason) {
+            $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->findOrFail($batch->id);
+            $this->assertOwner($actor, $batch);
+            if ($batch->status !== CentralFinanceCollectionHandoverBatch::DRAFT) throw new InvalidArgumentException('Only draft handovers can be cancelled.');
+            $batch->update(['status' => CentralFinanceCollectionHandoverBatch::CANCELLED, 'cancelled_by' => $actor->id, 'cancelled_at' => now(), 'cancelled_reason' => trim($reason)]);
+            $this->audits->record($actor, $batch, 'collection_handover', 'cancelled', trim($reason), null, $batch->fresh()->toArray());
+            return $batch->fresh();
+        });
+    }
+
+    private function review(CentralFinanceUser $actor, CentralFinanceCollectionHandoverBatch $batch, string $status, string $reason): CentralFinanceCollectionHandoverBatch
+    {
+        if (trim($reason) === '') throw new InvalidArgumentException('A review reason is required.');
+        return DB::connection('mysql')->transaction(function () use ($actor, $batch, $status, $reason) {
+            $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->findOrFail($batch->id);
+            $this->workspace->assertHeadFinance($actor);
+            $this->workspace->assertCanOperateSchool($actor, (int) $batch->school_id);
+            if (!in_array($batch->status, [CentralFinanceCollectionHandoverBatch::SUBMITTED, CentralFinanceCollectionHandoverBatch::HELD], true)) {
+                throw new InvalidArgumentException('Only submitted or held handovers can be reviewed.');
+            }
+            $now = now();
+            $fields = ['status' => $status, 'reviewed_by' => $actor->id, 'reviewed_at' => $now];
+            if ($status === CentralFinanceCollectionHandoverBatch::HELD) $fields += ['held_by' => $actor->id, 'held_at' => $now, 'held_reason' => trim($reason)];
+            if ($status === CentralFinanceCollectionHandoverBatch::REJECTED) $fields += ['rejected_by' => $actor->id, 'rejected_at' => $now, 'rejected_reason' => trim($reason)];
+            $before = $batch->toArray();
+            $batch->update($fields);
+            $this->audits->record($actor, $batch, 'collection_handover', $status, trim($reason), $before, $batch->fresh()->toArray());
+            return $batch->fresh();
+        });
+    }
+
     private function school(CentralFinanceUser $actor) { $school = $this->workspace->currentSchool($actor); if (!$school) throw new AuthorizationException('Select an authorized School.'); $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $school->id); $this->cutovers->assertCentralWritesAllowed((int) $school->id); return $school; }
     private function assertOwner(CentralFinanceUser $actor, CentralFinanceCollectionHandoverBatch $batch): void { $this->school($actor); if ((int) $batch->collector_id !== (int) $actor->id) throw new AuthorizationException('Only the submitting collector may edit this handover.'); }
     private function assertChannel(string $channel): void { if (!in_array($channel, ['Cash', 'Bank Transfer', 'QR / Wallet'], true)) throw new InvalidArgumentException('Unsupported payment channel.'); }

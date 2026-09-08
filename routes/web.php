@@ -1223,6 +1223,9 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/collection-handovers', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'store'])->name('central-finance.collection-handovers.store');
     Route::post('central-finance/collection-handovers/{batch}/items', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'add'])->name('central-finance.collection-handovers.items.store');
     Route::post('central-finance/collection-handovers/{batch}/submit', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'submit'])->name('central-finance.collection-handovers.submit');
+    Route::post('central-finance/collection-handovers/{batch}/hold', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'hold'])->name('central-finance.collection-handovers.hold');
+    Route::post('central-finance/collection-handovers/{batch}/reject', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'reject'])->name('central-finance.collection-handovers.reject');
+    Route::post('central-finance/collection-handovers/{batch}/cancel', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'cancel'])->name('central-finance.collection-handovers.cancel');
     Route::post('central-finance/collection-handovers/{batch}/confirm', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'confirm'])->name('central-finance.collection-handovers.confirm');
     Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
     Route::get('central-finance/receivables/{receivable}', [CentralFinanceWorkspaceController::class, 'receivableDetail'])->name('central-finance.receivables.show');
