@@ -30,6 +30,9 @@ git -C "$repo" worktree add --detach "$release_dir" "$commit" >/dev/null
 cleanup() { if [[ "$switch" != "--switch" ]]; then git -C "$repo" worktree remove --force "$release_dir" >/dev/null 2>&1 || true; fi; }
 trap cleanup EXIT
 ln -s "$(readlink "$active_link/.env")" "$release_dir/.env"
+if [[ -d "$release_dir/storage" && ! -L "$release_dir/storage" ]]; then
+  rm -rf "$release_dir/storage"
+fi
 ln -s "$(readlink "$active_link/storage")" "$release_dir/storage"
 if [[ -L "$release_dir/public/storage" || -e "$release_dir/public/storage" ]]; then
   rm -f "$release_dir/public/storage"
