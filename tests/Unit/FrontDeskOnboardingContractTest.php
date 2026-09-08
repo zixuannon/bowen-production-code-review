@@ -19,6 +19,8 @@ final class FrontDeskOnboardingContractTest extends TestCase
         $command = $this->source('app/Console/Commands/ProvisionFrontDeskRole.php');
 
         self::assertSame(2, substr_count($view, 'name="role_ids[]"'));
+        self::assertStringContainsString('Front Desk / Admissions & Collection', $controller);
+        self::assertStringContainsString('withoutGlobalScopes()', $controller);
         self::assertStringContainsString('role_ids.*', $controller);
         self::assertStringContainsString('assertAssignableStaffRoles', $controller);
         self::assertStringContainsString('Front Desk / Admissions & Collection', $service);

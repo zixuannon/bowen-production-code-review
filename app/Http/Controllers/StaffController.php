@@ -123,7 +123,17 @@ class StaffController extends Controller
     {
         ResponseService::noFeatureThenRedirect('Staff Management');
         ResponseService::noPermissionThenRedirect('staff-list');
-        $roles = Role::where('custom_role', 1)->whereNot('name', 'Teacher')->get();
+        // Super Admins must be able to provision the tenant Front Desk role
+        // across schools; school-scoped staff remain constrained by the
+        // Role model's school scope.
+        $rolesQuery = Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes();
+        $roles = $rolesQuery
+            ->where(function ($query) {
+                $query->where('custom_role', 1)
+                    ->orWhere('name', 'Front Desk / Admissions & Collection');
+            })
+            ->whereNot('name', 'Teacher')
+            ->get();
         $schools = array();
         if (!Auth::user()->school_id) {
             $schools = $this->school->active()->pluck('name', 'id');
