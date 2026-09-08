@@ -26,7 +26,7 @@
 })
 <div class="content-wrapper central-finance-page">
     <x-central-finance.page-header :title="$moduleTitle" :description="$moduleDescription" :school="$school" :status="$cutoverStatus" :eyebrow="$moduleGroup" :school-finance-facade="$schoolFinanceFacade">
-        @if($canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.enter') }}">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}">
+        @if($canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.enter') }}">@csrf<input type="hidden" name="return_to" value="{{ request('return_to', url()->full()) }}">
                 <select name="school_id" class="form-control form-control-sm" onchange="this.form.submit()" aria-label="{{ __('Switch School') }}">
                     <option value="">{{ __('切换校区') }}</option>
                     @foreach($schools as $availableSchool)<option value="{{ $availableSchool->id }}" @selected($school && $school->id === $availableSchool->id)>{{ $availableSchool->name }}</option>@endforeach
