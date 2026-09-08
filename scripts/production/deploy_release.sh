@@ -36,7 +36,8 @@ if [[ -L "$release_dir/public/storage" || -e "$release_dir/public/storage" ]]; t
 fi
 ln -s "$(readlink "$active_link/public/storage")" "$release_dir/public/storage"
 mkdir -p "$release_dir/bootstrap/cache"
-git -C "$repo" rev-parse HEAD >/dev/null
+baseline=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$repo/config/production-baseline.json")
+SOURCE_REPO="$release_dir" "$release_dir/scripts/production/write_release_manifest.sh" "$release_dir" "$baseline" "${GITHUB_REF:-main}"
 "$repo/scripts/production/verify_release_guard.sh" "$release_dir"
 echo "DRY_RUN_PASS:$commit:$release_dir"
 
