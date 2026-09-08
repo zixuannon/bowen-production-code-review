@@ -658,3 +658,9 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 7. Reports and Audit
 
 Do not implement finance roles until P1 is production-verified and business rules are confirmed.
+
+## Front Desk onboarding (local candidate)
+
+- Staff Create/Edit now supports the tenant-only `Front Desk / Admissions & Collection` role with multi-role payloads and server-side role ownership validation.
+- Central Finance access remains a separate explicit Finance Groups grant (`submit_collections` for one School); the tenant role alone grants no Finance capability.
+- The idempotent `school:provision-front-desk-role {school_code}` command provisions only the tenant role and does not modify financial data.
