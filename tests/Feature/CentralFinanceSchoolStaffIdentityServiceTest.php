@@ -12,6 +12,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\ValidationException;
@@ -181,6 +182,9 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $principal = $service->grantSchoolFrontDesk($group, 1, $first);
         $this->assertTrue((bool) DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => $principal->id, 'school_id' => 1])->value('can_submit_collections'));
         $this->assertFalse((bool) DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => $principal->id, 'school_id' => 1])->value('can_operate'));
+        Session::put('db_connection_name', 'school');
+        $this->assertTrue(Auth::guard('school_web')->attempt(['email' => 'frontdesk.provision@example.test', 'password' => 'qa-only']));
+        Auth::guard('school_web')->logout();
     }
 
     public function test_provisioning_fails_closed_when_central_identity_has_no_credential(): void
