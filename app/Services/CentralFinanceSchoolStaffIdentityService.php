@@ -103,7 +103,12 @@ final class CentralFinanceSchoolStaffIdentityService
                 : null;
             if (!$tenant && $central->email) $tenant = $query->where('email', $central->email)->first();
             if (!$tenant) {
-                $data = ['first_name' => $central->first_name ?: 'Front Desk', 'last_name' => $central->last_name ?: 'QA', 'email' => $central->email, 'password' => $central->password ?: Hash::make(Str::random(64)), 'status' => 1, 'created_at' => now(), 'updated_at' => now()];
+                // Provisioning links the same person's credentials; it must
+                // never invent an inaccessible password hash as a workaround.
+                if (!is_string($central->password) || trim($central->password) === '') {
+                    throw ValidationException::withMessages(['central_user_id' => [__('The selected Central identity must have an active credential before it can be linked to a School Staff login.')] ]);
+                }
+                $data = ['first_name' => $central->first_name ?: 'Front Desk', 'last_name' => $central->last_name ?: 'QA', 'email' => $central->email, 'password' => $central->password, 'status' => 1, 'created_at' => now(), 'updated_at' => now()];
                 if (Schema::connection('school')->hasColumn('users', 'school_id')) $data['school_id'] = $school->id;
                 if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')) $data['central_finance_source_uuid'] = $uuid;
                 $tenantId = (int) $query->insertGetId($data);

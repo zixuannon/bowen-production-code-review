@@ -11,6 +11,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\ValidationException;
@@ -173,6 +174,8 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $second = $service->provisionTenantFrontDesk($group, 1, 300);
         $this->assertSame($first, $second);
         $this->assertSame($uuid, DB::connection('school')->table('users')->where('id', $second)->value('central_finance_source_uuid'));
+        $tenantPassword = DB::connection('school')->table('users')->where('id', $second)->value('password');
+        $this->assertTrue(Hash::check('qa-only', (string) $tenantPassword));
         $this->assertSame(1, DB::connection('school')->table('staffs')->where('user_id', $first)->count());
         $this->assertSame(1, DB::connection('school')->table('model_has_roles')->where('model_id', $first)->count());
         $principal = $service->grantSchoolFrontDesk($group, 1, $first);
