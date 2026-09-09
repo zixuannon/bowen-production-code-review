@@ -664,3 +664,4 @@ Do not implement finance roles until P1 is production-verified and business rule
 - Staff Create/Edit now supports the tenant-only `Front Desk / Admissions & Collection` role with multi-role payloads and server-side role ownership validation.
 - Central Finance access remains a separate explicit Finance Groups grant (`submit_collections` for one School); the tenant role alone grants no Finance capability.
 - The idempotent `school:provision-front-desk-role {school_code}` command provisions only the tenant role and does not modify financial data.
+- Central Staff identity linking now provisions or reuses the tenant User/Staff row from an existing Central identity through the audited Super Admin flow. A deterministic School-scoped UUID prevents duplicate people; the existing credential hash is linked (provisioning fails closed when no credential exists), and the separate `submit_collections` grant remains explicit and revocable.
