@@ -183,6 +183,16 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertFalse((bool) DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => $principal->id, 'school_id' => 1])->value('can_operate'));
     }
 
+    public function test_provisioning_fails_closed_when_central_identity_has_no_credential(): void
+    {
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Credential QA', 'code' => 'CREDENTIAL_QA', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        DB::connection('mysql')->table('users')->insert(['id' => 301, 'first_name' => 'No', 'last_name' => 'Credential', 'email' => 'no-credential@example.test', 'password' => null]);
+
+        $this->expectException(ValidationException::class);
+        app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 301);
+    }
+
     public function test_pending_collection_schema_is_additive_and_reversible(): void
     {
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_pending_collections'));
