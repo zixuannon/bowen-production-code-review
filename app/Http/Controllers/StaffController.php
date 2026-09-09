@@ -458,6 +458,8 @@ class StaffController extends Controller
                     $q->where('custom_role', 1);
                 })->WhereHas('roles', function ($q) {
                     $q->whereNot('name', 'Teacher');
+                })->orWhereHas('roles', function ($q) {
+                    $q->where('name', 'Front Desk / Admissions & Collection');
                 });
             })
             ->with($eagerLoads);
