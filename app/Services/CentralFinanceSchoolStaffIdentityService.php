@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceSchoolStaffIdentity;
+use App\Models\CentralFinanceDocumentAudit;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
 use App\Models\School;
@@ -26,7 +27,7 @@ final class CentralFinanceSchoolStaffIdentityService
     /** School-facing role labels may retain their existing internal names. */
     private const PRINCIPAL_ROLE_NAMES = ['Principal'];
     private const ACCOUNTANT_ROLE_NAMES = ['School Accountant', 'Accountant', 'Cashier'];
-    private const FRONT_DESK_ROLE_NAMES = ['Front Desk', 'Admissions & Collection'];
+    private const FRONT_DESK_ROLE_NAMES = ['Front Desk', 'Admissions & Collection', 'Front Desk / Admissions & Collection'];
 
     public function __construct(private readonly FinanceGroupScopeService $groups) {}
 
@@ -78,6 +79,62 @@ final class CentralFinanceSchoolStaffIdentityService
     public function grantSchoolFrontDesk(FinanceGroup $group, int $schoolId, int $tenantUserId): CentralFinanceUser
     {
         return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false, true);
+    }
+
+    /** Provision (or locate) the tenant login for an existing Central staff identity. */
+    public function provisionTenantFrontDesk(FinanceGroup $group, int $schoolId, int $centralUserId): int
+    {
+        $school = School::on('mysql')->whereKey($schoolId)->where('installed', 1)->firstOrFail();
+        abort_unless($group->schools()->where(['school_id' => $schoolId, 'status' => 'active'])->exists(), 422);
+        $central = CentralFinanceUser::on('mysql')->findOrFail($centralUserId);
+        $tenantId = $this->inSchool($school, function () use ($central, $school): int {
+            $db = DB::connection('school');
+            $query = $db->table('users');
+            $uuid = (string) ($central->getRawOriginal('central_finance_source_uuid') ?? '');
+            if (!Str::isUuid($uuid)) {
+                // Deterministic UUID keeps repeated provisioning tied to the
+                // same person and School without adding a second identity row.
+                $hex = sha1('eschool:tenant-staff:'.$school->id.':'.$central->id);
+                $hex[12] = '5'; $hex[16] = dechex((hexdec($hex[16]) & 0x3) | 0x8);
+                $uuid = sprintf('%s-%s-%s-%s-%s', substr($hex, 0, 8), substr($hex, 8, 4), substr($hex, 12, 4), substr($hex, 16, 4), substr($hex, 20, 12));
+            }
+            $tenant = Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')
+                ? $query->where('central_finance_source_uuid', $uuid)->first()
+                : null;
+            if (!$tenant && $central->email) $tenant = $query->where('email', $central->email)->first();
+            if (!$tenant) {
+                $data = ['first_name' => $central->first_name ?: 'Front Desk', 'last_name' => $central->last_name ?: 'QA', 'email' => $central->email, 'password' => $central->password ?: Hash::make(Str::random(64)), 'status' => 1, 'created_at' => now(), 'updated_at' => now()];
+                if (Schema::connection('school')->hasColumn('users', 'school_id')) $data['school_id'] = $school->id;
+                if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')) $data['central_finance_source_uuid'] = $uuid;
+                $tenantId = (int) $query->insertGetId($data);
+            } else {
+                $tenantId = (int) $tenant->id;
+                if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid') && empty($tenant->central_finance_source_uuid)) $query->whereKey($tenantId)->update(['central_finance_source_uuid' => $uuid]);
+            }
+            $staffId = $db->table('staffs')->where('user_id', $tenantId)->value('id');
+            if (!$staffId) {
+                $staffData = ['user_id' => $tenantId];
+                if (Schema::connection('school')->hasColumn('staffs', 'created_at')) { $staffData['created_at'] = now(); $staffData['updated_at'] = now(); }
+                $db->table('staffs')->insert($staffData);
+            }
+            $role = $db->table('roles')->where('name', 'Front Desk / Admissions & Collection')->first();
+            if (!$role) {
+                $roleData = ['name' => 'Front Desk / Admissions & Collection', 'guard_name' => 'web'];
+                if (Schema::connection('school')->hasColumn('roles', 'school_id')) $roleData['school_id'] = $school->id;
+                if (Schema::connection('school')->hasColumn('roles', 'created_at')) { $roleData['created_at'] = now(); $roleData['updated_at'] = now(); }
+                $roleId = (int) $db->table('roles')->insertGetId($roleData);
+            } else $roleId = (int) $role->id;
+            $exists = $db->table('model_has_roles')->where(['role_id' => $roleId, 'model_id' => $tenantId, 'model_type' => User::class])->exists();
+            if (!$exists) $db->table('model_has_roles')->insert(['role_id' => $roleId, 'model_id' => $tenantId, 'model_type' => User::class]);
+            return $tenantId;
+        });
+        CentralFinanceDocumentAudit::on('mysql')->create([
+            'school_id' => $schoolId, 'document_type' => 'central_finance_staff_identity',
+            'document_id' => $centralUserId, 'action' => 'provisioned', 'actor_id' => auth()->id() ?: $centralUserId,
+            'reason' => 'Tenant Staff identity provision/link', 'before_values' => [],
+            'after_values' => ['tenant_user_id' => $tenantId, 'school_id' => $schoolId],
+        ]);
+        return $tenantId;
     }
 
     private function grantSchoolStaffFinanceAccess(FinanceGroup $group, int $schoolId, int $tenantUserId, bool $requestedOperate, bool $requestedCollectionSubmit = false): CentralFinanceUser

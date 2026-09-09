@@ -37,7 +37,7 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         foreach (['2026_08_18_000001_create_finance_group_scope_tables.php', '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php', '2026_08_21_000002_create_central_finance_operating_documents.php', '2026_08_21_000003_create_central_finance_internal_transfer_documents.php', '2026_08_24_000002_create_central_finance_school_staff_identities.php', '2026_09_04_000001_create_central_finance_pending_collections.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan', 'code' => 'SCH202615', 'database_name' => $this->zixuan, 'installed' => true, 'status' => 'active']);
 
-        Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->softDeletes(); });
+        Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->boolean('status')->default(true); $table->timestamps(); $table->softDeletes(); });
         Schema::connection('school')->create('staffs', function (Blueprint $table): void { $table->id(); $table->unsignedBigInteger('user_id'); });
         Schema::connection('school')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); });
         Schema::connection('school')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
@@ -160,6 +160,24 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         app(\App\Services\CentralFinanceWorkspaceService::class)->assertCanSubmitCollectionsSchool($frontDesk, 1);
         $this->expectException(AuthorizationException::class);
         app(\App\Services\CentralFinanceWorkspaceService::class)->assertCanOperateSchool($frontDesk, 1);
+    }
+
+    public function test_central_front_desk_provisioning_is_idempotent_and_assigns_a_stable_tenant_identity(): void
+    {
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Provision QA', 'code' => 'PROVISION_QA', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        DB::connection('mysql')->table('users')->insert(['id' => 300, 'first_name' => 'Zixuan Front Desk QA', 'last_name' => 'Test', 'email' => 'frontdesk.provision@example.test', 'password' => bcrypt('qa-only')]);
+        $service = app(CentralFinanceSchoolStaffIdentityService::class);
+        $first = $service->provisionTenantFrontDesk($group, 1, 300);
+        $uuid = DB::connection('school')->table('users')->where('id', $first)->value('central_finance_source_uuid');
+        $second = $service->provisionTenantFrontDesk($group, 1, 300);
+        $this->assertSame($first, $second);
+        $this->assertSame($uuid, DB::connection('school')->table('users')->where('id', $second)->value('central_finance_source_uuid'));
+        $this->assertSame(1, DB::connection('school')->table('staffs')->where('user_id', $first)->count());
+        $this->assertSame(1, DB::connection('school')->table('model_has_roles')->where('model_id', $first)->count());
+        $principal = $service->grantSchoolFrontDesk($group, 1, $first);
+        $this->assertTrue((bool) DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => $principal->id, 'school_id' => 1])->value('can_submit_collections'));
+        $this->assertFalse((bool) DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => $principal->id, 'school_id' => 1])->value('can_operate'));
     }
 
     public function test_pending_collection_schema_is_additive_and_reversible(): void

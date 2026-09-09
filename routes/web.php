@@ -232,6 +232,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('finance-groups/{financeGroup}/school-staff-accountants', [FinanceGroupController::class, 'storeSchoolStaffAccountant'])->name('finance-groups.school-staff-accountants.store');
         Route::post('finance-groups/{financeGroup}/school-staff-principals', [FinanceGroupController::class, 'storeSchoolStaffPrincipal'])->name('finance-groups.school-staff-principals.store');
         Route::post('finance-groups/{financeGroup}/school-staff-front-desks', [FinanceGroupController::class, 'storeSchoolStaffFrontDesk'])->name('finance-groups.school-staff-front-desks.store');
+        Route::post('finance-groups/{financeGroup}/school-staff-front-desks/provision', [FinanceGroupController::class, 'provisionSchoolStaffFrontDesk'])->name('finance-groups.school-staff-front-desks.provision');
         Route::post('finance-groups/{financeGroup}/central-school-scopes/disable', [FinanceGroupController::class, 'disableCentralSchoolScope'])->name('finance-groups.central-school-scopes.disable');
         Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
         Route::get('finance-groups/{financeGroup}', [FinanceGroupController::class, 'show'])->name('finance-groups.show');
