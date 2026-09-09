@@ -14,6 +14,14 @@ Last updated: 2026-09-04
 
 Finance V2
 
+## Phase 5.5B final acceptance correction — local candidate
+
+- The candidate starts at Production SHA `29dfb22b36f7547487e3b5566a73e3f33fd7fb73`.
+- Handover now exposes collector-scoped Add/Remove/Submit/Cancel controls and Head Finance-only Hold/Reject/Confirm controls while retaining the canonical Pending Collection confirmation service as the only Payment/Receipt/Ledger writer.
+- Draft creation supplies the schema-required zero expected amount; submit replaces it with the server-calculated sum of attached items.
+- Removed draft items remain auditable lifecycle rows. A stale Pending item fails the complete confirmation transaction, and browser-form business errors return visible validation feedback rather than HTTP 500.
+- Focused Handover, Pending Collection, school-scope, identity, payment, exactly-once, audit, and all-or-nothing regressions pass locally. Production deployment and authenticated browser acceptance remain gated.
+
 ## Phase 5.5A — local Pending Collection candidate
 
 - Added an additive Central `central_finance_pending_collections` lifecycle document and a narrow Front Desk submission scope.

@@ -54,6 +54,8 @@ final class CentralFinanceCollectionHandoverContractTest extends TestCase
         $service = $this->source('app/Services/CentralFinanceCollectionHandoverService.php');
 
         $this->assertStringContainsString('MAX_ITEMS = 50', $service);
+        $this->assertStringContainsString("'expected_amount' => 0", $service);
+        $this->assertStringContainsString('The handover idempotency key belongs to a different request.', $service);
         $this->assertStringContainsString('assertCanSubmitCollectionsSchool', $service);
         $this->assertStringContainsString('assertCentralWritesAllowed', $service);
         $this->assertStringContainsString('Pending collection already belongs to a handover.', $service);
@@ -87,11 +89,31 @@ final class CentralFinanceCollectionHandoverContractTest extends TestCase
         $service = $this->source('app/Services/CentralFinanceCollectionHandoverService.php');
         $confirm = $this->source('app/Services/CentralFinanceHeadFinanceHandoverConfirmService.php');
         $this->assertStringContainsString('MAX_ITEMS = 50', $service);
-        $this->assertStringContainsString('items()->count() >= self::MAX_ITEMS', $service);
+        $this->assertStringContainsString("where('status', CentralFinanceCollectionHandoverItem::ATTACHED)->count() >= self::MAX_ITEMS", $service);
         $this->assertStringContainsString('Declared amount must equal the server-calculated expected amount.', $service);
         $this->assertStringContainsString('Pending collection is not eligible for this handover.', $service);
         $this->assertStringContainsString('Only submitted handovers can be confirmed.', $confirm);
+        $this->assertStringContainsString('Every handover item must still be a submitted Pending Collection.', $confirm);
+        $this->assertStringNotContainsString('CentralFinancePendingCollection::CONFIRMED) continue', $confirm);
         $this->assertStringContainsString('actual_handed_over_amount', $confirm);
+    }
+
+    public function test_handover_ui_exposes_complete_role_scoped_workflow(): void
+    {
+        $controller = $this->source('app/Http/Controllers/CentralFinanceCollectionHandoverController.php');
+        $view = $this->source('resources/views/central-finance/collection-handovers/index.blade.php');
+        $service = $this->source('app/Services/CentralFinanceCollectionHandoverService.php');
+
+        $this->assertStringContainsString("where('collector_id', \$actor->id)", $controller);
+        $this->assertStringContainsString('assertCanSubmitCollectionsSchool', $controller);
+        $this->assertStringContainsString('assertCanOperateSchool', $controller);
+        $this->assertStringContainsString('canReviewPendingCollections', $controller);
+        $this->assertStringContainsString('ValidationException::withMessages', $controller);
+        $this->assertStringContainsString("'item_removed'", $service);
+        $this->assertStringContainsString('CentralFinanceCollectionHandoverItem::REMOVED', $service);
+        foreach (['Add item', 'Remove', 'Submit', 'Cancel', 'Hold', 'Reject', 'Confirm', 'Actual received amount'] as $label) {
+            $this->assertStringContainsString($label, $view);
+        }
     }
 
     public function test_routes_expose_review_actions_without_front_desk_financial_writes(): void

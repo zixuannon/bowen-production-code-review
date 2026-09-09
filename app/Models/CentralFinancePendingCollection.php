@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\CentralFinanceCurrency;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -46,4 +47,5 @@ final class CentralFinancePendingCollection extends Model
     public function studentProfile(): BelongsTo { return $this->belongsTo(CentralFinanceStudentProfile::class, 'student_profile_id'); }
     public function intendedFundAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'intended_fund_account_id'); }
     public function confirmedPayment(): BelongsTo { return $this->belongsTo(CentralFinancePayment::class, 'confirmed_payment_id'); }
+    public function handoverItems(): HasMany { return $this->hasMany(CentralFinanceCollectionHandoverItem::class, 'pending_collection_id'); }
 }

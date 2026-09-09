@@ -1223,6 +1223,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/collection-handovers', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'index'])->name('central-finance.collection-handovers.index');
     Route::post('central-finance/collection-handovers', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'store'])->name('central-finance.collection-handovers.store');
     Route::post('central-finance/collection-handovers/{batch}/items', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'add'])->name('central-finance.collection-handovers.items.store');
+    Route::post('central-finance/collection-handovers/{batch}/items/{item}/remove', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'remove'])->name('central-finance.collection-handovers.items.remove');
     Route::post('central-finance/collection-handovers/{batch}/submit', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'submit'])->name('central-finance.collection-handovers.submit');
     Route::post('central-finance/collection-handovers/{batch}/hold', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'hold'])->name('central-finance.collection-handovers.hold');
     Route::post('central-finance/collection-handovers/{batch}/reject', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'reject'])->name('central-finance.collection-handovers.reject');

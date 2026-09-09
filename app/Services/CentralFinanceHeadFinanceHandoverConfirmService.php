@@ -37,9 +37,11 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
             $this->assertAccount($actor, $account, $batch);
             $expected = (float) $batch->expected_amount;
             if (abs((float) $actualAmount - $expected) > 0.00005 || abs((float) $batch->declared_handed_over_amount - $expected) > 0.00005) throw new InvalidArgumentException('Expected, declared, and actual amounts must match.');
-            foreach ($batch->items->sortBy('id') as $item) {
+            foreach ($batch->items->where('status', CentralFinanceCollectionHandoverItem::ATTACHED)->sortBy('id') as $item) {
                 $pending = CentralFinancePendingCollection::on('mysql')->lockForUpdate()->findOrFail($item->pending_collection_id);
-                if ($pending->status === CentralFinancePendingCollection::CONFIRMED) continue;
+                if ($pending->status !== CentralFinancePendingCollection::SUBMITTED) {
+                    throw new InvalidArgumentException('Every handover item must still be a submitted Pending Collection.');
+                }
                 $this->pendingConfirmation->confirm($actor, (int) $pending->id, $account, $confirmedAt, $reason);
                 $item->update(['status' => CentralFinanceCollectionHandoverItem::CONFIRMED, 'confirmed_payment_id' => $pending->fresh()->confirmed_payment_id]);
             }
