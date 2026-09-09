@@ -11,6 +11,7 @@ use Tests\TestCase;
 
 class ExpenseSoftDeleteTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['mysql', 'school'];
