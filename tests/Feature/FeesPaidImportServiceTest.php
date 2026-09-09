@@ -26,6 +26,8 @@ use Tests\TestCase;
 
 class FeesPaidImportServiceTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['mysql', 'school'];

@@ -23,6 +23,8 @@ use Tests\TestCase;
  */
 class FeesPaidImportHttpTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['mysql', 'school'];

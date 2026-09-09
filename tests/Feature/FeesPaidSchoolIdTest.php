@@ -31,6 +31,8 @@ use Tests\TestCase;
  */
 class FeesPaidSchoolIdTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     private int $authUserId;
     private int $studentUserId;
     private int $schoolId = 1;
