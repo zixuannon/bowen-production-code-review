@@ -129,9 +129,9 @@ final class CentralFinanceSchoolStaffIdentityService
                 $tenantId = (int) $query->insertGetId($data);
             } else {
                 $tenantId = (int) $tenant->id;
-                if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid') && empty($tenant->central_finance_source_uuid)) $query->whereKey($tenantId)->update(['central_finance_source_uuid' => $uuid]);
+                if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid') && empty($tenant->central_finance_source_uuid)) $query->where('id', $tenantId)->update(['central_finance_source_uuid' => $uuid]);
                 if ($authState !== []) {
-                    $query->whereKey($tenantId)->where('central_finance_source_uuid', $uuid)->update(array_merge($authState, ['updated_at' => now()]));
+                    $query->where('id', $tenantId)->where('central_finance_source_uuid', $uuid)->update(array_merge($authState, ['updated_at' => now()]));
                 }
             }
             $staffId = $db->table('staffs')->where('user_id', $tenantId)->value('id');

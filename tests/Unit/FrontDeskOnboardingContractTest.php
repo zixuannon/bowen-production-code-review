@@ -41,6 +41,7 @@ final class FrontDeskOnboardingContractTest extends TestCase
         self::assertStringContainsString('provisionTenantFrontDesk', $identity);
         self::assertStringContainsString('school-staff-front-desks/provision', $routes);
         self::assertStringContainsString("'can_operate' => \$canOperate", $identity);
+        self::assertStringNotContainsString('->whereKey($tenantId)', $identity);
     }
 
 }
