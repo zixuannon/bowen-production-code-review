@@ -23,6 +23,7 @@ final class FrontDeskOnboardingContractTest extends TestCase
         self::assertStringContainsString('withoutGlobalScopes()', $controller);
         self::assertStringContainsString('role_ids.*', $controller);
         self::assertStringContainsString('assertAssignableStaffRoles', $controller);
+        self::assertStringContainsString("if (Auth::user()->school_id) {\n                \$leave_permission", $controller);
         self::assertStringContainsString('Front Desk / Admissions & Collection', $service);
         self::assertStringContainsString('school:provision-front-desk-role {school_code}', $command);
         self::assertStringNotContainsString('operate_finance', $command);

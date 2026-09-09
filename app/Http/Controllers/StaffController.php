@@ -302,7 +302,11 @@ class StaffController extends Controller
             }
 
             $user->syncRoles($roles);
-            if ($user->school_id) {
+            // Tenant leave permissions belong to a School database. A Super
+            // Admin-created Front Desk identity is first created centrally
+            // with a single school_id and is provisioned into the tenant by
+            // CentralFinanceSchoolStaffIdentityService afterwards.
+            if (Auth::user()->school_id) {
                 $leave_permission = [
                     'leave-list',
                     'leave-create',
