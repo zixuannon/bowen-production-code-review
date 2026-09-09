@@ -236,6 +236,8 @@ class StaffController extends Controller
             $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
             $roles = (Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes())->whereIn('id', $roleIds)->get();
             $this->assertAssignableStaffRoles($roles, $roleIds->count(), $request->input('school_id', []));
+            $assignedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($schoolId) => (int) $schoolId)->unique()->values();
+            $isFrontDesk = $roles->contains(fn ($role) => $role->name === 'Front Desk / Admissions & Collection');
 
             /*If Super admin creates the staff then make it active by default*/
             if (!empty(Auth::user()->school_id)) {
@@ -260,6 +262,18 @@ class StaffController extends Controller
                     'two_factor_secret' => null,
                     'two_factor_expires_at' => null,
                 );
+            }
+
+            // A Super Admin creates users on the central connection.  A
+            // Front Desk identity must still be tenant-scoped so it cannot
+            // inherit the global (school_id = NULL) sidebar/auth contract.
+            if (!Auth::user()->school_id) {
+                if ($isFrontDesk) {
+                    if ($assignedSchoolIds->count() !== 1) {
+                        ResponseService::validationError('Front Desk staff must be assigned to exactly one school.');
+                    }
+                    $data['school_id'] = $assignedSchoolIds->first();
+                }
             }
 
 
@@ -567,6 +581,8 @@ class StaffController extends Controller
             $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
             $roles = (Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes())->whereIn('id', $roleIds)->get();
             $this->assertAssignableStaffRoles($roles, $roleIds->count(), $request->input('school_id', []));
+            $assignedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($schoolId) => (int) $schoolId)->unique()->values();
+            $isFrontDesk = $roles->contains(fn ($role) => $role->name === 'Front Desk / Admissions & Collection');
             $data = $request->except('school_id', 'role_ids');
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image');
@@ -584,6 +600,13 @@ class StaffController extends Controller
                 $data['two_factor_secret'] = null;
                 $data['two_factor_expires_at'] = null;
                 $data['two_factor_enabled'] = 0;
+            }
+
+            if (!Auth::user()->school_id && $isFrontDesk) {
+                if ($assignedSchoolIds->count() !== 1) {
+                    ResponseService::validationError('Front Desk staff must be assigned to exactly one school.');
+                }
+                $data['school_id'] = $assignedSchoolIds->first();
             }
 
             $user = $this->user->update($id, $data);
