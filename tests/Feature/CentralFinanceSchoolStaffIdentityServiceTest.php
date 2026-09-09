@@ -33,13 +33,13 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         DB::purge('mysql'); DB::purge('school'); DB::setDefaultConnection('mysql');
 
         Schema::connection('mysql')->create('schools', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('code'); $table->string('database_name'); $table->boolean('installed')->default(true); $table->string('status')->default('active'); $table->softDeletes(); $table->timestamps(); });
-        Schema::connection('mysql')->create('users', function (Blueprint $table): void { $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->boolean('status')->default(true); $table->softDeletes(); $table->timestamps(); });
+        Schema::connection('mysql')->create('users', function (Blueprint $table): void { $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->boolean('status')->default(true); $table->boolean('two_factor_enabled')->default(false); $table->text('two_factor_secret')->nullable(); $table->timestamp('two_factor_expires_at')->nullable(); $table->softDeletes(); $table->timestamps(); });
         Schema::connection('mysql')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamps(); });
         Schema::connection('mysql')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
         foreach (['2026_08_18_000001_create_finance_group_scope_tables.php', '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php', '2026_08_21_000002_create_central_finance_operating_documents.php', '2026_08_21_000003_create_central_finance_internal_transfer_documents.php', '2026_08_24_000002_create_central_finance_school_staff_identities.php', '2026_09_04_000001_create_central_finance_pending_collections.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan', 'code' => 'SCH202615', 'database_name' => $this->zixuan, 'installed' => true, 'status' => 'active']);
 
-        Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->boolean('status')->default(true); $table->timestamps(); $table->softDeletes(); });
+        Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->boolean('status')->default(true); $table->boolean('two_factor_enabled')->default(true); $table->text('two_factor_secret')->nullable(); $table->timestamp('two_factor_expires_at')->nullable(); $table->timestamps(); $table->softDeletes(); });
         Schema::connection('school')->create('staffs', function (Blueprint $table): void { $table->id(); $table->unsignedBigInteger('user_id'); });
         Schema::connection('school')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); });
         Schema::connection('school')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
@@ -168,13 +168,15 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
     {
         $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Provision QA', 'code' => 'PROVISION_QA', 'status' => 'active']);
         app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
-        DB::connection('mysql')->table('users')->insert(['id' => 300, 'first_name' => 'Zixuan Front Desk QA', 'last_name' => 'Test', 'email' => 'frontdesk.provision@example.test', 'password' => bcrypt('qa-only')]);
+        DB::connection('mysql')->table('users')->insert(['id' => 300, 'first_name' => 'Zixuan Front Desk QA', 'last_name' => 'Test', 'email' => 'frontdesk.provision@example.test', 'password' => bcrypt('qa-only'), 'two_factor_enabled' => false]);
         $service = app(CentralFinanceSchoolStaffIdentityService::class);
         $first = $service->provisionTenantFrontDesk($group, 1, 300);
         $uuid = DB::connection('school')->table('users')->where('id', $first)->value('central_finance_source_uuid');
         $second = $service->provisionTenantFrontDesk($group, 1, 300);
         $this->assertSame($first, $second);
         $this->assertSame($uuid, DB::connection('school')->table('users')->where('id', $second)->value('central_finance_source_uuid'));
+        $this->assertFalse((bool) DB::connection('school')->table('users')->where('id', $second)->value('two_factor_enabled'));
+        $this->assertNull(DB::connection('school')->table('users')->where('id', $second)->value('two_factor_secret'));
         $tenantPassword = DB::connection('school')->table('users')->where('id', $second)->value('password');
         $this->assertTrue(Hash::check('qa-only', (string) $tenantPassword));
         $this->assertSame(1, DB::connection('school')->table('staffs')->where('user_id', $first)->count());

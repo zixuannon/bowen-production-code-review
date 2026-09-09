@@ -90,6 +90,17 @@ final class CentralFinanceSchoolStaffIdentityService
         $tenantId = $this->inSchool($school, function () use ($central, $school): int {
             $db = DB::connection('school');
             $query = $db->table('users');
+            $centralAttributes = $central->getAttributes();
+            $authState = [];
+            foreach (['two_factor_enabled', 'two_factor_secret', 'two_factor_expires_at'] as $column) {
+                if (Schema::connection('school')->hasColumn('users', $column)
+                    && array_key_exists($column, $centralAttributes)) {
+                    // The tenant login is the same linked person. Keep its
+                    // canonical authentication state aligned without ever
+                    // exposing the underlying secret in logs or audit data.
+                    $authState[$column] = $central->getRawOriginal($column);
+                }
+            }
             $uuid = (string) ($central->getRawOriginal('central_finance_source_uuid') ?? '');
             if (!Str::isUuid($uuid)) {
                 // Deterministic UUID keeps repeated provisioning tied to the
@@ -102,19 +113,26 @@ final class CentralFinanceSchoolStaffIdentityService
                 ? $query->where('central_finance_source_uuid', $uuid)->first()
                 : null;
             if (!$tenant && $central->email) $tenant = $query->where('email', $central->email)->first();
+            if ($tenant && !empty($tenant->central_finance_source_uuid)
+                && $tenant->central_finance_source_uuid !== $uuid) {
+                throw ValidationException::withMessages(['central_user_id' => [__('The selected Central identity conflicts with an existing linked School Staff identity.')]]);
+            }
             if (!$tenant) {
                 // Provisioning links the same person's credentials; it must
                 // never invent an inaccessible password hash as a workaround.
                 if (!is_string($central->password) || trim($central->password) === '') {
                     throw ValidationException::withMessages(['central_user_id' => [__('The selected Central identity must have an active credential before it can be linked to a School Staff login.')] ]);
                 }
-                $data = ['first_name' => $central->first_name ?: 'Front Desk', 'last_name' => $central->last_name ?: 'QA', 'email' => $central->email, 'password' => $central->password, 'status' => 1, 'created_at' => now(), 'updated_at' => now()];
+                $data = array_merge(['first_name' => $central->first_name ?: 'Front Desk', 'last_name' => $central->last_name ?: 'QA', 'email' => $central->email, 'password' => $central->password, 'status' => 1, 'created_at' => now(), 'updated_at' => now()], $authState);
                 if (Schema::connection('school')->hasColumn('users', 'school_id')) $data['school_id'] = $school->id;
                 if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')) $data['central_finance_source_uuid'] = $uuid;
                 $tenantId = (int) $query->insertGetId($data);
             } else {
                 $tenantId = (int) $tenant->id;
                 if (Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid') && empty($tenant->central_finance_source_uuid)) $query->whereKey($tenantId)->update(['central_finance_source_uuid' => $uuid]);
+                if ($authState !== []) {
+                    $query->whereKey($tenantId)->where('central_finance_source_uuid', $uuid)->update(array_merge($authState, ['updated_at' => now()]));
+                }
             }
             $staffId = $db->table('staffs')->where('user_id', $tenantId)->value('id');
             if (!$staffId) {
