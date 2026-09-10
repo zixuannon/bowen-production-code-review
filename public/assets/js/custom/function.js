@@ -1298,7 +1298,15 @@ function loadSubjectsByClass(classSelector, subjectSelector, routeUrl, options =
         disabledText: '-- Select Class First --'
     };
     
-    const config = Object.assign({}, defaults, options);
+    const safeOptions = options && Object.getPrototypeOf(options) === Object.prototype
+        ? options
+        : {};
+    const config = {};
+    Object.keys(defaults).forEach((key) => {
+        config[key] = Object.prototype.hasOwnProperty.call(safeOptions, key)
+            ? safeOptions[key]
+            : defaults[key];
+    });
     const $classSelect = typeof classSelector === 'string' ? $(classSelector) : classSelector;
     const $subjectSelect = typeof subjectSelector === 'string' ? $(subjectSelector) : subjectSelector;
     

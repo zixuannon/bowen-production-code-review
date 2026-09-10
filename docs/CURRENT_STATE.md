@@ -682,3 +682,11 @@ Do not implement finance roles until P1 is production-verified and business rule
 - The legacy Web installer, default installer credentials, global installer middleware, custom routes, views, and local package source were removed. Environment-setting support still used by System Settings is retained as an explicit standalone dependency.
 - Patched Laravel 10-compatible dependency versions remove all active Composer Critical/High advisories. Laravel 10's upstream email-rule advisory is covered by global CR/LF rejection for email-shaped input fields; its duplicate advisory and the Laravel 10 signed-URL advisory are explicitly documented while a future framework-major upgrade remains out of this P0 scope.
 - Local disposable-MySQL regression passes 591 tests / 4031 assertions with zero errors or failures. No Production changes were made.
+
+## Snyk Medium security hardening (local candidate)
+
+- The candidate is based directly on Production baseline `98535a9f6399b3ba9f929fd8cd3db7528ddf0d1f`; no Production deployment or data change has been made.
+- Legacy Paystack controller responses are decoded and returned with a JSON content type instead of echoing an upstream payload as browser HTML. Transaction references are bounded and encoded, redirects are disabled, and upstream exception details are not exposed.
+- Production DOM sinks identified by the security review now render question, plan, and gallery-caption data as text rather than executable HTML.
+- Axios is upgraded to the patched 1.20 release line, and the subject-loader option merge now copies only known own properties from a plain object.
+- Disposable-MySQL full regression passes 597 tests / 4050 assertions with zero errors or failures. Production-only findings were kept separate from excluded test credentials, test SHA1 fixtures, and translation-file false positives.

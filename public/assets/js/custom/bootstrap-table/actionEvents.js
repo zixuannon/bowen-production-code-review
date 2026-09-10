@@ -748,7 +748,7 @@ window.onlineExamQuestionsEvents = {
             $('#edit-simple-question').show(300);
             $('.edit_option_container').html('')
 
-            $('.edit-question').html(row.question);
+            $('.edit-question').text(row.question || '');
             // add options and add the options in answers
             let html = ''
             $.each(row.options, function (index, value) {
@@ -1830,7 +1830,7 @@ window.subscriptionEvents = {
             month: 'long',
             day: 'numeric'
         };
-        $('.plan-name').html(row.subscription.name);
+        $('.plan-name').text(row.subscription.name || '');
         let start_date = new Date(row.subscription.start_date);
         // start_date = new Intl.DateTimeFormat('en-US', options).format(start_date);
         console.log(system_date_format)
