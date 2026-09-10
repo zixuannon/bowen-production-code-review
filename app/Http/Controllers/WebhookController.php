@@ -475,12 +475,13 @@ class WebhookController extends Controller
             $webhookSecret = $paymentConfiguration['secret_key'];
 
             // Verify webhook signature
-            $expectedSignature = $_SERVER['HTTP_X_PAYSTACK_SIGNATURE'];
+            $expectedSignature = (string) ($_SERVER['HTTP_X_PAYSTACK_SIGNATURE'] ?? '');
             $calculatedSignature = hash_hmac('sha512', $webhookBody, $webhookSecret);
 
             $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->reference)->first();
-            if ($expectedSignature !== $calculatedSignature) {
-                throw new SignatureVerificationException('Invalid signature');
+            if (!hash_equals($calculatedSignature, $expectedSignature)) {
+                Log::warning('Paystack webhook signature rejected.');
+                return response()->json(['error' => 'Invalid signature'], 400);
             }
 
             if (!$paymentTransactionData) {

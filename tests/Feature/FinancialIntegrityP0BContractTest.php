@@ -19,6 +19,8 @@ class FinancialIntegrityP0BContractTest extends TestCase
         $this->assertStringContainsString('lockForUpdate()', $subscription);
         $this->assertStringContainsString('lockForUpdate()', $service);
         $this->assertStringContainsString("status === 'succeed'", $service);
+        $this->assertStringContainsString('hash_equals($calculatedSignature, $expectedSignature)', $fee);
+        $this->assertStringContainsString("response()->json(['error' => 'Invalid signature'], 400)", $fee);
     }
 
     public function test_offline_authority_rebuilds_amounts_from_locked_fee_setup(): void

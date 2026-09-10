@@ -14,10 +14,11 @@ Last updated: 2026-09-10
 
 Finance V2
 
-## Round 2 P0B financial integrity — local candidate
+## Round 2 P0B financial integrity — Production
 
-- Branch `codex/round2-p0b-financial-integrity` starts from the active
-  Production release manifest SHA `06b9c7c2a72736d748b8edfd7c7a5aefcb26a302`.
+- The approved `c0ba941d2c4b1a8bdbfb53e4d766cbbc9a2f0e37` release and its
+  QA-only Paystack 4xx forward-fix descend directly from the prior active
+  Production release `06b9c7c2a72736d748b8edfd7c7a5aefcb26a302`.
 - Stripe, Razorpay, Paystack, and Flutterwave settlement now serializes on the
   existing server-created `payment_transactions` identity with a database
   transaction and row lock. Replays are no-ops, concurrent deliveries cannot
@@ -27,11 +28,13 @@ Finance V2
   canonical amount, due charge, currency, exchange rate, and selected-item
   totals from locked School-owned Fee Setup/receivable rows. Negative, zero,
   overpayment, cross-School, duplicate, and client-tampered values fail closed.
-- Focused financial/security regression passes (65 tests, 249 assertions),
+- Focused financial/security regression passes (65 tests, 251 assertions),
   including a two-process database race. The complete PHPUnit suite passes
-  (640 tests, 4,210 assertions; zero failures/errors).
-- No schema migration is added or executed. Production code/data, Phase 5.5B,
-  homepage/assets, and established Finance workflow remain untouched.
+  (640 tests, 4,212 assertions; zero failures/errors).
+- No schema migration is added or executed and no Production financial data is
+  written. Phase 5.5B, homepage/assets, and established Finance workflow remain untouched. Release
+  QA uses only invalid-signature requests, read-only pages, and rolled-back
+  amount-authority checks; it creates no Payment, Receipt, or Ledger entry.
 
 ## Round 1 P0A security hardening — local candidate
 
