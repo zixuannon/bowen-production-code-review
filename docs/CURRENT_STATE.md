@@ -673,3 +673,12 @@ Do not implement finance roles until P1 is production-verified and business rule
 - Central Finance access remains a separate explicit Finance Groups grant (`submit_collections` for one School); the tenant role alone grants no Finance capability.
 - The idempotent `school:provision-front-desk-role {school_code}` command provisions only the tenant role and does not modify financial data.
 - Central Staff identity linking now provisions or reuses the tenant User/Staff row from an existing Central identity through the audited Super Admin flow. A deterministic School-scoped UUID prevents duplicate people; the existing credential hash is linked (provisioning fails closed when no credential exists), and the separate `submit_collections` grant remains explicit and revocable.
+
+## Snyk P0 security hardening (local candidate)
+
+- Upload paths now accept only bounded, relative folder segments in the shared `UploadService`; original filenames remain traversal-checked and server-generated filenames remain authoritative.
+- Payment verification uses fixed HTTPS gateway base URLs, strict provider-specific transaction identifiers, encoded path segments, and disabled redirect following. User input can no longer select a host or arbitrary gateway path.
+- The diary description modal now constructs DOM nodes and text content instead of concatenating user-controlled HTML or link attributes.
+- The legacy Web installer, default installer credentials, global installer middleware, custom routes, views, and local package source were removed. Environment-setting support still used by System Settings is retained as an explicit standalone dependency.
+- Patched Laravel 10-compatible dependency versions remove all active Composer Critical/High advisories. Laravel 10's upstream email-rule advisory is covered by global CR/LF rejection for email-shaped input fields; its duplicate advisory and the Laravel 10 signed-URL advisory are explicitly documented while a future framework-major upgrade remains out of this P0 scope.
+- Local disposable-MySQL regression passes 591 tests / 4031 assertions with zero errors or failures. No Production changes were made.

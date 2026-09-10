@@ -38,7 +38,6 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GuardianController;
 use App\Http\Controllers\GuidanceController;
 use App\Http\Controllers\HolidayController;
-use App\Http\Controllers\InstallerController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\LeaveMasterController;
@@ -166,14 +165,6 @@ Route::group(['prefix' => 'school'], static function () {
 Route::group(['prefix' => 'page/type'], static function () {
     Route::get('/{type?}', [Controller::class, 'systemLinks']);
 });
-
-if (env('INSTALLER_ENABLED', false)) {
-    Route::group(['prefix' => 'install'], static function () {
-        Route::get('purchase-code', [InstallerController::class, 'purchaseCodeIndex'])->name('install.purchase-code.index');
-        Route::post('purchase-code', [InstallerController::class, 'checkPurchaseCode'])->name('install.purchase-code.post');
-        Route::get('php-function', [InstallerController::class, 'phpFunctionIndex'])->name('install.php-function.index');
-    });
-}
 
 // auth
 Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDatabase', 'verifiedEmail', 'CheckForMaintenanceMode', '2fa', 'wizardSettings']], static function () {

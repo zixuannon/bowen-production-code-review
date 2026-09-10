@@ -59,7 +59,7 @@ class UploadService {
      *
      * @throws UploadValidationException
      */
-    public static function upload($requestFile, $folder, string $fieldName = 'file') {
+    public static function upload(UploadedFile $requestFile, string $folder, string $fieldName = 'file'): string {
         // 1. Sanitize folder path (prevent path traversal through folder)
         $folder = static::sanitizePath($folder, $fieldName);
 
@@ -182,10 +182,28 @@ class UploadService {
      * @throws UploadValidationException
      */
     protected static function sanitizePath(string $path, string $fieldName = 'file'): string {
-        if (str_contains($path, '..') || str_contains($path, "\0")) {
+        if ($path === ''
+            || str_contains($path, '..')
+            || str_contains($path, "\0")
+            || str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || preg_match('/^[A-Za-z]:[\\\\\/]/', $path)
+        ) {
             throw new UploadValidationException('Invalid folder path.', $fieldName);
         }
-        return trim($path, '/\\');
+
+        $segments = preg_split('#[\\\\/]#', $path);
+        if (!$segments) {
+            throw new UploadValidationException('Invalid folder path.', $fieldName);
+        }
+
+        foreach ($segments as $segment) {
+            if ($segment === '' || !preg_match('/\A[A-Za-z0-9][A-Za-z0-9_-]{0,63}\z/D', $segment)) {
+                throw new UploadValidationException('Invalid folder path.', $fieldName);
+            }
+        }
+
+        return implode('/', $segments);
     }
 
     /**

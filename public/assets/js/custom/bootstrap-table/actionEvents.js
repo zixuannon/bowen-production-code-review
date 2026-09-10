@@ -2034,29 +2034,38 @@ window.tableDescriptionEvents = {
 
 
         if (row.student) {
-            $('.modal-title').html('<h3>' + escapeHtml(window.trans['student']) + '</h3>');
-            var listStudents = '';
-            let currURL = window.location.href;
-            let students = row.diary_students;
-            const description = '<div class="col-md-12 mb-3">'
-                + '<h5>' + escapeHtml(row.diary_category ? row.diary_category.name : '') + '</h5>'
-                + '<p>' + escapeHtml(row.description || '') + '</p>'
-                + '</div>';
+            $('.modal-title').empty().append($('<h3>').text(window.trans['student'] || ''));
+            let students = Array.isArray(row.diary_students) ? row.diary_students : [];
+            const $description = $('<div>').addClass('col-md-12 mb-3')
+                .append($('<h5>').text(row.diary_category ? row.diary_category.name : ''))
+                .append($('<p>').text(row.description || ''));
+            const $studentList = $('<div>');
 
-            students?.forEach(student => {
-                listStudents += '<div class="col-md-3 mb-3">'
-                    + '<div class="card p-3">'
-                    + '<div><h4>' + escapeHtml(student.student.full_name) + '</h4></div>'
-                    + '<div class="mb-2">' + escapeHtml(student.class_section.full_name) + '</div>'
-                    + '<div>'
-                    + '<a href="' + currURL + '/' + student.diary_id + '/remove-student/' + student.id + '" class="delete-form bg-danger text-white px-3 rounded py-2" title="Remove Student">'
-                    + escapeHtml(window.trans['remove']) + ' <i class="fa fa-trash"></i></a>'
-                    + '</div>'
-                    + '</div>'
-                    + '</div>';
+            students.forEach(student => {
+                const diaryId = String(student.diary_id || '');
+                const studentId = String(student.id || '');
+                if (!/^\d+$/.test(diaryId) || !/^\d+$/.test(studentId)) {
+                    return;
+                }
+
+                const basePath = window.location.pathname.replace(/\/$/, '');
+                const removePath = basePath + '/' + encodeURIComponent(diaryId)
+                    + '/remove-student/' + encodeURIComponent(studentId);
+                const $remove = $('<a>')
+                    .attr('href', removePath)
+                    .attr('title', 'Remove Student')
+                    .addClass('delete-form bg-danger text-white px-3 rounded py-2')
+                    .append(document.createTextNode((window.trans['remove'] || '') + ' '))
+                    .append($('<i>').addClass('fa fa-trash'));
+                const $card = $('<div>').addClass('card p-3')
+                    .append($('<div>').append($('<h4>').text(student.student ? student.student.full_name : '')))
+                    .append($('<div>').addClass('mb-2').text(student.class_section ? student.class_section.full_name : ''))
+                    .append($('<div>').append($remove));
+
+                $studentList.append($('<div>').addClass('col-md-3 mb-3').append($card));
             });
             $('.description-data').addClass('d-flex align-items-center justify-content-start flex-wrap');
-            $('.description-data').html(description + listStudents);
+            $('.description-data').empty().append($description).append($studentList.children());
             let hideModalTimeout; // store timeout ID globally
 
             $('.modal-content').on('mouseenter', function () {
