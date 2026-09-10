@@ -472,6 +472,11 @@ class WebhookController extends Controller
                 ->where('school_id', $school_id)
                 ->first();
 
+            if (!$paymentConfiguration) {
+                Log::warning('Paystack webhook configuration was not found for the requested School.');
+                return response()->json(['error' => 'Invalid webhook configuration'], 400);
+            }
+
             $webhookSecret = $paymentConfiguration['secret_key'];
 
             // Verify webhook signature

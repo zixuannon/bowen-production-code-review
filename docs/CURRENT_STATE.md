@@ -28,9 +28,9 @@ Finance V2
   canonical amount, due charge, currency, exchange rate, and selected-item
   totals from locked School-owned Fee Setup/receivable rows. Negative, zero,
   overpayment, cross-School, duplicate, and client-tampered values fail closed.
-- Focused financial/security regression passes (65 tests, 251 assertions),
+- Focused financial/security regression passes (65 tests, 252 assertions),
   including a two-process database race. The complete PHPUnit suite passes
-  (640 tests, 4,212 assertions; zero failures/errors).
+  (640 tests, 4,213 assertions; zero failures/errors).
 - No schema migration is added or executed and no Production financial data is
   written. Phase 5.5B, homepage/assets, and established Finance workflow remain untouched. Release
   QA uses only invalid-signature requests, read-only pages, and rolled-back
