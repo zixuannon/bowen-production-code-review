@@ -340,7 +340,7 @@
                         lightboxVideo.style.display = "block";
                         lightboxVideo.src = src;
                     }
-                    captionText.innerHTML = caption;
+                    captionText.textContent = caption || '';
                 }
 
                 // Function to close the lightbox

@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
-use Illuminate\Support\Facades\Redirect;
+use JsonException;
 
 class PaystackController extends Controller
 {
@@ -39,7 +39,11 @@ class PaystackController extends Controller
         
         //execute post
         $response = curl_exec($ch);
-        echo $response;
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        return $this->paystackJsonResponse($response, $status, $error);
     }
 
     public function callback(Request $request)
@@ -67,11 +71,7 @@ class PaystackController extends Controller
 
         curl_close($curl);
         
-        if ($err) {
-            echo "cURL Error #:" . $err;
-        } else {
-            echo $response;
-        }
+        return $this->paystackJsonResponse($response, 200, $err);
     }
 
 
@@ -110,7 +110,11 @@ class PaystackController extends Controller
         
         //execute post
         $result = curl_exec($ch);
-        echo $result;
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        return $this->paystackJsonResponse($result, $status, $error);
     }
 
     // Verify Paystack Transaction
@@ -118,14 +122,20 @@ class PaystackController extends Controller
     {
         $reference = $request->query('reference'); // Paystack transaction reference
 
+        if (!is_string($reference) || !preg_match('/\A[A-Za-z0-9._-]{1,100}\z/', $reference)) {
+            return response()->json(['message' => 'Invalid transaction reference.'], 422);
+        }
+
         $client = new Client();
         $secretKey = env('PAYSTACK_SECRET_KEY'); // Secret key from .env
 
         try {
-            $response = $client->get('https://api.paystack.co/transaction/verify/' . $reference, [
+            $response = $client->get('https://api.paystack.co/transaction/verify/' . rawurlencode($reference), [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $secretKey,
                 ],
+                'allow_redirects' => false,
+                'timeout' => 15,
             ]);
 
             $body = json_decode($response->getBody(), true);
@@ -146,8 +156,28 @@ class PaystackController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error occurred while verifying payment.',
-                'error' => $e->getMessage(),
-            ], 500);
+            ], 502);
         }
+    }
+
+    /**
+     * Return gateway payloads as JSON so a compromised or malformed upstream
+     * response can never be interpreted as executable HTML by the browser.
+     */
+    private function paystackJsonResponse(string|false $payload, int $status, string $error = '')
+    {
+        if ($payload === false || $error !== '') {
+            return response()->json(['message' => 'Payment gateway request failed.'], 502);
+        }
+
+        try {
+            $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return response()->json(['message' => 'Payment gateway returned an invalid response.'], 502);
+        }
+
+        $safeStatus = $status >= 200 && $status <= 599 ? $status : 502;
+
+        return response()->json($decoded, $safeStatus);
     }
 }
