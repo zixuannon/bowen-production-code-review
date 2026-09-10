@@ -94,5 +94,6 @@ class Kernel extends HttpKernel {
         'tenantFinanceWritable' => \App\Http\Middleware\EnsureTenantFinanceWritesAllowed::class,
         'DifyToken' => \App\Http\Middleware\DifyTokenMiddleware::class,
         'XiaobailongServiceAuth' => \App\Http\Middleware\XiaobailongServiceAuth::class,
+        'teacherFileUpload' => \App\Http\Middleware\RequireTeacherFileUpload::class,
     ];
 }

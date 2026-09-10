@@ -1535,9 +1535,15 @@ class SubscriptionController extends Controller
             'notes' => $customMetaData,
             'payment_capture' => 1
         ]);
+        $orderData = $order->toArray();
+        PaymentTransaction::query()
+            ->whereKey($paymentTransactionData->id)
+            ->whereRaw('LOWER(payment_status) = ?', ['pending'])
+            ->update(['order_id' => $orderData['id']]);
+        $paymentTransactionData->order_id = $orderData['id'];
 
         $data = [
-            'order' => $order->toArray(),
+            'order' => $orderData,
             'paymentTransaction' => $paymentTransactionData
         ];
 

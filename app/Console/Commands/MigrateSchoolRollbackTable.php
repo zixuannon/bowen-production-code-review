@@ -29,6 +29,10 @@ class MigrateSchoolRollbackTable extends Command
      */
     public function handle()
     {
+        if (app()->environment('production')) {
+            $this->error('migrate:school:rollback is disabled in production. Use a reviewed forward-fix.');
+            return self::FAILURE;
+        }
         //
         $schools = School::withTrashed()->get();
 

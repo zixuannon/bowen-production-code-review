@@ -255,6 +255,36 @@ class UploadServiceSecurityTest extends TestCase
         $this->assertEquals('jpg', $result);
     }
 
+    public function test_positive_allowlist_rejects_executable_content_with_safe_extension(): void
+    {
+        $this->expectException(UploadValidationException::class);
+        $this->getMethod('validateAllowedType')->invoke(
+            null,
+            'pdf',
+            'text/x-php',
+            ['application/pdf' => ['pdf']],
+            'file'
+        );
+    }
+
+    public function test_positive_allowlist_requires_mime_and_extension_to_match(): void
+    {
+        $method = $this->getMethod('validateAllowedType');
+        $allowlist = ['application/pdf' => ['pdf']];
+
+        $method->invoke(null, 'pdf', 'application/pdf', $allowlist, 'file');
+        $this->expectException(UploadValidationException::class);
+        $method->invoke(null, 'txt', 'application/pdf', $allowlist, 'file');
+    }
+
+    public function test_teacher_allowlist_contains_no_executable_or_archive_types(): void
+    {
+        $extensions = array_merge(...array_values(UploadService::TEACHER_UPLOAD_ALLOWLIST));
+        foreach (array_merge(UploadService::BLOCKED_EXTENSIONS, ['zip', 'rar', '7z']) as $extension) {
+            $this->assertNotContains($extension, $extensions);
+        }
+    }
+
     /**
      * UploadValidationException must extend RuntimeException so that
      * try/catch blocks catching RuntimeException still work.

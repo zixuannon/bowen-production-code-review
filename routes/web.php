@@ -884,7 +884,6 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::get('show', [DatabaseBackupController::class, 'show']);
             Route::get('store', [DatabaseBackupController::class, 'store']);
             Route::delete('/{id}', [DatabaseBackupController::class, 'destroy']);
-            Route::post('restore/{id}', [DatabaseBackupController::class, 'restore'])->name('database-backup.restore');
         });
 
 

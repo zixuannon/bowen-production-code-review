@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-09-04
+Last updated: 2026-09-10
 
 ## Active production target
 
@@ -13,6 +13,29 @@ Last updated: 2026-09-04
 ## Current area
 
 Finance V2
+
+## Round 1 P0A security hardening — local candidate
+
+- Branch `codex/round1-p0a-security` starts from Production/main baseline
+  `a5a715ee17a326698be3cfee428fdcb6998cdb70`; Production remains untouched.
+- Teacher API uploads require an explicit non-wildcard token ability, Teacher
+  role, School/resource ownership, and positive MIME/extension allowlists.
+  A versioned Nginx server-block include prevents `/storage` and `/uploads`
+  from falling through to a PHP handler.
+- Fee Flutterwave completion requires the provider HMAC signature, provider
+  transaction verification, and exact pending reference/amount/currency/School
+  matching. Subscription Razorpay, Flutterwave, and Paystack webhooks verify
+  their provider signatures and cannot create a transaction from webhook data.
+- Web database restore is removed, including its uploaded SQL execution,
+  tenant truncation, and restore-time broad migration path.
+- Production generic migration commands fail closed. Only exact migration
+  files selected by the fixed allowlisted release runners can reach Laravel's
+  migrate/rollback commands; the web updater no longer runs broad migration.
+- Local security targets pass (88 tests, 284 assertions), and the complete
+  PHPUnit suite passes (621 tests, 4,132 assertions; zero failures/errors).
+- No Production migration, Production data write, deployment, homepage/assets,
+  Phase 5.5B, or established Finance settlement flow is changed by this local
+  candidate.
 
 ## Phase 5.5B final acceptance correction — local candidate
 

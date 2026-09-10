@@ -57,6 +57,23 @@ Do not use:
 - broad tenant migration when unrelated migrations are pending
 - destructive financial SQL
 
+Production application boot now enforces this rule: direct `migrate*`,
+`migrate:school`, and `migrate:school:rollback` invocations fail closed. Schema
+changes may run only through a reviewed application runner whose command name,
+tenant registry allowlist, and exact single-file migration paths are encoded in
+`ProductionMigrationGuard`. Do not bypass that guard from an updater, restore
+flow, Tinker, scheduler, or nested Artisan call.
+
+## Public upload execution boundary
+
+Every production vhost must include
+`config/nginx/eschool-upload-security.conf` inside its server block. Before a
+separately approved server-config change, confirm the include uses the tracked
+`location ^~ /storage/` and `location ^~ /uploads/` blocks, run `nginx -t`, and
+then reload Nginx. Verify a normal uploaded document remains readable and an
+uploaded `.php` probe is never dispatched to PHP-FPM. This repository change
+does not itself update or reload the production vhost.
+
 ## Multi-tenant migrations
 
 Tenant schema changes must be run against the school connection / correct tenant database.

@@ -179,8 +179,8 @@ Route::group(['prefix' => 'teacher'], static function () {
 
         //Assignment
         Route::get('get-assignment', [TeacherApiController::class, 'getAssignment']);
-        Route::post('create-assignment', [TeacherApiController::class, 'createAssignment']);
-        Route::post('update-assignment', [TeacherApiController::class, 'updateAssignment']);
+        Route::post('create-assignment', [TeacherApiController::class, 'createAssignment'])->middleware('teacherFileUpload');
+        Route::post('update-assignment', [TeacherApiController::class, 'updateAssignment'])->middleware('teacherFileUpload');
         Route::post('delete-assignment', [TeacherApiController::class, 'deleteAssignment']);
 
         //Assignment Submission
@@ -189,24 +189,24 @@ Route::group(['prefix' => 'teacher'], static function () {
 
         //File
         Route::post('delete-file', [TeacherApiController::class, 'deleteFile']);
-        Route::post('update-file', [TeacherApiController::class, 'updateFile']);
+        Route::post('update-file', [TeacherApiController::class, 'updateFile'])->middleware('teacherFileUpload');
 
         //Lesson
         Route::get('get-lesson', [TeacherApiController::class, 'getLesson']);
-        Route::post('create-lesson', [TeacherApiController::class, 'createLesson']);
-        Route::post('update-lesson', [TeacherApiController::class, 'updateLesson']);
+        Route::post('create-lesson', [TeacherApiController::class, 'createLesson'])->middleware('teacherFileUpload');
+        Route::post('update-lesson', [TeacherApiController::class, 'updateLesson'])->middleware('teacherFileUpload');
         Route::post('delete-lesson', [TeacherApiController::class, 'deleteLesson']);
 
         //Topic
         Route::get('get-topic', [TeacherApiController::class, 'getTopic']);
-        Route::post('create-topic', [TeacherApiController::class, 'createTopic']);
-        Route::post('update-topic', [TeacherApiController::class, 'updateTopic']);
+        Route::post('create-topic', [TeacherApiController::class, 'createTopic'])->middleware('teacherFileUpload');
+        Route::post('update-topic', [TeacherApiController::class, 'updateTopic'])->middleware('teacherFileUpload');
         Route::post('delete-topic', [TeacherApiController::class, 'deleteTopic']);
 
         //Announcement
         Route::get('get-announcement', [TeacherApiController::class, 'getAnnouncement']);
-        Route::post('send-announcement', [TeacherApiController::class, 'sendAnnouncement']);
-        Route::post('update-announcement', [TeacherApiController::class, 'updateAnnouncement']);
+        Route::post('send-announcement', [TeacherApiController::class, 'sendAnnouncement'])->middleware('teacherFileUpload');
+        Route::post('update-announcement', [TeacherApiController::class, 'updateAnnouncement'])->middleware('teacherFileUpload');
         Route::post('delete-announcement', [TeacherApiController::class, 'deleteAnnouncement']);
 
         Route::get('get-attendance', [TeacherApiController::class, 'getAttendance']);

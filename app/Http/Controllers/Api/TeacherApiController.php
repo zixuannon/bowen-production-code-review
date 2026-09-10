@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ClassSection;
 use App\Models\ClassTeacher;
 use App\Models\File;
+use App\Models\Lesson;
+use App\Models\LessonTopic;
+use App\Models\Assignment;
 use App\Models\School;
 use App\Models\SubjectTeacher;
 use App\Models\User;
@@ -54,6 +57,7 @@ use App\Rules\YouTubeUrl;
 use App\Rules\DynamicMimes;
 use App\Rules\MaxFileSize;
 use App\Services\SessionYearsTrackingsService;
+use App\Services\UploadService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -199,7 +203,10 @@ class TeacherApiController extends Controller
                 ResponseService::errorResponse(trans('your_account_has_been_deactivated_please_contact_admin'), null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
             }
 
-            $token = $auth->createToken($auth->first_name)->plainTextToken;
+            $abilities = $auth->hasRole('Teacher')
+                ? ['teacher-api', 'teacher-files:update']
+                : ['staff-api'];
+            $token = $auth->createToken($auth->first_name, $abilities)->plainTextToken;
             if (Auth::user()->hasRole('Teacher')) {
                 $user = $auth->load(['teacher', 'teacher.staffSalary.payrollSetting']);
                 $customFields = $auth->extra_user_details->map(function ($row) {
@@ -1770,89 +1777,90 @@ class TeacherApiController extends Controller
 
     public function updateFile(Request $request)
     {
-        $validator = Validator::make($request->all(), ['file_id' => 'required|numeric',]);
+        $validator = Validator::make($request->all(), [
+            'file_id' => 'required|integer',
+            'name' => 'nullable|string|max:255',
+            'file' => 'nullable|file|max:51200',
+            'thumbnail' => 'nullable|file|max:5120',
+            'link' => 'nullable|url|max:2048',
+        ]);
 
         if ($validator->fails()) {
             ResponseService::validationError($validator->errors()->first());
         }
         try {
-            $file = File::find($request->file_id);
+            $file = File::query()
+                ->whereKey($request->integer('file_id'))
+                ->where('school_id', Auth::user()->school_id)
+                ->firstOrFail();
+
+            $ownedResource = match ($file->modal_type) {
+                Lesson::class => Lesson::query()->where('school_id', Auth::user()->school_id)->owner()->whereKey($file->modal_id)->exists(),
+                LessonTopic::class => LessonTopic::query()->where('school_id', Auth::user()->school_id)->owner()->whereKey($file->modal_id)->exists(),
+                Assignment::class => Assignment::query()->where('school_id', Auth::user()->school_id)->owner()->whereKey($file->modal_id)->exists(),
+                default => false,
+            };
+            abort_unless($ownedResource, 404);
+
             $file->file_name = $request->name;
 
+            $folder = match ($file->modal_type) {
+                Lesson::class => 'lessons',
+                LessonTopic::class => 'topics',
+                Assignment::class => 'assignments',
+            };
+            $documentTypes = [
+                'application/pdf' => ['pdf'],
+                'text/plain' => ['txt'],
+                'text/csv' => ['csv'],
+                'application/msword' => ['doc'],
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => ['docx'],
+                'application/vnd.ms-excel' => ['xls'],
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => ['xlsx'],
+                'application/vnd.ms-powerpoint' => ['ppt'],
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation' => ['pptx'],
+                'image/jpeg' => ['jpg', 'jpeg'],
+                'image/png' => ['png'],
+                'image/webp' => ['webp'],
+                'image/gif' => ['gif'],
+            ];
+            $imageTypes = array_intersect_key($documentTypes, array_flip(UploadService::IMAGE_MIMES));
+            $videoTypes = [
+                'video/mp4' => ['mp4'],
+                'video/webm' => ['webm'],
+                'video/quicktime' => ['mov'],
+            ];
 
             if ($file->type == "1") {
                 // Type File :- File Upload
 
                 if (!empty($request->file)) {
-                    if (Storage::disk('public')->exists($file->getRawOriginal('file_url'))) {
-                        Storage::disk('public')->delete($file->getRawOriginal('file_url'));
-                    }
-
-                    if ($file->modal_type == "App\Models\Lesson") {
-
-                        $file->file_url = $request->file->store('lessons', 'public');
-                    } else if ($file->modal_type == "App\Models\LessonTopic") {
-
-                        $file->file_url = $request->file->store('topics', 'public');
-                    } else {
-
-                        $file->file_url = $request->file->store('other', 'public');
-                    }
+                    $oldPath = $file->getRawOriginal('file_url');
+                    $file->file_url = UploadService::uploadAllowed($request->file('file'), $folder, $documentTypes);
+                    UploadService::delete($oldPath);
                 }
             } elseif ($file->type == "2") {
                 // Type File :- YouTube Link Upload
 
                 if (!empty($request->thumbnail)) {
-                    if (Storage::disk('public')->exists($file->getRawOriginal('file_url'))) {
-                        Storage::disk('public')->delete($file->getRawOriginal('file_url'));
-                    }
-
-                    if ($file->modal_type == "App\Models\Lesson") {
-
-                        $file->file_thumbnail = $request->thumbnail->store('lessons', 'public');
-                    } else if ($file->modal_type == "App\Models\LessonTopic") {
-
-                        $file->file_thumbnail = $request->thumbnail->store('topics', 'public');
-                    } else {
-
-                        $file->file_thumbnail = $request->thumbnail->store('other', 'public');
-                    }
+                    $oldPath = $file->getRawOriginal('file_thumbnail');
+                    $file->file_thumbnail = UploadService::uploadAllowed($request->file('thumbnail'), $folder, $imageTypes, 'thumbnail');
+                    UploadService::delete($oldPath);
                 }
                 $file->file_url = $request->link;
             } elseif ($file->type == "3") {
                 // Type File :- Video Upload
 
                 if (!empty($request->file)) {
-                    if (Storage::disk('public')->exists($file->getRawOriginal('file_url'))) {
-                        Storage::disk('public')->delete($file->getRawOriginal('file_url'));
-                    }
-
-                    if ($file->modal_type == "App\Models\Lesson") {
-
-                        $file->file_url = $request->file->store('lessons', 'public');
-                    } else if ($file->modal_type == "App\Models\LessonTopic") {
-
-                        $file->file_url = $request->file->store('topics', 'public');
-                    } else {
-
-                        $file->file_url = $request->file->store('other', 'public');
-                    }
+                    $oldPath = $file->getRawOriginal('file_url');
+                    $file->file_url = UploadService::uploadAllowed($request->file('file'), $folder, $videoTypes);
+                    UploadService::delete($oldPath);
                 }
 
                 if (!empty($request->thumbnail)) {
-                    if (Storage::disk('public')->exists($file->getRawOriginal('file_url'))) {
-                        Storage::disk('public')->delete($file->getRawOriginal('file_url'));
-                    }
-                    if ($file->modal_type == "App\Models\Lesson") {
-
-                        $file->file_thumbnail = $request->thumbnail->store('lessons', 'public');
-                    } else if ($file->modal_type == "App\Models\LessonTopic") {
-
-                        $file->file_thumbnail = $request->thumbnail->store('topics', 'public');
-                    } else {
-
-                        $file->file_thumbnail = $request->thumbnail->store('other', 'public');
-                    }
+                    $oldPath = $file->getRawOriginal('file_thumbnail');
+                    $file->file_thumbnail = UploadService::uploadAllowed($request->file('thumbnail'), $folder, $imageTypes, 'thumbnail');
+                    UploadService::delete($oldPath);
                 }
             }
             $file->save();

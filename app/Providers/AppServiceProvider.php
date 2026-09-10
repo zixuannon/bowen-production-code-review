@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Models\Students;
 use App\Observers\CentralFinanceStudentProfileObserver;
+use App\Services\ProductionMigrationGuard;
+use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -40,6 +43,24 @@ class AppServiceProvider extends ServiceProvider {
         Schema::defaultStringLength(191);
         Schema::useNativeSchemaOperationsIfPossible();
         Students::observe(CentralFinanceStudentProfileObserver::class);
+        Event::listen(CommandStarting::class, function (CommandStarting $event): void {
+            $paths = [];
+            $realPath = false;
+            try {
+                $paths = (array) ($event->input->getOption('path') ?? []);
+                $realPath = (bool) $event->input->getOption('realpath');
+            } catch (\Throwable) {
+                // Commands without migration options remain fail-closed below.
+            }
+
+            app(ProductionMigrationGuard::class)->assertAllowed(
+                (string) $event->command,
+                $_SERVER['argv'][1] ?? null,
+                $paths,
+                $realPath,
+                app()->environment('production')
+            );
+        });
 
 //        $this->app['validator']->extend('unique_for_school', function ($attribute, $value, $parameters) {
 //            // Extract and validate the parameters from the rule syntax.

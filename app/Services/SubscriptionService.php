@@ -483,21 +483,19 @@ class SubscriptionService
             
             $result = $response->json();
 
-            // if ($result['status']) {
-            //     // update flutterwave payment transaction table
-            //     $paymentTransactionData = array(
-            //         'user_id'         => Auth::user()->id,
-            //         'amount'          => $amount,
-            //         'payment_gateway' => 'Paystack',
-            //         'order_id'        => $result['data']['reference'],
-            //         'payment_status'  => 'pending',
-            //         'school_id'       => Auth::user()->school_id,
-            //         'created_at'      => now(),
-            //         'updated_at'      => now(),
-            //     );
-
-            //     $this->paymentTransaction->create($paymentTransactionData);
-            // }
+            $paymentTransaction = $this->paymentTransaction->create([
+                'user_id' => Auth::user()->id,
+                'amount' => $amount,
+                'payment_gateway' => 'Paystack',
+                'order_id' => $result['data']['reference'],
+                'payment_status' => 'pending',
+                'school_id' => Auth::user()->school_id,
+            ]);
+            if ($subscriptionBill_id && $subscriptionBill_id != -1) {
+                $this->subscriptionBill->update($subscriptionBill_id, [
+                    'payment_transaction_id' => $paymentTransaction->id,
+                ]);
+            }
 
             Log::info('Paystack payment initialized successfully: ' . $result['data']['reference']);
             return redirect()->away($result['data']['authorization_url'])->with('success', trans('The paystack payment has been successful'));

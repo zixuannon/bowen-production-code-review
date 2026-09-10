@@ -15,18 +15,15 @@ use App\Repositories\Subscription\SubscriptionInterface;
 use App\Repositories\SubscriptionFeature\SubscriptionFeatureInterface;
 use App\Services\CachingService;
 use App\Services\SubscriptionService;
-use Auth;
+use App\Services\WebhookSecurityService;
 use Carbon\Carbon;
 use DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Razorpay\Api\Api;
 use Stripe\Exception\SignatureVerificationException;
 use Throwable;
 use UnexpectedValueException;
 use Exception;
-use App\Models\School;
-use Illuminate\Support\Facades\Config;
 
 class SubscriptionWebhookController extends Controller
 {
@@ -37,8 +34,9 @@ class SubscriptionWebhookController extends Controller
     private SubscriptionInterface $subscription;
     private SubscriptionFeatureInterface $subscriptionFeature;
     private AddonSubscriptionInterface $addonSubscription;
+    private WebhookSecurityService $webhookSecurity;
 
-    public function __construct(CachingService $cachingService, PaymentTransactionInterface $paymentTransaction, SubscriptionService $subscriptionService, SubscriptionInterface $subscription, SubscriptionFeatureInterface $subscriptionFeature, AddonSubscriptionInterface $addonSubscription)
+    public function __construct(CachingService $cachingService, PaymentTransactionInterface $paymentTransaction, SubscriptionService $subscriptionService, SubscriptionInterface $subscription, SubscriptionFeatureInterface $subscriptionFeature, AddonSubscriptionInterface $addonSubscription, WebhookSecurityService $webhookSecurity)
     {
         $this->cache = $cachingService;
         $this->paymentTransaction = $paymentTransaction;
@@ -47,6 +45,7 @@ class SubscriptionWebhookController extends Controller
         $this->subscription = $subscription;
         $this->subscriptionFeature = $subscriptionFeature;
         $this->addonSubscription = $addonSubscription;
+        $this->webhookSecurity = $webhookSecurity;
     }
 
     public function stripe(Request $request)
@@ -147,8 +146,9 @@ class SubscriptionWebhookController extends Controller
     {
 
         Log::info('Called');
-        $webhookBody = file_get_contents('php://input');
+        $webhookBody = $request->getContent();
         try {
+            $this->guardSubscriptionWebhook($request, 'Razorpay', $webhookBody);
             $data = json_decode($webhookBody, false, 512, JSON_THROW_ON_ERROR);
             Log::info("Razorpay Webhook Data : ", [$data]);
 
@@ -157,15 +157,7 @@ class SubscriptionWebhookController extends Controller
             $data = (object)$payload;
             $metadata = $data->payload['payment']['entity']['notes'];
 
-            // You can find your endpoint's secret in your webhook settings
             DB::setDefaultConnection('mysql');
-            $paymentConfiguration = PaymentConfiguration::select('webhook_secret_key')->where('payment_method', 'razorpay')->where('school_id', null)->first();
-          
-            $webhookSecret = $paymentConfiguration['webhook_secret_key'];
-            $webhookPublic = $paymentConfiguration["webhook_public_key"];
-
-
-            $api = new Api($webhookPublic, $webhookSecret);
             $new_subscription = '';
 
             // $metadata = $data->payload->payment->entity->notes;
@@ -175,19 +167,21 @@ class SubscriptionWebhookController extends Controller
 
             if ($metadata && isset($data->event) && $data->event == 'payment.captured') {
 
-                //checks the signature
-                // $expectedSignature = hash_hmac("SHA256", $webhookBody, $webhookSecret);
-                // $api->utility->verifyWebhookSignature($webhookBody, $expectedSignature, $webhookSecret);
-                $paymentTransactionData = PaymentTransaction::where('id', $metadata->payment_transaction_id)->first();
+                DB::beginTransaction();
+                $paymentTransactionData = PaymentTransaction::where('id', $metadata->payment_transaction_id)
+                    ->whereRaw('LOWER(payment_status) = ?', ['pending'])
+                    ->lockForUpdate()
+                    ->first();
                 
                 if ($paymentTransactionData == null) {
                     Log::error("Razorpay Webhook : Payment Transaction id not found");
+                    DB::rollBack();
+                    return response()->json(['status' => 'ignored'], 200);
                 }
 
                 if ($paymentTransactionData && $paymentTransactionData->payment_status == "succeed") {
                     Log::info("Razorpay Webhook : Transaction Already Succeed");
                 } else {
-                    DB::beginTransaction();
                     $paymentTransactionStatus = PaymentTransaction::find($metadata->payment_transaction_id);
                     if ($paymentTransactionStatus) {
                         $paymentTransactionStatus->payment_status = "succeed";
@@ -426,8 +420,9 @@ class SubscriptionWebhookController extends Controller
     public function flutterwave(Request $request)
     {
         Log::info('Flutterwave Webhook Called');
-        $webhookBody = file_get_contents('php://input');
+        $webhookBody = $request->getContent();
         try {
+            $this->guardSubscriptionWebhook($request, 'Flutterwave', $webhookBody);
             $data = json_decode($webhookBody, true);
             Log::info("Flutterwave Webhook Data:", [$data]);
 
@@ -449,7 +444,7 @@ class SubscriptionWebhookController extends Controller
             Log::info("Processing Flutterwave tx_ref: {$txRef}, event: {$event}, status: {$status}");
 
             // Extract metadata from the webhook data
-            $metadata = $data['meta_data'];
+            $metadata = $data['data']['meta'] ?? $data['data']['meta_data'] ?? $data['meta_data'] ?? [];
 
             // Log metadata
             Log::info("Original metadata:", ['metadata' => $metadata]);
@@ -476,27 +471,7 @@ class SubscriptionWebhookController extends Controller
             $paymentTransaction = PaymentTransaction::where('order_id', $txRef)->first();
             
             if (!$paymentTransaction) {
-                Log::info("Creating new payment transaction for tx_ref: {$txRef}");
-                
-                // Default to pending status
-                // $paymentTransaction = new PaymentTransaction();
-                $paymentTransaction = $this->paymentTransaction->create([
-                    'user_id' => $metadata['user_id'],
-                    'amount' => $amount,
-                    'payment_gateway' => 'Flutterwave',
-                    'order_id' => $txRef,
-                    'payment_status' => 'pending',
-                    'school_id' => $schoolId,
-                ]);
-
-                // $paymentTransaction->order_id = $txRef;
-                // $paymentTransaction->payment_id = $data['data']['id'] ?? null;
-                // $paymentTransaction->payment_gateway = 'Flutterwave';
-                // $paymentTransaction->amount = $amount;
-                // $paymentTransaction->payment_status = 'pending';
-                // $paymentTransaction->save();
-                
-                Log::info("Created new payment transaction with ID: {$paymentTransaction->id}");
+                throw new Exception('Unknown payment transaction.');
             } else {
                 // Use school_id from payment transaction if not in metadata
                 if (!$schoolId && $paymentTransaction->school_id) {
@@ -516,6 +491,10 @@ class SubscriptionWebhookController extends Controller
                 Log::info("Updating payment status to succeed for tx_ref: {$txRef}");
                 
                 DB::beginTransaction();
+                $paymentTransaction = PaymentTransaction::where('order_id', $txRef)
+                    ->whereRaw('LOWER(payment_status) = ?', ['pending'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
                 
                 try {
                     
@@ -621,8 +600,9 @@ class SubscriptionWebhookController extends Controller
     {
         Log::info('Paystack Webhook Called');
         
-        $webhookBody = file_get_contents('php://input');
+        $webhookBody = $request->getContent();
         try {
+            $this->guardSubscriptionWebhook($request, 'Paystack', $webhookBody);
             $data = json_decode($webhookBody, true);
             Log::info("Paystack Webhook Data:", [$data]);
 
@@ -659,18 +639,7 @@ class SubscriptionWebhookController extends Controller
             $paymentTransaction = PaymentTransaction::where('order_id', $txRef)->first();
 
             if (!$paymentTransaction) {
-                Log::info("Creating new payment transaction for tx_ref: {$txRef}");
-                
-                $paymentTransaction = $this->paymentTransaction->create([
-                    'user_id' => $metadata['user_id'],
-                    'amount' => $amount,
-                    'payment_gateway' => 'Paystack',
-                    'order_id' => $txRef,
-                    'payment_status' => 'pending',
-                    'school_id' => $schoolId,
-                ]);
-                
-                Log::info("Created new payment transaction with ID: {$paymentTransaction->id}");
+                throw new Exception('Unknown payment transaction.');
             } else {
                 if (!$schoolId && $paymentTransaction->school_id) {
                     $schoolId = $paymentTransaction->school_id;
@@ -687,6 +656,10 @@ class SubscriptionWebhookController extends Controller
                 Log::info("Updating payment status to succeed for tx_ref: {$txRef}");
                 
                 DB::beginTransaction();
+                $paymentTransaction = PaymentTransaction::where('order_id', $txRef)
+                    ->whereRaw('LOWER(payment_status) = ?', ['pending'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
                 
                 try {
                     $metadata['payment_transaction_id'] = $paymentTransaction->id;
@@ -771,6 +744,89 @@ class SubscriptionWebhookController extends Controller
             
             return response()->json(['error' => $e->getMessage()], 400);
         }
+    }
+
+    private function guardSubscriptionWebhook(Request $request, string $gateway, string $rawBody): void
+    {
+        DB::setDefaultConnection('mysql');
+        $configuration = PaymentConfiguration::query()
+            ->whereNull('school_id')
+            ->whereRaw('LOWER(payment_method) = ?', [strtolower($gateway)])
+            ->firstOrFail();
+
+        if ($gateway === 'Razorpay') {
+            $this->webhookSecurity->verifyRazorpay(
+                $rawBody,
+                $request->header('X-Razorpay-Signature'),
+                (string) $configuration->webhook_secret_key
+            );
+        } elseif ($gateway === 'Paystack') {
+            $this->webhookSecurity->verifyPaystack(
+                $rawBody,
+                $request->header('X-Paystack-Signature'),
+                (string) $configuration->secret_key
+            );
+        } else {
+            $this->webhookSecurity->verifyFlutterwave(
+                $rawBody,
+                $request->header('Flutterwave-Signature'),
+                (string) $configuration->webhook_secret_key
+            );
+        }
+
+        $payload = json_decode($rawBody, true, 512, JSON_THROW_ON_ERROR);
+        $event = (string) ($payload['event'] ?? '');
+        $successful = match ($gateway) {
+            'Razorpay' => $event === 'payment.captured',
+            'Paystack' => $event === 'charge.success',
+            'Flutterwave' => $event === 'charge.completed',
+        };
+        if (!$successful) {
+            return;
+        }
+
+        if ($gateway === 'Razorpay') {
+            $provider = (array) ($payload['payload']['payment']['entity'] ?? []);
+            $metadata = (array) ($provider['notes'] ?? []);
+            $reference = (string) ($provider['order_id'] ?? '');
+            $minorUnits = true;
+        } elseif ($gateway === 'Paystack') {
+            $provider = (array) ($payload['data'] ?? []);
+            $metadata = $provider['metadata'] ?? [];
+            $reference = (string) ($provider['reference'] ?? '');
+            $minorUnits = true;
+        } else {
+            $provider = (array) ($payload['data'] ?? []);
+            $metadata = $provider['meta'] ?? $provider['meta_data'] ?? $payload['meta_data'] ?? [];
+            $reference = (string) ($provider['tx_ref'] ?? '');
+            $minorUnits = false;
+        }
+        if (is_string($metadata)) {
+            $metadata = json_decode($metadata, true, 512, JSON_THROW_ON_ERROR);
+        }
+        $metadata = (array) $metadata;
+
+        $transaction = PaymentTransaction::query()->where('order_id', $reference)->firstOrFail();
+        $schoolId = (int) ($metadata['school_id'] ?? 0);
+        if (!empty($metadata['payment_transaction_id'])
+            && (int) $metadata['payment_transaction_id'] !== (int) $transaction->id) {
+            throw new Exception('Webhook transaction id does not match the pending transaction.');
+        }
+
+        $this->webhookSecurity->assertPendingTransaction(
+            $transaction,
+            $gateway,
+            $reference,
+            $schoolId,
+            (string) $configuration->currency_code,
+            [
+                'reference' => $reference,
+                'amount' => $provider['amount'] ?? -1,
+                'currency' => $provider['currency'] ?? '',
+                'status' => $provider['status'] ?? '',
+            ],
+            $minorUnits
+        );
     }
 
     private function handleAddonPayment($metadata)

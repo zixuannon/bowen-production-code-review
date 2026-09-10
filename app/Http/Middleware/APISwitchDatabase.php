@@ -34,9 +34,14 @@ class APISwitchDatabase
                 $user = PersonalAccessToken::findToken($token);
                 
                 if ($user) {
-                    Auth::loginUsingId($user->tokenable_id);
+                    $tokenable = $user->tokenable;
+                    if (!$tokenable) {
+                        return response()->json(array('error' => true, 'message' => 'Unauthenticated.', 'code' => 401), 401);
+                    }
+                    $tokenable->withAccessToken($user);
+                    Auth::setUser($tokenable);
                 } else {
-                    return response()->json(array('error' => true, 'message' => 'Unauthenticated.', 'code' => 400));
+                    return response()->json(array('error' => true, 'message' => 'Unauthenticated.', 'code' => 401), 401);
                 }
 
                 $exclude_uri = array(

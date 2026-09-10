@@ -14,6 +14,9 @@ use App\Models\User;
 use App\Models\TransportationFee;
 use App\Models\TransportationPayment;
 use App\Repositories\User\UserInterface;
+use App\Services\PaymentGatewayVerificationClient;
+use App\Services\WebhookSecurityService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -27,9 +30,13 @@ use Carbon\Carbon;
 
 class WebhookController extends Controller
 {
+    private WebhookSecurityService $webhookSecurity;
+    private PaymentGatewayVerificationClient $verificationClient;
 
-    public function __construct(UserInterface $user)
+    public function __construct(UserInterface $user, WebhookSecurityService $webhookSecurity, PaymentGatewayVerificationClient $verificationClient)
     {
+        $this->webhookSecurity = $webhookSecurity;
+        $this->verificationClient = $verificationClient;
     }
 
     public function stripe()
@@ -677,17 +684,26 @@ class WebhookController extends Controller
         }
     }
 
-    public function flutterwave()
+    public function flutterwave(Request $request)
     {
-        $webhookBody = file_get_contents('php://input');
+        $webhookBody = $request->getContent();
         Log::info(PHP_EOL . "----------------------------------------------------------------------------------------------------------------------");
 
         try {
 
             $data = json_decode($webhookBody, false, 512, JSON_THROW_ON_ERROR);
             
-            $school_id = $data->meta_data->school_id;
-            $school = School::on('mysql')->where('id', $school_id)->first();
+            $metadata = $data->data->meta ?? $data->data->meta_data ?? $data->meta_data ?? null;
+            if (is_string($metadata)) {
+                $metadata = json_decode($metadata, false, 512, JSON_THROW_ON_ERROR);
+            }
+            if (!$metadata || empty($metadata->school_id)) {
+                throw new \RuntimeException('Flutterwave tenant metadata is missing.');
+            }
+            $data->meta_data = $metadata;
+            $data->data->meta_data = $metadata;
+            $school_id = (int) $metadata->school_id;
+            $school = School::on('mysql')->where('id', $school_id)->firstOrFail();
 
             Config::set('database.connections.school.database', $school->database_name);
             DB::purge('school');
@@ -695,14 +711,16 @@ class WebhookController extends Controller
             DB::setDefaultConnection('school');
 
             // You can find your endpoint's secret in your webhook settings
-            $paymentConfiguration = PaymentConfiguration::select(['secret_key', 'api_key'])->where('payment_method', 'flutterwave')->where('school_id', $school_id ?? null)->first();
+            $paymentConfiguration = PaymentConfiguration::select(['secret_key', 'webhook_secret_key', 'currency_code'])
+                ->whereRaw('LOWER(payment_method) = ?', ['flutterwave'])
+                ->where('school_id', $school_id)
+                ->firstOrFail();
 
-
-            $webhookSecret = $paymentConfiguration['secret_key'];
-            $webhookPublic = $paymentConfiguration['api_key'];
-
-
-            $api = new Api($webhookPublic, $webhookSecret);
+            $this->webhookSecurity->verifyFlutterwave(
+                $webhookBody,
+                $request->header('Flutterwave-Signature'),
+                (string) $paymentConfiguration->webhook_secret_key
+            );
 
 
             //get the current today's date
@@ -712,22 +730,43 @@ class WebhookController extends Controller
 
                 Log::info('Payment completed');
 
-                //checks the signature
-                $expectedSignature = hash_hmac("SHA256", $webhookBody, $webhookSecret);
-
-                $api->utility->verifyWebhookSignature($webhookBody, $expectedSignature, $webhookSecret);
-                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->tx_ref)->first();
-
-                if ($paymentTransactionData == null) {
-                    Log::error("Flutterwave Webhook : Payment Transaction id not found");
+                $verification = $this->verificationClient->verifyFlutterwave(
+                    (string) $paymentConfiguration->secret_key,
+                    (string) ($data->data->id ?? '')
+                );
+                if (!$verification->successful()) {
+                    throw new \RuntimeException('Flutterwave transaction verification failed.');
                 }
-
-                if ($paymentTransactionData->status == "succeed") {
-                    Log::info("Flutterwave Webhook : Transaction Already Succeed");
-                }
-                $fees = Fee::where('id', $data->meta_data->fees_id)->with(['fees_class_type', 'fees_class_type.fees_type'])->firstOrFail();
+                $verified = (array) ($verification->json('data') ?? []);
 
                 DB::beginTransaction();
+                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->tx_ref)
+                    ->whereRaw('LOWER(payment_status) = ?', ['pending'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($paymentTransactionData == null) {
+                    throw new \RuntimeException('Flutterwave pending payment transaction not found.');
+                }
+                if (!empty($metadata->payment_transaction_id)
+                    && (int) $metadata->payment_transaction_id !== (int) $paymentTransactionData->id) {
+                    throw new \RuntimeException('Flutterwave payment transaction id mismatch.');
+                }
+                $this->webhookSecurity->assertPendingTransaction(
+                    $paymentTransactionData,
+                    'Flutterwave',
+                    (string) $data->data->tx_ref,
+                    $school_id,
+                    (string) $paymentConfiguration->currency_code,
+                    [
+                        'reference' => $verified['tx_ref'] ?? '',
+                        'amount' => $verified['amount'] ?? -1,
+                        'currency' => $verified['currency'] ?? '',
+                        'status' => $verified['status'] ?? '',
+                    ]
+                );
+                $fees = Fee::where('id', $data->meta_data->fees_id)->with(['fees_class_type', 'fees_class_type.fees_type'])->firstOrFail();
+
                 PaymentTransaction::where('id', $paymentTransactionData->id)->update(['payment_status' => "succeed"]);
 
                 if ($data->meta_data->fees_type == "transportation_fee") {

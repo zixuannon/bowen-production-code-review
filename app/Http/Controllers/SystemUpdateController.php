@@ -136,7 +136,6 @@ class SystemUpdateController extends Controller
             $this->safelyExtractZip($zip1, $target_path);
             $zip1->close();
 
-            Artisan::call('migrate');
             Artisan::call('db:seed --class=InstallationSeeder');
 
             unlink($source_path1);

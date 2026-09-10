@@ -49,6 +49,26 @@ class UploadService {
         'bmp', 'ico', 'tiff', 'tif', 'svg',
     ];
 
+    /** MIME/extension pairs accepted for any authenticated Teacher upload. */
+    const TEACHER_UPLOAD_ALLOWLIST = [
+        'application/pdf' => ['pdf'],
+        'text/plain' => ['txt'],
+        'text/csv' => ['csv'],
+        'application/msword' => ['doc'],
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => ['docx'],
+        'application/vnd.ms-excel' => ['xls'],
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => ['xlsx'],
+        'application/vnd.ms-powerpoint' => ['ppt'],
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => ['pptx'],
+        'image/jpeg' => ['jpg', 'jpeg'],
+        'image/png' => ['png'],
+        'image/webp' => ['webp'],
+        'image/gif' => ['gif'],
+        'video/mp4' => ['mp4'],
+        'video/webm' => ['webm'],
+        'video/quicktime' => ['mov'],
+    ];
+
     /**
      * Upload a file to the public storage disk.
      *
@@ -60,6 +80,31 @@ class UploadService {
      * @throws UploadValidationException
      */
     public static function upload(UploadedFile $requestFile, string $folder, string $fieldName = 'file'): string {
+        $user = Auth::user();
+        $teacherAllowlist = $user && $user->hasRole('Teacher')
+            ? static::TEACHER_UPLOAD_ALLOWLIST
+            : null;
+
+        return static::uploadWithAllowlist($requestFile, $folder, $fieldName, $teacherAllowlist);
+    }
+
+    /**
+     * Upload only when both the client extension and content-detected MIME
+     * appear in the caller's positive allowlist.
+     *
+     * @param array<string, list<string>> $mimeExtensions
+     */
+    public static function uploadAllowed(UploadedFile $requestFile, string $folder, array $mimeExtensions, string $fieldName = 'file'): string
+    {
+        if ($mimeExtensions === []) {
+            throw new UploadValidationException('No file types are allowed.', $fieldName);
+        }
+
+        return static::uploadWithAllowlist($requestFile, $folder, $fieldName, $mimeExtensions);
+    }
+
+    /** @param array<string, list<string>>|null $mimeExtensions */
+    private static function uploadWithAllowlist(UploadedFile $requestFile, string $folder, string $fieldName, ?array $mimeExtensions): string {
         // 1. Sanitize folder path (prevent path traversal through folder)
         $folder = static::sanitizePath($folder, $fieldName);
 
@@ -87,6 +132,10 @@ class UploadService {
 
         // 6. Detect real MIME type from file content (not from extension)
         $realMime = $requestFile->getMimeType();
+
+        if ($mimeExtensions !== null) {
+            static::validateAllowedType($originalExt, $realMime, $mimeExtensions, $fieldName);
+        }
 
         // 6b. Reject MIME/extension misalignment for image-like extensions.
         // If the client claims an image extension, the content must actually
@@ -225,6 +274,15 @@ class UploadService {
 
         // For non-image MIME types: the original extension passed all checks
         return $originalExt;
+    }
+
+    /** @param array<string, list<string>> $mimeExtensions */
+    protected static function validateAllowedType(string $extension, ?string $mime, array $mimeExtensions, string $fieldName = 'file'): void
+    {
+        $allowedExtensions = $mimeExtensions[$mime ?? ''] ?? [];
+        if (!in_array(strtolower($extension), $allowedExtensions, true)) {
+            throw new UploadValidationException('File MIME type or extension is not allowed.', $fieldName);
+        }
     }
 
     /**

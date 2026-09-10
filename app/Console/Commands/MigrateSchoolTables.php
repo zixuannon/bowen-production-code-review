@@ -30,7 +30,11 @@ class MigrateSchoolTables extends Command
      */
     public function handle()
     {
-        //
+        if (app()->environment('production')) {
+            $this->error('migrate:school is disabled in production. Use an allowlisted exact-path tenant runner.');
+            return self::FAILURE;
+        }
+
         $schools = School::withTrashed()->get();
 
         foreach ($schools as $key => $school) {
