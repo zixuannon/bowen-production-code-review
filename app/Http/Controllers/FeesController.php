@@ -31,6 +31,7 @@ use App\Services\ResponseService;
 use App\Services\FeesPaymentService;
 use App\Services\FeesPaidImportService;
 use App\Services\FinanceAuthorizationService;
+use App\Services\OfflineFeePaymentAuthorityService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use DateTime;
@@ -1452,7 +1453,7 @@ class FeesController extends Controller
             'installment_fees'     => 'required_if:installment_mode,1|array',
             // 多货币字段：暂时不要求，付款默认使用 MMK
             'transaction_currency' => 'nullable|in:MMK,CNY,USD',
-            'original_amount'      => 'nullable|numeric|min:0',
+            'original_amount'      => 'nullable|numeric|gt:0',
             'exchange_rate_snapshot' => 'nullable|numeric|min:0.0001',
             'bank_account_id'      => [
                 'required',
@@ -1480,7 +1481,9 @@ class FeesController extends Controller
         try {
             DB::beginTransaction();
 
-            $result = $paymentService->processPayment($request->all(), $fees);
+            $authorized = app(OfflineFeePaymentAuthorityService::class)
+                ->compulsory($request->all(), (int) Auth::user()->school_id);
+            $result = $paymentService->processPayment($authorized['data'], $authorized['fee']);
 
             DB::commit();
 
@@ -1652,7 +1655,7 @@ class FeesController extends Controller
         return view('Income.pay-optional', compact('fees', 'student', 'optionalFeesData', 'bankAccounts'));
     }
 
-    public function payOptionalFeesStore(Request $request)
+    public function payOptionalFeesStore(Request $request, OfflineFeePaymentAuthorityService $authority)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-payment-create');
@@ -1665,6 +1668,9 @@ class FeesController extends Controller
             'fees_class_type' => 'required|array|min:1',
             'fees_class_type.*.id' => 'required|numeric',
             'fees_class_type.*.amount' => 'required|numeric|gt:0',
+            'transaction_currency' => 'nullable|in:MMK,CNY,USD',
+            'original_amount' => 'nullable|numeric|gt:0',
+            'exchange_rate_snapshot' => 'nullable|numeric|gt:0',
             'bank_account_id' => [
                 'required',
                 Rule::exists('bank_accounts', 'id')->where(function ($query) {
@@ -1681,33 +1687,30 @@ class FeesController extends Controller
         try {
             DB::beginTransaction();
 
-            // ========== 多货币处理 ==========
-            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
-            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
-            $originalAmount = (float)($request->original_amount ?? $request->total_amount);
-            $totalAmountMmk = (float)$request->total_amount;
-            
-            if ($transactionCurrency === 'MMK') {
-                $originalAmount = $totalAmountMmk;
-                $exchangeRate = 1;
-            }
-            // =================================
+            $authorized = $authority->optional($request->all(), (int) Auth::user()->school_id);
+            $payment = $authorized['data'];
+            $transactionCurrency = $payment['transaction_currency'];
+            $exchangeRate = $payment['exchange_rate_snapshot'];
+            $originalAmount = $payment['original_amount'];
+            $totalAmountMmk = $payment['total_amount'];
 
             // First Store in Fees Paid table to get Fees Paid ID
             $feesPaid = $this->feesPaid->builder()->where([
-                'fees_id' => $request->fees_id,
-                'student_id' => $request->student_id
-            ])->first();
+                'fees_id' => $payment['fees_id'],
+                'student_id' => $payment['student_id'],
+                'school_id' => Auth::user()->school_id,
+            ])->lockForUpdate()->first();
 
             // If Fees Paid Doesn't Exists
             if (empty($feesPaid)) {
                 $feesPaidResult = $this->feesPaid->create([
-                    'date' => date('Y-m-d', strtotime($request->date)),
+                    'date' => date('Y-m-d', strtotime($payment['date'])),
                     'is_fully_paid' => 0,
                     'is_used_installment' => 0,
-                    'fees_id' => $request->fees_id,
-                    'student_id' => $request->student_id,
+                    'fees_id' => $payment['fees_id'],
+                    'student_id' => $payment['student_id'],
                     'amount' => $totalAmountMmk,
+                    'school_id' => Auth::user()->school_id,
                     'transaction_currency' => $transactionCurrency,
                     'original_amount' => $originalAmount,
                     'exchange_rate_snapshot' => $exchangeRate,
@@ -1728,20 +1731,21 @@ class FeesController extends Controller
 
             // dd($feesPaidResult->id);
             // Loop to the Optional Fees
-            if (!empty($request->fees_class_type)) {
-                foreach ($request->fees_class_type as $key => $feesClassType) {
+            if (!empty($payment['fees_class_type'])) {
+                foreach ($payment['fees_class_type'] as $key => $feesClassType) {
                     if (isset($feesClassType['id'])) {
                         $optionalFeesPaymentData[] = array(
-                            'student_id' => $request->student_id,
-                            'class_id' => $request->class_id,
+                            'student_id' => $payment['student_id'],
+                            'class_id' => $payment['class_id'],
                             'fees_class_id' => $feesClassType['id'],
-                            'mode' => $request->mode,
-                            'cheque_no' => ($request->mode == 2 || $request->mode == '2' || $request->mode == 'Cheque') ? $request->cheque_no : null,
+                            'mode' => $payment['mode'],
+                            'cheque_no' => ($payment['mode'] === 'Cheque') ? ($payment['cheque_no'] ?? null) : null,
                             'amount' => $feesClassType['amount'],
                             'fees_paid_id' => $feesPaidResult->id,
-                            'date' => date('Y-m-d', strtotime($request->date)),
+                            'date' => date('Y-m-d', strtotime($payment['date'])),
                             'status' => "Success",
-                            'bank_account_id' => $request->bank_account_id ?: null,
+                            'school_id' => Auth::user()->school_id,
+                            'bank_account_id' => $payment['bank_account_id'],
                             'created_at' => now(),
                             'updated_at' => now()
                         );
@@ -1754,13 +1758,13 @@ class FeesController extends Controller
             $sessionYear = $this->cache->getDefaultSessionYear();
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\OptionalFee', $optionalFeesPaymentData[0]['fees_paid_id'], Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
 
-            $student = $this->student->builder()->where('user_id', $request->student_id)->first();
+            $student = $authorized['student'];
             $user[] = $student->guardian_id;              
             if ($user) {
                 // Get fees name safely
                 $paymentType = 'Optional Fees Payment';
                 $title = 'Fees Payment Successful';
-                $body = "Your payment of " . format_money($request->total_amount) . " for " . $paymentType . " was successful.";
+                $body = "Your payment of " . format_money($totalAmountMmk) . " for " . $paymentType . " was successful.";
                 $type = "payment";
                 
                 send_notification($user, $title, $body, $type);

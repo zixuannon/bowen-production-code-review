@@ -36,7 +36,7 @@ class SecurityP0AContractTest extends TestCase
         $this->assertStringContainsString('verifyRazorpay', $guard);
         $this->assertStringContainsString('verifyFlutterwave', $guard);
         $this->assertStringContainsString('verifyPaystack', $guard);
-        $this->assertStringContainsString('assertPendingTransaction', $guard);
+        $this->assertStringContainsString('assertTransactionMatches', $guard);
         $this->assertStringNotContainsString('Creating new payment transaction', $source);
 
         $initiation = file_get_contents(app_path('Http/Controllers/SubscriptionController.php'));
@@ -50,9 +50,9 @@ class SecurityP0AContractTest extends TestCase
 
         $this->assertStringContainsString('verifyFlutterwave', $method);
         $this->assertStringContainsString('verifyFlutterwave(', $method);
-        $this->assertStringContainsString('assertPendingTransaction', $method);
+        $this->assertStringContainsString('assertTransactionMatches', $method);
         $this->assertStringContainsString('lockForUpdate()', $method);
-        $this->assertStringContainsString("LOWER(payment_status) = ?", $method);
+        $this->assertStringContainsString("payment_status) === 'succeed'", $method);
     }
 
     public function test_database_restore_route_ui_and_sql_execution_path_are_absent(): void

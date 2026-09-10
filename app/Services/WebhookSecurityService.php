@@ -47,6 +47,32 @@ final class WebhookSecurityService
         if (strtolower((string) $transaction->payment_status) !== 'pending') {
             throw new RuntimeException('Payment transaction is not pending.');
         }
+        $this->assertTransactionMatches(
+            $transaction,
+            $gateway,
+            $reference,
+            $schoolId,
+            $expectedCurrency,
+            $provider,
+            $providerAmountIsMinorUnits
+        );
+    }
+
+    /**
+     * Validate immutable provider identity/amount fields. Status locking belongs
+     * to PaymentTransactionExactlyOnceService so a valid replay can return 200.
+     *
+     * @param array{reference:mixed,amount:mixed,currency:mixed,status:mixed} $provider
+     */
+    public function assertTransactionMatches(
+        PaymentTransaction $transaction,
+        string $gateway,
+        string $reference,
+        int $schoolId,
+        string $expectedCurrency,
+        array $provider,
+        bool $providerAmountIsMinorUnits = false
+    ): void {
         if (strcasecmp((string) $transaction->payment_gateway, $gateway) !== 0) {
             throw new RuntimeException('Payment gateway does not match the pending transaction.');
         }
@@ -59,6 +85,7 @@ final class WebhookSecurityService
         }
         if (strtolower((string) ($provider['status'] ?? '')) !== 'successful'
             && strtolower((string) ($provider['status'] ?? '')) !== 'success'
+            && strtolower((string) ($provider['status'] ?? '')) !== 'succeeded'
             && strtolower((string) ($provider['status'] ?? '')) !== 'captured') {
             throw new RuntimeException('Provider transaction is not successful.');
         }

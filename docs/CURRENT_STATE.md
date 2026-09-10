@@ -14,6 +14,25 @@ Last updated: 2026-09-10
 
 Finance V2
 
+## Round 2 P0B financial integrity — local candidate
+
+- Branch `codex/round2-p0b-financial-integrity` starts from the active
+  Production release manifest SHA `06b9c7c2a72736d748b8edfd7c7a5aefcb26a302`.
+- Stripe, Razorpay, Paystack, and Flutterwave settlement now serializes on the
+  existing server-created `payment_transactions` identity with a database
+  transaction and row lock. Replays are no-ops, concurrent deliveries cannot
+  duplicate settlement rows, failure events cannot overwrite success, and no
+  webhook creates a transaction.
+- Legacy offline compulsory, installment, and optional payments now rebuild
+  canonical amount, due charge, currency, exchange rate, and selected-item
+  totals from locked School-owned Fee Setup/receivable rows. Negative, zero,
+  overpayment, cross-School, duplicate, and client-tampered values fail closed.
+- Focused financial/security regression passes (65 tests, 249 assertions),
+  including a two-process database race. The complete PHPUnit suite passes
+  (640 tests, 4,210 assertions; zero failures/errors).
+- No schema migration is added or executed. Production code/data, Phase 5.5B,
+  homepage/assets, and established Finance workflow remain untouched.
+
 ## Round 1 P0A security hardening — local candidate
 
 - Branch `codex/round1-p0a-security` starts from Production/main baseline

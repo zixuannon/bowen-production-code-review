@@ -59,7 +59,7 @@ class WebhookController extends Controller
             DB::setDefaultConnection('school');
 
             // You can find your endpoint's secret in your webhook settings
-            $paymentConfiguration = PaymentConfiguration::select('webhook_secret_key')->where('payment_method', 'stripe')->where('school_id', $data->data->object->metadata->school_id ?? null)->first();
+            $paymentConfiguration = PaymentConfiguration::select(['webhook_secret_key', 'currency_code'])->where('payment_method', 'stripe')->where('school_id', $data->data->object->metadata->school_id ?? null)->first();
             $endpoint_secret = $paymentConfiguration['webhook_secret_key'];
             $event = Webhook::constructEvent(
                 $payload,
@@ -86,21 +86,45 @@ class WebhookController extends Controller
             // handle the events
             switch ($event->type) {
                 case 'payment_intent.succeeded':
-                    $paymentTransactionData = PaymentTransaction::where('id', $metadata['payment_transaction_id'])->first();
+                    DB::beginTransaction();
+                    $paymentTransactionData = PaymentTransaction::where('id', $metadata['payment_transaction_id'])
+                        ->lockForUpdate()
+                        ->first();
                     if ($paymentTransactionData == null) {
-                        Log::error("Stripe Webhook : Payment Transaction id not found");
-                        break;
+                        throw new \RuntimeException('Stripe payment transaction not found.');
                     }
-
-                    if ($paymentTransactionData->status == "succeed") {
+                    if (strtolower((string) $paymentTransactionData->payment_status) === 'succeed') {
                         Log::info("Stripe Webhook : Transaction Already Successes");
-                        break;
+                        DB::commit();
+                        return response()->json(['status' => 'success', 'processed' => false], 200);
                     }
+                    if (strtolower((string) $paymentTransactionData->payment_status) !== 'pending') {
+                        throw new \RuntimeException('Stripe payment transaction is not pending.');
+                    }
+                    if (strcasecmp((string) $paymentTransactionData->payment_gateway, 'Stripe') !== 0) {
+                        throw new \RuntimeException('Stripe payment gateway mismatch.');
+                    }
+                    if (!hash_equals((string) $paymentTransactionData->order_id, (string) $event->data->object->id)) {
+                        throw new \RuntimeException('Stripe payment reference mismatch.');
+                    }
+                    $this->webhookSecurity->assertTransactionMatches(
+                        $paymentTransactionData,
+                        'Stripe',
+                        (string) $event->data->object->id,
+                        (int) $metadata['school_id'],
+                        (string) $paymentConfiguration->currency_code,
+                        [
+                            'reference' => (string) $event->data->object->id,
+                            'amount' => $event->data->object->amount_received ?? $event->data->object->amount ?? -1,
+                            'currency' => $event->data->object->currency ?? '',
+                            'status' => $event->data->object->status ?? '',
+                        ],
+                        true
+                    );
                     if ($metadata['fees_type'] != "transportation_fee") {
                         $fees = Fee::where('id', $metadata['fees_id'])->with(['fees_class_type', 'fees_class_type.fees_type'])->firstOrFail();
                     }
 
-                    DB::beginTransaction();
                     try {
                         // Update payment transaction status
                         PaymentTransaction::find($metadata['payment_transaction_id'])->update(['payment_status' => "succeed"]);
@@ -127,7 +151,7 @@ class WebhookController extends Controller
                                 'fees_id' => $metadata['fees_id'],
                                 'student_id' => $metadata['student_id'],
                                 'school_id' => $metadata['school_id']
-                            ])->first();
+                            ])->lockForUpdate()->first();
 
                             // Calculate total amount including any existing payments
                             $totalAmount = !empty($feesPaidDB) ? $feesPaidDB->amount + $paymentTransactionData->amount : $paymentTransactionData->amount;
@@ -238,6 +262,7 @@ class WebhookController extends Controller
                         \Log::info("send_notification", [$user->id]);
 
                         Log::info("Payment processed successfully for transaction ID: " . $metadata['payment_transaction_id']);
+                        return response()->json(['status' => 'success', 'processed' => true], 200);
                     } catch (\Exception $e) {
                         DB::rollBack();
                         Log::error("Error processing payment: " . $e->getMessage());
@@ -246,13 +271,19 @@ class WebhookController extends Controller
                     break;
                 case
                 'payment_intent.payment_failed':
-                    $paymentTransactionData = PaymentTransaction::find($metadata['payment_transaction_id']);
+                    DB::beginTransaction();
+                    $paymentTransactionData = PaymentTransaction::where('id', $metadata['payment_transaction_id'])
+                        ->lockForUpdate()
+                        ->first();
                     if (!$paymentTransactionData) {
-                        Log::error("Stripe Webhook : Payment Transaction id not found --->");
-                        break;
+                        throw new \RuntimeException('Stripe payment transaction not found.');
+                    }
+                    if (strtolower((string) $paymentTransactionData->payment_status) !== 'pending') {
+                        DB::commit();
+                        return response()->json(['status' => 'ignored'], 200);
                     }
 
-                    PaymentTransaction::find($metadata['payment_transaction_id'])->update(['payment_status' => "0"]);
+                    $paymentTransactionData->update(['payment_status' => 'failed']);
 
                     if ($metadata['fees_type'] == "transportation_fee") {
                         TransportationPayment::where('payment_transaction_id', $paymentTransactionData->id)
@@ -271,7 +302,6 @@ class WebhookController extends Controller
                         }
                     }
 
-                    http_response_code(400);
                     \Log::info("Failed Notification in Stripe");
                     $user = User::where('id', $metadata['parent_id'])->first();
                     \Log::info("User ID : ", [$user]);
@@ -282,7 +312,7 @@ class WebhookController extends Controller
 
                     send_notification([$user->id], 'Fees Payment Failed', $body, $type, ['is_payment_success' => "false"]);
                     \Log::info("send_notification", [$user->id]);
-                    break;
+                    return response()->json(['status' => 'failed'], 200);
                 default:
                     Log::error('Stripe Webhook : Received unknown event type');
             }
@@ -299,7 +329,9 @@ class WebhookController extends Controller
             http_response_code(400);
             exit();
         } catch (Throwable $e) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
             Log::error("Stripe Webhook : Error occurred", [$e->getMessage() . ' --> ' . $e->getFile() . ' At Line : ' . $e->getLine()]);
             http_response_code(400);
             exit();
@@ -340,7 +372,7 @@ class WebhookController extends Controller
             DB::setDefaultConnection('school');
 
             // Get payment configuration
-            $paymentConfiguration = PaymentConfiguration::select(['webhook_secret_key', 'api_key'])
+            $paymentConfiguration = PaymentConfiguration::select(['webhook_secret_key', 'api_key', 'currency_code'])
                 ->where('payment_method', 'Razorpay')
                 ->where('school_id', $schoolId)
                 ->first();
@@ -349,13 +381,12 @@ class WebhookController extends Controller
                 throw new \Exception('Payment configuration not found');
             }
 
-            // Find payment transaction using order_id or payment_id
-            $paymentTransaction = PaymentTransaction::where('order_id', $webhookData->order_id)
-                ->orWhere('payment_id', $webhookData->id)
-                ->first();
-
-            if (!$paymentTransaction) {
-                throw new \Exception('Payment transaction not found for order: ' . $webhookData->order_id);
+            // The server-created provider order is the sole idempotency key.
+            // Multiple matching rows are treated as corruption and fail closed.
+            $paymentTransaction = PaymentTransaction::where('order_id', $webhookData->order_id)->sole();
+            if (!empty($metadata->payment_transaction_id)
+                && (int) $metadata->payment_transaction_id !== (int) $paymentTransaction->id) {
+                throw new \RuntimeException('Razorpay payment transaction id mismatch.');
             }
 
             Log::info("Payment Transaction:", ['transaction' => $paymentTransaction]);
@@ -368,6 +399,20 @@ class WebhookController extends Controller
 
             $api = new Api($paymentConfiguration->api_key, $paymentConfiguration->webhook_secret_key);
             $api->utility->verifyWebhookSignature($webhookBody, $webhookSignature, $paymentConfiguration->webhook_secret_key);
+            $this->webhookSecurity->assertTransactionMatches(
+                $paymentTransaction,
+                'Razorpay',
+                (string) $webhookData->order_id,
+                (int) $schoolId,
+                (string) $paymentConfiguration->currency_code,
+                [
+                    'reference' => (string) $webhookData->order_id,
+                    'amount' => $webhookData->amount ?? -1,
+                    'currency' => $webhookData->currency ?? '',
+                    'status' => $webhookData->status ?? '',
+                ],
+                true
+            );
 
             // Process based on transaction status
             $status = $webhookData->status ?? '';
@@ -377,8 +422,9 @@ class WebhookController extends Controller
                 $result = $this->handleRazorpaySuccess($paymentTransaction, $webhookData, $metadata);
 
                 // Send success notification
-                $user = User::find($metadata->parent_id ?? $paymentTransaction->user_id);
-                if ($user) {
+                $processed = (bool) (($result->getData(true)['processed'] ?? false));
+                $user = $processed ? User::find($metadata->parent_id ?? $paymentTransaction->user_id) : null;
+                if ($user && $processed) {
                     $body = 'Payment successful. Amount: ' . ($webhookData->amount / 100);
                     send_notification([$user->id], 'Payment Successful', $body, 'payment', ['is_payment_success' => true]);
                 }
@@ -421,7 +467,7 @@ class WebhookController extends Controller
             DB::setDefaultConnection('school');
 
             // Get payment configuration
-            $paymentConfiguration = PaymentConfiguration::select('secret_key')
+            $paymentConfiguration = PaymentConfiguration::select(['secret_key', 'currency_code'])
                 ->where('payment_method', 'Paystack')
                 ->where('school_id', $school_id)
                 ->first();
@@ -434,30 +480,15 @@ class WebhookController extends Controller
 
             $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->reference)->first();
             if ($expectedSignature !== $calculatedSignature) {
-
-                // send notification
-                \Log::info("Failed Notification in Paystack");
-                $user = User::where('id', $metadata->parent_id)->first();
-                \Log::info("User ID : ", [$user]);
-                $body = 'Amount :- ' . $paymentTransactionData->amount;
-                $type = 'payment';
-                send_notification([$user->id], 'Fees Payment Failed', $body, $type, ['is_payment_success' => 'false']);
-                \Log::info("send_notification", [$user->id]);
                 throw new SignatureVerificationException('Invalid signature');
             }
 
-            // Get the payment transaction dat
-
             if (!$paymentTransactionData) {
-                // Create a new payment transaction
-                // $paymentTransactionData = new PaymentTransaction();
-                $paymentTransactionData = PaymentTransaction::create([
-                    'user_id' => $data->data->metadata->parent_id,
-                    'amount' => $data->data->metadata->total_amount,
-                    'payment_gateway' => 'Paystack',
-                    'order_id' => $data->data->reference,
-                    'payment_status' => 'pending',
-                ]);
+                throw new \RuntimeException('Unknown Paystack payment transaction.');
+            }
+            if (!empty($metadata->payment_transaction_id)
+                && (int) $metadata->payment_transaction_id !== (int) $paymentTransactionData->id) {
+                throw new \RuntimeException('Paystack payment transaction id mismatch.');
             }
 
             $current_date = date('Y-m-d');
@@ -465,24 +496,47 @@ class WebhookController extends Controller
             if ($data->event === 'charge.success') {
                 Log::info('Payment successful');
                 \Log::info("Payment reference :- " . $data->data->reference);
-                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->reference)->first();
+                DB::beginTransaction();
+                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->reference)
+                    ->lockForUpdate()
+                    ->sole();
 
                 if (!$paymentTransactionData) {
                     Log::error("Paystack Webhook : Payment Transaction id not found");
-                    return response()->json(['error' => 'Transaction not found'], 404);
+                    throw new \RuntimeException('Paystack payment transaction not found.');
                 }
 
                 if ($paymentTransactionData->payment_status === "succeed") {
                     Log::info("Paystack Webhook : Transaction Already Succeed");
-                    return response()->json(['status' => 'success'], 200);
+                    DB::commit();
+                    return response()->json(['status' => 'success', 'processed' => false], 200);
                 }
+                if (strtolower((string) $paymentTransactionData->payment_status) !== 'pending') {
+                    throw new \RuntimeException('Paystack payment transaction is not pending.');
+                }
+                if (strcasecmp((string) $paymentTransactionData->payment_gateway, 'Paystack') !== 0) {
+                    throw new \RuntimeException('Paystack payment gateway mismatch.');
+                }
+                $this->webhookSecurity->assertTransactionMatches(
+                    $paymentTransactionData,
+                    'Paystack',
+                    (string) $data->data->reference,
+                    (int) $school_id,
+                    (string) $paymentConfiguration->currency_code,
+                    [
+                        'reference' => (string) $data->data->reference,
+                        'amount' => $data->data->amount ?? -1,
+                        'currency' => $data->data->currency ?? '',
+                        'status' => $data->data->status ?? '',
+                    ],
+                    true
+                );
                 if ($metadata->fees_type != "transportation_fee") {
                     $fees = Fee::where('id', $metadata->fees_id)
                         ->with(['fees_class_type', 'fees_class_type.fees_type'])
                         ->firstOrFail();
                 }
 
-                DB::beginTransaction();
                 // Update payment transaction status
                 PaymentTransaction::where('order_id', $data->data->reference)
                     ->update(['payment_status' => "succeed"]);
@@ -509,7 +563,7 @@ class WebhookController extends Controller
                         'fees_id' => $metadata->fees_id,
                         'student_id' => $metadata->student_id,
                         'school_id' => $metadata->school_id
-                    ])->first();
+                    ])->lockForUpdate()->first();
 
                     $totalAmount = !empty($feesPaidDB)
                         ? $feesPaidDB->amount + $paymentTransactionData->amount
@@ -622,19 +676,23 @@ class WebhookController extends Controller
 
                 send_notification([$user->id], 'Fees Payment Successful', $body, $type, ['is_payment_success' => "true"]);
                 \Log::info("send_notification", [$user->id]);
-                return response()->json(['status' => 'success'], 200);
+                return response()->json(['status' => 'success', 'processed' => true], 200);
             } else if ($data->event === 'charge.failed') {
-                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->reference)->first();
+                DB::beginTransaction();
+                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->reference)
+                    ->lockForUpdate()
+                    ->sole();
 
                 if (!$paymentTransactionData) {
                     Log::error("Paystack Webhook : Payment Transaction id not found");
-                    return response()->json(['error' => 'Transaction not found'], 404);
+                    throw new \RuntimeException('Paystack payment transaction not found.');
+                }
+                if (strtolower((string) $paymentTransactionData->payment_status) !== 'pending') {
+                    DB::commit();
+                    return response()->json(['status' => 'ignored'], 200);
                 }
 
-                DB::beginTransaction();
-
-                PaymentTransaction::find($metadata->payment_transaction_id)
-                    ->update(['payment_status' => "failed"]);
+                $paymentTransactionData->update(['payment_status' => 'failed']);
 
                 if ($metadata->fees_type == "transportation_fee") {
                     TransportationPayment::where('payment_transaction_id', $paymentTransactionData->id)
@@ -664,7 +722,7 @@ class WebhookController extends Controller
                 }
 
 
-                return response()->json(['status' => 'failed'], 400);
+                return response()->json(['status' => 'failed'], 200);
             }
 
             return response()->json(['status' => 'ignored'], 200);
@@ -675,7 +733,9 @@ class WebhookController extends Controller
             Log::error("Paystack Webhook : Invalid signature", [$e->getMessage()]);
             return response()->json(['error' => 'Invalid signature'], 400);
         } catch (Throwable $e) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
             Log::error("Paystack Webhook Error: " . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine()
@@ -741,18 +801,24 @@ class WebhookController extends Controller
 
                 DB::beginTransaction();
                 $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->tx_ref)
-                    ->whereRaw('LOWER(payment_status) = ?', ['pending'])
                     ->lockForUpdate()
-                    ->first();
+                    ->sole();
 
                 if ($paymentTransactionData == null) {
-                    throw new \RuntimeException('Flutterwave pending payment transaction not found.');
+                    throw new \RuntimeException('Flutterwave payment transaction not found.');
+                }
+                if (strtolower((string) $paymentTransactionData->payment_status) === 'succeed') {
+                    DB::commit();
+                    return response()->json(['status' => 'success', 'processed' => false], 200);
+                }
+                if (strtolower((string) $paymentTransactionData->payment_status) !== 'pending') {
+                    throw new \RuntimeException('Flutterwave payment transaction is not pending.');
                 }
                 if (!empty($metadata->payment_transaction_id)
                     && (int) $metadata->payment_transaction_id !== (int) $paymentTransactionData->id) {
                     throw new \RuntimeException('Flutterwave payment transaction id mismatch.');
                 }
-                $this->webhookSecurity->assertPendingTransaction(
+                $this->webhookSecurity->assertTransactionMatches(
                     $paymentTransactionData,
                     'Flutterwave',
                     (string) $data->data->tx_ref,
@@ -789,7 +855,7 @@ class WebhookController extends Controller
                         'fees_id' => $data->meta_data->fees_id,
                         'student_id' => $data->meta_data->student_id,
                         'school_id' => $data->meta_data->school_id
-                    ])->first();
+                    ])->lockForUpdate()->first();
 
                     // Check if Fees Paid Exists Then Add The optional Fees Amount with Fess Paid Amount
                     $totalAmount = !empty($feesPaidDB) ? $feesPaidDB->amount + $data->data->amount : $data->data->amount;
@@ -894,14 +960,21 @@ class WebhookController extends Controller
 
                 send_notification([$user->id], 'Fees Payment Successful', $body, $type, ['is_payment_success' => 'true']);
                 \Log::info("send_notification", [$user->id]);
-                http_response_code(200);
+                return response()->json(['status' => 'success', 'processed' => true], 200);
             } elseif (isset($data->event) && $data->event == 'charge.failed') {
-                $paymentTransactionData = PaymentTransaction::find($data->data->id);
+                DB::beginTransaction();
+                $paymentTransactionData = PaymentTransaction::where('order_id', $data->data->tx_ref)
+                    ->lockForUpdate()
+                    ->sole();
                 if (!$paymentTransactionData) {
-                    Log::error("Flutterwave Webhook : Payment Transaction id not found --->");
+                    throw new \RuntimeException('Flutterwave payment transaction not found.');
+                }
+                if (strtolower((string) $paymentTransactionData->payment_status) !== 'pending') {
+                    DB::commit();
+                    return response()->json(['status' => 'ignored'], 200);
                 }
 
-                PaymentTransaction::find($data->data->id)->update(['payment_status' => "failed"]);
+                $paymentTransactionData->update(['payment_status' => 'failed']);
                 if ($data->meta_data->fees_type == "transportation_fee") {
                     TransportationPayment::where('payment_transaction_id', $paymentTransactionData->id)
                         ->update([
@@ -921,7 +994,6 @@ class WebhookController extends Controller
                     }
                 }
 
-                http_response_code(400);
                 \Log::info("Failed Notification in Flutterwave");
                 $user = User::where('id', $data->data->meta_data->parent_id)->first();
                 \Log::info("User ID : ", [$user]);
@@ -930,6 +1002,7 @@ class WebhookController extends Controller
                 DB::commit();
                 send_notification([$user->id], 'Fees Payment Failed', $body, $type, ['is_payment_success' => 'false']);
                 \Log::info("send_notification", [$user->id]);
+                return response()->json(['status' => 'failed'], 200);
             } elseif (isset($data->event) && $data->event == 'charge.authorized') {
                 http_response_code(200);
             } else {
@@ -948,7 +1021,9 @@ class WebhookController extends Controller
             http_response_code(400);
             exit();
         } catch (Throwable $e) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
             Log::error("Flutterwave Webhook : Error occurred", [$e->getMessage() . ' --> ' . $e->getFile() . ' At Line : ' . $e->getLine()]);
             http_response_code(400);
             exit();
@@ -958,13 +1033,21 @@ class WebhookController extends Controller
 
     private function handleRazorpaySuccess($paymentTransaction, $webhookData, $metadata)
     {
-        if ($paymentTransaction->status === "succeed") {
-            Log::info("Transaction already processed successfully");
-            return response()->json(['status' => 'success', 'message' => 'Transaction already processed']);
-        }
-
         DB::beginTransaction();
         try {
+            $paymentTransaction = PaymentTransaction::where('id', $paymentTransaction->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if (strtolower((string) $paymentTransaction->payment_status) === 'succeed') {
+                DB::commit();
+                return response()->json(['status' => 'success', 'processed' => false], 200);
+            }
+            if (strtolower((string) $paymentTransaction->payment_status) !== 'pending') {
+                throw new \RuntimeException('Razorpay payment transaction is not pending.');
+            }
+            if (strcasecmp((string) $paymentTransaction->payment_gateway, 'Razorpay') !== 0) {
+                throw new \RuntimeException('Razorpay payment gateway mismatch.');
+            }
             // Update payment transaction status
             $paymentTransaction->payment_status = "succeed";
             $paymentTransaction->save();
@@ -997,7 +1080,7 @@ class WebhookController extends Controller
                     'fees_id' => $metadata->fees_id,
                     'student_id' => $metadata->student_id,
                     'school_id' => $metadata->school_id
-                ])->first();
+                ])->lockForUpdate()->first();
 
                 // Convert amount to integer
                 $amount = (int) $webhookData->amount / 100; // Razorpay amount is in paise
@@ -1036,7 +1119,7 @@ class WebhookController extends Controller
                 send_notification([$user->id], 'Fees Payment Successful', $body, 'payment', ['is_payment_success' => 'true']);
             }
 
-            return response()->json(['status' => 'success'], 200);
+            return response()->json(['status' => 'success', 'processed' => true], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -1047,6 +1130,13 @@ class WebhookController extends Controller
     {
         DB::beginTransaction();
         try {
+            $paymentTransaction = PaymentTransaction::where('id', $paymentTransaction->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if (strtolower((string) $paymentTransaction->payment_status) !== 'pending') {
+                DB::commit();
+                return response()->json(['status' => 'ignored'], 200);
+            }
             $paymentTransaction->payment_status = "failed";
             $paymentTransaction->save();
 
@@ -1072,7 +1162,7 @@ class WebhookController extends Controller
                 $body = 'Amount: ' . ((int) $webhookData->amount / 100);
                 send_notification([$user->id], 'Fees Payment Failed', $body, 'payment', ['is_payment_success' => 'false']);
             }
-            return response()->json(['status' => 'failed'], 400);
+            return response()->json(['status' => 'failed'], 200);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
