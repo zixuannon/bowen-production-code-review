@@ -261,6 +261,11 @@ class LoginController extends Controller
     private function postAuthenticationRedirect()
     {
         $user = Auth::user();
+        // Head Finance users must establish the canonical Central Finance
+        // operating-school context before entering finance routes.
+        if ($user && $user->school_id === null && $user->hasRole('Head Finance')) {
+            return redirect()->route('central-finance.dashboard');
+        }
         if ($user && app(\App\Services\GroupFinanceAccessService::class)->hasReportAccess($user)) {
             return redirect()->route('group-finance.index');
         }

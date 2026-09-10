@@ -20,6 +20,8 @@ use Tests\TestCase;
  */
 class FundAccountRequiredTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['mysql', 'school'];

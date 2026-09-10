@@ -123,7 +123,17 @@ class StaffController extends Controller
     {
         ResponseService::noFeatureThenRedirect('Staff Management');
         ResponseService::noPermissionThenRedirect('staff-list');
-        $roles = Role::where('custom_role', 1)->whereNot('name', 'Teacher')->get();
+        // Super Admins must be able to provision the tenant Front Desk role
+        // across schools; school-scoped staff remain constrained by the
+        // Role model's school scope.
+        $rolesQuery = Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes();
+        $roles = $rolesQuery
+            ->where(function ($query) {
+                $query->where('custom_role', 1)
+                    ->orWhere('name', 'Front Desk / Admissions & Collection');
+            })
+            ->whereNot('name', 'Teacher')
+            ->get();
         $schools = array();
         if (!Auth::user()->school_id) {
             $schools = $this->school->active()->pluck('name', 'id');
@@ -174,7 +184,9 @@ class StaffController extends Controller
                 'last_name' => 'required',
                 'mobile' => 'required|digits_between:6,15',
                 'email' => 'required||email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
-                'role_id' => 'required|numeric',
+                'role_id' => 'nullable|numeric|required_without:role_ids',
+                'role_ids' => 'nullable|array|min:1',
+                'role_ids.*' => 'integer',
                 'status' => 'nullable|in:0,1',
                 'dob' => 'required',
                 'image' => self::STAFF_IMAGE_RULES,
@@ -221,12 +233,16 @@ class StaffController extends Controller
                 }
             }
 
-            $role = Role::findOrFail($request->role_id);
+            $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
+            $roles = (Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes())->whereIn('id', $roleIds)->get();
+            $this->assertAssignableStaffRoles($roles, $roleIds->count(), $request->input('school_id', []));
+            $assignedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($schoolId) => (int) $schoolId)->unique()->values();
+            $isFrontDesk = $roles->contains(fn ($role) => $role->name === 'Front Desk / Admissions & Collection');
 
             /*If Super admin creates the staff then make it active by default*/
             if (!empty(Auth::user()->school_id)) {
                 $data = array(
-                    ...$request->except('school_id'),
+                    ...$request->except('school_id', 'role_ids'),
                     'password' => Hash::make($request->mobile),
                     'image' => $request->file('image'),
                     'status' => $request->status ?? 0,
@@ -238,7 +254,7 @@ class StaffController extends Controller
             } else {
                 /*If School Admin creates the Staff then active/inactive staff based on status*/
                 $data = array(
-                    ...$request->except('school_id'),
+                    ...$request->except('school_id', 'role_ids'),
                     'password' => Hash::make($request->mobile),
                     'image' => $request->file('image'),
                     'status' => 1,
@@ -246,6 +262,18 @@ class StaffController extends Controller
                     'two_factor_secret' => null,
                     'two_factor_expires_at' => null,
                 );
+            }
+
+            // A Super Admin creates users on the central connection.  A
+            // Front Desk identity must still be tenant-scoped so it cannot
+            // inherit the global (school_id = NULL) sidebar/auth contract.
+            if (!Auth::user()->school_id) {
+                if ($isFrontDesk) {
+                    if ($assignedSchoolIds->count() !== 1) {
+                        ResponseService::validationError('Front Desk staff must be assigned to exactly one school.');
+                    }
+                    $data['school_id'] = $assignedSchoolIds->first();
+                }
             }
 
 
@@ -273,8 +301,12 @@ class StaffController extends Controller
                 $this->extraFormFields->createBulk($extraDetails);
             }
 
-            $user->assignRole($role);
-            if ($user->school_id) {
+            $user->syncRoles($roles);
+            // Tenant leave permissions belong to a School database. A Super
+            // Admin-created Front Desk identity is first created centrally
+            // with a single school_id and is provisioned into the tenant by
+            // CentralFinanceSchoolStaffIdentityService afterwards.
+            if (Auth::user()->school_id) {
                 $leave_permission = [
                     'leave-list',
                     'leave-create',
@@ -430,6 +462,8 @@ class StaffController extends Controller
                     $q->where('custom_role', 1);
                 })->WhereHas('roles', function ($q) {
                     $q->whereNot('name', 'Teacher');
+                })->orWhereHas('roles', function ($q) {
+                    $q->where('name', 'Front Desk / Admissions & Collection');
                 });
             })
             ->with($eagerLoads);
@@ -534,7 +568,9 @@ class StaffController extends Controller
                 'last_name' => 'required',
                 'mobile' => 'required|digits_between:6,15',
                 'email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $id,
-                'role_id' => 'required|numeric',
+                'role_id' => 'nullable|numeric|required_without:role_ids',
+                'role_ids' => 'nullable|array|min:1',
+                'role_ids.*' => 'integer',
                 'dob' => 'required',
                 'image' => self::STAFF_IMAGE_RULES,
             ];
@@ -548,7 +584,12 @@ class StaffController extends Controller
                 ResponseService::validationError($validator->errors()->first());
             }
             DB::beginTransaction();
-            $data = $request->except('school_id');
+            $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
+            $roles = (Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes())->whereIn('id', $roleIds)->get();
+            $this->assertAssignableStaffRoles($roles, $roleIds->count(), $request->input('school_id', []));
+            $assignedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($schoolId) => (int) $schoolId)->unique()->values();
+            $isFrontDesk = $roles->contains(fn ($role) => $role->name === 'Front Desk / Admissions & Collection');
+            $data = $request->except('school_id', 'role_ids');
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image');
             }
@@ -565,6 +606,13 @@ class StaffController extends Controller
                 $data['two_factor_secret'] = null;
                 $data['two_factor_expires_at'] = null;
                 $data['two_factor_enabled'] = 0;
+            }
+
+            if (!Auth::user()->school_id && $isFrontDesk) {
+                if ($assignedSchoolIds->count() !== 1) {
+                    ResponseService::validationError('Front Desk staff must be assigned to exactly one school.');
+                }
+                $data['school_id'] = $assignedSchoolIds->first();
             }
 
             $user = $this->user->update($id, $data);
@@ -596,12 +644,7 @@ class StaffController extends Controller
             }
             $this->extraFormFields->upsert($extraDetails, ['id'], ['data']);
 
-            $oldRole = $user->roles;
-            if ($oldRole[0]->id !== $request->role_id) {
-                $newRole = Role::findById($request->role_id);
-                $user->removeRole($oldRole[0]);
-                $user->assignRole($newRole);
-            }
+            $user->syncRoles($roles);
             
             if ($request->joining_date) {
                 $joining_date = date('Y-m-d', strtotime($request->joining_date));
@@ -1127,5 +1170,21 @@ class StaffController extends Controller
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();
         }
+    }
+
+    /**
+     * Restrict onboarding to assignable tenant staff roles. Central Finance
+     * capabilities remain a separate explicit Finance Groups grant.
+     */
+    private function assertAssignableStaffRoles($roles, int $expectedCount, $assignedSchoolIds = []): void
+    {
+        $assignedSchoolIds = collect((array) $assignedSchoolIds)->filter()->map(fn ($id) => (int) $id);
+        abort_if($roles->count() !== $expectedCount || $roles->contains(function ($role) use ($assignedSchoolIds): bool {
+            if ($role->name === 'Teacher' || ($role->custom_role != 1 && $role->name !== 'Front Desk / Admissions & Collection')) {
+                return true;
+            }
+
+            return $role->school_id !== null && !$assignedSchoolIds->contains((int) $role->school_id);
+        }), 403, 'Invalid staff role assignment.');
     }
 }

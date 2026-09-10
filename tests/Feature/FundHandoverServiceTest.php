@@ -29,6 +29,8 @@ use Tests\TestCase;
 
 class FundHandoverServiceTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['school'];
@@ -247,7 +249,7 @@ class FundHandoverServiceTest extends TestCase
         $incomeReference = 'OI-REGISTER-' . $this->head->id;
         $transferReference = 'TR-REGISTER-' . $this->head->id;
         OtherIncome::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'payer' => 'QA donor', 'description' => 'QA receipt', 'amount' => 200, 'payment_method' => 'Cash', 'reference_no' => $incomeReference, 'created_by' => $this->head->id]);
-        Expense::create(['school_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'title' => 'QA expense', 'amount' => 50, 'created_by' => $this->head->id]);
+        Expense::create(['school_id' => 1, 'session_year_id' => 1, 'bank_account_id' => $this->headAccount->id, 'date' => '2026-01-02', 'title' => 'QA expense', 'amount' => 50, 'created_by' => $this->head->id]);
         $transfer = BankTransfer::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'amount' => 100, 'transfer_date' => '2026-01-02', 'reference_no' => $transferReference, 'status' => 'completed', 'created_by' => $this->head->id]);
         FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 100, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_CONFIRMED, 'bank_transfer_id' => $transfer->id]);
         FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 99, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_PENDING]);
@@ -359,7 +361,7 @@ class FundHandoverServiceTest extends TestCase
             $service->create($this->head, array_merge($base, ['amount' => 100000]));
             $this->fail('Insufficient balance must roll back without a partial transfer.');
         } catch (ValidationException) {
-            $this->assertSame(0, DB::transactionLevel());
+            $this->assertSame(1, DB::transactionLevel(), 'The outer DatabaseTransactions wrapper remains active after the service rollback.');
         }
 
         $this->assertSame($transfersBefore, BankTransfer::where('school_id', 1)->count(), 'A cancelled transfer is excluded from current transfer rows.');

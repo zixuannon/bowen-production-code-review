@@ -129,9 +129,15 @@ final class CentralFinanceWorkspaceService
     /** Pending Collection confirmation is intentionally Head Finance only. */
     public function assertHeadFinance(CentralFinanceUser $actor): void
     {
-        if (!$this->groupUsers($actor)->contains(fn (FinanceGroupUser $groupUser): bool => $this->groups->isCentralHeadFinance($groupUser))) {
+        if (!$this->canReviewPendingCollections($actor)) {
             throw new AuthorizationException('Only Head Finance can review Pending Collections.');
         }
+    }
+
+    public function canReviewPendingCollections(CentralFinanceUser $actor): bool
+    {
+        return $this->groupUsers($actor)
+            ->contains(fn (FinanceGroupUser $groupUser): bool => $this->groups->isCentralHeadFinance($groupUser));
     }
 
     public function requireOperatingSchool(CentralFinanceUser $actor): School

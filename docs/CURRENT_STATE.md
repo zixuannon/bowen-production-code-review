@@ -14,6 +14,14 @@ Last updated: 2026-09-04
 
 Finance V2
 
+## Phase 5.5B final acceptance correction — local candidate
+
+- The candidate starts at Production SHA `29dfb22b36f7547487e3b5566a73e3f33fd7fb73`.
+- Handover now exposes collector-scoped Add/Remove/Submit/Cancel controls and Head Finance-only Hold/Reject/Confirm controls while retaining the canonical Pending Collection confirmation service as the only Payment/Receipt/Ledger writer.
+- Draft creation supplies the schema-required zero expected amount; submit replaces it with the server-calculated sum of attached items.
+- Removed draft items remain auditable lifecycle rows. A stale Pending item fails the complete confirmation transaction, and browser-form business errors return visible validation feedback rather than HTTP 500.
+- Focused Handover, Pending Collection, school-scope, identity, payment, exactly-once, audit, and all-or-nothing regressions pass locally. Production deployment and authenticated browser acceptance remain gated.
+
 ## Phase 5.5A — local Pending Collection candidate
 
 - Added an additive Central `central_finance_pending_collections` lifecycle document and a narrow Front Desk submission scope.
@@ -658,3 +666,19 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 7. Reports and Audit
 
 Do not implement finance roles until P1 is production-verified and business rules are confirmed.
+
+## Front Desk onboarding (local candidate)
+
+- Staff Create/Edit now supports the tenant-only `Front Desk / Admissions & Collection` role with multi-role payloads and server-side role ownership validation.
+- Central Finance access remains a separate explicit Finance Groups grant (`submit_collections` for one School); the tenant role alone grants no Finance capability.
+- The idempotent `school:provision-front-desk-role {school_code}` command provisions only the tenant role and does not modify financial data.
+- Central Staff identity linking now provisions or reuses the tenant User/Staff row from an existing Central identity through the audited Super Admin flow. A deterministic School-scoped UUID prevents duplicate people; the existing credential hash is linked (provisioning fails closed when no credential exists), and the separate `submit_collections` grant remains explicit and revocable.
+
+## Snyk P0 security hardening (local candidate)
+
+- Upload paths now accept only bounded, relative folder segments in the shared `UploadService`; original filenames remain traversal-checked and server-generated filenames remain authoritative.
+- Payment verification uses fixed HTTPS gateway base URLs, strict provider-specific transaction identifiers, encoded path segments, and disabled redirect following. User input can no longer select a host or arbitrary gateway path.
+- The diary description modal now constructs DOM nodes and text content instead of concatenating user-controlled HTML or link attributes.
+- The legacy Web installer, default installer credentials, global installer middleware, custom routes, views, and local package source were removed. Environment-setting support still used by System Settings is retained as an explicit standalone dependency.
+- Patched Laravel 10-compatible dependency versions remove all active Composer Critical/High advisories. Laravel 10's upstream email-rule advisory is covered by global CR/LF rejection for email-shaped input fields; its duplicate advisory and the Laravel 10 signed-URL advisory are explicitly documented while a future framework-major upgrade remains out of this P0 scope.
+- Local disposable-MySQL regression passes 591 tests / 4031 assertions with zero errors or failures. No Production changes were made.

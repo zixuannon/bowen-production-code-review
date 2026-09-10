@@ -13,21 +13,41 @@ use Tests\TestCase;
 
 class ExistingTenantFinancePermissionBootstrapTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['school'];
     private string $previousConnection;
+    private ?string $previousPermissionConnection = null;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->previousConnection = DB::getDefaultConnection();
+        $this->previousPermissionConnection = config('permission.connection');
         DB::setDefaultConnection('school');
+        config(['permission.connection' => 'school']);
+        \Illuminate\Database\Eloquent\Model::setConnectionResolver(app('db'));
+        $roleIds = DB::connection('school')->table('roles')
+            ->whereIn('name', array_keys(ExistingTenantFinancePermissionBootstrap::ROLE_PERMISSIONS))
+            ->pluck('id');
+        if ($roleIds->isNotEmpty()) {
+            DB::connection('school')->table('model_has_roles')->whereIn('role_id', $roleIds)->delete();
+            DB::connection('school')->table('role_has_permissions')->whereIn('role_id', $roleIds)->delete();
+            DB::connection('school')->table('roles')->whereIn('id', $roleIds)->delete();
+        }
+        // Permission models may retain the central resolver from earlier
+        // suites; isolate the disposable role catalog before each case.
+        DB::connection('mysql')->table('roles')
+            ->whereIn('name', array_keys(ExistingTenantFinancePermissionBootstrap::ROLE_PERMISSIONS))
+            ->delete();
     }
 
     protected function tearDown(): void
     {
         DB::setDefaultConnection($this->previousConnection);
+        config(['permission.connection' => $this->previousPermissionConnection]);
         parent::tearDown();
     }
 

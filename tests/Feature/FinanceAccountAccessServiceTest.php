@@ -22,6 +22,7 @@ use Spatie\Permission\Models\Permission;
 
 class FinanceAccountAccessServiceTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
     use DatabaseTransactions;
 
     protected $connectionsToTransact = ['school'];

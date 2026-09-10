@@ -8,6 +8,8 @@ use Tests\TestCase;
 
 class FeeModelAccessorTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     /** @test */
     public function total_compulsory_fees_uses_relation_when_loaded(): void
     {

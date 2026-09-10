@@ -204,6 +204,14 @@ class FinanceGroupController extends Controller
         return redirect()->route('finance-groups.index')->with('success', __('School Front Desk granted pending collection access.'));
     }
 
+    public function provisionSchoolStaffFrontDesk(Request $request, FinanceGroup $financeGroup): RedirectResponse
+    {
+        $this->assertCentralSuperAdmin();
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'central_user_id' => ['required', 'integer']]);
+        $tenantId = $this->staffIdentities->provisionTenantFrontDesk($financeGroup, (int) $data['school_id'], (int) $data['central_user_id']);
+        return redirect()->route('finance-groups.index')->with('success', __('Tenant Front Desk identity provisioned (#'.$tenantId.').'));
+    }
+
     private function upsertCentralScope(int $userId, int $schoolId, bool $view, bool $operate, bool $approve, bool $confirm, bool $submitCollections = false): void
     {
         $values = [

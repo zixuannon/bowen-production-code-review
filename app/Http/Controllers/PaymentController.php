@@ -10,7 +10,8 @@ use App\Models\PaymentTransaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Config;
 use App\Models\School;
-use Illuminate\Support\Facades\Http;
+use App\Services\PaymentGatewayVerificationClient;
+use InvalidArgumentException;
 class PaymentController extends Controller
 {
     /**
@@ -77,10 +78,12 @@ class PaymentController extends Controller
             }
 
             // For successful payments, verify with Paystack API
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $paymentGateway->secret_key,
-                'Content-Type' => 'application/json',
-            ])->get("https://api.paystack.co/transaction/verify/{$reference}");
+            try {
+                $response = app(PaymentGatewayVerificationClient::class)
+                    ->verifyPaystack($paymentGateway->secret_key, $reference);
+            } catch (InvalidArgumentException) {
+                return response()->json(['error' => 'Invalid transaction reference'], 422);
+            }
 
             $data = $response->json();
             Log::info('Paystack verification completed.', [
@@ -150,10 +153,12 @@ class PaymentController extends Controller
                 return response()->json(['status' => 'success', 'message' => 'Transaction already processed']);
             }
 
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $paymentGateway->secret_key,
-                'Content-Type' => 'application/json',
-            ])->get("https://api.flutterwave.com/v3/transactions/{$transactionId}/verify");
+            try {
+                $response = app(PaymentGatewayVerificationClient::class)
+                    ->verifyFlutterwave($paymentGateway->secret_key, (string) $transactionId);
+            } catch (InvalidArgumentException) {
+                return response()->json(['error' => 'Invalid transaction ID'], 422);
+            }
 
             $data = $response->json();
 

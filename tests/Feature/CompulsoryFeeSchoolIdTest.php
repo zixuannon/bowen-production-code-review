@@ -13,6 +13,8 @@ use Tests\TestCase;
 
 class CompulsoryFeeSchoolIdTest extends TestCase
 {
+    protected bool $tenantDbAsDefault = true;
+
     private int $authUserId;
     private int $studentId;
     private int $schoolId = 1;

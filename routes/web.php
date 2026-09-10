@@ -38,7 +38,6 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GuardianController;
 use App\Http\Controllers\GuidanceController;
 use App\Http\Controllers\HolidayController;
-use App\Http\Controllers\InstallerController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\LeaveMasterController;
@@ -167,14 +166,6 @@ Route::group(['prefix' => 'page/type'], static function () {
     Route::get('/{type?}', [Controller::class, 'systemLinks']);
 });
 
-if (env('INSTALLER_ENABLED', false)) {
-    Route::group(['prefix' => 'install'], static function () {
-        Route::get('purchase-code', [InstallerController::class, 'purchaseCodeIndex'])->name('install.purchase-code.index');
-        Route::post('purchase-code', [InstallerController::class, 'checkPurchaseCode'])->name('install.purchase-code.post');
-        Route::get('php-function', [InstallerController::class, 'phpFunctionIndex'])->name('install.php-function.index');
-    });
-}
-
 // auth
 Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDatabase', 'verifiedEmail', 'CheckForMaintenanceMode', '2fa', 'wizardSettings']], static function () {
 
@@ -232,6 +223,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::post('finance-groups/{financeGroup}/school-staff-accountants', [FinanceGroupController::class, 'storeSchoolStaffAccountant'])->name('finance-groups.school-staff-accountants.store');
         Route::post('finance-groups/{financeGroup}/school-staff-principals', [FinanceGroupController::class, 'storeSchoolStaffPrincipal'])->name('finance-groups.school-staff-principals.store');
         Route::post('finance-groups/{financeGroup}/school-staff-front-desks', [FinanceGroupController::class, 'storeSchoolStaffFrontDesk'])->name('finance-groups.school-staff-front-desks.store');
+        Route::post('finance-groups/{financeGroup}/school-staff-front-desks/provision', [FinanceGroupController::class, 'provisionSchoolStaffFrontDesk'])->name('finance-groups.school-staff-front-desks.provision');
         Route::post('finance-groups/{financeGroup}/central-school-scopes/disable', [FinanceGroupController::class, 'disableCentralSchoolScope'])->name('finance-groups.central-school-scopes.disable');
         Route::post('finance-groups/{financeGroup}/tenant-identities', [FinanceGroupController::class, 'storeTenantIdentity'])->name('finance-groups.tenant-identities.store');
         Route::get('finance-groups/{financeGroup}', [FinanceGroupController::class, 'show'])->name('finance-groups.show');
@@ -1219,6 +1211,15 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/pending-collections/{pending}/hold', [\App\Http\Controllers\CentralFinancePendingCollectionController::class, 'hold'])->name('central-finance.pending-collections.hold');
     Route::post('central-finance/pending-collections/{pending}/reject', [\App\Http\Controllers\CentralFinancePendingCollectionController::class, 'reject'])->name('central-finance.pending-collections.reject');
     Route::post('central-finance/pending-collections/{pending}/confirm', [\App\Http\Controllers\CentralFinancePendingCollectionController::class, 'confirm'])->name('central-finance.pending-collections.confirm');
+    Route::get('central-finance/collection-handovers', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'index'])->name('central-finance.collection-handovers.index');
+    Route::post('central-finance/collection-handovers', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'store'])->name('central-finance.collection-handovers.store');
+    Route::post('central-finance/collection-handovers/{batch}/items', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'add'])->name('central-finance.collection-handovers.items.store');
+    Route::post('central-finance/collection-handovers/{batch}/items/{item}/remove', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'remove'])->name('central-finance.collection-handovers.items.remove');
+    Route::post('central-finance/collection-handovers/{batch}/submit', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'submit'])->name('central-finance.collection-handovers.submit');
+    Route::post('central-finance/collection-handovers/{batch}/hold', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'hold'])->name('central-finance.collection-handovers.hold');
+    Route::post('central-finance/collection-handovers/{batch}/reject', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'reject'])->name('central-finance.collection-handovers.reject');
+    Route::post('central-finance/collection-handovers/{batch}/cancel', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'cancel'])->name('central-finance.collection-handovers.cancel');
+    Route::post('central-finance/collection-handovers/{batch}/confirm', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'confirm'])->name('central-finance.collection-handovers.confirm');
     Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
     Route::get('central-finance/receivables/{receivable}', [CentralFinanceWorkspaceController::class, 'receivableDetail'])->name('central-finance.receivables.show');
     Route::post('central-finance/receivables/{receivable}/adjustments', [CentralFinanceWorkspaceController::class, 'adjustReceivable'])->name('central-finance.receivables.adjustments.store');

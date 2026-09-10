@@ -148,13 +148,6 @@
       0 => 'Opcodes\\LogViewer\\LogViewerServiceProvider',
     ),
   ),
-  'sagar/laravel-wizard-installer' => 
-  array (
-    'providers' => 
-    array (
-      0 => 'dacoto\\LaravelWizardInstaller\\Providers\\LaravelWizardInstallerProvider',
-    ),
-  ),
   'spatie/laravel-permission' => 
   array (
     'providers' => 

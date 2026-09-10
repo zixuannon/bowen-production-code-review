@@ -142,12 +142,43 @@ class UploadServiceSecurityTest extends TestCase
         $this->assertEquals('user', $result);
     }
 
-    public function test_sanitize_path_trims_slashes(): void
+    public function test_sanitize_path_rejects_absolute_paths(): void
     {
         $method = $this->getMethod('sanitizePath');
 
-        $result = $method->invoke(null, '/user/');
-        $this->assertEquals('user', $result);
+        $this->expectException(UploadValidationException::class);
+        $method->invoke(null, '/user/');
+    }
+
+    public function test_sanitize_path_rejects_windows_absolute_paths(): void
+    {
+        $method = $this->getMethod('sanitizePath');
+
+        $this->expectException(UploadValidationException::class);
+        $method->invoke(null, 'C:\\temp\\user');
+    }
+
+    public function test_sanitize_path_rejects_empty_or_malformed_segments(): void
+    {
+        $method = $this->getMethod('sanitizePath');
+
+        foreach (['', 'user//avatar', 'user/./avatar', 'user/<avatar>'] as $path) {
+            try {
+                $method->invoke(null, $path);
+                $this->fail("Expected path to be rejected: {$path}");
+            } catch (\ReflectionException $exception) {
+                throw $exception;
+            } catch (\Throwable $exception) {
+                $this->assertInstanceOf(UploadValidationException::class, $exception->getPrevious() ?? $exception);
+            }
+        }
+    }
+
+    public function test_sanitize_path_accepts_safe_nested_relative_path(): void
+    {
+        $method = $this->getMethod('sanitizePath');
+
+        $this->assertSame('school/logos_2026', $method->invoke(null, 'school/logos_2026'));
     }
 
     /**

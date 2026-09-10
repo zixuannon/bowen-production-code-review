@@ -9,6 +9,7 @@ class Kernel extends ConsoleKernel
 {
 
     protected $commands = [
+        \App\Console\Commands\ProvisionFrontDeskRole::class,
         Commands\SubscriptionBillCron::class,
         Commands\DeleteNotifications::class
     ];
