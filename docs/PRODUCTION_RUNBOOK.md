@@ -33,6 +33,8 @@ Confirm local targeted tests, relevant local Playwright QA, and diff review have
 ## Atomic release runtime refresh
 
 Application uploads and compiled Blade views must be shared across releases.
+The release runner must invoke Composer through the guarded PHP 8.3 binary;
+never rely on Composer's environment-selected PHP executable.
 After an atomic release switch, preserve the existing shared `public/storage`
 target and use a shared writable `VIEW_COMPILED_PATH`; never point compiled
 views into a release directory that will later be removed.

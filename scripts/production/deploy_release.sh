@@ -44,7 +44,7 @@ if id www >/dev/null 2>&1; then
   chmod 775 "$release_dir/bootstrap/cache"
 fi
 if [[ -x /usr/bin/composer ]]; then
-  /usr/bin/composer install --working-dir="$release_dir" --no-dev --prefer-dist --no-interaction --optimize-autoloader >/dev/null
+  COMPOSER_ALLOW_SUPERUSER=1 "$php_bin" /usr/bin/composer install --working-dir="$release_dir" --no-dev --prefer-dist --no-interaction --optimize-autoloader >/dev/null
 else
   echo "DEPLOY_FAIL: Composer unavailable" >&2
   exit 1
