@@ -87,6 +87,10 @@ if grep -Fq 'eSchool-Saas - Manage Your School' "$render_probe" || grep -Fq '/as
 fi
 actual_sha=$(git -C "$source_repo" rev-parse HEAD)
 expect "$manifest_sha" "$actual_sha" manifest_commit_sha
+test -f "$release_dir/.release-commit" && test ! -L "$release_dir/.release-commit" \
+  || { echo "GUARD_FAIL: immutable release commit marker missing or unsafe" >&2; exit 1; }
+marker_sha=$(tr -d '\r\n' < "$release_dir/.release-commit")
+expect "$marker_sha" "$actual_sha" release_commit_marker
 git -C "$source_repo" merge-base --is-ancestor "$(read_json "$baseline_file" accepted_production_sha)" "$actual_sha" || { echo "GUARD_FAIL: candidate is not an accepted-baseline descendant" >&2; exit 1; }
 git -C "$source_repo" show-ref --verify --quiet "refs/remotes/origin/$github_ref" || { echo "GUARD_FAIL: GitHub ref unavailable" >&2; exit 1; }
 JSON_PHP_BIN="$json_php_bin" PHP_BIN="$php_bin" "$release_dir/scripts/production/verify_runtime_links.sh" "$release_dir" "$baseline_file"

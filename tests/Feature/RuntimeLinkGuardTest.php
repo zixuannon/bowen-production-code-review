@@ -83,6 +83,8 @@ final class RuntimeLinkGuardTest extends TestCase
         $this->assertStringContainsString('sh "$(cd "$(dirname "$0")/.." && pwd)/release/verify_required_assets.sh"', $runtimeGuard);
         $this->assertStringContainsString('verify_runtime_links.sh', $guard);
         $this->assertStringContainsString('verify_runtime_links.sh', $deploy);
+        $this->assertStringContainsString("printf '%s\\n' \"\$commit\" > \"\$release_dir/.release-commit\"", $deploy);
+        $this->assertStringContainsString('release_commit_marker', $guard);
         $this->assertStringContainsString('shared_public_storage_target', $deploy);
         $this->assertStringNotContainsString('readlink "$active_link/.env"', $deploy);
         $this->assertStringNotContainsString('readlink "$active_link/storage"', $deploy);

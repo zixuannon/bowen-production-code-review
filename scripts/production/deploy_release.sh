@@ -57,6 +57,7 @@ if id www >/dev/null 2>&1; then
   chown -R www:www "$release_dir/bootstrap/cache"
   chmod 775 "$release_dir/bootstrap/cache"
 fi
+printf '%s\n' "$commit" > "$release_dir/.release-commit"
 baseline=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$repo/config/production-baseline.json")
 SOURCE_REPO="$release_dir" "$release_dir/scripts/production/write_release_manifest.sh" "$release_dir" "$baseline" "${GITHUB_REF:-main}"
 "$repo/scripts/production/verify_release_guard.sh" "$release_dir"
