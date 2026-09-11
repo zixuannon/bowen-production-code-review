@@ -10,6 +10,7 @@ use RuntimeException;
 final class LegacySchemaIntegrityService
 {
     public const ROUND5_MIGRATION = '2026_09_12_000001_harden_legacy_student_import_and_bank_transfer_integrity';
+    public const ACTIVE_TRANSFER_REFERENCE = 'active_reference_no';
 
     public const INDEXES = [
         'students_id_school_unique',
@@ -104,7 +105,7 @@ final class LegacySchemaIntegrityService
             'bank_account_orphan_updated_actor' => 'SELECT COUNT(*) c FROM bank_accounts a LEFT JOIN users u ON u.id = a.updated_by WHERE a.updated_by IS NOT NULL AND u.id IS NULL',
             'bank_account_created_actor_school_mismatch' => 'SELECT COUNT(*) c FROM bank_accounts a JOIN users u ON u.id = a.created_by WHERE a.created_by IS NOT NULL AND (u.school_id IS NULL OR u.school_id <> a.school_id)',
             'bank_account_updated_actor_school_mismatch' => 'SELECT COUNT(*) c FROM bank_accounts a JOIN users u ON u.id = a.updated_by WHERE a.updated_by IS NOT NULL AND (u.school_id IS NULL OR u.school_id <> a.school_id)',
-            'transfer_duplicate_reference' => 'SELECT COUNT(*) c FROM (SELECT school_id, reference_no FROM bank_transfers WHERE reference_no IS NOT NULL GROUP BY school_id, reference_no HAVING COUNT(*) > 1) x',
+            'transfer_duplicate_reference' => 'SELECT COUNT(*) c FROM (SELECT school_id, reference_no FROM bank_transfers WHERE reference_no IS NOT NULL AND deleted_at IS NULL GROUP BY school_id, reference_no HAVING COUNT(*) > 1) x',
             'transfer_invalid_school' => 'SELECT COUNT(*) c FROM bank_transfers WHERE school_id < 1',
             'transfer_orphan_from' => 'SELECT COUNT(*) c FROM bank_transfers t LEFT JOIN bank_accounts a ON a.id = t.from_account_id WHERE a.id IS NULL',
             'transfer_orphan_to' => 'SELECT COUNT(*) c FROM bank_transfers t LEFT JOIN bank_accounts a ON a.id = t.to_account_id WHERE a.id IS NULL',
@@ -139,6 +140,7 @@ final class LegacySchemaIntegrityService
 
     public function round5SchemaPresent(): bool
     {
+        if (Schema::connection('school')->hasColumn('bank_transfers', self::ACTIVE_TRANSFER_REFERENCE)) return true;
         foreach (self::INDEXES as $name) if ($this->namedIndexExists($name)) return true;
         foreach (self::FOREIGN_KEYS as $name) if ($this->namedConstraintExists($name, 'FOREIGN KEY')) return true;
         foreach (self::CHECKS as $name) if ($this->namedConstraintExists($name, 'CHECK')) return true;
@@ -150,7 +152,8 @@ final class LegacySchemaIntegrityService
         return $this->indexMatches('students', self::INDEXES[0], ['id', 'school_id'], true)
             && $this->indexMatches('users', self::INDEXES[1], ['id', 'school_id'], true)
             && $this->indexMatches('bank_accounts', self::INDEXES[2], ['id', 'school_id'], true)
-            && $this->indexMatches('bank_transfers', self::INDEXES[3], ['school_id', 'reference_no'], true)
+            && Schema::connection('school')->hasColumn('bank_transfers', self::ACTIVE_TRANSFER_REFERENCE)
+            && $this->indexMatches('bank_transfers', self::INDEXES[3], ['school_id', self::ACTIVE_TRANSFER_REFERENCE], true)
             && $this->foreignKeyMatches('student_import_identities', self::FOREIGN_KEYS[0], ['student_id', 'school_id'], 'students', ['id', 'school_id'])
             && $this->foreignKeyMatches('student_import_identities', self::FOREIGN_KEYS[1], ['user_id', 'school_id'], 'users', ['id', 'school_id'])
             && $this->foreignKeyMatches('student_import_identities', self::FOREIGN_KEYS[2], ['created_by', 'school_id'], 'users', ['id', 'school_id'])

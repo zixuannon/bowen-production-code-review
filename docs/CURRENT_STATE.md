@@ -171,6 +171,9 @@ Finance V2
   partial-schema-failing exact-path runner. Zixuan ownership and all existing
   `MMBOWEN` formats are checked before the first MySQL DDL, and every downstream
   fixed registry now uses `MMBOWEN01` after the identity cutover.
+- The Round 5 transfer-reference constraint is unique across active rows through
+  a generated reference column. Cancelled/soft-deleted transfer history remains
+  immutable and auditable instead of being rewritten merely to add the index.
 - Production-shaped disposable MySQL proves the exact migration changes the
   synthetic Zixuan row to `MMBOWEN01`, records `SCH202615` only in audit
   history, initializes sequence `MMBOWEN=2`, and creates both unique keys plus

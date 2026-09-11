@@ -79,6 +79,8 @@ final class Round5SchemaIntegrityContractTest extends TestCase
         $this->assertStringContainsString('assertPreflightClean()', $source);
         $this->assertStringContainsString('round5SchemaComplete()', $source);
         $service = file_get_contents(app_path('Services/LegacySchemaIntegrityService.php'));
+        $this->assertStringContainsString("deleted_at IS NULL", $service);
+        $this->assertStringContainsString("storedAs('CASE WHEN deleted_at IS NULL THEN reference_no ELSE NULL END')", $source);
         foreach (array_merge(LegacySchemaIntegrityService::INDEXES, LegacySchemaIntegrityService::FOREIGN_KEYS, LegacySchemaIntegrityService::CHECKS) as $name) {
             $this->assertStringContainsString("'$name'", $service);
         }

@@ -87,11 +87,17 @@ final class Round5MysqlMigrationRehearsalTest extends TestCase
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('transfer_duplicate_reference', $exception->getMessage());
         }
-        DB::connection('school')->table('bank_transfers')->where('reference_no','DUP')->orderByDesc('id')->limit(1)->delete();
+        DB::connection('school')->table('bank_transfers')->where('reference_no','DUP')->orderByDesc('id')->limit(1)->update([
+            'status' => 'cancelled',
+            'deleted_at' => now(),
+        ]);
+        $this->assertArrayNotHasKey('transfer_duplicate_reference', app(LegacySchemaIntegrityService::class)->preflightIssues());
 
         $round5Migration = require database_path('migrations/schools/'.LegacySchemaIntegrityService::ROUND5_MIGRATION.'.php');
         $round5Migration->up();
         $this->assertTrue(app(LegacySchemaIntegrityService::class)->round5SchemaComplete());
+        $this->assertSame(2, DB::connection('school')->table('bank_transfers')->where('reference_no', 'DUP')->count());
+        $this->assertConstraintRejects(fn () => DB::connection('school')->table('bank_transfers')->insert(['school_id'=>15,'from_account_id'=>20,'to_account_id'=>21,'amount'=>12,'transfer_date'=>'2026-09-11','reference_no'=>'DUP','status'=>'completed','created_by'=>1,'created_at'=>now(),'updated_at'=>now()]));
         $this->assertConstraintRejects(fn () => DB::connection('school')->table('student_import_identities')->insert(['school_id'=>15,'student_code'=>'00125','student_id'=>11,'user_id'=>3,'created_at'=>now(),'updated_at'=>now()]));
         $this->assertConstraintRejects(fn () => DB::connection('school')->table('bank_transfers')->insert(['school_id'=>15,'from_account_id'=>20,'to_account_id'=>20,'amount'=>10,'transfer_date'=>'2026-09-11','status'=>'completed','created_at'=>now(),'updated_at'=>now()]));
         $this->assertConstraintRejects(fn () => DB::connection('school')->table('bank_transfers')->insert(['school_id'=>15,'from_account_id'=>20,'to_account_id'=>21,'amount'=>0,'transfer_date'=>'2026-09-11','status'=>'completed','created_at'=>now(),'updated_at'=>now()]));

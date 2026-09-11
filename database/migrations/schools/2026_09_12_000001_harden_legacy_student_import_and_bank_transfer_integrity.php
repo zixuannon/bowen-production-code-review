@@ -28,7 +28,17 @@ return new class extends Migration {
             $table->unique(['id', 'school_id'], LegacySchemaIntegrityService::INDEXES[2]);
         });
         Schema::connection('school')->table('bank_transfers', function (Blueprint $table): void {
-            $table->unique(['school_id', 'reference_no'], LegacySchemaIntegrityService::INDEXES[3]);
+            // Preserve cancelled/soft-deleted audit history while keeping the
+            // live idempotency boundary database-enforced. Multiple NULLs are
+            // permitted by MariaDB/MySQL unique indexes.
+            $table->string(LegacySchemaIntegrityService::ACTIVE_TRANSFER_REFERENCE, 100)
+                ->nullable()
+                ->storedAs('CASE WHEN deleted_at IS NULL THEN reference_no ELSE NULL END')
+                ->after('reference_no');
+            $table->unique(
+                ['school_id', LegacySchemaIntegrityService::ACTIVE_TRANSFER_REFERENCE],
+                LegacySchemaIntegrityService::INDEXES[3]
+            );
         });
 
         Schema::connection('school')->table('student_import_identities', function (Blueprint $table): void {
@@ -77,7 +87,10 @@ return new class extends Migration {
         Schema::connection('school')->table('student_import_identities', function (Blueprint $table): void {
             foreach (array_slice(LegacySchemaIntegrityService::FOREIGN_KEYS, 0, 3) as $foreign) $table->dropForeign($foreign);
         });
-        Schema::connection('school')->table('bank_transfers', fn (Blueprint $table) => $table->dropUnique(LegacySchemaIntegrityService::INDEXES[3]));
+        Schema::connection('school')->table('bank_transfers', function (Blueprint $table): void {
+            $table->dropUnique(LegacySchemaIntegrityService::INDEXES[3]);
+            $table->dropColumn(LegacySchemaIntegrityService::ACTIVE_TRANSFER_REFERENCE);
+        });
         Schema::connection('school')->table('bank_accounts', fn (Blueprint $table) => $table->dropUnique(LegacySchemaIntegrityService::INDEXES[2]));
         Schema::connection('school')->table('users', fn (Blueprint $table) => $table->dropUnique(LegacySchemaIntegrityService::INDEXES[1]));
         Schema::connection('school')->table('students', fn (Blueprint $table) => $table->dropUnique(LegacySchemaIntegrityService::INDEXES[0]));

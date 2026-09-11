@@ -112,7 +112,7 @@ allowlisted paths are the tenant Student Import identity-table migration and
 `2026_09_12_000001_harden_legacy_student_import_and_bank_transfer_integrity`.
 
 The preflight must report zero duplicate Student Codes/student/user identities,
-zero duplicate non-null transfer references, zero orphan/cross-School
+zero duplicate active non-null transfer references, zero orphan/cross-School
 student/user/actor/account references, and zero invalid transfer account,
 amount, School, or status rows. Any partial migration history, required-column
 or index mismatch, or partially present Round 5 constraint is a forward-fix
@@ -120,6 +120,11 @@ stop. Never auto-delete or merge a conflicting Production row. `--execute`
 requires a separate Production migration Human Gate, backup, reviewed data
 remediation where applicable, and a fresh read-only rerun immediately before
 execution.
+
+The transfer reference unique key uses a generated active-reference column, so
+cancelled/soft-deleted audit history can retain an earlier reference while two
+non-deleted transfers for one School can never share it. Do not rewrite or
+delete historical transfers to satisfy this constraint.
 
 ### Operational UX & Identity targeted runner
 
