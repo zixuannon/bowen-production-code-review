@@ -14,6 +14,28 @@ Last updated: 2026-09-11
 
 Finance V2
 
+## UI audit prerequisite — School list User role N+1 local PASS
+
+- Branch `codex/ui-audit-querydetector-nplus1` starts exactly from active
+  Production source `03278a4fc37e01d42c85e82c1e6a3482277978fa`.
+- The Super Admin `/schools` Bootstrap table calls `SchoolController::show()`.
+  Serializing each School appended `User::role`, whose fallback queried
+  `roles()` once per admin because the nested relation was not loaded. The
+  list query now eager-loads `user.roles` and hides the relation payload before
+  serialization, preserving the existing scalar `user.role` response shape.
+- A 12-School regression proves one roles query and at most three total list
+  queries for School, User, and Role hydration; query count remains constant as
+  the page grows. The authenticated local browser renders 10 of 12 matching
+  synthetic rows with no QueryDetector dialog or `User -> roles` detector log.
+- QueryDetector remains available and logs findings, but no longer injects
+  browser alerts. Debugbar is opt-in outside Production and is forced off in
+  Production even if `DEBUGBAR_ENABLED` is accidentally true.
+- Targeted School/role/config regression passes 11 tests / 83 assertions.
+  Full direct PHPUnit regression passes 720 tests / 4,694 assertions with one
+  expected opt-in skip; PHP 8.5 reports only existing dependency deprecations.
+- No migration, schema change, Production data write, deployment, Finance
+  business-rule change, Phase 5.5B change, or homepage/assets change occurred.
+
 ## Final Quality Gate Group Import template blocker fix — local PASS
 
 - Branch `codex/final-quality-gate-template-fix` starts exactly from the

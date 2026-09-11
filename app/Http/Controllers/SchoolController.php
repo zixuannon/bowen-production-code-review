@@ -362,7 +362,11 @@ class SchoolController extends Controller
         $showDeleted = request('show_deleted');
         $today_date = Carbon::now()->format('Y-m-d');
 
-        $sql = $this->schoolsRepository->builder()->with('user:id,first_name,last_name,email,image,mobile,email_verified_at,two_factor_enabled', 'extra_school_details.form_field')->with([
+        $sql = $this->schoolsRepository->builder()->with([
+            'user:id,first_name,last_name,email,image,mobile,email_verified_at,two_factor_enabled',
+            'user.roles',
+            'extra_school_details.form_field',
+        ])->with([
             'subscription' => function ($q) use ($today_date) {
                 $q->whereDate('start_date', '<=', $today_date)->whereDate('end_date', '>=', $today_date);
             }
@@ -444,6 +448,11 @@ class SchoolController extends Controller
             }
 
 
+            // The appended User::role accessor consumes the eager-loaded
+            // relation without issuing one roles query per School admin. Keep
+            // the list response shape stable by exposing only the existing
+            // scalar role attribute, not the full roles/pivot payload.
+            $row->user?->makeHidden('roles');
             $tempRow = $row->toArray();
             $tempRow['no'] = $no++;
             $tempRow['active_plan'] = '-';

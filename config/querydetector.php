@@ -102,8 +102,10 @@ return [
      * Writes the N+1 queries into the Laravel.log file
      * \BeyondCode\QueryDetector\Outputs\Log::class
      */
+    // Browser alerts block visual QA and can expose query internals. Detection
+    // remains active when enabled, with every finding written to the configured
+    // log channel instead of being injected into an HTML response.
     'output' => [
-        \BeyondCode\QueryDetector\Outputs\Alert::class,
         \BeyondCode\QueryDetector\Outputs\Log::class,
     ]
 ];

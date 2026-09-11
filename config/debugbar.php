@@ -14,7 +14,10 @@ return [
      |
      */
 
-    'enabled' => env('DEBUGBAR_ENABLED', false),
+    // Production must never expose the debug toolbar, even if an environment
+    // variable is accidentally enabled. Local/test environments retain the
+    // explicit opt-in used by developers.
+    'enabled' => env('APP_ENV', 'production') === 'production' ? false : env('DEBUGBAR_ENABLED', false),
     'hide_empty_tabs' => false, // Hide tabs until they have content
     'except' => [
         'telescope*',
