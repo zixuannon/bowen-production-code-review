@@ -88,6 +88,9 @@ final class RuntimeLinkGuardTest extends TestCase
         $this->assertStringContainsString('baseline_contract="$script_root/config/production-baseline.json"', $deploy);
         $this->assertStringContainsString('"$release_dir/scripts/production/verify_release_guard.sh"', $deploy);
         $this->assertStringNotContainsString('"$repo/scripts/production/verify_release_guard.sh"', $deploy);
+        $this->assertStringContainsString('"--prepare"', $deploy);
+        $this->assertStringContainsString('PREPARE_PASS:', $deploy);
+        $this->assertStringContainsString('if [[ -z "$action" ]]', $deploy);
         $this->assertStringContainsString('shared_public_storage_target', $deploy);
         $this->assertStringNotContainsString('readlink "$active_link/.env"', $deploy);
         $this->assertStringNotContainsString('readlink "$active_link/storage"', $deploy);

@@ -4,12 +4,12 @@ set -euo pipefail
 # Immutable, commit-addressed release builder/switcher.  The default mode is a
 # dry run; --switch is an explicit deployment gate for an already verified
 # build.  No file is copied into an active release tree.
-usage() { echo "Usage: $0 <commit-sha> [--switch]" >&2; exit 2; }
+usage() { echo "Usage: $0 <commit-sha> [--prepare|--switch]" >&2; exit 2; }
 [[ $# -ge 1 && $# -le 2 ]] || usage
 commit=$1
-switch=${2:-}
+action=${2:-}
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "DEPLOY_FAIL: full commit SHA required" >&2; exit 1; }
-[[ -z "$switch" || "$switch" == "--switch" ]] || usage
+[[ -z "$action" || "$action" == "--prepare" || "$action" == "--switch" ]] || usage
 
 repo=${REPO_ROOT:-/www/wwwroot/eschool-github/bowen-production-code-review}
 script_root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -33,7 +33,7 @@ shared_public_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]
 
 [[ ! -e "$release_dir" ]] || { echo "DEPLOY_FAIL: release directory already exists" >&2; exit 1; }
 git -C "$repo" worktree add --detach "$release_dir" "$commit" >/dev/null
-cleanup() { if [[ "$switch" != "--switch" ]]; then git -C "$repo" worktree remove --force "$release_dir" >/dev/null 2>&1 || true; fi; }
+cleanup() { if [[ -z "$action" ]]; then git -C "$repo" worktree remove --force "$release_dir" >/dev/null 2>&1 || true; fi; }
 trap cleanup EXIT
 ln -s "$shared_env" "$release_dir/.env"
 if [[ -d "$release_dir/storage" && ! -L "$release_dir/storage" ]]; then
@@ -65,7 +65,9 @@ SOURCE_REPO="$release_dir" "$release_dir/scripts/production/write_release_manife
 "$release_dir/scripts/production/verify_release_guard.sh" "$release_dir"
 echo "DRY_RUN_PASS:$commit:$release_dir"
 
-if [[ "$switch" == "--switch" ]]; then
+if [[ "$action" == "--prepare" ]]; then
+  echo "PREPARE_PASS:$commit:$release_dir"
+elif [[ "$action" == "--switch" ]]; then
   [[ -f "$release_dir/.release-manifest.json" ]] || { echo "DEPLOY_FAIL: manifest missing" >&2; exit 1; }
   ln -sfn "$release_dir" "$active_link"
   echo "SWITCH_PASS:$commit:$release_dir"
