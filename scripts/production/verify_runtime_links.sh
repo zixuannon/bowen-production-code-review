@@ -47,7 +47,7 @@ test -d "$release_dir/bootstrap/cache" || fail "bootstrap/cache missing"
 as_runtime_user -w "$release_dir/bootstrap/cache" || fail "bootstrap/cache is not writable by $runtime_user"
 
 if [ "${RUNTIME_GUARD_SKIP_ASSETS:-0}" != 1 ]; then
-  "$(cd "$(dirname "$0")/.." && pwd)/release/verify_required_assets.sh" --root "$release_dir"
+  sh "$(cd "$(dirname "$0")/.." && pwd)/release/verify_required_assets.sh" --root "$release_dir"
 fi
 
 echo "RUNTIME_LINK_GUARD_PASS:$release_dir"

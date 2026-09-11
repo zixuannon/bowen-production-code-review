@@ -77,8 +77,10 @@ final class RuntimeLinkGuardTest extends TestCase
 
     public function test_release_guard_and_builder_use_the_exact_runtime_contract(): void
     {
+        $runtimeGuard = file_get_contents(base_path('scripts/production/verify_runtime_links.sh'));
         $guard = file_get_contents(base_path('scripts/production/verify_release_guard.sh'));
         $deploy = file_get_contents(base_path('scripts/production/deploy_release.sh'));
+        $this->assertStringContainsString('sh "$(cd "$(dirname "$0")/.." && pwd)/release/verify_required_assets.sh"', $runtimeGuard);
         $this->assertStringContainsString('verify_runtime_links.sh', $guard);
         $this->assertStringContainsString('verify_runtime_links.sh', $deploy);
         $this->assertStringContainsString('shared_public_storage_target', $deploy);
