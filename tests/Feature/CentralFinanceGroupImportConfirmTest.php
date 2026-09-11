@@ -202,6 +202,34 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         ])->count());
     }
 
+    public function test_formal_template_lookups_exclude_explicit_uat_and_test_master_data(): void
+    {
+        $uatAccount = $this->account('CENTRAL-PROD-UAT-ZXN-MMK', 'Retained UAT Account', 1);
+        $testAccount = $this->account('TEMP-CASH', 'Test Petty Cash', 1);
+        foreach ([$uatAccount, $testAccount] as $account) {
+            DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
+                'fund_account_id' => $account->id,
+                'user_id' => $this->head->id,
+                'can_view' => true,
+                'can_operate' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        $this->category(1, CentralFinanceCategory::EXPENSE, 'CENTRAL-PROD-UAT-EXPENSE');
+        $testCategory = $this->category(1, CentralFinanceCategory::INCOME, 'TEMP-INCOME');
+        $testCategory->update(['name' => 'Test Income']);
+
+        $lookups = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
+
+        $this->assertNotContains($uatAccount->account_code, array_column($lookups['accounts'], 'code'));
+        $this->assertNotContains($testAccount->account_code, array_column($lookups['accounts'], 'code'));
+        $this->assertNotContains('CENTRAL-PROD-UAT-EXPENSE', array_column($lookups['categories'], 'category_code'));
+        $this->assertNotContains($testCategory->category_code, array_column($lookups['categories'], 'category_code'));
+        $this->assertContains($this->zixuanAccount->account_code, array_column($lookups['accounts'], 'code'));
+        $this->assertContains($this->zixuanIncome->category_code, array_column($lookups['categories'], 'category_code'));
+    }
+
     public function test_v21_saved_workbook_previews_two_school_expense_and_other_income_without_formula_blank_rows(): void
     {
         $lookups = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);

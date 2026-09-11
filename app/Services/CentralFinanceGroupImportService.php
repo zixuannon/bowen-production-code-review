@@ -107,6 +107,10 @@ final class CentralFinanceGroupImportService
             ->orderBy('code')
             ->get(['id', 'code', 'name'])
             ->filter(function (School $school) use ($actor): bool {
+                if (!$this->isFormalTemplateLookup($school->code, $school->name)) {
+                    return false;
+                }
+
                 try {
                     $this->workspace->assertCanOperateSchool($actor, (int) $school->id);
                     return true;
@@ -130,6 +134,10 @@ final class CentralFinanceGroupImportService
             ->orderBy('account_code')
             ->get()
             ->filter(function (CentralFinanceFundAccount $account) use ($actor): bool {
+                if (!$this->isFormalTemplateLookup($account->account_code, $account->account_name)) {
+                    return false;
+                }
+
                 try {
                     $this->accountScopes->assertCanOperate($actor, $account);
                     return true;
@@ -154,6 +162,7 @@ final class CentralFinanceGroupImportService
             ->orderBy('type')
             ->orderBy('category_code')
             ->get(['school_id', 'type', 'category_code', 'name'])
+            ->filter(fn (CentralFinanceCategory $category): bool => $this->isFormalTemplateLookup($category->category_code, $category->name))
             ->map(static fn (CentralFinanceCategory $category): array => [
                 'school_code' => $schoolCodes->get((int) $category->school_id),
                 'type' => $category->type,
@@ -168,6 +177,21 @@ final class CentralFinanceGroupImportService
             'accounts' => $accounts,
             'categories' => $categories,
         ];
+    }
+
+    /**
+     * Keep explicitly-labelled UAT/test master data out of the distributed
+     * workbook without changing or deleting the audited Production records.
+     */
+    private function isFormalTemplateLookup(?string ...$values): bool
+    {
+        foreach ($values as $value) {
+            if (preg_match('/(?:^|[^A-Z0-9])(?:UAT|TEST)(?:[^A-Z0-9]|$)/i', (string) $value)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

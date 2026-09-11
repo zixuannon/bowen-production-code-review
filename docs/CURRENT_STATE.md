@@ -154,6 +154,9 @@ Finance V2
   Expense validation, payment-method selection, text-preserved account codes,
   and a reconciliation-only Statement Balance. The distributed template has no
   UAT sample rows, while shared accounts retain an explicit School per row.
+  The formal workbook lookup builder also excludes master data explicitly
+  labelled with `UAT` or `TEST`; the retained Production audit/UAT records are
+  not changed or deleted.
 - Zixuan's actual canonical `schools.code` migrates from deprecated
   `SCH202615` to `MMBOWEN01`. The old value is retained only in immutable
   `school_code_history` audit data and cannot resolve login, API, Finance,
