@@ -482,6 +482,17 @@ class DatabaseBackupController extends Controller
     public function show()
     {
         ResponseService::noPermissionThenRedirect('database-backup');
+
+        // The legacy database_backups table was intentionally removed in v1.5.4.
+        // Keep this read-only compatibility endpoint fail-closed instead of
+        // querying a table that no longer exists and returning a 500 response.
+        if (!Schema::hasTable('database_backups')) {
+            return response()->json([
+                'total' => 0,
+                'rows' => [],
+            ]);
+        }
+
         $offset = request('offset', 0);
         $limit = request('limit', 10);
         $sort = request('sort', 'id');

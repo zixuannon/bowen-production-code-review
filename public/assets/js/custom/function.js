@@ -940,6 +940,11 @@ function gender_ratio(boys, girls, total_students) {
 }
 
 function fees_details(data) {
+    const chartElement = document.querySelector("#fees_details_chart");
+    if (!chartElement) {
+        return;
+    }
+
     var options = {
         series: [data.fullPaidFees, data.partialPaidFees, data.unPaidFees],
         chart: {
@@ -971,7 +976,7 @@ function fees_details(data) {
         colors: ['#1BCFB4', '#198AE3', '#FE7C96']
     };
 
-    var chart = new ApexCharts(document.querySelector("#fees_details_chart"), options);
+    var chart = new ApexCharts(chartElement, options);
     chart.render();
 }
 

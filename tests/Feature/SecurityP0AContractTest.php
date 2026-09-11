@@ -2,7 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\DatabaseBackupController;
+use App\Repositories\DatabaseBackup\DatabaseBackupInterface;
+use App\Services\SubscriptionService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class SecurityP0AContractTest extends TestCase
@@ -66,6 +72,31 @@ class SecurityP0AContractTest extends TestCase
         $this->assertStringNotContainsString('->truncate()', $controller);
         $this->assertStringNotContainsString('database-backup.restore', $view);
         $this->assertStringNotContainsString('restore-form', $view);
+    }
+
+    public function test_obsolete_database_backup_listing_fails_closed_when_its_table_is_absent(): void
+    {
+        $user = Mockery::mock();
+        $user->shouldReceive('can')->once()->with('database-backup')->andReturnTrue();
+        Auth::shouldReceive('user')->once()->andReturn($user);
+        Schema::shouldReceive('hasTable')->once()->with('database_backups')->andReturnFalse();
+
+        $controller = new DatabaseBackupController(
+            Mockery::mock(DatabaseBackupInterface::class),
+            Mockery::mock(SubscriptionService::class),
+        );
+
+        $response = $controller->show();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(['total' => 0, 'rows' => []], $response->getData(true));
+    }
+
+    public function test_unused_school_create_direct_url_is_not_routed_to_a_missing_action(): void
+    {
+        $this->assertNull(Route::getRoutes()->getByName('schools.create'));
+        $this->assertNotNull(Route::getRoutes()->getByName('schools.index'));
+        $this->assertNotNull(Route::getRoutes()->getByName('schools.store'));
     }
 
     public function test_updater_and_restore_do_not_trigger_broad_migrations(): void

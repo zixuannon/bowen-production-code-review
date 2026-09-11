@@ -2665,7 +2665,7 @@
     "Grant an existing School Principal read-only Central Finance access. School roles and Central Finance scopes remain separate.": "授予现有校区校长只读中央财务权限；校区角色与中央财务范围始终独立。",
     "School Principal granted read-only Finance access.": "已授予校区校长只读财务权限。",
     "Select Principal": "选择校长",
-    "group-import.download_template_v21": "下载集团财务导入模板 V2.1",
+    "group-import.download_template_v22": "下载集团财务导入模板 V2.2",
     "Finance Group": "财务集团",
     "View Receivables": "查看应收",
     "Receipts": "收据",

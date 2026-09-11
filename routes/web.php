@@ -210,7 +210,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::delete("/{id}/school-inquiry-delete", [SchoolController::class, 'schoolInquiryDelete'])->name('school-inquiry.delete');
 
         });
-        Route::resource('schools', SchoolController::class);
+        // School creation is handled by the validated modal on schools.index.
+        // Do not expose a conventional create route for a controller method
+        // that intentionally does not exist.
+        Route::resource('schools', SchoolController::class)->except(['create']);
 
         // Central-only Finance Group configuration. The controller rechecks
         // central Super Admin authority and never accepts a database name.

@@ -14,6 +14,31 @@ Last updated: 2026-09-11
 
 Finance V2
 
+## Migration runner Production release + final quality gate
+
+- Approved commit `ca217f62d3f1800b089adbb4dd69e162629c0040` is deployed as the
+  immutable active release after verified ancestry, a fresh nine-database
+  backup, release guards, and read-only migration/schema preflight. GitHub
+  `main`, Production, and the audit checkout are aligned to that SHA.
+- P31/P32, Round 5, and Finance P2/P3 runners reject unknown, missing, and
+  wrongly mapped targets immediately with exit code 1; valid allowlisted
+  targets pass read-only validation. No Production migration or Finance write
+  was executed.
+- Authenticated Production browser QA covered School Admin, Head Finance, and
+  Super Admin. School Admin Finance/direct URLs return 403, Head Finance is
+  restricted to Central Finance, Super Admin authenticates without a School
+  Code, and the School management form exposes canonical `MMBOWEN##` codes.
+- Browser QA found three pre-existing compatibility defects now fixed in the
+  follow-up candidate: the removed `database_backups` table caused its obsolete
+  list endpoint to return 500, the unused resource `schools.create` route called
+  a nonexistent controller action, and the V2.2 workbook link retained a V2.1
+  label. A missing dashboard chart target also now exits without an ApexCharts
+  console error.
+- The follow-up candidate passes 716 tests / 4,661 assertions with one expected
+  opt-in skip, plus the disposable MySQL rehearsal (1 test / 20 assertions).
+  It requires a separate Production deployment gate before final browser
+  revalidation and completion of the quality gate.
+
 ## Final Quality Gate migration runner fail-closed fix — local PASS
 
 - Branch `codex/migration-runner-fail-closed` starts exactly from accepted
