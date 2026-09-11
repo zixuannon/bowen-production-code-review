@@ -117,7 +117,8 @@ final class OfflineFeePaymentAuthorityService
             ->where('student_id', $student->user_id)
             ->whereIn('fees_class_id', $ids)
             ->whereRaw('LOWER(status) = ?', ['success'])
-            ->exists();
+            ->lockForUpdate()
+            ->first();
         if ($alreadyPaid) {
             throw new InvalidArgumentException('One or more optional fee items are already paid.');
         }
@@ -172,7 +173,8 @@ final class OfflineFeePaymentAuthorityService
             ->where('student_id', $studentId)
             ->whereIn('installment_id', $ids)
             ->whereRaw('LOWER(status) = ?', ['success'])
-            ->exists()) {
+            ->lockForUpdate()
+            ->first()) {
             throw new InvalidArgumentException('One or more selected installments are already paid.');
         }
 

@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Fee;
 use App\Models\FeesClassType;
+use App\Models\FeesPaid;
+use App\Models\OptionalFee;
 use App\Services\OfflineFeePaymentAuthorityService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -125,6 +127,27 @@ class OfflineFeePaymentAuthorityTest extends TestCase
         $this->assertSame('250.00', $result['data']['fees_class_type'][0]['amount']);
         $this->assertSame($this->classId, $result['data']['class_id']);
         $this->assertSame('MMK', $result['data']['transaction_currency']);
+    }
+
+    public function test_optional_payment_replay_is_rejected_without_a_second_write(): void
+    {
+        $feesPaid = FeesPaid::query()->create([
+            'date' => now()->format('Y-m-d'), 'is_fully_paid' => false,
+            'is_used_installment' => false, 'fees_id' => $this->fee->id,
+            'student_id' => $this->studentUserId, 'amount' => 250,
+            'school_id' => $this->schoolId,
+        ]);
+        OptionalFee::query()->create([
+            'student_id' => $this->studentUserId, 'class_id' => $this->classId,
+            'fees_class_id' => $this->optional->id, 'mode' => 'Cash',
+            'amount' => 250, 'fees_paid_id' => $feesPaid->id,
+            'date' => now()->format('Y-m-d'), 'status' => 'Success',
+            'school_id' => $this->schoolId,
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('already paid');
+        app(OfflineFeePaymentAuthorityService::class)->optional($this->optionalInput(), $this->schoolId);
     }
 
     public function test_installment_id_amount_and_due_charge_are_rebuilt_from_fee_setup(): void

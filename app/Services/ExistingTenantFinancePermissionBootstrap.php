@@ -15,12 +15,7 @@ class ExistingTenantFinancePermissionBootstrap
 {
     /** @var array<string, array<int, string>> */
     public const ROLE_PERMISSIONS = [
-        'School Admin' => [
-            'finance-staff-manage',
-            'finance-handover-view',
-            'finance-transfer-view',
-            'finance-transfer-create',
-        ],
+        'School Admin' => [],
         'Head Finance' => [
             'finance-staff-manage',
             'finance-handover-view',

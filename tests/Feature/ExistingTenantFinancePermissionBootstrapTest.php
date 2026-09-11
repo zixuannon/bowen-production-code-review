@@ -81,7 +81,7 @@ class ExistingTenantFinancePermissionBootstrapTest extends TestCase
         }
         $this->assertSame($first, $second);
         $this->assertNotContains('finance-staff-manage', $second['Cashier']);
-        $this->assertSame(['finance-handover-view'], array_values(array_intersect($second['School Admin'], [
+        $this->assertSame([], array_values(array_intersect($second['School Admin'], [
             'finance-handover-view', 'finance-handover-create', 'finance-handover-confirm', 'finance-handover-reject', 'finance-handover-cancel',
         ])));
         $this->assertSame($beforeAssignments, DB::connection('school')->table('model_has_roles')->get()->map(fn ($row) => (array) $row)->all());

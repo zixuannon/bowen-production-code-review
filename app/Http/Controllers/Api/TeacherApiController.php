@@ -203,9 +203,14 @@ class TeacherApiController extends Controller
                 ResponseService::errorResponse(trans('your_account_has_been_deactivated_please_contact_admin'), null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
             }
 
-            $abilities = $auth->hasRole('Teacher')
-                ? ['teacher-api', 'teacher-files:update']
-                : ['staff-api'];
+            $teacherLogin = $request->is('api/teacher/login');
+            if ($teacherLogin && !$auth->hasRole('Teacher')) {
+                ResponseService::errorResponse('Invalid Login Credentials', null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
+            }
+            if (!$teacherLogin && ($auth->hasAnyRole(['Student', 'Guardian', 'Teacher']) || $auth->getRoleNames()->isEmpty())) {
+                ResponseService::errorResponse('Invalid Login Credentials', null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
+            }
+            $abilities = $teacherLogin ? ['teacher-api', 'teacher-files:update'] : ['staff-api'];
             $token = $auth->createToken($auth->first_name, $abilities)->plainTextToken;
             if (Auth::user()->hasRole('Teacher')) {
                 $user = $auth->load(['teacher', 'teacher.staffSalary.payrollSetting']);

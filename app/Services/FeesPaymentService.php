@@ -11,6 +11,7 @@ use App\Models\FeesPaid;
 use App\Models\SessionYearsTracking;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 /**
  * FeesPaymentService
@@ -23,10 +24,10 @@ use Illuminate\Support\Facades\Auth;
  *   - Due Charges
  *   - fees_paids accumulation
  *
- * TRANSACTION RULES (enforced by CALLER, NOT this service):
- *   - Manual payment Controller: wraps processPayment() in its own DB::beginTransaction / commit / rollback
- *   - Excel import Confirm: wraps the entire batch in its own transaction
- *   - This service NEVER calls DB::beginTransaction / commit / rollback
+ * TRANSACTION RULES:
+ *   - processPayment() always runs in a tenant transaction and locks the Fee
+ *     receivable before reading or changing payment aggregates.
+ *   - Caller transactions remain supported for atomic batch/audit workflows.
  *
  * NOTIFICATION RULES:
  *   - This service NEVER sends notifications
@@ -106,6 +107,13 @@ class FeesPaymentService
      */
     public function processPayment(array $data, Fee $fee, ?User $actor = null): array
     {
+        return DB::connection('school')->transaction(
+            fn (): array => $this->processPaymentLocked($data, $fee, $actor)
+        );
+    }
+
+    private function processPaymentLocked(array $data, Fee $fee, ?User $actor = null): array
+    {
         $actor ??= Auth::user();
         if (!$actor) { throw new \InvalidArgumentException('A trusted tenant finance actor is required.'); }
         app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
@@ -135,11 +143,22 @@ class FeesPaymentService
             throw new \InvalidArgumentException('A valid payment method is required for fee payment.');
         }
 
+        if ((int) ($data['fees_id'] ?? 0) !== (int) $fee->id) {
+            throw new \InvalidArgumentException('Fee payment does not match the supplied receivable.');
+        }
+        $fee = Fee::query()
+            ->whereKey($fee->id)
+            ->where('school_id', $schoolId)
+            ->lockForUpdate()
+            ->firstOrFail();
+        $fee->loadMissing(['installments', 'fees_class_type']);
+
         // ---- 1. Load existing FeesPaid ----
         $feesPaid = FeesPaid::where([
             'fees_id'    => $data['fees_id'],
             'student_id' => $data['student_id'],
-        ])->first();
+            'school_id'  => $schoolId,
+        ])->lockForUpdate()->first();
 
         if ($feesPaid && $feesPaid->is_fully_paid) {
             throw new \InvalidArgumentException('Compulsory Fees already Paid');

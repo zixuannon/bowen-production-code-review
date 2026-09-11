@@ -103,11 +103,11 @@ class FundHandoverServiceTest extends TestCase
         $this->assertSame($toBefore, $balances->currentBalance($this->cashierAccount));
     }
 
-    public function test_school_admin_has_read_only_oversight_but_is_not_a_handover_participant(): void
+    public function test_school_admin_has_no_handover_access_or_participation(): void
     {
         $service = app(FundHandoverService::class);
 
-        $this->assertTrue($service->canViewRegister($this->schoolAdmin));
+        $this->assertFalse($service->canViewRegister($this->schoolAdmin));
         $this->assertFalse($service->isParticipant($this->schoolAdmin));
 
         $this->expectException(AccessDeniedHttpException::class);

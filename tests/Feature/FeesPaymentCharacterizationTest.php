@@ -117,10 +117,10 @@ class FeesPaymentCharacterizationTest extends TestCase
     private function assignSchoolAdminRole(int $userId, int $schoolId): void
     {
         DB::table('roles')->updateOrInsert(
-            ['name' => 'School Admin', 'school_id' => $schoolId],
+            ['name' => 'Head Finance', 'school_id' => $schoolId],
             ['guard_name' => 'web', 'custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()]
         );
-        $roleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $schoolId)->value('id');
+        $roleId = DB::table('roles')->where('name', 'Head Finance')->where('school_id', $schoolId)->value('id');
         DB::table('model_has_roles')->updateOrInsert(
             ['role_id' => $roleId, 'model_type' => User::class, 'model_id' => $userId], []
         );
@@ -655,7 +655,7 @@ class FeesPaymentCharacterizationTest extends TestCase
     }
 
     /** @test */
-    public function service_never_manages_transactions(): void
+    public function service_balances_its_internal_transaction(): void
     {
         $this->skipIfNoFeeTable();
         $fee = $this->createTestFee(500.00);
@@ -673,6 +673,6 @@ class FeesPaymentCharacterizationTest extends TestCase
         ], $fee);
 
         $this->assertEquals($level, DB::transactionLevel(),
-            'Service must not call beginTransaction/commit/rollback');
+            'Service must leave the caller transaction level unchanged');
     }
 }

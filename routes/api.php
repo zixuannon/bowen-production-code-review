@@ -35,7 +35,7 @@ Route::post('integrations/xiaobailong/exchange', [XiaobailongExchangeController:
 //     Route::post('logout', [ApiController::class, 'logout']);
 // });
 
-Route::group(['middleware' => 'APISwitchDatabase'], static function () {
+Route::group(['middleware' => ['APISwitchDatabase', 'apiFamily:any']], static function () {
     Route::post('logout', [ApiController::class, 'logout']);
    
 });
@@ -52,7 +52,7 @@ Route::group(['prefix' => 'student'], static function () {
     Route::post('forgot-password', [StudentApiController::class, 'forgotPassword']);
 
     //Authenticated APIs
-    Route::group(['middleware' => ['APISwitchDatabase', 'checkSchoolStatus']], static function () {
+    Route::group(['middleware' => ['APISwitchDatabase', 'apiFamily:student', 'checkSchoolStatus']], static function () {
         Route::get('class-subjects', [StudentApiController::class, 'classSubjects']);
         Route::get('subjects', [StudentApiController::class, 'subjects']);
         Route::post('select-subjects', [StudentApiController::class, 'selectSubjects']);
@@ -109,7 +109,7 @@ Route::group(['prefix' => 'parent'], static function () {
         // Route::group(['middleware' => ['']], static function () {
         //     Route::get('test', [ParentApiController::class, 'test']);
         // });
-        Route::group(['middleware' => ['APISwitchDatabase']], static function () {
+        Route::group(['middleware' => ['APISwitchDatabase', 'apiFamily:guardian']], static function () {
             Route::get('test', [ParentApiController::class, 'test']);
 
             Route::group(['middleware' => ['checkChild','APISwitchDatabase']], static function () {
@@ -173,7 +173,7 @@ Route::group(['prefix' => 'teacher'], static function () {
     //Non Authenticated APIs
     Route::post('login', [TeacherApiController::class, 'login']);
     //Authenticated APIs
-    Route::group(['middleware' => ['APISwitchDatabase', 'checkSchoolStatus']], static function () {
+    Route::group(['middleware' => ['APISwitchDatabase', 'apiFamily:teacher', 'checkSchoolStatus']], static function () {
 
         Route::get('subjects', [TeacherApiController::class, 'subjects']);
 
@@ -254,7 +254,7 @@ Route::group(['prefix' => 'teacher'], static function () {
 Route::group(['prefix' => 'staff'], static function () {
     Route::post('login', [TeacherApiController::class, 'login']);
 
-    Route::group(['middleware' => ['APISwitchDatabase', 'checkSchoolStatus']], static function () {
+    Route::group(['middleware' => ['APISwitchDatabase', 'apiFamily:staff', 'checkSchoolStatus']], static function () {
         // Payroll
         Route::get('my-payroll', [StaffApiController::class, 'myPayroll']);
         Route::get('payroll-slip', [StaffApiController::class, 'myPayrollSlip']);
@@ -293,15 +293,15 @@ Route::group(['prefix' => 'staff'], static function () {
         Route::get('notification', [StaffApiController::class, 'getNotification']);
         Route::post('notification-delete', [StaffApiController::class, 'deleteNotification']);
 
-        Route::get('get-fees', [StaffApiController::class, 'getFees']);
-        Route::get('fees-paid-list', [StaffApiController::class, 'getFeesPaidList']);
+        Route::get('get-fees', [StaffApiController::class, 'getFees'])->middleware('schoolAdminFinanceDenied');
+        Route::get('fees-paid-list', [StaffApiController::class, 'getFeesPaidList'])->middleware('schoolAdminFinanceDenied');
 
         Route::get('student-offline-exam-result', [StaffApiController::class, 'getOfflineExamResult']);
         Route::get('features-permission', [StaffApiController::class, 'getFeaturesPermissions']);
         
         Route::get('class-timetable', [StaffApiController::class, 'getClassTimetable']);
 
-        Route::get('student-fees-receipt', [StaffApiController::class, 'feesReceipt']);
+        Route::get('student-fees-receipt', [StaffApiController::class, 'feesReceipt'])->middleware('schoolAdminFinanceDenied');
         Route::get('allowances-deductions', [StaffApiController::class, 'allowancesDeductions']);
 
         
@@ -320,7 +320,7 @@ Route::get('school-details',[ApiController::class, 'schoolDetails']);
 Route::get('firebase-config',[ApiController::class, 'getFirebaseConfig']);
 
 // Route::group(['middleware' => ['auth:sanctum',]], static function () {
-Route::group(['middleware' => ['APISwitchDatabase',]], static function () {
+Route::group(['middleware' => ['APISwitchDatabase', 'apiFamily:any']], static function () {
     Route::get('school-settings', [ApiController::class, 'getSchoolSettings']);
     Route::get('holidays', [ApiController::class, 'getHolidays']);
     Route::post('change-password', [ApiController::class, 'changePassword']);
@@ -388,11 +388,14 @@ Route::group(['middleware' => ['APISwitchDatabase',]], static function () {
 
     Route::post('transportation-payments', [TrasportationApiController::class, 'transportation_payments']);
     
-    Route::post('create-transportation-expense', [TrasportationApiController::class, 'transportation_expense_create']);
+    Route::post('create-transportation-expense', [TrasportationApiController::class, 'transportation_expense_create'])
+        ->middleware(['apiFamily:staff', 'schoolAdminFinanceDenied']);
 
-    Route::get('get-transportation-expense', [TrasportationApiController::class, 'transportation_expense_get']);
+    Route::get('get-transportation-expense', [TrasportationApiController::class, 'transportation_expense_get'])
+        ->middleware(['apiFamily:staff', 'schoolAdminFinanceDenied']);
 
-    Route::get('transport/expense/categories/list', [TrasportationApiController::class, 'getTransportationExpenseCategory']);
+    Route::get('transport/expense/categories/list', [TrasportationApiController::class, 'getTransportationExpenseCategory'])
+        ->middleware(['apiFamily:staff', 'schoolAdminFinanceDenied']);
 
     Route::get('driver-helpr/dashboard', [TrasportationApiController::class, 'getDriverHelperDashboard']);
 

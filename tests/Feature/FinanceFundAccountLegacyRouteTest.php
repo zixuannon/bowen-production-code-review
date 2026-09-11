@@ -8,6 +8,7 @@ use App\Http\Controllers\BankAccountController;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -17,7 +18,7 @@ class FinanceFundAccountLegacyRouteTest extends TestCase
 
     protected $connectionsToTransact = ['school'];
 
-    public function test_school_admin_with_only_legacy_expense_list_can_view_but_not_manage_fund_accounts(): void
+    public function test_school_admin_with_legacy_expense_list_is_denied_from_fund_accounts(): void
     {
         // A null synthetic school id bypasses the unrelated subscription
         // feature check while retaining the tenant-local Spatie role shape
@@ -46,19 +47,21 @@ class FinanceFundAccountLegacyRouteTest extends TestCase
         $user = $user->fresh();
 
         $this->assertFalse($user->can('finance-fund-account-view'));
-        $this->assertTrue(app(\App\Services\FinanceAuthorizationService::class)->can($user, 'finance-fund-account-view'));
+        $this->assertFalse(app(\App\Services\FinanceAuthorizationService::class)->can($user, 'finance-fund-account-view'));
         $this->assertFalse(app(\App\Services\FinanceAuthorizationService::class)->can($user, 'finance-fund-account-manage'));
 
         $this->assertTrue(Route::has('bank-accounts.index'));
-        $this->actingAs($user);
-        $view = app(BankAccountController::class)->index();
-        $this->assertSame('bank-account.index', $view->getName());
-
-        // The store action reaches the named management permission gate
-        // before validation or a financial-control-plane write.
-        $this->actingAs($user)
-            ->withoutMiddleware()
-            ->post(route('bank-accounts.store'), [])
-            ->assertForbidden();
+        Auth::login($user);
+        foreach ([
+            fn () => app(BankAccountController::class)->index(),
+            fn () => app(BankAccountController::class)->store(new \Illuminate\Http\Request()),
+        ] as $call) {
+            try {
+                $call();
+                $this->fail('School Admin must be denied before a Fund Account action.');
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+                $this->assertSame(403, $exception->getStatusCode());
+            }
+        }
     }
 }

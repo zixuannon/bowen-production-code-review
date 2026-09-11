@@ -162,16 +162,14 @@ class StudentApiController extends Controller
         if (Auth::attempt(['email' => $request->gr_number, 'password' => $request->password, 'status' => 1])) {
             //Here Email Field is referenced as a GR Number for Student
             $auth = Auth::user();
-            // Check role
-            // $auth->assignRole('Student');
-            // if (!$auth->hasRole('Student')) {
-            //     ResponseService::errorResponse('Invalid Login Credentials', null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
-            // }
+            if (!$auth->hasRole('Student')) {
+                ResponseService::errorResponse('Invalid Login Credentials', null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
+            }
             // Check school status is activated or not
             if ($auth->school->status == 0) {
                 ResponseService::errorResponse('Your account has been deactivated', null, config('constants.RESPONSE_CODE.INVALID_LOGIN'));
             }
-            $token = $auth->createToken($auth->first_name)->plainTextToken;
+            $token = $auth->createToken($auth->first_name, ['student-api'])->plainTextToken;
             $user = $auth->load([
                 'student.class_section' => function ($q) {
                     $q->with('section', 'class', 'medium');

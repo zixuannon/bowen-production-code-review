@@ -42,6 +42,10 @@ class FinanceAuthorizationService
 
     public function can(User $user, string $permission): bool
     {
+        if ($user->hasRole('School Admin') && !$user->hasRole('Super Admin')) {
+            return false;
+        }
+
         return $user->can($permission)
             || $user->canany(self::LEGACY_EQUIVALENTS[$permission] ?? []);
     }

@@ -568,11 +568,13 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 
         /*** Students ***/
         Route::group(['prefix' => 'students'], static function () {
-            Route::get('{studentId}/finance', [StudentFeeAssignmentController::class, 'summary'])->name('students.finance.show');
-            Route::get('{studentId}/fee-assignment', [StudentFeeAssignmentController::class, 'show'])->name('students.fee-assignment.show');
-            Route::post('{studentId}/fee-assignment/draft', [StudentFeeAssignmentController::class, 'saveDraft'])->name('students.fee-assignment.draft');
-            Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');
-            Route::post('{studentId}/fee-assignment/add-fee', [StudentFeeAssignmentController::class, 'addFee'])->name('students.fee-assignment.add-fee');
+            Route::middleware('schoolAdminFinanceDenied')->group(static function () {
+                Route::get('{studentId}/finance', [StudentFeeAssignmentController::class, 'summary'])->name('students.finance.show');
+                Route::get('{studentId}/fee-assignment', [StudentFeeAssignmentController::class, 'show'])->name('students.fee-assignment.show');
+                Route::post('{studentId}/fee-assignment/draft', [StudentFeeAssignmentController::class, 'saveDraft'])->name('students.fee-assignment.draft');
+                Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');
+                Route::post('{studentId}/fee-assignment/add-fee', [StudentFeeAssignmentController::class, 'addFee'])->name('students.fee-assignment.add-fee');
+            });
             Route::get('create-bulk', [StudentController::class, 'createBulkData'])->name('students.create-bulk-data');
             Route::post('store-bulk', [StudentController::class, 'storeBulkData'])->name('students.store-bulk-data');
             Route::get('import-v2', [StudentController::class, 'createBulkDataV2'])->name('students.import-v2');
@@ -762,15 +764,16 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::get('language-list', [LanguageController::class, 'show']);
         Route::resource('language', LanguageController::class);
 
-        Route::group(['prefix' => 'fees-type'], static function () {
-            Route::put("/{id}/restore", [FeesTypeController::class, 'restore'])->name('fees-type.restore');
-            Route::delete("/{id}/deleted", [FeesTypeController::class, 'trash'])->name('fees-type.trash');
-            Route::post("/{id}/deactivate", [FeesTypeController::class, 'deactivate'])->name('fees-type.deactivate');
-            Route::post("/{id}/reactivate", [FeesTypeController::class, 'reactivate'])->name('fees-type.reactivate');
-        });
-        Route::resource('fees-type', FeesTypeController::class);
+        Route::middleware('schoolAdminFinanceDenied')->group(static function () {
+            Route::group(['prefix' => 'fees-type'], static function () {
+                Route::put("/{id}/restore", [FeesTypeController::class, 'restore'])->name('fees-type.restore');
+                Route::delete("/{id}/deleted", [FeesTypeController::class, 'trash'])->name('fees-type.trash');
+                Route::post("/{id}/deactivate", [FeesTypeController::class, 'deactivate'])->name('fees-type.deactivate');
+                Route::post("/{id}/reactivate", [FeesTypeController::class, 'reactivate'])->name('fees-type.reactivate');
+            });
+            Route::resource('fees-type', FeesTypeController::class);
 
-        Route::group(['prefix' => 'fees'], static function () {
+            Route::group(['prefix' => 'fees'], static function () {
             // Fees
             Route::put("/{id}/restore", [FeesController::class, 'restore'])->name('fees.restore');
             Route::delete("/{id}/delete", [FeesController::class, 'trash'])->name('fees.trash');
@@ -824,8 +827,9 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::post('/student-account-deactivate', [FeesController::class, 'studentAccountDeactivate'])->name('deactivate-student-account');
 
 
+            });
+            Route::resource('fees', FeesController::class);
         });
-        Route::resource('fees', FeesController::class);
 
 
         // Online Exam
@@ -897,6 +901,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         });
         Route::resource('form-fields', FormFieldsController::class);
 
+        Route::middleware('schoolAdminFinanceDenied')->group(static function () {
         // Expense Category
         Route::group(['prefix' => 'expense-category'], static function () {
             Route::put('restore/{id}', [ExpenseCategoryController::class, 'restore'])->name('expense-category.restore');
@@ -960,6 +965,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Bank Account Summary Report
         Route::get('bank-account-report', [BankAccountReportController::class, 'index'])->name('bank-account-report.index');
         Route::get('bank-account-report/export', [BankAccountReportController::class, 'export'])->name('bank-account-report.export');
+        });
 
         // Payroll
         Route::get('payroll/slip/{id?}', [PayrollController::class, 'slip'])->name('payroll.slip');

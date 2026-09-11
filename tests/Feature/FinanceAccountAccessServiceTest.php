@@ -58,7 +58,7 @@ class FinanceAccountAccessServiceTest extends TestCase
         $access->authorize($cashierA, $cashB->id);
     }
 
-    public function test_head_finance_and_school_admin_have_all_current_school_accounts_but_cashier_cannot_manage_or_change_opening_balance(): void
+    public function test_head_finance_has_all_current_school_accounts_while_school_admin_and_cashier_do_not_manage_them(): void
     {
         $this->ensurePivotTable();
 
@@ -81,11 +81,10 @@ class FinanceAccountAccessServiceTest extends TestCase
         $this->assertContains($first->id, $headIds);
         $this->assertContains($second->id, $headIds);
         $this->assertNotContains($otherSchool->id, $headIds);
-        $this->assertContains($first->id, $adminIds);
-        $this->assertContains($second->id, $adminIds);
-        $this->assertNotContains($otherSchool->id, $adminIds);
+        $this->assertSame([], $adminIds);
         $this->assertTrue($access->canManageAccountAssignments($headFinance));
-        $this->assertTrue($access->canManageAccounts($schoolAdmin));
+        $this->assertFalse($access->canManageAccounts($schoolAdmin));
+        $this->assertFalse($access->canModifyOpeningBalance($schoolAdmin));
         $this->assertTrue($access->canModifyOpeningBalance($headFinance));
         $this->assertFalse($access->canManageAccountAssignments($cashier));
         $this->assertFalse($access->canManageAccounts($cashier));

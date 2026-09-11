@@ -162,7 +162,7 @@ class ParentApiController extends Controller
             }
 
             // session(['database_name' => $school->database_name]);
-            $token = $auth->createToken($auth->first_name)->plainTextToken;
+            $token = $auth->createToken($auth->first_name, ['guardian-api'])->plainTextToken;
             // $token = $auth->createToken('API Token', ['school_code' => $request->school_code])->plainTextToken;
             $user = $auth;
             $request->headers->set('school_code', $request->school_code);

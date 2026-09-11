@@ -43,7 +43,7 @@ class ExpenseImportServiceTest extends TestCase
         DB::setDefaultConnection('school');
         $this->ensureSchema();
         $suffix = Str::lower(Str::random(8));
-        $this->admin = $this->user('expense-import-admin-' . $suffix, 'School Admin');
+        $this->admin = $this->user('expense-import-admin-' . $suffix, 'Head Finance');
         $this->cashier = $this->user('expense-import-cashier-' . $suffix, 'Cashier');
         $this->category = ExpenseCategory::create(['name' => 'Office ' . $suffix, 'school_id' => $this->schoolId]);
         $this->year = SessionYear::create(['name' => 'Expense Import ' . $suffix, 'school_id' => $this->schoolId, 'default' => 0, 'start_date' => '2026-01-01', 'end_date' => '2026-12-31']);
@@ -267,7 +267,7 @@ class ExpenseImportServiceTest extends TestCase
             $table->softDeletes();
             $table->timestamps();
         });
-        foreach (['School Admin', 'Cashier'] as $role) DB::table('roles')->updateOrInsert(['name' => $role, 'guard_name' => 'web', 'school_id' => $this->schoolId], ['custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        foreach (['School Admin', 'Head Finance', 'Cashier'] as $role) DB::table('roles')->updateOrInsert(['name' => $role, 'guard_name' => 'web', 'school_id' => $this->schoolId], ['custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()]);
         if (!Schema::hasTable('bank_account_user')) Schema::create('bank_account_user', function (Blueprint $table) { $table->unsignedBigInteger('bank_account_id'); $table->unsignedBigInteger('user_id'); $table->timestamps(); $table->unique(['bank_account_id', 'user_id']); });
         if (!Schema::hasTable('expense_categories')) Schema::create('expense_categories', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('description')->nullable(); $table->unsignedBigInteger('school_id'); $table->timestamps(); $table->softDeletes(); });
         if (!Schema::hasTable('expense_import_batches')) Schema::create('expense_import_batches', function (Blueprint $table) { $table->id(); $table->uuid('token')->unique(); $table->unsignedBigInteger('school_id'); $table->unsignedBigInteger('imported_by'); $table->string('file_name'); $table->string('file_hash', 64); $table->json('preview_data')->nullable(); $table->json('imported_expense_ids')->nullable(); $table->string('status'); $table->unsignedInteger('total_rows')->default(0); $table->unsignedInteger('valid_rows')->default(0); $table->unsignedInteger('error_rows')->default(0); $table->unsignedInteger('imported_rows')->default(0); $table->timestamp('expired_at')->nullable(); $table->timestamp('consumed_at')->nullable(); $table->text('last_error')->nullable(); $table->timestamps(); $table->unique(['school_id', 'file_hash']); });

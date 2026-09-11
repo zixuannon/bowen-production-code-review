@@ -133,23 +133,24 @@ class CompulsoryFeeSchoolIdTest extends TestCase
     private function assignSchoolAdmin(int $userId): void
     {
         DB::table('roles')->updateOrInsert(
-            ['name' => 'School Admin', 'guard_name' => 'web', 'school_id' => $this->schoolId],
+            ['name' => 'Head Finance', 'guard_name' => 'web', 'school_id' => $this->schoolId],
             ['custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()],
         );
-        $roleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $this->schoolId)->value('id');
+        $roleId = DB::table('roles')->where('name', 'Head Finance')->where('school_id', $this->schoolId)->value('id');
         DB::table('model_has_roles')->insertOrIgnore(['role_id' => $roleId, 'model_type' => \App\Models\User::class, 'model_id' => $userId]);
     }
 
     private function createTestFee(float $total): Fee
     {
+        $schoolId = (int) (Auth::user()->school_id ?? $this->schoolId);
         $fee = new Fee();
         $fee->forceFill([
             'name'                  => 'School ID Test Fee',
             'due_date'              => now()->addDays(30)->format('Y-m-d'),
             'due_charges'           => 0,
             'class_id'              => 1,
-            'school_id'             => $this->schoolId,
-            'session_year_id'       => 1,
+            'school_id'             => $schoolId,
+            'session_year_id'       => $schoolId,
             'total_compulsory_fees' => $total,
         ]);
         $fee->save();

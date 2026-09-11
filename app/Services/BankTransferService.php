@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BankTransfer;
 use App\Models\FundHandover;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -40,18 +41,34 @@ class BankTransferService
             ]);
         }
 
-        // Both account lookups enforce current-school ownership and the
-        // Cashier pivot boundary before any database transaction begins.
-        $fromAccount = $this->accounts->authorizeActive($actor, $fromAccountId);
-        $toAccount = $this->accounts->authorizeActive($actor, $toAccountId);
-
-        if ($fromAccount->currency !== $toAccount->currency) {
-            throw ValidationException::withMessages([
-                'to_account_id' => [__('Cannot transfer between accounts with different currencies.')],
-            ]);
+        $connection = DB::connection('school');
+        // Under MySQL REPEATABLE READ a transaction that waits on the source
+        // row can otherwise retain an older cash-flow snapshot. READ COMMITTED
+        // makes the post-lock aggregate observe the winning transfer.
+        if ($connection->getDriverName() === 'mysql' && $connection->transactionLevel() === 0) {
+            $connection->statement('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
         }
 
-        return DB::transaction(function () use ($actor, $data, $fromAccount, $toAccount, $afterCreate) {
+        return $connection->transaction(function () use ($actor, $data, $fromAccountId, $toAccountId, $afterCreate) {
+            // Resolve and lock both rows in deterministic ID order. The source
+            // lock serializes balance reads with competing transfers.
+            $accounts = $this->accounts->accessibleAccounts($actor)
+                ->active()
+                ->whereIn('id', [$fromAccountId, $toAccountId])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $fromAccount = $accounts->firstWhere('id', $fromAccountId);
+            $toAccount = $accounts->firstWhere('id', $toAccountId);
+            if (!$fromAccount || !$toAccount) {
+                throw (new ModelNotFoundException())->setModel(\App\Models\BankAccount::class);
+            }
+            if ($fromAccount->currency !== $toAccount->currency) {
+                throw ValidationException::withMessages([
+                    'to_account_id' => [__('Cannot transfer between accounts with different currencies.')],
+                ]);
+            }
+
             $amount = (float) $data['amount'];
             if (!$this->balances->hasSufficientBalance($fromAccount, $amount)) {
                 throw ValidationException::withMessages([
@@ -103,7 +120,7 @@ class BankTransferService
             throw new AccessDeniedHttpException('You are not authorized to cancel this bank transfer.');
         }
 
-        DB::transaction(function () use ($transfer) {
+        DB::connection('school')->transaction(function () use ($transfer) {
             $transfer->update(['status' => 'cancelled']);
             $transfer->delete();
         });

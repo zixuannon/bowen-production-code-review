@@ -767,7 +767,7 @@
 
         {{-- Fees --}}
 
-        @canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'finance-dashboard-view', 'finance-payment-view', 'fees-paid'])
+        @if (!Auth::user()->hasRole('School Admin') && Auth::user()->canany(['fees-list', 'fees-type-list', 'fees-classes-list', 'finance-dashboard-view', 'finance-payment-view', 'fees-paid']))
             @if ($usesCentralFinanceDailyWorkspace)
                 {{-- Fee Setup remains tenant academic/master data after Central cutover. --}}
                 @canany(['fees-list', 'fees-type-list'])
@@ -874,10 +874,10 @@
                 </div>
             </li>
             @endif
-        @endcanany
+        @endif
 
         {{-- Expense --}}
-        @if (!$usesCentralFinanceDailyWorkspace && Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
+        @if (!Auth::user()->hasRole('School Admin') && !$usesCentralFinanceDailyWorkspace && Auth::user()->canany(['expense-category-create', 'expense-category-list', 'expense-category-edit', 'expense-category-delete',
             'finance-expense-view', 'finance-expense-create', 'expense-list', 'expense-create', 'finance-fund-account-view', 'finance-transfer-view', 'finance-handover-view', 'finance-staff-manage']))
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#expense-menu" aria-expanded="false"
@@ -965,7 +965,7 @@
                     </ul>
                 </div>
             </li>
-        @endcanany
+        @endif
 
         {{-- Transportation Module --}}
         @canany(['route-list', 'pickup-points-list', 'vehicles-list', 'RouteVehicle-list', 'driver-helper-list',

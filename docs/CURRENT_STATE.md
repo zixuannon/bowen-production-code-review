@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 ## Active production target
 
@@ -13,6 +13,33 @@ Last updated: 2026-09-10
 ## Current area
 
 Finance V2
+
+## Round 3 P1A authorization and concurrency — local candidate
+
+- Branch `codex/round3-p1a-authorization-concurrency` starts from current
+  Production baseline `f3a898de68d8f2b4d3320e6e508365e572f9071a`.
+- Student, Guardian, Teacher, and Staff API tokens now carry explicit family
+  abilities. Wildcard and cross-family tokens fail closed; Staff and transport
+  expense APIs cannot be reached with Student, Guardian, or Teacher tokens.
+- School Admin is denied from tenant Finance in route middleware and service
+  authorization, including direct URLs and mobile Finance routes. Super Admin
+  and the established Principal, Accountant, Front Desk, Head Finance, Cashier,
+  Driver, and Helper boundaries remain explicit and unchanged except for the
+  requested School Admin deny.
+- Legacy offline payment processing runs in a tenant transaction with locked
+  receivable, setup, student, payment aggregate, installment, and optional-item
+  rows. Replay and concurrent full-payment delivery create only one payment and
+  one canonical ledger row.
+- Bank transfer creation locks both current-School Fund Accounts in deterministic
+  order and rechecks the source balance after the lock. A two-process 80 + 80
+  race against a 100 balance permits exactly one transfer.
+- Mobile payment confirmation/listing is authenticated, tenant/owner scoped,
+  read-only, state-aware, and returns only a normalized minimal response; signed
+  webhooks remain the sole settlement writer.
+- Targeted security/concurrency regression passes (44 tests, 242 assertions).
+  The complete 653-test PHPUnit inventory passes when run file-sharded to avoid
+  the legacy single-process 128 MB test reporter limit. No migration was added
+  or executed; Production data, Phase 5.5B, homepage, and assets are untouched.
 
 ## Round 2 P0B financial integrity — Production
 

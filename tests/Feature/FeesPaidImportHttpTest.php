@@ -596,7 +596,7 @@ class FeesPaidImportHttpTest extends TestCase
 
     private function ensureRoles(): void
     {
-        foreach (['Super Admin', 'School Admin', 'Student', 'Teacher'] as $name) {
+        foreach (['Super Admin', 'School Admin', 'Head Finance', 'Student', 'Teacher'] as $name) {
             $exists = DB::table('roles')->where('name', $name)->where('school_id', $this->schoolId)->exists();
             if (!$exists) {
                 DB::table('roles')->insert([
@@ -714,7 +714,7 @@ class FeesPaidImportHttpTest extends TestCase
             'password' => bcrypt('password'), 'school_id' => $schoolId, 'status' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        $role = DB::table('roles')->where('name', 'School Admin')->where('school_id', $schoolId)->first();
+        $role = DB::table('roles')->where('name', 'Head Finance')->where('school_id', $schoolId)->first();
         if ($role) {
             DB::table('model_has_roles')->insertOrIgnore([
                 'role_id' => $role->id, 'model_type' => 'App\Models\User', 'model_id' => $userId,

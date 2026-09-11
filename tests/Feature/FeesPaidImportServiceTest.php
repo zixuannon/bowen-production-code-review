@@ -49,7 +49,7 @@ class FeesPaidImportServiceTest extends TestCase
         parent::setUp();
 
         $this->ensureRole('Super Admin');
-        $this->ensureRole('School Admin');
+        $this->ensureRole('Head Finance');
         $this->ensureRole('Student');
         $this->ensureRole('Teacher');
 
@@ -259,7 +259,7 @@ class FeesPaidImportServiceTest extends TestCase
 
     private function assignSchoolAdminRole(int $userId, int $schoolId): void
     {
-        $roleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $schoolId)->value('id');
+        $roleId = DB::table('roles')->where('name', 'Head Finance')->where('school_id', $schoolId)->value('id');
         DB::table('model_has_roles')->updateOrInsert([
             'role_id' => $roleId,
             'model_type' => User::class,

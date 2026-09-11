@@ -72,7 +72,7 @@ class FeesPaidSchoolIdTest extends TestCase
 
         // Create admin user (logged in)
         $this->authUserId = $this->createUser('FppSchoolId', 'Admin', $this->schoolId);
-        $schoolAdminRoleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $this->schoolId)->value('id');
+        $schoolAdminRoleId = DB::table('roles')->where('name', 'Head Finance')->where('school_id', $this->schoolId)->value('id');
         DB::table('model_has_roles')->insertOrIgnore([
             'role_id' => $schoolAdminRoleId,
             'model_type' => User::class,
@@ -114,7 +114,7 @@ class FeesPaidSchoolIdTest extends TestCase
 
     private function ensureRoles(): void
     {
-        foreach (['Super Admin', 'School Admin', 'Student', 'Teacher'] as $name) {
+        foreach (['Super Admin', 'School Admin', 'Head Finance', 'Student', 'Teacher'] as $name) {
             $exists = DB::table('roles')->where('name', $name)->where('school_id', $this->schoolId)->exists();
             if (!$exists) {
                 DB::table('roles')->insert([
@@ -701,10 +701,10 @@ class FeesPaidSchoolIdTest extends TestCase
         // ---- Switch to School 2 ----
         $school2Admin = $this->createUser('School2', 'Admin', $school2Id);
         $school2RoleId = DB::table('roles')->updateOrInsert(
-            ['name' => 'School Admin', 'school_id' => $school2Id],
+            ['name' => 'Head Finance', 'school_id' => $school2Id],
             ['guard_name' => 'web', 'custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now()],
         );
-        $school2RoleId = DB::table('roles')->where('name', 'School Admin')->where('school_id', $school2Id)->value('id');
+        $school2RoleId = DB::table('roles')->where('name', 'Head Finance')->where('school_id', $school2Id)->value('id');
         DB::table('model_has_roles')->insertOrIgnore([
             'role_id' => $school2RoleId,
             'model_type' => User::class,

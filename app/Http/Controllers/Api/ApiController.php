@@ -31,6 +31,7 @@ use App\Repositories\SessionYear\SessionYearInterface;
 use App\Repositories\Student\StudentInterface;
 use App\Repositories\User\UserInterface;
 use App\Services\CachingService;
+use App\Services\ApiPaymentStatusService;
 use App\Services\Payment\PaymentService;
 use App\Services\ResponseService;
 use App\Services\StaffLeave\TwoStageLeaveService;
@@ -63,6 +64,7 @@ use App\Models\ClassSubject;
 use App\Models\Subject;
 use Exception;
 use GuzzleHttp\Psr7\UploadedFile;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class ApiController extends Controller
 {
@@ -304,23 +306,18 @@ class ApiController extends Controller
     public function getPaymentConfirmation(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'id' => 'required'
+            'id' => 'required|integer|min:1'
         ]);
 
         if ($validator->fails()) {
             ResponseService::validationError($validator->errors()->first());
         }
         try {
-            $paymentTransaction = app(PaymentTransactionInterface::class)->builder()->where('id', $request->id)->first();
-            if (empty($paymentTransaction)) {
-                ResponseService::errorResponse("No Data Found");
-            }
-            $data = PaymentService::create($paymentTransaction->payment_gateway, $paymentTransaction->school_id)->retrievePaymentIntent($paymentTransaction->order_id);
-
-            $data = PaymentService::formatPaymentIntent($paymentTransaction->payment_gateway, $data);
-
-            // Success
-            ResponseService::successResponse("Payment Details Fetched", $data, ['payment_transaction' => $paymentTransaction]);
+            $data = app(ApiPaymentStatusService::class)
+                ->confirmation(Auth::user(), (int) $request->id);
+            ResponseService::successResponse("Payment Details Fetched", $data);
+        } catch (ModelNotFoundException) {
+            abort(404);
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();
@@ -337,125 +334,9 @@ class ApiController extends Controller
             ResponseService::validationError($validator->errors()->first());
         }
         try {
-            if (!Auth::user()->hasRole('School Admin') || Auth::user()->hasRole('Super Admin')) {
-                $user_id = Auth::user()->id;
-            }
-            $paymentTransactions = app(PaymentTransactionInterface::class)->builder();
-            if ($request->latest_only) {
-                $paymentTransactions->where('created_at', '>', Carbon::now()->subMinutes(30)->toDateTimeString());
-            }
-            $paymentTransactions = $paymentTransactions->with('school')->orderBy('id', 'DESC');
-            if (isset($user_id)) {
-                if (Auth::user()->hasRole('Guardian')) {
-                    $childIds = Students::where('guardian_id', $user_id)->pluck('user_id')->toArray();
-                    $paymentTransactions->whereIn('user_id', $childIds);
-                } else {
-                    $paymentTransactions->where('user_id', $user_id);
-                }
-            }
-            $paymentTransactions = $paymentTransactions->get();
-
-            $schoolSettings = app(SchoolSettingInterface::class)->builder()
-                ->where(function ($q) {
-                    $q->where('name', 'currency_code')->orWhere('name', 'currency_symbol');
-                })->whereIn('school_id', $paymentTransactions->pluck('school_id'))->get();
-
-            $paymentTransactions = $paymentTransactions->map(function ($data) use ($schoolSettings) {
-                $getSchoolSettings = $schoolSettings->filter(function ($settings) use ($data) {
-                    return $settings->school_id == $data->school_id;
-                })->where('status', 1)->pluck('data', 'name');
-                $data->currency_code = $getSchoolSettings['currency_code'] ?? '';
-                $data->currency_symbol = sanitize_currency_symbol($getSchoolSettings['currency_symbol'] ?? null);
-                if ($data->payment_status == "pending") {
-                    try {
-                        if ($data->order_id) {
-                            // For Flutterwave, use tx_ref for verification
-                            if ($data->payment_gateway == "Flutterwave") {
-                                $paymentIntent = PaymentService::create($data->payment_gateway, $data->school_id)
-                                    ->retrievePaymentIntent($data->order_id);
-                                $paymentIntent = PaymentService::formatPaymentIntent($data->payment_gateway, $paymentIntent);
-
-                                // Update transaction status based on verification
-                                if (isset($paymentIntent['status'])) {
-                                    $status = match (strtolower($paymentIntent['status'])) {
-                                        'successful', 'completed', 'success' => 'succeed',
-                                        'failed', 'cancelled' => 'failed',
-                                        default => 'pending'
-                                    };
-
-                                    if ($status !== 'pending') {
-                                        $this->paymentTransaction->update($data->id, [
-                                            'payment_status' => $status,
-                                            'payment_id' => $paymentIntent['transaction_id'] ?? null,
-                                            'school_id' => $data->school_id
-                                        ]);
-                                        $data->payment_status = $status;
-                                        if ($status === 'succeed') {
-                                            $fee_id = Transportationpayment::where('payment_transaction_id', $data->id)->first();
-                                            $transportationFee = TransportationFee::where('id', $fee_id->transportation_fee_id)->first();
-                                            $expiryDate = null;
-                                            if ($transportationFee) {
-                                                if (!empty($transportationFee->duration)) {
-                                                    $expiryDate = now()->addDays($transportationFee->duration);
-                                                }
-                                            }
-                                            TransportationPayment::where('payment_transaction_id', $data->id)
-                                                ->update([
-                                                    'status' => "paid",
-                                                    'paid_at' => Carbon::now()->format('Y-m-d H:i:s'),
-                                                    'expiry_date' => $expiryDate
-                                                ]);
-                                        }
-                                    }
-                                }
-                            } else {
-                                // For other payment gateways
-                                $paymentIntent = PaymentService::create($data->payment_gateway, $data->school_id)
-                                    ->retrievePaymentIntent($data->order_id);
-                                $paymentIntent = PaymentService::formatPaymentIntent($data->payment_gateway, $paymentIntent);
-
-                                if ($paymentIntent['status'] != "pending") {
-                                    $this->paymentTransaction->update($data->id, [
-                                        'payment_status' => $paymentIntent['status'],
-                                        'school_id' => $data->school_id
-                                    ]);
-                                    if ($paymentIntent['status'] == "succeed") {
-                                        $transportationFee = TransportationFee::where('id', $paymentIntent['metadata']['fees_id'])->first();
-                                        $expiryDate = null;
-                                        if ($transportationFee) {
-                                            if (!empty($transportationFee->duration)) {
-                                                $expiryDate = now()->addDays($transportationFee->duration);
-                                            }
-                                        }
-                                        TransportationPayment::where('payment_transaction_id', $data->id)
-                                            ->update([
-                                                'status' => "paid",
-                                                'paid_at' => Carbon::now()->format('Y-m-d H:i:s'),
-                                                'expiry_date' => $expiryDate
-                                            ]);
-                                    } else {
-                                        TransportationPayment::where('payment_transaction_id', $data->id)
-                                            ->update([
-                                                'status' => "canceled"
-                                            ]);
-                                    }
-                                    $data->payment_status = $paymentIntent['status'];
-                                }
-                            }
-                        }
-                    } catch (Exception $e) {
-                        Log::error('Payment verification error:', [
-                            'payment_id' => $data->id,
-                            'order_id' => $data->order_id,
-                            'error' => $e->getMessage()
-                        ]);
-                        // Don't update status on verification error
-                    }
-                }
-                return $data;
-            });
-
-            ResponseService::successResponse("Payment Transactions Fetched", $paymentTransactions);
+            $data = app(ApiPaymentStatusService::class)
+                ->listing(Auth::user(), (bool) $request->boolean('latest_only'));
+            ResponseService::successResponse("Payment Transactions Fetched", $data);
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();

@@ -1758,19 +1758,28 @@ class FeesController extends Controller
             $sessionYear = $this->cache->getDefaultSessionYear();
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\OptionalFee', $optionalFeesPaymentData[0]['fees_paid_id'], Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
 
-            $student = $authorized['student'];
-            $user[] = $student->guardian_id;              
-            if ($user) {
-                // Get fees name safely
-                $paymentType = 'Optional Fees Payment';
-                $title = 'Fees Payment Successful';
-                $body = "Your payment of " . format_money($totalAmountMmk) . " for " . $paymentType . " was successful.";
-                $type = "payment";
-                
-                send_notification($user, $title, $body, $type);
-            }
-
             DB::commit();
+
+            // Notifications are external side effects and only run after the
+            // payment rows and session tracking commit successfully.
+            $student = $authorized['student'];
+            $users = array_filter([$student->guardian_id]);
+            if ($users) {
+                try {
+                    send_notification(
+                        $users,
+                        'Fees Payment Successful',
+                        'Your payment of ' . format_money($totalAmountMmk) . ' for Optional Fees Payment was successful.',
+                        'payment'
+                    );
+                } catch (Throwable $notificationError) {
+                    Log::warning('Optional fee payment committed but notification failed.', [
+                        'fees_id' => $payment['fees_id'],
+                        'student_id' => $payment['student_id'],
+                        'message' => $notificationError->getMessage(),
+                    ]);
+                }
+            }
             ResponseService::successResponse("Data Updated SuccessFully");
         } catch (Throwable $e) {
             DB::rollback();

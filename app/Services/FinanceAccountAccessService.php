@@ -10,7 +10,7 @@ class FinanceAccountAccessService
 {
     public function canManageAll(User $user): bool
     {
-        return $user->hasAnyRole(['Super Admin', 'School Admin', 'Head Finance']);
+        return $user->hasAnyRole(['Super Admin', 'Head Finance']);
     }
 
     public function scope(User $user): Builder
@@ -51,7 +51,7 @@ class FinanceAccountAccessService
 
     public function canManageAccountAssignments(User $user): bool
     {
-        return $user->hasAnyRole(['Super Admin', 'School Admin', 'Head Finance']);
+        return $user->hasAnyRole(['Super Admin', 'Head Finance']);
     }
 
     /**
