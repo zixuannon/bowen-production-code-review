@@ -10,6 +10,8 @@ use App\Models\FeesInstallment;
 use App\Models\FeesPaid;
 use App\Models\OptionalFee;
 use App\Models\Students;
+use App\Models\StudentFeeAssignment;
+use App\Models\StudentFeeAssignmentItem;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -37,8 +39,10 @@ final class OfflineFeePaymentAuthorityService
         if ($setupRows->isEmpty()) {
             throw new InvalidArgumentException('Compulsory Fee Setup is missing for this student.');
         }
+        $snapshots = $this->confirmedSnapshots($student, $fee, false);
+        $pricingRows = $snapshots->isNotEmpty() ? $snapshots : $setupRows;
 
-        $configuredTotal = $this->sum($setupRows->pluck('amount'));
+        $configuredTotal = $this->sum($pricingRows->map(fn ($row) => $this->authoritativeMmkAmount($row)));
         $this->assertPositive($configuredTotal, 'Compulsory Fee Setup amount');
         $this->assertSameMoneyIfPresent($input, 'total_amount', $configuredTotal, 'Compulsory total');
 
@@ -81,7 +85,7 @@ final class OfflineFeePaymentAuthorityService
         $paymentAmount = !empty($canonical['installment_mode'])
             ? $this->sum(collect($canonical['installment_fees'])->pluck('amount')->push($canonical['advance'] ?? 0))
             : $this->money($canonical['enter_amount']);
-        $canonical = $this->canonicalCurrency($canonical, $setupRows, $paymentAmount);
+        $canonical = $this->canonicalCurrency($canonical, $pricingRows, $paymentAmount);
 
         return ['fee' => $fee, 'data' => $canonical];
     }
@@ -110,6 +114,9 @@ final class OfflineFeePaymentAuthorityService
         if ($items->count() !== $ids->count()) {
             throw new InvalidArgumentException('Optional Fee Setup selection does not belong to this receivable.');
         }
+        $snapshots = $this->confirmedSnapshots($student, $fee, true)
+            ->whereIn('source_id', $ids->map(fn ($id) => (string) $id));
+        $pricingRows = $snapshots->count() === $ids->count() ? $snapshots->keyBy(fn ($item) => (int) $item->source_id) : $items;
 
         // Preserve the existing audited-delete flow: an active successful item
         // blocks duplicate collection, while a deliberately voided row does not.
@@ -125,11 +132,14 @@ final class OfflineFeePaymentAuthorityService
 
         $canonicalItems = [];
         foreach ($submitted as $row) {
-            $item = $items->get((int) $row['id']);
-            $amount = $this->money($item->amount);
+            $item = $pricingRows->get((int) $row['id']);
+            $amount = $this->money($this->authoritativeMmkAmount($item));
             $this->assertPositive($amount, 'Optional Fee Setup item amount');
             $this->assertSameMoneyIfPresent($row, 'amount', $amount, 'Optional item amount');
-            $canonicalItems[] = ['id' => $item->id, 'amount' => $amount];
+            // The persisted OptionalFee foreign key must remain the original
+            // FeesClassType id even when price/currency came from an immutable
+            // StudentFeeAssignmentItem snapshot.
+            $canonicalItems[] = ['id' => (int) $row['id'], 'amount' => $amount];
         }
         $total = $this->sum(collect($canonicalItems)->pluck('amount'));
         $this->assertPositive($total, 'Optional payment total');
@@ -141,7 +151,7 @@ final class OfflineFeePaymentAuthorityService
         $canonical['class_id'] = $student->class_section->class_id;
         $canonical['fees_class_type'] = $canonicalItems;
         $canonical['total_amount'] = $total;
-        $canonical = $this->canonicalCurrency($canonical, $items->values(), $total);
+        $canonical = $this->canonicalCurrency($canonical, $pricingRows->values(), $total);
 
         return ['fee' => $fee, 'student' => $student, 'items' => $items->values(), 'data' => $canonical];
     }
@@ -237,13 +247,14 @@ final class OfflineFeePaymentAuthorityService
 
     private function canonicalCurrency(array $data, Collection $rows, string $amountMmk): array
     {
-        $currencies = $rows->map(static fn ($row) => strtoupper((string) ($row->fee_currency ?: 'MMK')))->unique()->values();
+        $currencies = $rows->map(static fn ($row) => strtoupper((string) ($row->currency_snapshot ?? $row->fee_currency ?? 'MMK')))->unique()->values();
         if ($currencies->count() !== 1) {
             throw new InvalidArgumentException('Selected Fee Setup rows do not have one authoritative currency.');
         }
         $currency = $currencies->first();
         $rates = $rows->map(static function ($row) use ($currency): string {
-            return $currency === 'MMK' ? '1.00' : number_format((float) $row->fee_exchange_rate_snapshot, 2, '.', '');
+            $snapshotRate = $row->exchange_rate_snapshot ?? $row->fee_exchange_rate_snapshot ?? null;
+            return $currency === 'MMK' ? '1.00' : number_format((float) $snapshotRate, 2, '.', '');
         })->unique()->values();
         if ($rates->count() !== 1 || MoneyDecimal::compare($rates->first(), '0.00') <= 0) {
             throw new InvalidArgumentException('Fee Setup exchange rate is missing or inconsistent.');
@@ -262,6 +273,32 @@ final class OfflineFeePaymentAuthorityService
         $data['original_amount'] = $original;
         $data['amount_mmk'] = $amountMmk;
         return $data;
+    }
+
+    /** @return Collection<int,StudentFeeAssignmentItem> */
+    private function confirmedSnapshots(Students $student, Fee $fee, bool $optional): Collection
+    {
+        return StudentFeeAssignmentItem::query()
+            ->where('fee_id', $fee->id)
+            ->where('optional_snapshot', $optional)
+            ->where('status', StudentFeeAssignmentItem::ACTIVE)
+            ->whereHas('assignment', fn ($query) => $query
+                ->where('school_id', $student->school_id)
+                ->where('student_id', $student->id)
+                ->where('academic_year_id', $student->session_year_id)
+                ->where('status', StudentFeeAssignment::CONFIRMED))
+            ->lockForUpdate()
+            ->get();
+    }
+
+    private function authoritativeMmkAmount(object $row): float
+    {
+        if ($row instanceof StudentFeeAssignmentItem) {
+            if ($row->amount_mmk_snapshot !== null) return (float) $row->amount_mmk_snapshot;
+            if (strtoupper((string) $row->currency_snapshot) === 'MMK') return (float) $row->amount_snapshot;
+            throw new InvalidArgumentException('Confirmed receivable snapshot is missing its historical FX conversion.');
+        }
+        return (float) ($row->fee_amount_mmk > 0 ? $row->fee_amount_mmk : $row->amount);
     }
 
     private function fullPaymentDueCharge(Fee $fee): string

@@ -41,6 +41,9 @@ final class ProductionMigrationGuard
             'database/migrations/schools/2026_08_27_000003_add_type_to_student_fee_assignments.php',
             'database/migrations/schools/2026_08_27_000004_create_student_fee_assignment_source_locks.php',
         ],
+        'finance:migrate-currency-history' => [
+            'database/migrations/schools/2026_09_11_000001_add_financial_currency_history_integrity.php',
+        ],
     ];
 
     /**

@@ -17,13 +17,26 @@ class OtherIncome extends Model
 
     protected $fillable = [
         'school_id', 'bank_account_id', 'date', 'payer', 'description', 'amount',
+        'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk',
         'payment_method', 'reference_no', 'remark', 'created_by',
     ];
 
     protected $casts = [
         'date' => 'date',
         'amount' => 'decimal:2',
+        'original_amount' => 'decimal:4',
+        'exchange_rate_snapshot' => 'decimal:8',
+        'amount_mmk' => 'decimal:4',
     ];
+
+    protected static function booted(): void
+    {
+        static::updating(static function (OtherIncome $income): void {
+            foreach (['amount', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk'] as $field) {
+                if ($income->isDirty($field)) throw new \DomainException('Receipt amount and FX snapshot fields are immutable.');
+            }
+        });
+    }
 
     public function bank_account()
     {

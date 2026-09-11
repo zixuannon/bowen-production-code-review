@@ -225,22 +225,11 @@
 
     {{-- Summary --}}
     <div class="summary-row">
-        <div class="summary-card">
-            <div class="amount">{{ number_format($totalCompulsoryExpected, 2) }}</div>
-            <div class="label">{{ __('Expected (MMK)') }}</div>
-        </div>
-        <div class="summary-card">
-            <div class="amount">{{ number_format($totalCompulsoryPaid, 2) }}</div>
-            <div class="label">{{ __('Compulsory Paid (MMK)') }}</div>
-        </div>
-        <div class="summary-card outstanding">
-            <div class="amount">{{ number_format($totalCompulsoryOutstanding, 2) }}</div>
-            <div class="label">{{ __('Outstanding (MMK)') }}</div>
-        </div>
-        <div class="summary-card">
-            <div class="amount">{{ number_format($totalOptionalPaid, 2) }}</div>
-            <div class="label">{{ __('Optional Paid (MMK)') }}</div>
-        </div>
+        @foreach($currencyTotals as $currency => $totals)
+            <div class="summary-card"><div class="amount">{{ number_format($totals['expected'], 2) }} {{ $currency }}</div><div class="label">{{ __('Expected') }}</div></div>
+            <div class="summary-card"><div class="amount">{{ number_format($totals['compulsory_paid'], 2) }} {{ $currency }}</div><div class="label">{{ __('Compulsory Paid') }}</div></div>
+            <div class="summary-card outstanding"><div class="amount">{{ number_format($totals['compulsory_outstanding'], 2) }} {{ $currency }}</div><div class="label">{{ __('Outstanding') }}</div></div>
+        @endforeach
         <div class="summary-card">
             <div class="amount">{{ $lastPaymentDate ? date('d/m/Y', strtotime($lastPaymentDate)) : 'N/A' }}</div>
             <div class="label">{{ __('Last Payment') }}</div>
@@ -260,32 +249,24 @@
                 <thead>
                     <tr>
                         <th>{{ __('Fee Item') }}</th>
-                        <th>{{ __('Category') }}</th>
                         <th>{{ __('Currency') }}</th>
-                        <th class="text-right">{{ __('Original Amount') }}</th>
-                        <th class="text-right">{{ __('Exch. Rate') }}</th>
-                        <th class="text-right">{{ __('MMK Amount') }}</th>
+                        <th class="text-right">{{ __('Snapshot Amount') }}</th>
                         <th class="text-center">{{ __('Status') }}</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach ($compulsoryExpected as $item)
-                        @php $expectedMmk = ($item->fee_amount_mmk > 0) ? $item->fee_amount_mmk : $item->amount; @endphp
                         <tr>
-                            <td>{{ $item->fees_type->name ?? 'N/A' }}</td>
-                            <td>{{ $item->finance_category->name ?? '-' }}</td>
-                            <td>{{ $item->fee_currency ?? 'MMK' }}</td>
-                            <td class="text-right">{{ number_format($item->fee_original_amount ?? $expectedMmk, 2) }}</td>
-                            <td class="text-right">{{ $item->fee_exchange_rate_snapshot ?? '1.0' }}</td>
-                            <td class="text-right">{{ number_format($expectedMmk, 2) }}</td>
+                            <td>{{ $item->description_snapshot }}</td>
+                            <td>{{ $item->currency_snapshot }}</td>
+                            <td class="text-right">{{ number_format($item->amount_snapshot, 2) }}</td>
                             <td class="text-center"><span class="badge badge-primary">{{ __('Expected') }}</span></td>
                         </tr>
                     @endforeach
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="5" class="text-right">{{ __('Total Compulsory Expected') }}</td>
-                        <td class="text-right">{{ number_format($totalCompulsoryExpected, 2) }}</td>
+                        <td colspan="3" class="text-right">{{ __('Totals are shown by currency above') }}</td>
                         <td></td>
                     </tr>
                 </tfoot>
@@ -317,9 +298,9 @@
                             <td>{{ $r->fees_class_type->fees_type->name ?? 'Optional Fee' }}</td>
                             <td>{{ $r->fees_class_type->finance_category->name ?? '-' }}</td>
                             <td class="text-right">{{ number_format($r->amount, 2) }}</td>
-                            <td>{{ $r->fees_paid->transaction_currency ?? 'MMK' }}</td>
-                            <td class="text-right">{{ number_format($r->fees_paid->original_amount ?? $r->amount, 2) }}</td>
-                            <td class="text-right">{{ $r->fees_paid->exchange_rate_snapshot ?? '1.0' }}</td>
+                            <td>{{ $r->transaction_currency ?? 'MMK' }}</td>
+                            <td class="text-right">{{ number_format($r->original_amount ?? $r->amount, 2) }}</td>
+                            <td class="text-right">{{ $r->exchange_rate_snapshot ?? '1.0' }}</td>
                             <td>{{ $r->mode_name }}</td>
                             <td>{{ $r->date ? date('d/m/Y', strtotime($r->date)) : 'N/A' }}</td>
                             <td><span class="badge badge-success">{{ $r->status }}</span></td>

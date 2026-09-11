@@ -9,7 +9,15 @@ test('authenticated BOWEN_QA exposes the representative Finance modules', async 
   expect(dashboard.status()).toBe(200);
   await expect(page.getByText(/Bowen School/i).first()).toBeVisible();
 
-  for (const path of ['/bank-accounts', '/expense', '/fees/paid', '/fees/optional']) {
+  for (const path of [
+    '/bank-accounts',
+    '/expense',
+    '/fees/paid',
+    '/fees/optional',
+    '/finance/transactions',
+    '/outstanding-fees',
+    '/student-ledger',
+  ]) {
     const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
     expect(response, `${path} must render in BOWEN_QA`).not.toBeNull();
     expect(response.status(), `${path} must return 200`).toBe(200);

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BankTransfer;
+use App\Models\BankAccount;
 use App\Models\CompulsoryFee;
 use App\Models\Expense;
 use App\Models\OptionalFee;
@@ -72,77 +73,85 @@ class FinanceTransactionRegisterService
             ]), $keyword) !== false;
         })->sortByDesc(fn (array $row) => $row['date'] . ':' . $row['source_id'])->values();
 
-        $summary = [
-            'money_in' => (float) $rows->sum('money_in'),
-            'money_out' => (float) $rows->sum('money_out'),
-            'operating_income' => (float) $rows->where('operating', 'income')->sum('money_in'),
-            'operating_expense' => (float) $rows->where('operating', 'expense')->sum('money_out'),
-            'internal_in' => (float) $rows->where('operating', 'internal')->sum('money_in'),
-            'internal_out' => (float) $rows->where('operating', 'internal')->sum('money_out'),
+        $currencySummaries = $rows->filter(fn ($row) => !empty($row['currency']))->groupBy('currency')
+            ->map(function ($currencyRows): array {
+                $summary = [
+                    'money_in' => (float) $currencyRows->sum('money_in'),
+                    'money_out' => (float) $currencyRows->sum('money_out'),
+                    'operating_income' => (float) $currencyRows->where('operating', 'income')->sum('money_in'),
+                    'operating_expense' => (float) $currencyRows->where('operating', 'expense')->sum('money_out'),
+                    'internal_in' => (float) $currencyRows->where('operating', 'internal')->sum('money_in'),
+                    'internal_out' => (float) $currencyRows->where('operating', 'internal')->sum('money_out'),
+                ];
+                $summary['net_movement'] = $summary['money_in'] - $summary['money_out'];
+                $summary['operating_net'] = $summary['operating_income'] - $summary['operating_expense'];
+                return $summary;
+            });
+        $summary = $currencySummaries->count() === 1 ? $currencySummaries->first() : [
+            'money_in' => 0.0, 'money_out' => 0.0, 'operating_income' => 0.0, 'operating_expense' => 0.0,
+            'internal_in' => 0.0, 'internal_out' => 0.0, 'net_movement' => 0.0, 'operating_net' => 0.0,
         ];
-        $summary['net_movement'] = $summary['money_in'] - $summary['money_out'];
-        $summary['operating_net'] = $summary['operating_income'] - $summary['operating_expense'];
 
-        return compact('rows', 'summary');
+        return compact('rows', 'summary', 'currencySummaries');
     }
 
     private function compulsoryRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
     {
-        return $this->between(CompulsoryFee::query()->with(['student:id,first_name,last_name', 'bank_account:id,account_name'])
+        return $this->between(CompulsoryFee::query()->with(['student:id,first_name,last_name', 'bank_account:id,account_name,currency'])
             ->where('school_id', $actor->school_id)->where('status', 'Success')->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (CompulsoryFee $row) => $this->row($row->date, 'student_fee_payment', $row->id,
                 $row->reference_no, trim(($row->student?->first_name ?? '') . ' ' . ($row->student?->last_name ?? '')),
-                __('Student fee payment'), $row->mode_name, $row->bank_account?->account_name, $row->amount, 0, 'income', null, null, [
+                __('Student fee payment'), $row->mode_name, $row->bank_account?->account_name, $this->accountAmount($row), 0, 'income', null, null, [
                     'source_type' => 'compulsory_fee', 'fund_account_id' => $row->bank_account_id,
                     'finance_category_id' => null, 'source_amount' => (float) $row->amount,
-                    'created_at_raw' => $row->getRawOriginal('created_at'),
+                    'created_at_raw' => $row->getRawOriginal('created_at'), 'currency' => $row->bank_account?->currency,
                 ]));
     }
 
     private function optionalRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
     {
-        return $this->between(OptionalFee::query()->with(['student:id,first_name,last_name', 'bank_account:id,account_name'])
+        return $this->between(OptionalFee::query()->with(['student:id,first_name,last_name', 'bank_account:id,account_name,currency'])
             ->where('school_id', $actor->school_id)->where('status', 'Success')->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (OptionalFee $row) => $this->row($row->date, 'optional_fee_payment', $row->id,
                 null, trim(($row->student?->first_name ?? '') . ' ' . ($row->student?->last_name ?? '')),
-                __('Optional fee payment'), $row->mode_name, $row->bank_account?->account_name, $row->amount, 0, 'income', null, null, [
+                __('Optional fee payment'), $row->mode_name, $row->bank_account?->account_name, $this->accountAmount($row), 0, 'income', null, null, [
                     'source_type' => 'optional_fee', 'fund_account_id' => $row->bank_account_id,
                     'finance_category_id' => null, 'source_amount' => (float) $row->amount,
-                    'created_at_raw' => $row->getRawOriginal('created_at'),
+                    'created_at_raw' => $row->getRawOriginal('created_at'), 'currency' => $row->bank_account?->currency,
                 ]));
     }
 
     private function otherIncomeRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
     {
-        return $this->between(OtherIncome::query()->with(['bank_account:id,account_name', 'creator:id,first_name,last_name'])
+        return $this->between(OtherIncome::query()->with(['bank_account:id,account_name,currency', 'creator:id,first_name,last_name'])
             ->where('school_id', $actor->school_id)->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (OtherIncome $row) => $this->row($row->date, 'other_income', $row->id,
                 $row->reference_no, $row->payer, $row->description, $row->payment_method,
-                $row->bank_account?->account_name, $row->amount, 0, 'income', $row->creator, null, [
+                $row->bank_account?->account_name, $this->accountAmount($row), 0, 'income', $row->creator, null, [
                     'source_type' => 'other_income', 'fund_account_id' => $row->bank_account_id,
                     'finance_category_id' => null, 'source_amount' => (float) $row->amount,
-                    'created_at_raw' => $row->getRawOriginal('created_at'), 'operator_user_id' => $row->created_by,
+                    'created_at_raw' => $row->getRawOriginal('created_at'), 'operator_user_id' => $row->created_by, 'currency' => $row->bank_account?->currency,
                 ]));
     }
 
     private function expenseRows(User $actor, Collection $accounts, ?string $from, ?string $to): Collection
     {
-        return $this->between(Expense::query()->with(['bank_account:id,account_name', 'creator:id,first_name,last_name'])
+        return $this->between(Expense::query()->with(['bank_account:id,account_name,currency', 'creator:id,first_name,last_name'])
             ->where('school_id', $actor->school_id)->whereIn('bank_account_id', $accounts), $from, $to)
             ->get()->map(fn (Expense $row) => $this->row($row->date, 'expense', $row->id, $row->ref_no,
                 $row->title, $row->description, $row->payment_method, $row->bank_account?->account_name,
-                0, $row->amount_mmk > 0 ? $row->amount_mmk : $row->amount, 'expense', $row->creator, null, [
+                0, $this->accountAmount($row), 'expense', $row->creator, null, [
                     'source_type' => 'expense', 'fund_account_id' => $row->bank_account_id,
                     'finance_category_id' => $row->finance_category_id, 'source_amount' => (float) $row->amount,
                     'transaction_currency' => $row->transaction_currency, 'original_amount' => $row->original_amount,
                     'exchange_rate_snapshot' => $row->exchange_rate_snapshot, 'reporting_amount_mmk' => $row->amount_mmk,
-                    'created_at_raw' => $row->getRawOriginal('created_at'), 'operator_user_id' => $row->created_by,
+                    'created_at_raw' => $row->getRawOriginal('created_at'), 'operator_user_id' => $row->created_by, 'currency' => $row->bank_account?->currency,
                 ]));
     }
 
     private function transferRows(User $actor, Collection $accounts, ?int $selectedAccountId, ?string $from, ?string $to): Collection
     {
-        return $this->between(BankTransfer::query()->with(['from_account:id,account_name', 'to_account:id,account_name'])
+        return $this->between(BankTransfer::query()->with(['from_account:id,account_name,currency', 'to_account:id,account_name,currency'])
             ->where('school_id', $actor->school_id)->completed()
             ->where(fn ($query) => $query->whereIn('from_account_id', $accounts)->orWhereIn('to_account_id', $accounts)), $from, $to, 'transfer_date')
             ->get()->map(function (BankTransfer $row) use ($accounts, $selectedAccountId) {
@@ -161,6 +170,9 @@ class FinanceTransactionRegisterService
                         'to_fund_account' => $row->to_account?->account_name,
                         'source_amount' => (float) $row->amount, 'created_at_raw' => $row->getRawOriginal('created_at'),
                         'operator_user_id' => $row->created_by,
+                        'currency' => $selectedAccountId
+                            ? ($row->from_account_id === $selectedAccountId ? $row->from_account?->currency : $row->to_account?->currency)
+                            : null,
                     ]);
             });
     }
@@ -183,7 +195,8 @@ class FinanceTransactionRegisterService
             ->when($from, fn ($q) => $q->whereDate('transfer_date', '>=', $from))
             ->when($to, fn ($q) => $q->whereDate('transfer_date', '<=', $to));
 
-        return $query->get()->map(function (FinanceGroupTransfer $row) use ($accounts, $selectedAccountId) {
+        $accountCurrencies = BankAccount::query()->whereIn('id', $accounts)->pluck('currency', 'id');
+        return $query->get()->map(function (FinanceGroupTransfer $row) use ($accounts, $selectedAccountId, $accountCurrencies) {
             $isIn = $row->direction === FinanceGroupTransfer::DIRECTION_HQ_TO_SCHOOL;
             $visible = $selectedAccountId && $accounts->contains($row->tenant_bank_account_id);
             $in = $visible && $isIn ? (float) $row->amount : 0.0;
@@ -201,6 +214,7 @@ class FinanceTransactionRegisterService
                     'from_fund_account' => $fromName, 'to_fund_account' => $toName,
                     'source_amount' => (float) $row->amount, 'created_at_raw' => $row->getRawOriginal('created_at'),
                     'operator_user_id' => null,
+                    'currency' => $selectedAccountId ? $accountCurrencies->get($row->tenant_bank_account_id) : null,
                 ]);
         });
     }
@@ -240,8 +254,14 @@ class FinanceTransactionRegisterService
             'money_in' => $in,
             'money_out' => $out,
             'operating' => $operating,
+            'currency' => null,
             'operator' => $operator ? trim(($operator->first_name ?? '') . ' ' . ($operator->last_name ?? '')) : '-',
             'status' => 'completed',
         ], $metadata);
+    }
+
+    private function accountAmount(object $row): float
+    {
+        return app(FundAccountBalanceService::class)->accountCurrencyAmount($row, $row->bank_account);
     }
 }

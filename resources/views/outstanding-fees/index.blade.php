@@ -102,25 +102,16 @@
                 <div class="col-md-12 grid-margin stretch-card">
                     <div class="card">
                         <div class="card-body">
+                            <h5>{{ $summary['total_students'] }} {{ __('Students') }}</h5>
                             <div class="row text-center">
-                                <div class="col-md-3">
-                                    <h5 class="text-primary">{{ $summary['total_students'] }}</h5>
-                                    <small class="text-muted">{{ __('Total Students') }}</small>
-                                </div>
-                                <div class="col-md-3">
-                                    <h5 class="text-info">{{ number_format($summary['total_expected']) }} MMK</h5>
-                                    <small class="text-muted">{{ __('Total Expected') }}</small>
-                                </div>
-                                <div class="col-md-3">
-                                    <h5 class="text-success">{{ number_format($summary['total_paid']) }} MMK</h5>
-                                    <small class="text-muted">{{ __('Total Paid') }}</small>
-                                </div>
-                                <div class="col-md-3">
-                                    <h5 class="{{ ($summary['total_outstanding'] ?? 0) > 0 ? 'text-danger' : 'text-success' }}">
-                                        {{ number_format($summary['total_outstanding']) }} MMK
-                                    </h5>
-                                    <small class="text-muted">{{ __('Total Outstanding') }}</small>
-                                </div>
+                                @foreach($summary['currency_totals'] as $currency => $totals)
+                                    <div class="col-md-4 mb-2"><div class="border rounded p-2">
+                                        <strong>{{ $currency }}</strong><br>
+                                        <span class="text-info">{{ __('Expected') }}: {{ number_format($totals['expected'], 2) }}</span><br>
+                                        <span class="text-success">{{ __('Paid') }}: {{ number_format($totals['paid'], 2) }}</span><br>
+                                        <span class="{{ $totals['outstanding'] > 0 ? 'text-danger' : 'text-success' }}">{{ __('Outstanding') }}: {{ number_format($totals['outstanding'], 2) }}</span>
+                                    </div></div>
+                                @endforeach
                             </div>
                         </div>
                     </div>
@@ -169,13 +160,9 @@
                                                 </td>
                                                 <td>{{ $row['guardian_name'] ?: __('N/A') }}</td>
                                                 <td>{{ $row['contact'] ?: __('暂无联系方式') }}</td>
-                                                <td>{{ number_format($row['compulsory_expected']) }}</td>
-                                                <td>{{ number_format($row['compulsory_paid']) }}</td>
-                                                <td>
-                                                    <span class="{{ $row['outstanding'] > 0 ? 'text-danger font-weight-bold' : 'text-success' }}">
-                                                        {{ number_format($row['outstanding']) }}
-                                                    </span>
-                                                </td>
+                                                <td>@foreach($row['currency_totals'] as $currency => $totals)<div>{{ number_format($totals['expected'], 2) }} {{ $currency }}</div>@endforeach</td>
+                                                <td>@foreach($row['currency_totals'] as $currency => $totals)<div>{{ number_format($totals['paid'], 2) }} {{ $currency }}</div>@endforeach</td>
+                                                <td>@foreach($row['currency_totals'] as $currency => $totals)<div class="{{ $totals['outstanding'] > 0 ? 'text-danger font-weight-bold' : 'text-success' }}">{{ number_format($totals['outstanding'], 2) }} {{ $currency }}</div>@endforeach</td>
                                                 <td>{{ $row['last_payment_date'] ?: __('暂无付款记录') }}</td>
                                                 <td>
                                                     @if ($row['status'] == 'fully_paid')

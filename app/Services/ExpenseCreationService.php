@@ -16,16 +16,11 @@ class ExpenseCreationService
     public function create(User $actor, array $data, ?callable $afterCreate = null): Expense
     {
         app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
-        app(FinanceAccountAccessService::class)->authorize($actor, (int) $data['bank_account_id']);
+        $account = app(FinanceAccountAccessService::class)->authorize($actor, (int) $data['bank_account_id']);
+        $snapshot = app(FinancialCurrencyService::class)->expenseSnapshot($account, $data);
 
-        return DB::connection('school')->transaction(function () use ($actor, $data, $afterCreate): Expense {
+        return DB::connection('school')->transaction(function () use ($actor, $data, $snapshot, $afterCreate): Expense {
             $settings = $this->cache->getSchoolSettings('*', $actor->school_id);
-            $currency = strtoupper((string) ($data['transaction_currency'] ?? 'MMK'));
-            $rate = (float) ($data['exchange_rate_snapshot'] ?? 1);
-            $amount = (float) $data['amount'];
-            $original = (float) ($data['original_amount'] ?? $amount);
-            if ($currency === 'MMK') { $original = $amount; $rate = 1; }
-            elseif ($original <= 0) { $original = $amount / $rate; }
 
             $date = (string) ($data['date'] ?? '');
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -35,10 +30,10 @@ class ExpenseCreationService
             $expense = Expense::query()->create([
                 'school_id' => $actor->school_id, 'category_id' => $data['category_id'] ?? null,
                 'finance_category_id' => ($data['finance_category_id'] ?? null) ?: null, 'title' => $data['title'] ?? null,
-                'ref_no' => $data['ref_no'] ?? null, 'amount' => $amount, 'date' => $date,
+                'ref_no' => $data['ref_no'] ?? null, 'amount' => $snapshot['amount_mmk'], 'date' => $date,
                 'description' => $data['description'] ?? null, 'session_year_id' => $data['session_year_id'] ?? null,
-                'transaction_currency' => $currency, 'original_amount' => $original,
-                'exchange_rate_snapshot' => $rate, 'amount_mmk' => $amount,
+                'transaction_currency' => $snapshot['transaction_currency'], 'original_amount' => $snapshot['original_amount'],
+                'exchange_rate_snapshot' => $snapshot['exchange_rate_snapshot'], 'amount_mmk' => $snapshot['amount_mmk'],
                 'bank_account_id' => $data['bank_account_id'],
             ]);
             $sessionYear = $this->cache->getDefaultSessionYear($actor->school_id);

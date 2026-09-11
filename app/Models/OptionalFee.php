@@ -26,12 +26,26 @@ class OptionalFee extends Model
         'session_year_id',
         'school_id',
         'bank_account_id',
+        'fee_payment_fx_snapshot_id',
+        'transaction_currency',
+        'original_amount',
+        'exchange_rate_snapshot',
+        'amount_mmk',
         'deleted_by',
         'delete_reason',
         'created_at',
         'updated_at'
     ];
     protected $appends = ['mode_name'];
+
+    protected static function booted(): void
+    {
+        static::updating(static function (OptionalFee $payment): void {
+            foreach (['fee_payment_fx_snapshot_id', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk'] as $field) {
+                if ($payment->isDirty($field)) throw new \DomainException('Fee payment FX history is immutable.');
+            }
+        });
+    }
 
     public function scopeOwner($query)
     {
@@ -70,6 +84,11 @@ class OptionalFee extends Model
     public function bank_account()
     {
         return $this->belongsTo(BankAccount::class, 'bank_account_id');
+    }
+
+    public function fee_payment_fx_snapshot()
+    {
+        return $this->belongsTo(FeePaymentFxSnapshot::class, 'fee_payment_fx_snapshot_id');
     }
 
     protected static $modeMap = [

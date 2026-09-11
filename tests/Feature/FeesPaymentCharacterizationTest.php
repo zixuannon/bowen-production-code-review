@@ -8,6 +8,7 @@ use App\Models\CompulsoryFee;
 use App\Models\Fee;
 use App\Models\FeeImportBatch;
 use App\Models\FeesAdvance;
+use App\Models\FeePaymentFxSnapshot;
 use App\Models\FeesPaid;
 use App\Models\SessionYearsTracking;
 use App\Models\User;
@@ -486,6 +487,9 @@ class FeesPaymentCharacterizationTest extends TestCase
         ], $fee);
         $this->assertEquals(1000, $r1['fees_paid']->amount);
         $this->assertFalse($r1['is_fully_paid']);
+        $firstAggregateSnapshot = $r1['fees_paid']->only([
+            'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk',
+        ]);
 
         // Payment 2: 2000
         $r2 = $service->processPayment([
@@ -498,12 +502,20 @@ class FeesPaymentCharacterizationTest extends TestCase
         ], $fee);
         $this->assertEquals(3000, $r2['fees_paid']->amount); // accumulated
         $this->assertTrue($r2['is_fully_paid']);
+        $this->assertEquals($firstAggregateSnapshot, $r2['fees_paid']->fresh()->only([
+            'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk',
+        ]));
+        $snapshots = FeePaymentFxSnapshot::where('fees_paid_id', $r2['fees_paid']->id)->orderBy('id')->get();
+        $this->assertCount(2, $snapshots);
+        $this->assertEquals([1000.0, 2000.0], $snapshots->pluck('amount_mmk')->map(fn ($amount) => (float) $amount)->all());
+        $this->assertNotSame($snapshots[0]->uuid, $snapshots[1]->uuid);
     }
 
     /** @test */
     public function usd_currency_saves_correctly(): void
     {
         $this->skipIfNoFeeTable();
+        DB::table('bank_accounts')->where('id', $this->bankAccountId)->update(['currency' => 'USD']);
         $fee = $this->createTestFee(1000.00);
 
         $service = app(FeesPaymentService::class);
@@ -530,6 +542,7 @@ class FeesPaymentCharacterizationTest extends TestCase
     public function cny_currency_saves_correctly(): void
     {
         $this->skipIfNoFeeTable();
+        DB::table('bank_accounts')->where('id', $this->bankAccountId)->update(['currency' => 'CNY']);
         $fee = $this->createTestFee(1000.00);
 
         $service = app(FeesPaymentService::class);

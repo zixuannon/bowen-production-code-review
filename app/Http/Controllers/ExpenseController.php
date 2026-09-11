@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
@@ -243,27 +244,23 @@ class ExpenseController extends Controller
             'bank_account_id.required' => 'Please select a fund account for this expense.',
             'bank_account_id.exists'   => 'The selected fund account is not valid or does not belong to this school.',
         ]);
-        app(FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
+        $targetAccount = app(FinanceAccountAccessService::class)->authorize(Auth::user(), (int) $request->bank_account_id);
         try {
             DB::beginTransaction();
             $schoolSettings = $this->cache->getSchoolSettings();
-            
-            // ========== 多货币处理 ==========
-            $transactionCurrency = strtoupper($request->transaction_currency ?? 'MMK');
-            $exchangeRate = (float)($request->exchange_rate_snapshot ?? 1);
-            $originalAmount = (float)($request->original_amount ?? $request->amount);
-            $amount = (float)$request->amount; // amount 保存 MMK 等值
-            
-            if ($transactionCurrency === 'MMK') {
-                $originalAmount = $amount;
-                $exchangeRate = 1;
-            } else {
-                if ($originalAmount <= 0) {
-                    $originalAmount = $amount / $exchangeRate;
-                }
-            }
-            $amountMmk = $amount;
-            // =================================
+
+            $oldExpense = $this->expense->builder()->where('id', $id)->lockForUpdate()->firstOrFail();
+            $this->assertExpenseFxSnapshotUnchanged($oldExpense, $request);
+            app(\App\Services\FinancialCurrencyService::class)->assertAccountCurrency(
+                $targetAccount,
+                (string) ($oldExpense->transaction_currency ?: 'MMK'),
+            );
+
+            $transactionCurrency = (string) ($oldExpense->transaction_currency ?: 'MMK');
+            $exchangeRate = (float) ($oldExpense->exchange_rate_snapshot ?: 1);
+            $originalAmount = (float) ($oldExpense->original_amount ?: $oldExpense->amount);
+            $amountMmk = (float) ($oldExpense->amount_mmk ?: $oldExpense->amount);
+            $amount = $amountMmk;
             
             $data = [
                 'category_id' => $request->category_id,
@@ -285,7 +282,6 @@ class ExpenseController extends Controller
             ];
 
             // ---- Log financially significant changes ----
-            $oldExpense = $this->expense->findById($id);
             $editReason = $request->edit_reason ?: null;
             $this->logExpenseChange($oldExpense, 'amount', $oldExpense->amount, $amount, Auth::id(), $editReason);
             $this->logExpenseChange($oldExpense, 'bank_account_id', $oldExpense->bank_account_id, ($request->bank_account_id ?: null), Auth::id(), $editReason);
@@ -298,10 +294,35 @@ class ExpenseController extends Controller
             $this->expense->update($id, $data);
             DB::commit();
             ResponseService::successResponse('Data Updated Successfully');
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             DB::rollBack();
             ResponseService::logErrorResponse($e, "Expense Controller -> Update Method");
             ResponseService::errorResponse();
+        }
+    }
+
+    private function assertExpenseFxSnapshotUnchanged(\App\Models\Expense $expense, Request $request): void
+    {
+        $expected = [
+            'amount' => (float) ($expense->amount_mmk ?: $expense->amount),
+            'original_amount' => (float) ($expense->original_amount ?: $expense->amount),
+            'exchange_rate_snapshot' => (float) ($expense->exchange_rate_snapshot ?: 1),
+        ];
+        foreach ($expected as $field => $value) {
+            if ($request->has($field) && abs((float) $request->input($field) - $value) > 0.0001) {
+                throw ValidationException::withMessages([
+                    $field => [__('Historical expense amount and FX snapshot fields are immutable; use a formal adjustment.')],
+                ]);
+            }
+        }
+        $currency = strtoupper((string) ($expense->transaction_currency ?: 'MMK'));
+        if ($request->has('transaction_currency') && strtoupper((string) $request->transaction_currency) !== $currency) {
+            throw ValidationException::withMessages([
+                'transaction_currency' => [__('Historical expense amount and FX snapshot fields are immutable; use a formal adjustment.')],
+            ]);
         }
     }
 

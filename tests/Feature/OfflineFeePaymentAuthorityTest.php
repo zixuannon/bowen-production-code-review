@@ -6,6 +6,8 @@ use App\Models\Fee;
 use App\Models\FeesClassType;
 use App\Models\FeesPaid;
 use App\Models\OptionalFee;
+use App\Models\StudentFeeAssignment;
+use App\Models\StudentFeeAssignmentItem;
 use App\Services\OfflineFeePaymentAuthorityService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -148,6 +150,48 @@ class OfflineFeePaymentAuthorityTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('already paid');
         app(OfflineFeePaymentAuthorityService::class)->optional($this->optionalInput(), $this->schoolId);
+    }
+
+    public function test_optional_payment_uses_confirmed_snapshot_without_replacing_the_fee_item_identity(): void
+    {
+        $studentId = (int) DB::table('students')->where('user_id', $this->studentUserId)->value('id');
+        $assignment = StudentFeeAssignment::create([
+            'uuid' => (string) Str::uuid(),
+            'school_id' => $this->schoolId,
+            'student_id' => $studentId,
+            'academic_year_id' => $this->fee->session_year_id,
+            'class_id' => $this->classId,
+            'assignment_type' => StudentFeeAssignment::INITIAL,
+            'status' => StudentFeeAssignment::CONFIRMED,
+            'confirmed_at' => now(),
+        ]);
+        StudentFeeAssignmentItem::create([
+            'uuid' => (string) Str::uuid(),
+            'student_fee_assignment_id' => $assignment->id,
+            'fee_id' => $this->fee->id,
+            'fees_class_type_id' => $this->optional->id,
+            'fees_type_id' => $this->optional->fees_type_id,
+            'description_snapshot' => 'Historical optional item',
+            'amount_snapshot' => 250,
+            'currency_snapshot' => 'MMK',
+            'exchange_rate_snapshot' => 1,
+            'amount_mmk_snapshot' => 250,
+            'optional_snapshot' => true,
+            'source_type' => StudentFeeAssignmentItem::FEES_CLASS_TYPE,
+            'source_id' => (string) $this->optional->id,
+            'status' => StudentFeeAssignmentItem::ACTIVE,
+        ]);
+        DB::table('fees_class_types')->where('id', $this->optional->id)->update([
+            'amount' => 999,
+            'fee_original_amount' => 999,
+            'fee_amount_mmk' => 999,
+        ]);
+
+        $result = app(OfflineFeePaymentAuthorityService::class)->optional($this->optionalInput(), $this->schoolId);
+
+        $this->assertSame('250.00', $result['data']['total_amount']);
+        $this->assertSame($this->optional->id, $result['data']['fees_class_type'][0]['id']);
+        $this->assertSame('250.00', $result['data']['fees_class_type'][0]['amount']);
     }
 
     public function test_installment_id_amount_and_due_charge_are_rebuilt_from_fee_setup(): void

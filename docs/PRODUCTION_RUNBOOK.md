@@ -130,6 +130,29 @@ the tenant connection on success or failure. Do not add legacy fee-import or
 P1/P2/P3 migrations to this runner. After any new-schema Finance activity,
 prefer a forward fix rather than rollback.
 
+### Round 4 financial currency history targeted runner
+
+`finance:migrate-currency-history` is the only approved runner for
+`2026_09_11_000001_add_financial_currency_history_integrity`. Its default mode
+is read-only verification. It accepts only the seven fixed active-School codes,
+excludes Demo and raw database names, rejects any partial schema/history state,
+and restores the tenant connection after success or failure.
+
+Before any separately approved Production migration, run the read-only command
+from an immutable release and confirm every tenant is `eligible` or `complete`:
+
+```sh
+php artisan finance:migrate-currency-history
+```
+
+After backup and a Production migration Human Gate, execute Zixuan canary alone
+with `--tenant=SCH202615 --execute`, verify migration history, columns, foreign
+keys, application health, and zero unexpected financial writes, then execute
+exactly the remaining allowlisted School codes. Never use generic `migrate`,
+`migrate:school`, restore/updater migration paths, or a raw tenant database
+name. Once payment FX snapshots or receivable history uses the new columns,
+prefer a forward fix and do not drop the history table.
+
 ## Safe cutover principle
 
 When new application code requires new columns/tables, prefer:

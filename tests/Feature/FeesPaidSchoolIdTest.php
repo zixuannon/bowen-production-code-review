@@ -130,10 +130,11 @@ class FeesPaidSchoolIdTest extends TestCase
         }
     }
 
-    private function createBankAccount(int $schoolId): int
+    private function createBankAccount(int $schoolId, string $currency = 'MMK'): int
     {
         $existing = DB::table('bank_accounts')
             ->where('school_id', $schoolId)
+            ->where('currency', $currency)
             ->where('is_active', 1)
             ->whereNull('deleted_at')
             ->first();
@@ -142,9 +143,9 @@ class FeesPaidSchoolIdTest extends TestCase
         }
         return DB::table('bank_accounts')->insertGetId([
             'school_id'     => $schoolId,
-            'account_name'  => 'SchoolId Bank ' . $schoolId . ' ' . Str::random(6),
+            'account_name'  => "SchoolId {$currency} Bank {$schoolId} " . Str::random(6),
             'account_type'  => 'cash',
-            'currency'      => 'MMK',
+            'currency'      => $currency,
             'opening_balance'=> 0,
             'is_active'     => 1,
             'created_at'    => now(),
@@ -304,7 +305,8 @@ class FeesPaidSchoolIdTest extends TestCase
     {
         // Get or create a bank account for the current auth user's school
         $schoolId = Auth::user()->school_id ?? $this->schoolId;
-        $bankId = $this->createBankAccount($schoolId);
+        $currency = strtoupper((string) ($overrides['transaction_currency'] ?? 'MMK'));
+        $bankId = $this->createBankAccount($schoolId, $currency);
 
         $service = app(FeesPaymentService::class);
         return $service->processPayment(array_merge([

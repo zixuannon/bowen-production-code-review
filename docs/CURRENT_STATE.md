@@ -41,6 +41,43 @@ Finance V2
   the legacy single-process 128 MB test reporter limit. No migration was added
   or executed; Production data, Phase 5.5B, homepage, and assets are untouched.
 
+## Round 4 P1B financial history and currency integrity — local candidate
+
+- Branch `codex/round4-p1b-financial-history` starts from the current
+  Production release `f3a898de68d8f2b4d3320e6e508365e572f9071a`. The
+  separate Round 3 local candidate passed before this work began but is not
+  deployed and is deliberately not part of this Production baseline.
+- Fund Account balances and the unified transaction register include only
+  successful fee rows and project every money-bearing row into the Fund
+  Account's own currency. Mixed currencies are subtotalled independently;
+  ambiguous foreign legacy rows fail closed instead of being silently added.
+- Fund Account currency becomes immutable after any opening balance,
+  adjustment, receipt, expense, fee, transfer, or Group transfer history.
+  Expense and Other Income amount/FX fields are immutable after creation, and
+  the MMK-only Expense import refuses foreign-currency Fund Accounts.
+- Each new offline compulsory or optional payment stores an immutable,
+  payment-level FX snapshot and links its child payment rows to that snapshot.
+  The legacy aggregate `FeesPaid` FX fields are no longer overwritten by later
+  payments.
+- Confirmed Student Fee Assignment items now preserve original currency
+  amount, FX rate, and MMK equivalent. Offline amount authority, Outstanding
+  Fees, Student Ledger, print, and export views consume those confirmed
+  snapshots rather than mutable current Fee Setup; all totals remain separated
+  by currency.
+- The additive tenant migration is available only through
+  `finance:migrate-currency-history`, a read-only-by-default, fixed active-School
+  code allowlist, exact-path, canary-first runner. Production execution remains
+  a separate schema-migration Human Gate.
+- The exact migration rehearsed successfully against the local test tenant.
+  The focused security/finance regression passes (130 tests, 521 assertions),
+  local browser acceptance passes (2 scenarios), and the complete PHPUnit
+  suite passes in bounded-memory partitions (655 tests, 4,253 assertions; zero
+  failures/errors). The legacy Excel/Zip tests exhaust the PHP 128 MB limit
+  after earlier suites retain process memory, but pass in their bounded
+  partition without a code or assertion failure.
+- No Production migration, deployment, or Production financial/data write was
+  performed. Phase 5.5B and homepage/assets remain untouched.
+
 ## Round 2 P0B financial integrity — Production
 
 - The approved `c0ba941d2c4b1a8bdbfb53e4d766cbbc9a2f0e37` release and its

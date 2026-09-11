@@ -8,10 +8,12 @@ use App\Models\CompulsoryFee;
 use App\Models\Fee;
 use App\Models\FeesAdvance;
 use App\Models\FeesPaid;
+use App\Models\FeePaymentFxSnapshot;
 use App\Models\SessionYearsTracking;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * FeesPaymentService
@@ -183,6 +185,7 @@ class FeesPaymentService
                 $originalAmount = $amount / $exchangeRate;
             }
         }
+        app(FinancialCurrencyService::class)->assertAccountCurrency($bankAccount, $transactionCurrency);
 
         // ---- 4. Validate reference_no uniqueness (if provided) ----
         $referenceNo = null;
@@ -221,13 +224,22 @@ class FeesPaymentService
                 'amount'                  => $newAmount,
                 'is_fully_paid'           => $newAmount >= $fee->total_compulsory_fees,
                 'school_id'               => $schoolId,
-                'transaction_currency'    => $transactionCurrency,
-                'original_amount'         => $originalAmount,
-                'exchange_rate_snapshot'  => $exchangeRate,
-                'amount_mmk'              => $amountMmk,
             ]);
             $feesPaidResult = $feesPaid;
         }
+
+        $fxSnapshot = FeePaymentFxSnapshot::create([
+            'uuid' => (string) Str::uuid(),
+            'school_id' => $schoolId,
+            'fees_paid_id' => $feesPaidResult->id,
+            'bank_account_id' => $bankAccount->id,
+            'payment_type' => FeePaymentFxSnapshot::COMPULSORY,
+            'transaction_currency' => $transactionCurrency,
+            'original_amount' => $originalAmount,
+            'exchange_rate_snapshot' => $exchangeRate,
+            'amount_mmk' => $amountMmk,
+            'paid_at' => $dateStr,
+        ]);
 
         // ---- 6. Create CompulsoryFee records ----
         $compulsoryFees = [];
@@ -236,9 +248,10 @@ class FeesPaymentService
             $chequeNo = $data['cheque_no'] ?? null;
         }
 
+        $paymentLines = [];
         if ($installmentMode && !empty($data['installment_fees'])) {
             foreach ($data['installment_fees'] as $inst) {
-                $cfData = [
+                $paymentLines[] = [
                     'student_id'      => $data['student_id'],
                     'type'            => 'Installment Payment',
                     'installment_id'  => $inst['id'],
@@ -252,14 +265,9 @@ class FeesPaymentService
                     'school_id'       => $schoolId,
                     'bank_account_id' => $data['bank_account_id'] ?? null,
                 ];
-                if (!empty($data['import_batch_id'])) {
-                    $cfData['import_batch_id'] = $data['import_batch_id'];
-                }
-                $cf = CompulsoryFee::create($cfData);
-                $compulsoryFees[] = $cf;
             }
         } else {
-            $cfData = [
+            $paymentLines[] = [
                 'type'            => 'Full Payment',
                 'student_id'      => $data['student_id'],
                 'mode'            => $paymentMode,
@@ -272,9 +280,26 @@ class FeesPaymentService
                 'school_id'       => $schoolId,
                 'bank_account_id' => $data['bank_account_id'] ?? null,
             ];
+        }
+
+        if (($data['advance'] ?? 0) > 0 && !empty($paymentLines)) {
+            $last = array_key_last($paymentLines);
+            $paymentLines[$last]['amount'] += (float) $data['advance'];
+        }
+
+        foreach ($paymentLines as $cfData) {
             if (!empty($data['import_batch_id'])) {
                 $cfData['import_batch_id'] = $data['import_batch_id'];
             }
+            $lineMmk = (float) $cfData['amount'];
+            $cfData += [
+                'status' => 'Success',
+                'fee_payment_fx_snapshot_id' => $fxSnapshot->id,
+                'transaction_currency' => $transactionCurrency,
+                'original_amount' => $transactionCurrency === 'MMK' ? $lineMmk : $lineMmk / $exchangeRate,
+                'exchange_rate_snapshot' => $exchangeRate,
+                'amount_mmk' => $lineMmk,
+            ];
             $cf = CompulsoryFee::create($cfData);
             $compulsoryFees[] = $cf;
         }
@@ -290,15 +315,11 @@ class FeesPaymentService
                 ->first();
 
             if ($lastCf) {
-                $advanceAmount = (float) $data['advance'];
-                $lastCf->amount += $advanceAmount;
-                $lastCf->save();
-
                 FeesAdvance::create([
                     'compulsory_fee_id' => $lastCf->id,
                     'student_id'        => $data['student_id'],
                     'parent_id'         => $data['parent_id'],
-                    'amount'            => $advanceAmount,
+                    'amount'            => (float) $data['advance'],
                 ]);
             }
         }

@@ -54,9 +54,11 @@ class OutstandingFeesExport implements FromArray, WithHeadings, ShouldAutoSize, 
 
         $rows[] = [''];
         $rows[] = [__('Total Students'), $this->summary['total_students'] ?? 0];
-        $rows[] = [__('Total Expected Amount (MMK)'), $this->summary['total_expected'] ?? 0];
-        $rows[] = [__('Total Paid Amount (MMK)'), $this->summary['total_paid'] ?? 0];
-        $rows[] = [__('Total Outstanding Amount (MMK)'), $this->summary['total_outstanding'] ?? 0];
+        foreach (($this->summary['currency_totals'] ?? []) as $currency => $totals) {
+            $rows[] = [__('Total Expected Amount') . " ({$currency})", $totals['expected']];
+            $rows[] = [__('Total Paid Amount') . " ({$currency})", $totals['paid']];
+            $rows[] = [__('Total Outstanding Amount') . " ({$currency})", $totals['outstanding']];
+        }
         $rows[] = [__('Note'), __('Outstanding amount is calculated from compulsory fees only. Optional fees are not included in outstanding.')];
 
         // ── Section 2: Outstanding Fees List ──
@@ -69,10 +71,10 @@ class OutstandingFeesExport implements FromArray, WithHeadings, ShouldAutoSize, 
             __('Section'),
             __('Session Year'),
             __('Contact'),
-            __('Expected Amount MMK'),
-            __('Compulsory Paid MMK'),
-            __('Optional Paid MMK'),
-            __('Outstanding Amount MMK'),
+            __('Expected by Currency'),
+            __('Compulsory Paid by Currency'),
+            __('Optional Paid by Currency'),
+            __('Outstanding by Currency'),
             __('Status'),
             __('Last Payment Date'),
             __('User ID'),
@@ -86,10 +88,10 @@ class OutstandingFeesExport implements FromArray, WithHeadings, ShouldAutoSize, 
                 $row['section_name'],
                 $filterSessionYearName ?: $filterSessionYearId,
                 $row['contact'],
-                $row['compulsory_expected'],
-                $row['compulsory_paid'],
-                $row['optional_paid'],
-                $row['outstanding'],
+                $this->formatCurrencyTotals($row['currency_totals'], 'expected'),
+                $this->formatCurrencyTotals($row['currency_totals'], 'paid'),
+                $this->formatCurrencyTotals($row['currency_totals'], 'optional_paid'),
+                $this->formatCurrencyTotals($row['currency_totals'], 'outstanding'),
                 $row['status_label'],
                 $row['last_payment_date'],
                 $row['user_id'],
@@ -97,6 +99,11 @@ class OutstandingFeesExport implements FromArray, WithHeadings, ShouldAutoSize, 
         }
 
         return $rows;
+    }
+
+    private function formatCurrencyTotals(iterable $totals, string $field): string
+    {
+        return collect($totals)->map(fn ($amounts, $currency) => number_format((float) $amounts[$field], 2, '.', '') . " {$currency}")->implode(' / ');
     }
 
     /**

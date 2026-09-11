@@ -11,6 +11,8 @@ use App\Models\Students;
 use App\Models\SessionYear;
 use App\Models\ClassSection;
 use App\Models\School;
+use App\Models\StudentFeeAssignment;
+use App\Models\StudentFeeAssignmentItem;
 use App\Services\CachingService;
 use App\Services\ResponseService;
 use Illuminate\Support\Facades\Auth;
@@ -175,38 +177,27 @@ class OutstandingFeesController extends Controller
             return [collect(), collect()];
         }
 
-        // ---- Step 2: Resolve class_id per student, group by class_id ----
+        // ---- Step 2: Resolve students and immutable receivable snapshots ----
         $studentUserIds = [];
-        $classIdGroups = [];
         $studentData   = [];
 
         foreach ($students as $stu) {
             $userId  = $stu->user_id;
-            $classId = $stu->class_section->class_id ?? $stu->class_id;
             $studentUserIds[] = $userId;
-            $studentData[$userId] = [
-                'student'  => $stu,
-                'class_id' => $classId,
-            ];
-
-            if ($classId) {
-                $classIdGroups[$classId][] = $stu;
-            }
+            $studentData[$userId] = $stu;
         }
 
-        // ---- Step 3: Batch query ALL fees for relevant class_ids ----
-        $allClassIds = array_keys($classIdGroups);
-        $allFees     = Fee::whereIn('class_id', $allClassIds)
-            ->where('session_year_id', $filterSessionYearId)
-            ->with(['fees_class_type.fees_type', 'fees_class_type.finance_category'])
+        $assignmentItems = StudentFeeAssignmentItem::query()
+            ->where('status', StudentFeeAssignmentItem::ACTIVE)
+            ->whereHas('assignment', fn ($query) => $query
+                ->where('school_id', $schoolId)
+                ->whereIn('student_id', $students->pluck('id'))
+                ->where('academic_year_id', $filterSessionYearId)
+                ->where('status', StudentFeeAssignment::CONFIRMED))
+            ->with('assignment:id,student_id')
             ->get();
-
-        $feesByClass = [];
-        foreach ($allFees as $fee) {
-            $feesByClass[$fee->class_id][] = $fee;
-        }
-
-        $allFeeIds = $allFees->pluck('id')->toArray();
+        $itemsByStudent = $assignmentItems->groupBy('assignment.student_id');
+        $allFeeIds = $assignmentItems->pluck('fee_id')->filter()->unique()->values()->all();
 
         // ---- Step 4: Batch query compulsory paid ----
         $allCompulsoryPaid = collect();
@@ -222,7 +213,11 @@ class OutstandingFeesController extends Controller
         $paidByStudent = [];
         foreach ($allCompulsoryPaid as $paid) {
             $sid = $paid->student_id;
-            $paidByStudent[$sid]['total'][] = $paid->amount;
+            $currency = strtoupper((string) ($paid->transaction_currency ?: 'MMK'));
+            $paidByStudent[$sid]['records'][] = [
+                'currency' => $currency,
+                'amount' => $paid->original_amount !== null ? (float) $paid->original_amount : (float) $paid->amount,
+            ];
             $paidByStudent[$sid]['dates'][] = $paid->date;
         }
 
@@ -242,58 +237,55 @@ class OutstandingFeesController extends Controller
         $optionalPaidByStudent = [];
         foreach ($allOptionalPaid as $opaid) {
             $sid = $opaid->student_id;
-            $optionalPaidByStudent[$sid][] = $opaid->amount;
+            $optionalPaidByStudent[$sid][] = [
+                'currency' => strtoupper((string) ($opaid->transaction_currency ?: 'MMK')),
+                'amount' => $opaid->original_amount !== null ? (float) $opaid->original_amount : (float) $opaid->amount,
+            ];
         }
 
-        // ---- Step 6: Aggregate in PHP per student ----
+        // ---- Step 6: Aggregate by currency; currencies are never added together ----
         $resultRows = [];
 
         foreach ($students as $stu) {
             $userId  = $stu->user_id;
-            $classId = $studentData[$userId]['class_id'];
-
-            // Fee structure for this student's class
-            $classFees = $feesByClass[$classId] ?? [];
-
-            // Compulsory Expected
-            $compulsoryExpected = 0;
-            $hasFeeStructure = !empty($classFees);
-
-            if ($hasFeeStructure) {
-                foreach ($classFees as $fee) {
-                    $compulsoryItems = $fee->fees_class_type->where('optional', 0);
-                    $compulsoryExpected += $compulsoryItems->sum(function ($item) {
-                        return ($item->fee_amount_mmk > 0) ? $item->fee_amount_mmk : $item->amount;
-                    });
-                }
-            }
-
-            // Compulsory Paid
-            $compulsoryPaid = 0;
+            $snapshots = $itemsByStudent->get($stu->id, collect());
+            $expectedByCurrency = $snapshots->where('optional_snapshot', false)
+                ->groupBy(fn ($item) => strtoupper((string) $item->currency_snapshot))
+                ->map(fn ($items) => (float) $items->sum('amount_snapshot'));
             $lastPaymentDate = '';
+            $paidByCurrency = collect();
             if (isset($paidByStudent[$userId])) {
-                $compulsoryPaid = array_sum($paidByStudent[$userId]['total']);
+                $paidByCurrency = collect($paidByStudent[$userId]['records'] ?? [])->groupBy('currency')
+                    ->map(fn ($records) => (float) collect($records)->sum('amount'));
                 $dates = $paidByStudent[$userId]['dates'];
                 $lastPaymentDate = !empty($dates) ? max($dates) : '';
             }
-
-            // Optional Paid (reference only, not included in outstanding)
-            $optionalPaid = 0;
+            $optionalByCurrency = collect();
             if (isset($optionalPaidByStudent[$userId])) {
-                $optionalPaid = array_sum($optionalPaidByStudent[$userId]);
+                $optionalByCurrency = collect($optionalPaidByStudent[$userId])->groupBy('currency')
+                    ->map(fn ($records) => (float) collect($records)->sum('amount'));
             }
 
-            // Outstanding
-            $outstanding = max(0, $compulsoryExpected - $compulsoryPaid);
+            $currencies = $expectedByCurrency->keys()->merge($paidByCurrency->keys())->merge($optionalByCurrency->keys())->unique()->sort()->values();
+            $currencyTotals = $currencies->mapWithKeys(function ($currency) use ($expectedByCurrency, $paidByCurrency, $optionalByCurrency): array {
+                $expected = (float) $expectedByCurrency->get($currency, 0);
+                $paid = (float) $paidByCurrency->get($currency, 0);
+                return [$currency => [
+                    'expected' => $expected,
+                    'paid' => $paid,
+                    'optional_paid' => (float) $optionalByCurrency->get($currency, 0),
+                    'outstanding' => max(0, $expected - $paid),
+                ]];
+            });
 
             // Status
-            if ($compulsoryExpected == 0) {
+            if ($expectedByCurrency->isEmpty()) {
                 $status = 'no_fee_structure';
-                $statusLabel = __('No Fee Structure');
-            } elseif ($compulsoryPaid == 0 && $compulsoryExpected > 0) {
+                $statusLabel = __('No confirmed receivable snapshot');
+            } elseif ($paidByCurrency->sum() == 0) {
                 $status = 'unpaid';
                 $statusLabel = __('Unpaid');
-            } elseif ($compulsoryPaid > 0 && $outstanding > 0) {
+            } elseif ($currencyTotals->contains(fn ($totals) => $totals['outstanding'] > 0)) {
                 $status = 'partial';
                 $statusLabel = __('Partial');
             } else {
@@ -310,10 +302,8 @@ class OutstandingFeesController extends Controller
                 'section_name'        => $stu->class_section->section->name ?? '',
                 'guardian_name'       => $stu->guardian->full_name ?? '',
                 'contact'             => $stu->guardian->mobile ?? $stu->user->mobile ?? '',
-                'compulsory_expected'  => $compulsoryExpected,
-                'compulsory_paid'     => $compulsoryPaid,
-                'optional_paid'       => $optionalPaid,
-                'outstanding'         => $outstanding,
+                'currency_totals'      => $currencyTotals,
+                'has_outstanding'      => $currencyTotals->contains(fn ($totals) => $totals['outstanding'] > 0),
                 'last_payment_date'   => $lastPaymentDate,
                 'status'              => $status,
                 'status_label'        => $statusLabel,
@@ -328,15 +318,21 @@ class OutstandingFeesController extends Controller
         }
 
         if ($outstandingOnly) {
-            $resultRows = $resultRows->where('outstanding', '>', 0);
+            $resultRows = $resultRows->where('has_outstanding', true);
         }
 
-        // ---- Summary ----
+        // ---- Summary: a separate subtotal for every currency ----
+        $currencySummary = collect();
+        foreach ($resultRows as $row) {
+            foreach ($row['currency_totals'] as $currency => $totals) {
+                $current = $currencySummary->get($currency, ['expected' => 0, 'paid' => 0, 'outstanding' => 0]);
+                foreach (array_keys($current) as $field) $current[$field] += $totals[$field];
+                $currencySummary->put($currency, $current);
+            }
+        }
         $summary = [
             'total_students'    => $resultRows->count(),
-            'total_expected'    => $resultRows->sum('compulsory_expected'),
-            'total_paid'        => $resultRows->sum('compulsory_paid'),
-            'total_outstanding' => $resultRows->sum('outstanding'),
+            'currency_totals'   => $currencySummary,
         ];
 
         return [$resultRows, $summary];

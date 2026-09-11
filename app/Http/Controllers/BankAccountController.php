@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
+use Illuminate\Validation\ValidationException;
 
 class BankAccountController extends Controller
 {
@@ -181,6 +182,7 @@ class BankAccountController extends Controller
         // Compulsory fee income for this account
         $compulsoryFees = CompulsoryFee::with('student:id,first_name,last_name')
             ->where('bank_account_id', $id)
+            ->whereRaw('LOWER(status) = ?', ['success'])
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->orderBy('date', 'desc')
             ->limit(100)
@@ -189,6 +191,7 @@ class BankAccountController extends Controller
         // Optional fee income for this account
         $optionalFees = OptionalFee::with('student:id,first_name,last_name')
             ->where('bank_account_id', $id)
+            ->whereRaw('LOWER(status) = ?', ['success'])
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->orderBy('date', 'desc')
             ->limit(100)
@@ -233,6 +236,7 @@ class BankAccountController extends Controller
         // Load all records (ASC by raw date, then by id for stable ordering)
         $ledgerCompulsory = CompulsoryFee::with('student:id,first_name,last_name')
             ->where('bank_account_id', $id)
+            ->whereRaw('LOWER(status) = ?', ['success'])
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->orderBy('date', 'asc')
             ->orderBy('id', 'asc')
@@ -240,6 +244,7 @@ class BankAccountController extends Controller
 
         $ledgerOptional = OptionalFee::with('student:id,first_name,last_name')
             ->where('bank_account_id', $id)
+            ->whereRaw('LOWER(status) = ?', ['success'])
             ->when($schoolId, fn($q) => $q->where('school_id', $schoolId))
             ->orderBy('date', 'asc')
             ->orderBy('id', 'asc')
@@ -307,7 +312,7 @@ class BankAccountController extends Controller
                 'description'=> $studentName ?: ('Student #' . $fee->student_id),
                 'payee'      => $studentName ?: '-',
                 'ref_id'     => $fee->id,
-                'income'     => (float)$fee->amount,
+                'income'     => app(FundAccountBalanceService::class)->accountCurrencyAmount($fee, $bankAccount),
                 'expense'    => 0,
             ]);
         }
@@ -340,7 +345,7 @@ class BankAccountController extends Controller
                 'description'=> $studentName ?: ('Student #' . $fee->student_id),
                 'payee'      => $studentName ?: '-',
                 'ref_id'     => $fee->id,
-                'income'     => (float)$fee->amount,
+                'income'     => app(FundAccountBalanceService::class)->accountCurrencyAmount($fee, $bankAccount),
                 'expense'    => 0,
             ]);
         }
@@ -352,7 +357,7 @@ class BankAccountController extends Controller
                 'type' => __('Other Income'), 'type_key' => 'other_income',
                 'description' => $income->description, 'payee' => $income->payer,
                 'ref_id' => $income->reference_no ?: ('OI-' . $income->id),
-                'income' => (float) $income->amount, 'expense' => 0,
+                'income' => app(FundAccountBalanceService::class)->accountCurrencyAmount($income, $bankAccount), 'expense' => 0,
             ]);
         }
 
@@ -367,7 +372,7 @@ class BankAccountController extends Controller
                 'payee'      => $expense->category->name ?? '-',
                 'ref_id'     => $expense->id,
                 'income'     => 0,
-                'expense'    => (float)$expense->amount,
+                'expense'    => app(FundAccountBalanceService::class)->accountCurrencyAmount($expense, $bankAccount),
             ]);
         }
 
@@ -494,10 +499,17 @@ class BankAccountController extends Controller
             'notes'               => 'nullable|string|max:1000',
         ]);
 
-        $bankAccount = $access->scope(Auth::user())->findOrFail($id);
-
         try {
             DB::beginTransaction();
+
+            $bankAccount = $access->scope(Auth::user())->whereKey($id)->lockForUpdate()->firstOrFail();
+            $newCurrency = strtoupper((string) $request->currency);
+            if ($newCurrency !== strtoupper((string) $bankAccount->currency)
+                && app(\App\Services\FundAccountHistoryService::class)->hasHistory($bankAccount)) {
+                throw ValidationException::withMessages([
+                    'currency' => [__('Fund Account currency is immutable after financial history exists; use a formal adjustment account.')],
+                ]);
+            }
 
             $schoolId    = Auth::user()->school_id;
 
@@ -528,16 +540,16 @@ class BankAccountController extends Controller
             $balanceChanged = abs($newBalance - $oldBalance) > 0.001;
             $dateChanged = $newBalanceDate !== $oldBalanceDate;
 
+            $adjustmentData = null;
             if ($balanceChanged || $dateChanged) {
                 $reason = $request->adjustment_reason;
                 if (empty(trim($reason ?? ''))) {
-                    return response()->json([
-                        'error'   => true,
-                        'message' => __('Please provide a reason for the opening balance change.'),
-                    ], 422);
+                    throw ValidationException::withMessages([
+                        'adjustment_reason' => [__('Please provide a reason for the opening balance change.')],
+                    ]);
                 }
 
-                \App\Models\BankAccountBalanceAdjustment::create([
+                $adjustmentData = [
                     'bank_account_id'           => $bankAccount->id,
                     'old_opening_balance'       => $oldBalance,
                     'new_opening_balance'       => $newBalance,
@@ -545,13 +557,19 @@ class BankAccountController extends Controller
                     'new_opening_balance_date'  => $newBalanceDate,
                     'changed_by'                => Auth::id(),
                     'reason'                    => trim($reason),
-                ]);
+                ];
             }
 
             $bankAccount->update($data);
+            if ($adjustmentData) {
+                \App\Models\BankAccountBalanceAdjustment::create($adjustmentData);
+            }
 
             DB::commit();
             ResponseService::successResponse(__('Bank account updated successfully'));
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             DB::rollBack();
             ResponseService::logErrorResponse($e, 'BankAccountController -> Update');

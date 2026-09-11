@@ -72,6 +72,9 @@ class FinanceOperatingWriteService
                 'description' => ['required', 'string', 'max:1000'], 'amount' => ['required', 'numeric', 'min:0.01'],
                 'payment_method' => ['required', Rule::in(FeesPaymentService::PAYMENT_METHODS)],
                 'bank_account_id' => ['required', 'integer'], 'reference_no' => ['nullable', 'string', 'max:100'],
+                'transaction_currency' => ['nullable', Rule::in(['MMK', 'USD', 'CNY'])],
+                'original_amount' => ['nullable', 'numeric', 'min:0.01'],
+                'exchange_rate_snapshot' => ['nullable', 'numeric', 'min:0.00000001'],
                 'remark' => ['nullable', 'string', 'max:5000'],
             ])->validate();
             $income = $this->otherIncome->receive($tenant, $data, fn ($source) => $this->audit->record($context, 'other_income', $source->id, 'receive_money'));

@@ -105,6 +105,29 @@ class ExpenseImportServiceTest extends TestCase
         $this->assertStringContainsString('Fund Account', implode('; ', $result['rows'][0]['errors']));
     }
 
+    public function test_mmk_import_rejects_a_foreign_currency_fund_account(): void
+    {
+        $foreign = BankAccount::create([
+            'school_id' => $this->schoolId,
+            'account_name' => 'USD Import Account ' . Str::random(6),
+            'account_type' => 'cash',
+            'currency' => 'USD',
+            'opening_balance' => 0,
+            'is_active' => true,
+        ]);
+        $row = $this->row('Currency mismatch', 'EXP-CURRENCY-' . Str::random(6));
+        $row[7] = $foreign->account_name;
+
+        $result = app(ExpenseImportService::class)->preview(
+            $this->file([$row]),
+            $this->schoolId,
+            $this->admin->id,
+        );
+
+        $this->assertSame(0, $result['summary']['valid']);
+        $this->assertStringContainsString('requires an MMK Fund Account', implode('; ', $result['rows'][0]['errors']));
+    }
+
     public function test_preview_rejects_wrong_headings_and_invalid_rows_without_financial_writes(): void
     {
         $before = Expense::count();

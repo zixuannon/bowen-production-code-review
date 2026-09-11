@@ -36,6 +36,15 @@ class BankAccount extends Model
         'opening_balance_date'  => 'date',
     ];
 
+    protected static function booted(): void
+    {
+        static::updating(static function (BankAccount $account): void {
+            if ($account->isDirty('currency') && app(\App\Services\FundAccountHistoryService::class)->hasHistory($account)) {
+                throw new \DomainException('Fund Account currency is immutable after financial history exists.');
+            }
+        });
+    }
+
     /**
      * Scope by school_id for multi-tenant isolation.
      */

@@ -31,6 +31,22 @@ class FeesPaid extends Model
         'amount_mmk'
     ];
 
+    protected static function booted(): void
+    {
+        static::updating(static function (FeesPaid $payment): void {
+            foreach (['transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk'] as $field) {
+                if ($payment->isDirty($field)) {
+                    throw new \DomainException('FeesPaid FX summary is immutable; each payment uses its own snapshot.');
+                }
+            }
+        });
+    }
+
+    public function fx_snapshots()
+    {
+        return $this->hasMany(FeePaymentFxSnapshot::class, 'fees_paid_id');
+    }
+
 //    protected $appends = ['compulsory_data'];
 
     public function session_year()

@@ -73,25 +73,23 @@ class FundAccountBalanceService
         $accountIds = $accounts->pluck('id');
         $schoolIds = $accounts->pluck('school_id')->unique()->values();
 
-        $compulsoryIncome = $this->groupedSum(
-            CompulsoryFee::query()->whereIn('school_id', $schoolIds),
-            'bank_account_id',
-            $accountIds,
+        $compulsoryIncome = $this->groupedAccountCurrencySum(
+            CompulsoryFee::query()->whereIn('compulsory_fees.school_id', $schoolIds)
+                ->whereRaw('LOWER(compulsory_fees.status) = ?', ['success']),
+            'compulsory_fees', $accountIds,
         );
-        $optionalIncome = $this->groupedSum(
-            OptionalFee::query()->whereIn('school_id', $schoolIds),
-            'bank_account_id',
-            $accountIds,
+        $optionalIncome = $this->groupedAccountCurrencySum(
+            OptionalFee::query()->whereIn('optional_fees.school_id', $schoolIds)
+                ->whereRaw('LOWER(optional_fees.status) = ?', ['success']),
+            'optional_fees', $accountIds,
         );
-        $otherIncome = $this->groupedSum(
-            OtherIncome::query()->whereIn('school_id', $schoolIds),
-            'bank_account_id',
-            $accountIds,
+        $otherIncome = $this->groupedAccountCurrencySum(
+            OtherIncome::query()->whereIn('other_incomes.school_id', $schoolIds),
+            'other_incomes', $accountIds,
         );
-        $expenses = $this->groupedSum(
-            Expense::query()->whereIn('school_id', $schoolIds),
-            'bank_account_id',
-            $accountIds,
+        $expenses = $this->groupedAccountCurrencySum(
+            Expense::query()->whereIn('expenses.school_id', $schoolIds),
+            'expenses', $accountIds,
         );
         $transferIn = $this->groupedSum(
             BankTransfer::query()->completed()->whereIn('school_id', $schoolIds),
@@ -182,5 +180,67 @@ class FundAccountBalanceService
             ->selectRaw("{$accountColumn}, SUM(amount) as total")
             ->groupBy($accountColumn)
             ->pluck('total', $accountColumn);
+    }
+
+    /**
+     * Balance-bearing records are always projected into the Fund Account's own
+     * currency. Legacy rows without an FX snapshot are safe only for MMK
+     * accounts; foreign-currency ambiguity stops the calculation.
+     */
+    private function groupedAccountCurrencySum($query, string $table, Collection $accountIds): Collection
+    {
+        $accountColumn = "{$table}.bank_account_id";
+        $joined = $query->join('bank_accounts', 'bank_accounts.id', '=', $accountColumn)
+            ->whereIn($accountColumn, $accountIds);
+
+        if (!Schema::connection('school')->hasColumn($table, 'transaction_currency')) {
+            if ((clone $joined)->whereRaw("UPPER(bank_accounts.currency) <> 'MMK'")->exists()) {
+                throw new \DomainException('Legacy Fund Account history has no currency snapshot.');
+            }
+            return $joined->selectRaw("{$accountColumn} as account_id, SUM({$table}.amount) as total")
+                ->groupBy($accountColumn)->pluck('total', 'account_id');
+        }
+
+        $invalid = (clone $joined)->where(function ($where) use ($table): void {
+            $where->where(function ($legacy) use ($table): void {
+                $legacy->whereNull("{$table}.transaction_currency")
+                    ->whereRaw("UPPER(bank_accounts.currency) <> 'MMK'");
+            })->orWhere(function ($snapshotted) use ($table): void {
+                $snapshotted->whereNotNull("{$table}.transaction_currency")
+                    ->where(function ($mismatch) use ($table): void {
+                        $mismatch->where(function ($missing) use ($table): void {
+                            $missing->whereNull("{$table}.original_amount")->orWhere("{$table}.original_amount", '<=', 0);
+                        })->whereRaw("UPPER({$table}.transaction_currency) <> 'MMK'")
+                            ->orWhereRaw("UPPER({$table}.transaction_currency) <> UPPER(bank_accounts.currency)");
+                    });
+            });
+        })->exists();
+
+        if ($invalid) {
+            throw new \DomainException('Fund Account history has a missing or mismatched currency snapshot.');
+        }
+
+        return $joined->selectRaw(
+            "{$accountColumn} as account_id, SUM(CASE WHEN {$table}.transaction_currency IS NULL OR (UPPER({$table}.transaction_currency) = 'MMK' AND ({$table}.original_amount IS NULL OR {$table}.original_amount <= 0)) THEN {$table}.amount ELSE {$table}.original_amount END) as total"
+        )->groupBy($accountColumn)->pluck('total', 'account_id');
+    }
+
+    public function accountCurrencyAmount(object $record, BankAccount $account): float
+    {
+        $currency = $record->transaction_currency ?? null;
+        if ($currency === null) {
+            if (strtoupper((string) $account->currency) !== 'MMK') {
+                throw new \DomainException('Legacy transaction has no FX snapshot for this non-MMK Fund Account.');
+            }
+            return (float) $record->amount;
+        }
+        if (strtoupper((string) $currency) !== strtoupper((string) $account->currency)
+            || (($record->original_amount === null || (float) $record->original_amount <= 0)
+                && strtoupper((string) $currency) !== 'MMK')) {
+            throw new \DomainException('Transaction currency snapshot does not match the Fund Account currency.');
+        }
+        return ($record->original_amount === null || (float) $record->original_amount <= 0)
+            ? (float) $record->amount
+            : (float) $record->original_amount;
     }
 }

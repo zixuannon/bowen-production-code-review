@@ -28,7 +28,7 @@ class FinanceTransactionController extends Controller
         ]);
         $data = $register->register(Auth::user(), $filters);
         $accounts = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())
-            ->active()->orderBy('account_name')->get(['id', 'account_name']);
+            ->active()->orderBy('account_name')->get(['id', 'account_name', 'currency']);
         $canReceive = app(FinanceAuthorizationService::class)->can(Auth::user(), 'finance-payment-create');
         $canExpense = app(FinanceAuthorizationService::class)->can(Auth::user(), 'finance-expense-create');
 
@@ -48,6 +48,9 @@ class FinanceTransactionController extends Controller
             'bank_account_id' => ['required', 'integer', Rule::exists('bank_accounts', 'id')->where(fn ($q) => $q
                 ->where('school_id', Auth::user()->school_id)->where('is_active', true)->whereNull('deleted_at'))],
             'reference_no' => ['nullable', 'string', 'max:100'],
+            'transaction_currency' => ['nullable', Rule::in(['MMK', 'USD', 'CNY'])],
+            'original_amount' => ['nullable', 'numeric', 'min:0.01'],
+            'exchange_rate_snapshot' => ['nullable', 'numeric', 'min:0.00000001'],
             'remark' => ['nullable', 'string', 'max:5000'],
         ]);
 

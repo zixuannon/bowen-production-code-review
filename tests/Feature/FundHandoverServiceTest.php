@@ -245,6 +245,15 @@ class FundHandoverServiceTest extends TestCase
     {
         $register = app(FinanceTransactionRegisterService::class);
         $before = $register->register($this->head);
+        $currency = $this->headAccount->currency;
+        $beforeSummary = $before['currencySummaries']->get($currency, [
+            'operating_income' => 0.0,
+            'operating_expense' => 0.0,
+            'internal_in' => 0.0,
+            'internal_out' => 0.0,
+            'operating_net' => 0.0,
+            'net_movement' => 0.0,
+        ]);
         $beforeTransferRows = $before['rows']->where('transaction_type', 'bank_transfer')->count();
         $incomeReference = 'OI-REGISTER-' . $this->head->id;
         $transferReference = 'TR-REGISTER-' . $this->head->id;
@@ -255,18 +264,19 @@ class FundHandoverServiceTest extends TestCase
         FundHandover::create(['school_id' => 1, 'from_account_id' => $this->headAccount->id, 'to_account_id' => $this->cashierAccount->id, 'sender_id' => $this->head->id, 'receiver_id' => $this->cashierA->id, 'amount' => 99, 'handover_date' => '2026-01-02', 'status' => FundHandover::STATUS_PENDING]);
 
         $result = $register->register($this->head);
-        $this->assertSame(200.0, $result['summary']['operating_income'] - $before['summary']['operating_income']);
-        $this->assertSame(50.0, $result['summary']['operating_expense'] - $before['summary']['operating_expense']);
+        $summary = $result['currencySummaries']->get($currency);
+        $this->assertSame(200.0, $summary['operating_income'] - $beforeSummary['operating_income']);
+        $this->assertSame(50.0, $summary['operating_expense'] - $beforeSummary['operating_expense']);
         // An all-account register renders an internal move once, neutrally.
         // It must not look like both money received and money paid.
         $neutralTransfer = $result['rows']->first(fn (array $row) => $row['reference'] === $transferReference);
         $this->assertSame('Internal Transfer', $neutralTransfer['display_type']);
         $this->assertSame(0.0, $neutralTransfer['money_in']);
         $this->assertSame(0.0, $neutralTransfer['money_out']);
-        $this->assertSame(0.0, $result['summary']['internal_in'] - $before['summary']['internal_in']);
-        $this->assertSame(0.0, $result['summary']['internal_out'] - $before['summary']['internal_out']);
-        $this->assertSame(150.0, $result['summary']['operating_net'] - $before['summary']['operating_net']);
-        $this->assertSame(150.0, $result['summary']['net_movement'] - $before['summary']['net_movement']);
+        $this->assertSame(0.0, $summary['internal_in'] - $beforeSummary['internal_in']);
+        $this->assertSame(0.0, $summary['internal_out'] - $beforeSummary['internal_out']);
+        $this->assertSame(150.0, $summary['operating_net'] - $beforeSummary['operating_net']);
+        $this->assertSame(150.0, $summary['net_movement'] - $beforeSummary['net_movement']);
         $this->assertSame($beforeTransferRows + 1, $result['rows']->where('transaction_type', 'bank_transfer')->count());
 
         $sourcePerspective = $register->register($this->head, ['bank_account_id' => $this->headAccount->id, 'reference' => $transferReference]);
@@ -421,7 +431,12 @@ class FundHandoverServiceTest extends TestCase
     public function test_internal_transfers_leave_operating_income_expense_and_net_unchanged(): void
     {
         $register = app(FinanceTransactionRegisterService::class);
-        $before = $register->register($this->head)['summary'];
+        $currency = $this->headAccount->currency;
+        $before = $register->register($this->head)['currencySummaries']->get($currency, [
+            'operating_income' => 0.0,
+            'operating_expense' => 0.0,
+            'operating_net' => 0.0,
+        ]);
 
         app(BankTransferService::class)->create($this->head, [
             'from_account_id' => $this->headAccount->id,
@@ -433,7 +448,7 @@ class FundHandoverServiceTest extends TestCase
         $handover = app(FundHandoverService::class)->create($this->head, $this->payload($this->cashierA, 60));
         app(FundHandoverService::class)->confirm($this->cashierA, $handover->id);
 
-        $after = $register->register($this->head)['summary'];
+        $after = $register->register($this->head)['currencySummaries']->get($currency);
         $this->assertSame($before['operating_income'], $after['operating_income']);
         $this->assertSame($before['operating_expense'], $after['operating_expense']);
         $this->assertSame($before['operating_net'], $after['operating_net']);

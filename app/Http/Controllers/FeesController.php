@@ -1693,6 +1693,10 @@ class FeesController extends Controller
             $exchangeRate = $payment['exchange_rate_snapshot'];
             $originalAmount = $payment['original_amount'];
             $totalAmountMmk = $payment['total_amount'];
+            $bankAccount = app(\App\Services\FinanceAccountAccessService::class)
+                ->authorize(Auth::user(), (int) $payment['bank_account_id']);
+            app(\App\Services\FinancialCurrencyService::class)
+                ->assertAccountCurrency($bankAccount, $transactionCurrency);
 
             // First Store in Fees Paid table to get Fees Paid ID
             $feesPaid = $this->feesPaid->builder()->where([
@@ -1719,13 +1723,21 @@ class FeesController extends Controller
             } else {
                 $feesPaidResult = $this->feesPaid->update($feesPaid->id, [
                     'amount' => $totalAmountMmk + $feesPaid->amount,
-                    'transaction_currency' => $transactionCurrency,
-                    'original_amount' => $originalAmount,
-                    'exchange_rate_snapshot' => $exchangeRate,
-                    'amount_mmk' => $totalAmountMmk,
                 ]);
             }
 
+            $fxSnapshot = \App\Models\FeePaymentFxSnapshot::create([
+                'uuid' => (string) Str::uuid(),
+                'school_id' => Auth::user()->school_id,
+                'fees_paid_id' => $feesPaidResult->id,
+                'bank_account_id' => $bankAccount->id,
+                'payment_type' => \App\Models\FeePaymentFxSnapshot::OPTIONAL,
+                'transaction_currency' => $transactionCurrency,
+                'original_amount' => $originalAmount,
+                'exchange_rate_snapshot' => $exchangeRate,
+                'amount_mmk' => $totalAmountMmk,
+                'paid_at' => date('Y-m-d', strtotime($payment['date'])),
+            ]);
 
             $optionalFeesPaymentData = array();
 
@@ -1734,18 +1746,24 @@ class FeesController extends Controller
             if (!empty($payment['fees_class_type'])) {
                 foreach ($payment['fees_class_type'] as $key => $feesClassType) {
                     if (isset($feesClassType['id'])) {
+                        $lineMmk = (float) $feesClassType['amount'];
                         $optionalFeesPaymentData[] = array(
                             'student_id' => $payment['student_id'],
                             'class_id' => $payment['class_id'],
                             'fees_class_id' => $feesClassType['id'],
                             'mode' => $payment['mode'],
                             'cheque_no' => ($payment['mode'] === 'Cheque') ? ($payment['cheque_no'] ?? null) : null,
-                            'amount' => $feesClassType['amount'],
+                            'amount' => $lineMmk,
                             'fees_paid_id' => $feesPaidResult->id,
                             'date' => date('Y-m-d', strtotime($payment['date'])),
                             'status' => "Success",
                             'school_id' => Auth::user()->school_id,
                             'bank_account_id' => $payment['bank_account_id'],
+                            'fee_payment_fx_snapshot_id' => $fxSnapshot->id,
+                            'transaction_currency' => $transactionCurrency,
+                            'original_amount' => $transactionCurrency === 'MMK' ? $lineMmk : $lineMmk / $exchangeRate,
+                            'exchange_rate_snapshot' => $exchangeRate,
+                            'amount_mmk' => $lineMmk,
                             'created_at' => now(),
                             'updated_at' => now()
                         );

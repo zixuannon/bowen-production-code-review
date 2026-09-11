@@ -17,12 +17,13 @@
         </div>
     </div>
 
-    <div class="row">
-        @foreach(['money_in' => ['Money In', 'success'], 'money_out' => ['Money Out', 'danger'], 'net_movement' => ['Net Movement', 'primary']] as $key => [$label, $class])
-            <div class="col-md-4 grid-margin stretch-card"><div class="card"><div class="card-body"><small>{{ __($label) }}</small><h3 class="text-{{ $class }}">{{ number_format($summary[$key], 2) }}</h3></div></div></div>
-        @endforeach
-    </div>
-    <p class="text-muted small mb-3">{{ __('Operating income: :income | Operating expense: :expense | Internal movement: :in in / :out out. Internal transfers are excluded from operating income and expense.', ['income' => number_format($summary['operating_income'], 2), 'expense' => number_format($summary['operating_expense'], 2), 'in' => number_format($summary['internal_in'], 2), 'out' => number_format($summary['internal_out'], 2)]) }}</p>
+    @foreach($currencySummaries as $currency => $currencySummary)
+        <h5>{{ $currency }}</h5><div class="row">
+            @foreach(['money_in' => ['Money In', 'success'], 'money_out' => ['Money Out', 'danger'], 'net_movement' => ['Net Movement', 'primary']] as $key => [$label, $class])
+                <div class="col-md-4 grid-margin stretch-card"><div class="card"><div class="card-body"><small>{{ __($label) }}</small><h3 class="text-{{ $class }}">{{ number_format($currencySummary[$key], 2) }} {{ $currency }}</h3></div></div></div>
+            @endforeach
+        </div>
+    @endforeach
 
     <div class="card"><div class="card-body">
         <form method="GET" class="row align-items-end mb-3">
@@ -48,7 +49,9 @@
         <div class="form-group"><label>{{ __('Description') }} *</label><input name="description" class="form-control" required></div>
         <div class="form-group"><label>{{ __('Amount') }} *</label><input type="number" min="0.01" step="0.01" name="amount" class="form-control" required></div>
         <div class="form-group"><label>{{ __('Payment Method') }} *</label><select name="payment_method" class="form-control" required>@foreach(\App\Services\FeesPaymentService::PAYMENT_METHODS as $method)<option value="{{ $method }}">{{ $method }}</option>@endforeach</select></div>
-        <div class="form-group"><label>{{ __('Fund Account') }} *</label><select name="bank_account_id" class="form-control" required><option value="">{{ __('Select') }}</option>@foreach($accounts as $account)<option value="{{ $account->id }}">{{ $account->account_name }}</option>@endforeach</select></div>
+        <div class="form-group"><label>{{ __('Fund Account') }} *</label><select name="bank_account_id" id="receive-bank-account" class="form-control" required><option value="">{{ __('Select') }}</option>@foreach($accounts as $account)<option value="{{ $account->id }}" data-currency="{{ $account->currency }}">{{ $account->account_name }} ({{ $account->currency }})</option>@endforeach</select></div>
+        <div class="form-group"><label>{{ __('Transaction Currency') }}</label><input name="transaction_currency" id="receive-currency" class="form-control" readonly required></div>
+        <div class="form-group"><label>{{ __('FX Rate to MMK') }} *</label><input type="number" min="0.00000001" step="0.0001" value="1" name="exchange_rate_snapshot" id="receive-rate" class="form-control" required></div>
         <div class="form-group"><label>{{ __('Reference No.') }}</label><input name="reference_no" class="form-control"></div><div class="form-group"><label>{{ __('Remark') }}</label><textarea name="remark" class="form-control"></textarea></div>
     </div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button class="btn btn-success">{{ __('Receive Money') }}</button></div>
 </form></div></div>
@@ -57,6 +60,6 @@
 
 @section('js')
 @if($canReceive)
-<script>document.getElementById('receive-money-form').addEventListener('submit',async function(e){e.preventDefault();const f=e.currentTarget,box=document.getElementById('receive-money-errors');box.classList.add('d-none');const r=await fetch(f.action,{method:'POST',headers:{'X-CSRF-TOKEN':f.querySelector('[name=_token]').value,'Accept':'application/json'},body:new FormData(f)});const data=await r.json();if(!r.ok||data.error){box.textContent=data.message||Object.values(data.errors||{}).flat().join(' ');box.classList.remove('d-none');return;}window.location.reload();});</script>
+    <script>const receiveAccount=document.getElementById('receive-bank-account'),receiveCurrency=document.getElementById('receive-currency'),receiveRate=document.getElementById('receive-rate');receiveAccount.addEventListener('change',function(){const option=this.options[this.selectedIndex],currency=option.dataset.currency||'';receiveCurrency.value=currency;receiveRate.value=currency==='MMK'?'1':'';receiveRate.readOnly=currency==='MMK';});document.getElementById('receive-money-form').addEventListener('submit',async function(e){e.preventDefault();const f=e.currentTarget,box=document.getElementById('receive-money-errors');box.classList.add('d-none');const r=await fetch(f.action,{method:'POST',headers:{'X-CSRF-TOKEN':f.querySelector('[name=_token]').value,'Accept':'application/json'},body:new FormData(f)});const data=await r.json();if(!r.ok||data.error){box.textContent=data.message||Object.values(data.errors||{}).flat().join(' ');box.classList.remove('d-none');return;}window.location.reload();});</script>
 @endif
 @endsection

@@ -19,6 +19,17 @@ class Expense extends Model
 
     protected $appends = ['taken_leaves'];
 
+    protected static function booted(): void
+    {
+        static::updating(static function (Expense $expense): void {
+            foreach (['amount', 'transaction_currency', 'original_amount', 'exchange_rate_snapshot', 'amount_mmk'] as $field) {
+                if ($expense->isDirty($field)) {
+                    throw new \DomainException('Historical expense amount and FX snapshot fields are immutable; use a formal adjustment.');
+                }
+            }
+        });
+    }
+
     public function scopeOwner()
     {
         if (Auth::user() && Auth::user()->school_id) {

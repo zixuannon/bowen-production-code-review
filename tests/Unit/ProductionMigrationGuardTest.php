@@ -32,6 +32,19 @@ class ProductionMigrationGuardTest extends TestCase
         $guard->assertAllowed('migrate', 'finance:p2-p3-migration-safety', [database_path('migrations/schools')], true, true);
     }
 
+    public function test_round4_currency_history_runner_is_exact_path_allowlisted(): void
+    {
+        $path = database_path('migrations/schools/2026_09_11_000001_add_financial_currency_history_integrity.php');
+        (new ProductionMigrationGuard())->assertAllowed(
+            'migrate',
+            'finance:migrate-currency-history',
+            [$path],
+            true,
+            true,
+        );
+        $this->addToAssertionCount(1);
+    }
+
     public function test_guard_does_not_change_local_or_test_migration_behavior(): void
     {
         (new ProductionMigrationGuard())->assertAllowed('migrate', 'migrate', [], false, false);

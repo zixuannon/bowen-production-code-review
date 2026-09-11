@@ -29,10 +29,11 @@ class OtherIncomeService
         if (!$account->is_active) {
             throw ValidationException::withMessages(['bank_account_id' => __('The selected fund account is inactive.')]);
         }
+        $snapshot = app(FinancialCurrencyService::class)->receiptSnapshot($account, $data);
 
         $reference = trim((string) ($data['reference_no'] ?? ''));
 
-        return DB::connection('school')->transaction(function () use ($actor, $account, $data, $reference, $afterCreate) {
+        return DB::connection('school')->transaction(function () use ($actor, $account, $data, $snapshot, $reference, $afterCreate) {
             if ($reference !== '' && OtherIncome::withTrashed()
                 ->where('school_id', $actor->school_id)
                 ->where('reference_no', $reference)
@@ -46,7 +47,13 @@ class OtherIncomeService
                 'date' => $data['date'],
                 'payer' => $data['payer'],
                 'description' => $data['description'],
-                'amount' => $data['amount'],
+                // Fund Account ledgers use original/account currency. amount is
+                // retained as the immutable MMK-equivalent reporting value.
+                'amount' => $snapshot['amount_mmk'],
+                'transaction_currency' => $snapshot['transaction_currency'],
+                'original_amount' => $snapshot['original_amount'],
+                'exchange_rate_snapshot' => $snapshot['exchange_rate_snapshot'],
+                'amount_mmk' => $snapshot['amount_mmk'],
                 'payment_method' => $data['payment_method'],
                 'reference_no' => $reference ?: null,
                 'remark' => $data['remark'] ?? null,

@@ -171,11 +171,18 @@ final class StudentFeeAssignmentService
     private function snapshot(FeesClassType $template): array
     {
         $currency = strtoupper((string) ($template->fee_currency ?: $template->fee?->currency ?: 'MMK'));
+        $rate = $currency === 'MMK' ? 1.0 : (float) $template->fee_exchange_rate_snapshot;
+        if ($rate <= 0) throw ValidationException::withMessages(['fee_setup' => 'Fee Setup FX snapshot is required before assignment.']);
+        $amountMmk = (float) ($template->fee_amount_mmk > 0 ? $template->fee_amount_mmk : $template->amount);
+        $original = $currency === 'MMK'
+            ? $amountMmk
+            : (float) ($template->fee_original_amount > 0 ? $template->fee_original_amount : $amountMmk / $rate);
         return [
             'uuid' => (string) Str::uuid(), 'fee_id' => $template->fees_id, 'fees_class_type_id' => $template->id,
             'fees_type_id' => $template->fees_type_id, 'description_snapshot' => (string) ($template->fee?->name ?: 'Assigned fee'),
-            'due_date_snapshot' => $template->fee?->getRawOriginal('due_date'), 'amount_snapshot' => (float) $template->amount,
-            'currency_snapshot' => $currency, 'optional_snapshot' => (bool) $template->optional,
+            'due_date_snapshot' => $template->fee?->getRawOriginal('due_date'), 'amount_snapshot' => $original,
+            'currency_snapshot' => $currency, 'exchange_rate_snapshot' => $rate,
+            'amount_mmk_snapshot' => $amountMmk, 'optional_snapshot' => (bool) $template->optional,
             // Preserve the legacy Central identity: Student + FeesClassType.id.
             'source_type' => StudentFeeAssignmentItem::FEES_CLASS_TYPE, 'source_id' => (string) $template->id,
             'status' => StudentFeeAssignmentItem::ACTIVE,

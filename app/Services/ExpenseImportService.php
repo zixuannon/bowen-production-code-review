@@ -97,6 +97,9 @@ class ExpenseImportService
         $finance = $data['finance_category'] === '' ? null : $this->one(FinanceCategory::where('school_id', $schoolId)->where('type', 'expense')->where('name', $data['finance_category']), 'Finance Category', $errors);
         $year = $this->one(SessionYear::where('school_id', $schoolId)->where('name', $data['academic_year']), 'Academic Year', $errors);
         $account = $this->one($this->accounts->accessibleAccounts($actor)->active()->where('account_name', $data['fund_account_name']), 'Fund Account', $errors);
+        if ($account && strtoupper((string) $account->currency) !== 'MMK') {
+            $errors[] = 'The MMK Expense import template requires an MMK Fund Account';
+        }
         if ($data['title'] === '') $errors[] = 'Title is required';
         if (!is_numeric($data['amount']) || (float) $data['amount'] <= 0) $errors[] = 'Amount must be positive';
         if (!in_array($data['payment_method'], ExpenseImportTemplate::PAYMENT_METHODS, true)) $errors[] = 'Payment Method is invalid';
