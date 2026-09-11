@@ -120,9 +120,11 @@ final class StudentImportV2Service
             $database = trim((string) DB::connection('school')->getDatabaseName());
         }
         $school = School::on('mysql')->where('database_name', $database)->first();
+        $pilot = app(SchoolCodeService::class)->resolveCanonical((string) config('student_import_v2.enabled_school_code'));
         if ($school === null
             || (int) $school->id !== (int) $actor->school_id
-            || !hash_equals((string) config('student_import_v2.enabled_school_code'), (string) $school->code)) {
+            || !$pilot
+            || (int) $pilot->id !== (int) $school->id) {
             throw new AuthorizationException('Student Import V2 is currently available only to the approved Zixuan School.');
         }
         return $school;

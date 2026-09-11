@@ -15,7 +15,7 @@ final class ProvisionFrontDeskRole extends Command
 
     public function handle(): int
     {
-        $school = School::query()->where('code', $this->argument('school_code'))->first();
+        $school = School::query()->whereCanonicalCode($this->argument('school_code'))->first();
         if (!$school) {
             $this->error('No matching School.');
             return self::FAILURE;

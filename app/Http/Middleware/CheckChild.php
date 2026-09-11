@@ -28,7 +28,7 @@ class CheckChild {
         if (strpos($url, 'api') !== false) {
             $schoolCode = $request->header('school-code');
             if ($schoolCode) {
-                $school = School::on('mysql')->where('code',$schoolCode)->first();
+                $school = School::on('mysql')->whereCanonicalCode($schoolCode)->first();
 
                 if ($school) {
                     DB::setDefaultConnection('school');

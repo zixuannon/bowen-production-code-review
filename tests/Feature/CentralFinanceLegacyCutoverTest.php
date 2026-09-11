@@ -23,7 +23,7 @@ class CentralFinanceLegacyCutoverTest extends TestCase
         Schema::connection('mysql')->create('central_finance_legacy_migration_records', function ($t): void { $t->increments('id'); $t->string('migration_key')->unique(); $t->unsignedInteger('school_id'); $t->string('source_type'); $t->string('source_id'); $t->string('source_hash'); $t->string('status'); $t->string('central_type')->nullable(); $t->unsignedInteger('central_id')->nullable(); $t->text('metadata')->nullable(); $t->timestamp('migrated_at')->nullable(); $t->timestamps(); });
         foreach ([$this->a,$this->b] as $file) $this->tenant($file);
         DB::connection('mysql')->table('schools')->insert([
-            ['id'=>1,'code'=>'SCH202615','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
+            ['id'=>1,'code'=>'MMBOWEN01','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
             ['id'=>2,'code'=>'SCH202616','database_name'=>$this->b,'installed'=>true,'status'=>'active'],
             ['id'=>3,'code'=>'SCH202619','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
             ['id'=>4,'code'=>'SCH202620','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
@@ -56,7 +56,7 @@ class CentralFinanceLegacyCutoverTest extends TestCase
     public function test_gate_a_scope_is_fixed_to_active_codes_and_never_demo_or_arbitrary_school(): void
     {
         $scope = app(CentralFinanceGateASchoolScope::class);
-        $this->assertSame(['SCH202615', 'SCH202616'], $scope->resolve(['SCH202615', 'SCH202616'])->pluck('code')->all());
+        $this->assertSame(['MMBOWEN01', 'SCH202616'], $scope->resolve(['MMBOWEN01', 'SCH202616'])->pluck('code')->all());
         $this->assertSame(CentralFinanceGateASchoolScope::ACTIVE_CODES, $scope->resolve()->pluck('code')->all());
         $this->expectException(\Illuminate\Auth\Access\AuthorizationException::class);
         $scope->resolve(['SCH20261']);
@@ -65,7 +65,7 @@ class CentralFinanceLegacyCutoverTest extends TestCase
     public function test_read_only_command_has_no_execute_switch_and_never_writes_manifest_rows(): void
     {
         $before = DB::connection('mysql')->table('central_finance_legacy_migration_records')->count();
-        $this->artisan('central-finance:legacy-cutover', ['--school-code' => ['SCH202615', 'SCH202616']])
+        $this->artisan('central-finance:legacy-cutover', ['--school-code' => ['MMBOWEN01', 'SCH202616']])
             ->assertSuccessful();
         $this->assertSame($before, DB::connection('mysql')->table('central_finance_legacy_migration_records')->count());
         $command = Artisan::all()['central-finance:legacy-cutover'];

@@ -57,7 +57,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
-        DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan QA', 'code' => 'SCH202615', 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan QA', 'code' => 'MMBOWEN01', 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('mysql')->table('users')->insert([
             ['id' => 100, 'school_id' => null, 'central_finance_principal_type' => 'central_user', 'first_name' => 'Head', 'last_name' => 'Finance', 'email' => 'head@example.test', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 200, 'school_id' => 1, 'central_finance_principal_type' => 'school_staff_identity', 'first_name' => 'School', 'last_name' => 'Accountant', 'email' => 'accountant@example.test', 'created_at' => now(), 'updated_at' => now()],

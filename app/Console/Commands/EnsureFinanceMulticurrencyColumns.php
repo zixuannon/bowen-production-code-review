@@ -73,10 +73,10 @@ class EnsureFinanceMulticurrencyColumns extends Command
     private function resolveSchoolList(?string $schoolCode): array
     {
         try {
-            $query = DB::connection('mysql')->table('schools')->select(['id', 'name', 'code', 'database_name']);
+            $query = \App\Models\School::on('mysql')->select(['id', 'name', 'code', 'database_name']);
 
             if ($schoolCode) {
-                $query->where('code', $schoolCode);
+                $query->whereCanonicalCode($schoolCode);
             }
 
             $schools = $query->get()->toArray();

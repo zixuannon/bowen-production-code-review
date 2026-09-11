@@ -64,8 +64,8 @@ final class Round5SchemaIntegrityContractTest extends TestCase
             LegacySchemaIntegrityService::ROUND5_MIGRATION,
         ], MigrateRound5IntegritySchema::MIGRATIONS);
         foreach (MigrateRound5IntegritySchema::paths() as $path) $this->assertFileExists($path);
-        $this->assertTrue(MigrateRound5IntegritySchema::validTenantSelection(['SCH202615','SCH202632']));
-        $this->assertFalse(MigrateRound5IntegritySchema::validTenantSelection(['SCH202615','SCH202615']));
+        $this->assertTrue(MigrateRound5IntegritySchema::validTenantSelection(['MMBOWEN01','SCH202632']));
+        $this->assertFalse(MigrateRound5IntegritySchema::validTenantSelection(['MMBOWEN01','MMBOWEN01']));
         $this->assertFalse(MigrateRound5IntegritySchema::validTenantSelection(['unknown']));
 
         (new ProductionMigrationGuard())->assertAllowed('migrate', 'schema:round5-integrity', MigrateRound5IntegritySchema::paths(), true, true);

@@ -18,4 +18,9 @@ class TenantPasswordBroker
     {
         return (new PasswordBrokerManager(app()))->broker('school_users');
     }
+
+    public function invitationBroker(): PasswordBrokerContract
+    {
+        return (new PasswordBrokerManager(app()))->broker('school_staff_invitations');
+    }
 }

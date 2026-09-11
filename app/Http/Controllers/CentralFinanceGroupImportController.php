@@ -53,7 +53,7 @@ final class CentralFinanceGroupImportController extends Controller
 
         return Excel::download(
             new CentralFinanceGroupImportTemplateV2Export($lookups['schools'], $lookups['accounts'], $lookups['categories']),
-            'group-finance-import-template-v2.1.1.xlsx',
+            'group-finance-import-template-v2.2.xlsx',
         );
     }
 

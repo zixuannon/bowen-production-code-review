@@ -35,7 +35,7 @@ class DingTalkLoginController extends Controller
 
         if (!empty($rawSchoolCode)) {
             // 旧入口：验证 school_code 并保存到 session
-            $school = School::on('mysql')->where('code', $rawSchoolCode)->first();
+            $school = School::on('mysql')->whereCanonicalCode($rawSchoolCode)->first();
 
             if (!$school) {
                 return response('Invalid school_code.', 400);
@@ -366,7 +366,7 @@ class DingTalkLoginController extends Controller
         ]);
 
         // 1. 根据 school_code 在主库查找学校
-        $school = School::on('mysql')->where('code', $schoolCode)->first();
+        $school = School::on('mysql')->whereCanonicalCode($schoolCode)->first();
 
         if (!$school) {
             Log::warning('DingTalk bind: school not found by code', ['school_code' => $schoolCode]);

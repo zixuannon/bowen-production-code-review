@@ -147,7 +147,7 @@ class TrasportationApiController extends Controller
             $today = Carbon::now();
             $school_code = $request->header('school-code');
 
-            $school = School::on('mysql')->where('code', $school_code)->first();
+            $school = School::on('mysql')->whereCanonicalCode($school_code)->first();
 
             DB::beginTransaction();
 

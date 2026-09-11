@@ -143,6 +143,44 @@ Finance V2
   regression passes (653 tests / 4,277 assertions; one intentional opt-in
   rehearsal skip). No Production migration, schema/data write, deployment,
   Finance business-logic, Phase 5.5B, or homepage/assets change was made.
+## Operational UX rebase + School Code finalization — local candidate
+
+- Branch `codex/operational-ux-rebased-final` starts exactly from approved
+  Round 3–5 PASS baseline `6e8ce3cb97ab32fb48b866b1e97de156ed8e7220`
+  and semantically reapplies Operational UX commit
+  `f31de0c0c8750acba715831e3994d7b94c928164`; Production is unchanged by this work.
+- Group Finance Import Template V2.2 has School-driven canonical codes,
+  School/document-type category lists, mutually exclusive positive Income or
+  Expense validation, payment-method selection, text-preserved account codes,
+  and a reconciliation-only Statement Balance. The distributed template has no
+  UAT sample rows, while shared accounts retain an explicit School per row.
+- Zixuan's actual canonical `schools.code` migrates from deprecated
+  `SCH202615` to `MMBOWEN01`. The old value is retained only in immutable
+  `school_code_history` audit data and cannot resolve login, API, Finance,
+  import, staff, context, report, or search traffic. Runtime resolution is
+  exact, uppercase-normalized canonical lookup only.
+- New School Codes use the locked zero-padded `MMBOWEN02...` sequence. Super
+  Admin may supply a full `MMBOWEN##` value; server-side validation, uppercase
+  normalization, current-code uniqueness, audited-history reservation, and a
+  sequence row lock are enforced in the same central transaction as School
+  creation.
+- Forgot-password tokens remain single-use at 60 minutes. Staff invitation and
+  first-password tokens use a separate tenant table/broker, expire after 24
+  hours, invalidate older tokens, and preserve School/user ownership checks.
+- The two additive schemas have a default read-only, fixed-tenant,
+  partial-schema-failing exact-path runner. Zixuan ownership and all existing
+  `MMBOWEN` formats are checked before the first MySQL DDL, and every downstream
+  fixed registry now uses `MMBOWEN01` after the identity cutover.
+- Production-shaped disposable MySQL proves the exact migration changes the
+  synthetic Zixuan row to `MMBOWEN01`, records `SCH202615` only in audit
+  history, initializes sequence `MMBOWEN=2`, and creates both unique keys plus
+  the School FK. The fresh invitation-token migration also passes.
+- Changed-surface regression passes (117 tests, 627 assertions). Full regression
+  passes (702 tests, 4,584 assertions; one intentional opt-in rehearsal skip).
+  Local browser acceptance passes homepage, canonical School Code login, and
+  tenant-bound reset/invitation form checks without submitting data.
+- No Production migration, schema/data write, deployment, Phase 5.5B, homepage,
+  or asset change occurred.
 
 ## Round 2 P0B financial integrity — Production
 
@@ -790,7 +828,14 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 ## Backlog
 
-- No active local test-bootstrap blocker. PHP 8.5's `PDO::MYSQL_ATTR_SSL_CA` and PHPUnit XML-schema notices remain non-functional compatibility debt.
+- The historical full fresh-install migration inventory has a pre-existing
+  cross-connection ordering gap: some tenant migrations read central tables,
+  while the 2026-05 multicurrency central migration scans tenant tables. The
+  Operational identity migrations themselves pass fresh, and the full suite
+  passes on the established fully migrated test schema; repair of the legacy
+  bootstrap ordering remains outside this candidate.
+- PHP 8.5's `PDO::MYSQL_ATTR_SSL_CA` and PHPUnit XML-schema notices remain
+  non-functional compatibility debt.
 
 ## Front Desk Pending Collection — Phase 5.5A (local candidate)
 

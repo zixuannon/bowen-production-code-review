@@ -9,6 +9,7 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
 /** @internal Human-readable reference sheet. */
 final class CentralFinanceGroupImportV21LookupSheet implements FromArray, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
@@ -25,6 +26,12 @@ final class CentralFinanceGroupImportV21LookupSheet implements FromArray, Should
             $sheet->freezePane('A2'); $sheet->setAutoFilter("A1:{$lastColumn}".$sheet->getHighestRow());
             $sheet->getStyle("A1:{$lastColumn}1")->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
             $sheet->getStyle("A1:{$lastColumn}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF174A72');
+            foreach ($this->headings as $index => $heading) {
+                if (str_contains($heading, 'Code')) {
+                    $column = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($index + 1);
+                    $sheet->getStyle("{$column}2:{$column}".$sheet->getHighestRow())->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+                }
+            }
         }];
     }
 }

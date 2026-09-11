@@ -34,7 +34,7 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
  */
 final class CentralFinanceGroupImportService
 {
-    public const SCHEMA_VERSION = 'group-finance-v2';
+    public const SCHEMA_VERSION = 'group-finance-v2.2';
     private const MAX_FILE_SIZE = 5_242_880;
 
     public function __construct(
@@ -323,7 +323,7 @@ final class CentralFinanceGroupImportService
         $sheet = Excel::toArray(new CentralFinanceGroupImportFormulaReader(), $file)[0] ?? [];
         if (count($sheet) < 2) throw new InvalidArgumentException('The Group Finance Import must contain a heading row and at least one data row.');
         $headings = array_map(static fn ($value) => trim((string) $value), array_shift($sheet));
-        if ($headings !== (new CentralFinanceGroupImportTemplateV2Export())->headings()) throw new InvalidArgumentException('Group Finance Import headings do not match Template V2.');
+        if (!in_array($headings, [CentralFinanceGroupImportTemplateV2Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::LEGACY_HEADINGS], true)) throw new InvalidArgumentException('Group Finance Import headings do not match Template V2.2 or its supported V2 legacy contract.');
         return array_values(array_filter(
             array_map(static fn (array $values): array => array_combine($headings, array_pad($values, count($headings), null)), $sheet),
             fn (array $row): bool => $this->containsUserSuppliedValue($row),
@@ -362,7 +362,7 @@ final class CentralFinanceGroupImportService
             'summary' => trim((string) ($row['摘要'] ?? '')), 'fund_account_code' => trim((string) ($row['Fund Account Code'] ?? '')),
             'fund_account_type' => trim((string) ($row['Fund Account Type'] ?? '')), 'account_owner' => trim((string) ($row['Account Owner'] ?? '')),
             'category_code' => trim((string) ($row['Category Code'] ?? '')), 'payment_method' => trim((string) ($row['付款方式'] ?? '')),
-            'income' => $income, 'expense' => $expense, 'expected_balance' => $this->decimal($row['余款'] ?? null),
+            'income' => $income, 'expense' => $expense, 'expected_balance' => $this->decimal($row['Statement Balance / 对账余款'] ?? $row['余款'] ?? null),
             'reference_no' => trim((string) ($row['Reference / 单据号'] ?? '')), 'currency' => trim((string) ($row['Currency'] ?? '')),
             'remarks' => trim((string) ($row['备注'] ?? '')), 'document_type' => $type,
         ];
@@ -372,7 +372,7 @@ final class CentralFinanceGroupImportService
     private function validate(CentralFinanceUser $actor, FinanceGroupUser $groupUser, array &$data, array &$projected): array
     {
         $error = fn (string $code, string $message): array => ['result_status' => 'Error', 'error_code' => $code, 'error_message' => $message, 'idempotency_key' => null];
-        $schools = School::on('mysql')->where('code', $data['school_code'])->get();
+        $schools = School::on('mysql')->whereCanonicalCode($data['school_code'])->get();
         if ($data['school_code'] === '' || $schools->count() !== 1) return $error('UNKNOWN_SCHOOL_CODE', 'School Code must exactly identify one registered School.');
         $school = $schools->sole(); $data['school_id'] = (int) $school->id;
         if (!$school->installed || !in_array((string) $school->status, ['1', 'active'], true)) return $error('SCHOOL_INACTIVE', 'The routed School is inactive or not installed.');
@@ -383,7 +383,7 @@ final class CentralFinanceGroupImportService
         if ($data['summary'] === '') return $error('SUMMARY_REQUIRED', '摘要 is required.');
         if (!$data['document_type']) return $error('AMOUNT_ROUTING_INVALID', 'Exactly one of 收入 or 支出 must be greater than zero.');
         if (($data['income'] ?? 0) < 0 || ($data['expense'] ?? 0) < 0) return $error('AMOUNT_INVALID', '收入 and 支出 cannot be negative.');
-        if (!preg_match('/^[A-Za-z0-9 _.-]{2,40}$/', $data['payment_method'])) return $error('PAYMENT_METHOD_INVALID', '付款方式 is invalid under the current Central Finance contract.');
+        if (!in_array($data['payment_method'], FeesPaymentService::PAYMENT_METHODS, true)) return $error('PAYMENT_METHOD_INVALID', '付款方式 must be selected from the supported canonical list.');
         if (!preg_match('/^[A-Za-z0-9_.:-]{1,100}$/', $data['reference_no'])) return $error('REFERENCE_INVALID', 'Reference / 单据号 is required and invalid.');
         try { CarbonImmutable::parse((string) $data['transaction_date'], 'Asia/Yangon'); CentralFinanceCurrency::assertCanonical($data['currency']); } catch (\Throwable) { return $error('DATE_OR_CURRENCY_INVALID', '日期 or Currency is invalid.'); }
         $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->first();
@@ -395,7 +395,8 @@ final class CentralFinanceGroupImportService
         $category = CentralFinanceCategory::on('mysql')->where(['school_id' => $school->id, 'type' => $data['document_type'] === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME, 'category_code' => $data['category_code'], 'is_active' => true])->first();
         if (!$category) return $error('CATEGORY_UNKNOWN', 'Category Code must exactly identify an active Category for the routed School and document type.');
         $data['fund_account_id'] = (int) $account->id; $data['category_id'] = (int) $category->id; $data['amount'] = (float) ($data['document_type'] === 'expense' ? $data['expense'] : $data['income']);
-        $key = 'group-import-v2:'.$school->code.':'.$data['document_type'].':'.$data['reference_no']; $data['idempotency_key'] = $key;
+        $data['school_code'] = (string) $school->code;
+        $key = 'group-import-v2:'.$school->id.':'.$data['document_type'].':'.$data['reference_no']; $data['idempotency_key'] = $key;
         $existing = $data['document_type'] === 'expense'
             ? CentralFinanceExpense::on('mysql')->withTrashed()->where(['school_id' => $school->id, 'reference_no' => $data['reference_no']])->first()
             : CentralFinanceOtherIncome::on('mysql')->withTrashed()->where(['school_id' => $school->id, 'reference_no' => $data['reference_no']])->first();
@@ -405,7 +406,7 @@ final class CentralFinanceGroupImportService
         }
         $projectionKey = $account->id.'|'.$account->currency; $projected[$projectionKey] ??= $this->balances->currentBalance($account);
         $projected[$projectionKey] += $data['document_type'] === 'other_income' ? $data['amount'] : -$data['amount'];
-        if ($data['expected_balance'] !== null && abs($projected[$projectionKey] - $data['expected_balance']) > 0.0001) return $error('BALANCE_ASSERTION_MISMATCH', '余款 does not match the canonical projected account balance and cannot overwrite it.');
+        if ($data['expected_balance'] !== null && abs($projected[$projectionKey] - $data['expected_balance']) > 0.0001) return $error('BALANCE_ASSERTION_MISMATCH', 'Statement Balance / 对账余款 does not match the canonical projected account balance. It is reconciliation-only and cannot overwrite it.');
         return ['result_status' => 'New', 'error_code' => null, 'error_message' => null, 'idempotency_key' => $key];
     }
 

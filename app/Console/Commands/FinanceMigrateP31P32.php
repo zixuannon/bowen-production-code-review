@@ -24,7 +24,7 @@ class FinanceMigrateP31P32 extends Command
 
     private const PRODUCTION_TENANTS = [
         'SCH20261' => 'eschool_saas_1_demo',
-        'SCH202615' => 'eschool_saas_15_zixuan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan',
         'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',
@@ -36,7 +36,7 @@ class FinanceMigrateP31P32 extends Command
     private const REQUIRED_BASE_TABLES = ['migrations', 'schools', 'users', 'expenses', 'bank_accounts'];
 
     protected $signature = 'finance:migrate-p31-p32
-        {--tenant=* : Exact trusted school code(s), e.g. SCH202615; defaults to every trusted registry tenant}
+        {--tenant=* : Exact trusted school code(s), e.g. MMBOWEN01; defaults to every trusted registry tenant}
         {--execute : Apply only the two fixed P3.1/P3.2 migration files}';
 
     protected $description = 'Verify or apply only the Finance P3.1/P3.2 expense-import and Other Income migrations';

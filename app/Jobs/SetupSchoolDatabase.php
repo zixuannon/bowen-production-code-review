@@ -153,20 +153,7 @@ final class SetupSchoolDatabase implements ShouldQueue
         }
 
         try {
-            // Manually write reset token into the school's password_resets table
-            // instead of using Password broker (which caches connections and breaks
-            // in long-running queue workers).
-            $token = Str::random(64);
-            DB::connection('school')->table('password_resets')
-                ->where('email', $user->email)->delete();
-            DB::connection('school')->table('password_resets')->insert([
-                'email'      => $user->email,
-                'token'      => Hash::make($token),
-                'created_at' => now(),
-            ]);
-            $resetUrl = url('/password/reset/' . $token)
-                . '?email=' . urlencode($user->email)
-                . '&school_code=' . $schoolCode;
+            $resetUrl = app(\App\Services\StaffInvitationService::class)->createUrl($user, $schoolCode);
         } finally {
             // Restore previous database connection even if token generation fails
             if ($switched && $previousConnection !== 'school') {
@@ -179,7 +166,7 @@ final class SetupSchoolDatabase implements ShouldQueue
             '{school_admin_name}' => $user->full_name,
             '{code}' => $schoolCode,
             '{email}' => $user->email,
-            '{password}' => "请点击以下链接设置您的登录密码（链接 60 分钟内有效）：\n{$resetUrl}",
+            '{password}' => "请点击以下链接设置您的登录密码（链接 24 小时内有效）：\n{$resetUrl}",
             '{reset_link}' => $resetUrl,
             '{school_name}' => $school->name ?? '',
             '{super_admin_name}' => $settings['super_admin_name'] ?? 'Super Admin',
@@ -195,4 +182,4 @@ final class SetupSchoolDatabase implements ShouldQueue
 
         return $templateContent;
     }
-} 
+}

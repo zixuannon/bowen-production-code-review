@@ -17,7 +17,7 @@ class FinanceMigrateRecordLifecycleContractTest extends TestCase
             '2026_09_01_000002_add_deleted_at_to_fees_class_types',
         ], FinanceMigrateRecordLifecycle::MIGRATIONS);
         self::assertSame([
-            'SCH202615', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632',
+            'MMBOWEN01', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632',
         ], array_keys(FinanceMigrateRecordLifecycle::PRODUCTION_TENANTS));
         self::assertArrayNotHasKey('SCH20261', FinanceMigrateRecordLifecycle::PRODUCTION_TENANTS);
     }
@@ -29,7 +29,7 @@ class FinanceMigrateRecordLifecycleContractTest extends TestCase
         self::assertStringNotContainsString('{--migration', $source);
         self::assertStringNotContainsString('{--database', $source);
         self::assertStringContainsString('Demo, unknown Schools, and database names are refused', $source);
-        self::assertStringContainsString('SCH202615 alone for canary', $source);
+        self::assertStringContainsString('MMBOWEN01 alone for canary', $source);
         self::assertStringContainsString('remaining six active Schools', $source);
     }
 }

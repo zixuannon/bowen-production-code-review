@@ -98,6 +98,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             '2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php',
             '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_09_02_000001_harden_school_codes_for_group_finance_import.php',
+            '2026_09_11_000001_finalize_school_code_identity.php',
             '2026_09_02_000002_add_category_codes_for_group_finance_import.php',
             '2026_09_02_000003_create_central_finance_group_import_previews.php',
             '2026_09_02_000004_add_group_import_confirm_links.php',
@@ -294,6 +295,40 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
     }
 
+    public function test_server_rejects_zero_negative_double_sided_and_unlisted_payment_method_rows(): void
+    {
+        $cases = [
+            ['row' => $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'ZERO', 0, 0), 'code' => 'AMOUNT_ROUTING_INVALID'],
+            ['row' => $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'NEG', -1, 0), 'code' => 'AMOUNT_ROUTING_INVALID'],
+            ['row' => $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'BOTH', 1, 1), 'code' => 'AMOUNT_ROUTING_INVALID'],
+        ];
+        $unlisted = $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'METHOD', 1, 0);
+        $unlisted['付款方式'] = 'Unlisted Method';
+        $cases[] = ['row' => $unlisted, 'code' => 'PAYMENT_METHOD_INVALID'];
+
+        foreach ($cases as $case) {
+            $preview = $this->preview([$case['row']]);
+            $this->assertSame('Error', $preview->rows()->sole()->result_status);
+            $this->assertSame($case['code'], $preview->rows()->sole()->error_code);
+        }
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_statement_balance_is_only_a_reconciliation_assertion_and_never_writes_balance(): void
+    {
+        $matching = $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'BALANCE-OK', 25, 0);
+        $matching['Statement Balance / 对账余款'] = 25;
+        $accepted = $this->preview([$matching]);
+        $this->assertSame('New', $accepted->rows()->sole()->result_status);
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+
+        $mismatch = $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'BALANCE-BAD', 25, 0);
+        $mismatch['Statement Balance / 对账余款'] = 999;
+        $rejected = $this->preview([$mismatch]);
+        $this->assertSame('BALANCE_ASSERTION_MISMATCH', $rejected->rows()->sole()->error_code);
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
     public function test_confirm_failure_after_preview_leaves_no_partial_financial_write_and_marks_batch_failed(): void
     {
         $batch = $this->preview([
@@ -377,7 +412,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertInstanceOf(View::class, $workspace);
         $this->assertSame('central-finance.group-import.index', $workspace->name());
         $this->get(route('central-finance.group-import.template', ['finance_group_id' => $this->group->id]))
-            ->assertDownload('group-finance-import-template-v2.1.1.xlsx');
+            ->assertDownload('group-finance-import-template-v2.2.xlsx');
 
         $schoolActor = $this->schoolOnlyActor();
         $batch = CentralFinanceGroupImportBatch::on('mysql')->create([

@@ -22,7 +22,7 @@ class FinanceFundAccountLegacyRouteTest extends TestCase
     {
         // A null synthetic school id bypasses the unrelated subscription
         // feature check while retaining the tenant-local Spatie role shape
-        // observed for SCH202615: School Admin + expense-list only.
+        // observed for MMBOWEN01: School Admin + expense-list only.
         $user = User::create([
             'first_name' => 'Legacy',
             'last_name' => 'School Admin',

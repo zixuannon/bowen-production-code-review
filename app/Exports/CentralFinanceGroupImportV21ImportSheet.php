@@ -10,9 +10,10 @@ use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 
-/** @internal Sheet implementation for the V2.1 human-friendly template. */
+/** @internal Sheet implementation for the V2.2 human-friendly template. */
 final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithColumnWidths, WithEvents, WithHeadings, WithStrictNullComparison, WithTitle
 {
     private const ENTRY_ROWS = 250;
@@ -49,6 +50,7 @@ final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithCo
             $sheet->getStyle("A2:Q{$lastRow}")->getAlignment()->setVertical('top');
             $sheet->getStyle("D2:D{$lastRow}")->getNumberFormat()->setFormatCode('yyyy-mm-dd');
             $sheet->getStyle("L2:N{$lastRow}")->getNumberFormat()->setFormatCode('#,##0.00');
+            $sheet->getStyle("G2:G{$lastRow}")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
             foreach (['A', 'B', 'H', 'I', 'P'] as $column) {
                 $sheet->getStyle("{$column}2:{$column}{$lastRow}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFEAF1F6');
             }
@@ -61,6 +63,10 @@ final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithCo
             $this->headerComment($sheet, 'H1', 'Auto-filled from the selected Fund Account Code.');
             $this->headerComment($sheet, 'I1', 'Auto-filled from the selected Fund Account Code.');
             $this->headerComment($sheet, 'J1', 'Choose an active Category Code after entering Income or Expense.');
+            $this->headerComment($sheet, 'K1', 'Choose a supported Payment Method from the dropdown.');
+            $this->headerComment($sheet, 'L1', 'Enter a value greater than zero in either Income or Expense, never both.');
+            $this->headerComment($sheet, 'M1', 'Enter a value greater than zero in either Income or Expense, never both.');
+            $this->headerComment($sheet, 'N1', 'Optional reconciliation assertion only. It never sets or changes the Fund Account balance.');
             $this->headerComment($sheet, 'O1', 'Required, editable business reference. Existing duplicate/idempotency rules remain unchanged.');
             $this->headerComment($sheet, 'P1', 'Auto-filled from the selected Fund Account Code.');
             for ($row = 2; $row <= $lastRow; $row++) {
@@ -75,9 +81,18 @@ final class CentralFinanceGroupImportV21ImportSheet implements FromArray, WithCo
                 // including one physical account assigned to multiple schools.
                 // Preview remains the canonical exact School/account validator.
                 $this->listValidation($sheet, "G{$row}", "=INDIRECT(\"FundAccounts_\"&\$B{$row})");
-                $this->listValidation($sheet, "J{$row}", '=CategoryCodes');
+                $this->listValidation($sheet, "J{$row}", "=IF(\$L{$row}>0,INDIRECT(\"Categories_\"&\$B{$row}&\"_income\"),IF(\$M{$row}>0,INDIRECT(\"Categories_\"&\$B{$row}&\"_expense\"),Empty_Options))");
+                $this->listValidation($sheet, "K{$row}", '=Payment_Methods');
+                $this->amountValidation($sheet, "L{$row}", "=OR(L{$row}=\"\",AND(ISNUMBER(L{$row}),L{$row}>0,M{$row}=\"\"))");
+                $this->amountValidation($sheet, "M{$row}", "=OR(M{$row}=\"\",AND(ISNUMBER(M{$row}),M{$row}>0,L{$row}=\"\"))");
             }
         }];
+    }
+
+    private function amountValidation(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet, string $cell, string $formula): void
+    {
+        $validation = $sheet->getCell($cell)->getDataValidation();
+        $validation->setType(DataValidation::TYPE_CUSTOM)->setErrorStyle(DataValidation::STYLE_STOP)->setAllowBlank(true)->setShowInputMessage(true)->setShowErrorMessage(true)->setErrorTitle('Invalid transaction amount')->setError('Enter a number greater than zero in Income or Expense, never both.')->setPromptTitle('One-sided positive amount')->setPrompt('Use exactly one of Income or Expense and enter an amount greater than zero.')->setFormula1($formula);
     }
 
     private function listValidation(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet, string $cell, string $formula): void

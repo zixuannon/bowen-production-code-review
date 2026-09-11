@@ -86,13 +86,10 @@
                                     </div> --}}
 
                                     <div class="form-group col-sm-12 col-md-6">
-                                        <label for="school_domain">{{ __('School Code Prefix')}}</label> <span class="text-danger">*</span>
-                                        <div class="input-group mb-3">
-                                            <input type="text" class="form-control school_code_prefix" id="school_code_prefix" name="school_code_prefix" required placeholder="{{ __('prefix') }}" value="{{ $prefix }}">
-                                            <div class="input-group-append">
-                                                <input type="text" class="input-group-text text-body school_code" id="basic-addon2" name="school_code" value="{{ $school_code }}" readonly>
-                                            </div>
-                                        </div>
+                                        <label for="new_school_code">{{ __('school_code')}}</label> <span class="text-danger">*</span>
+                                        <input type="text" class="form-control school_code" id="new_school_code" name="school_code"
+                                               value="{{ $school_code }}" pattern="[Mm][Mm][Bb][Oo][Ww][Ee][Nn][0-9]{2,}"
+                                               maxlength="64" required autocomplete="off">
                                     </div>
                                 </div>
 

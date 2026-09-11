@@ -140,12 +140,12 @@ class ExistingTenantFinancePermissionBootstrapTest extends TestCase
 
     public function test_command_accepts_only_fixed_active_school_codes_and_refuses_demo_or_database_names(): void
     {
-        $this->assertTrue(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH202615']));
+        $this->assertTrue(BootstrapExistingTenantFinancePermissions::validTenantSelection(['MMBOWEN01']));
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection([]));
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH20261']));
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['mysql']));
         $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['eschool_saas_15_zixuan']));
-        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['SCH202615', 'SCH202615']));
+        $this->assertFalse(BootstrapExistingTenantFinancePermissions::validTenantSelection(['MMBOWEN01', 'MMBOWEN01']));
     }
 
     /** @param array<int, string> $legacyNames

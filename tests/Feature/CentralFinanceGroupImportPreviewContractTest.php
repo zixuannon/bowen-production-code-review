@@ -20,9 +20,10 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
         $this->assertSame([
             '序号', 'School Code', '校区', '日期', '报销人', '摘要', 'Fund Account Code',
             'Fund Account Type', 'Account Owner', 'Category Code', '付款方式', '收入', '支出',
-            '余款', 'Reference / 单据号', 'Currency', '备注',
+            'Statement Balance / 对账余款', 'Reference / 单据号', 'Currency', '备注',
         ], (new CentralFinanceGroupImportTemplateV2Export())->headings());
         $this->assertSame(CentralFinanceGroupImportService::SCHEMA_VERSION, CentralFinanceGroupImportTemplateV2Export::VERSION);
+        $this->assertSame([], (new CentralFinanceGroupImportTemplateV2Export())->array());
     }
 
     public function test_group_template_route_and_export_can_never_fall_back_to_the_student_payment_template(): void
@@ -48,21 +49,21 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
         $this->assertNotContains('Fee Structure Name', $headings);
     }
 
-    public function test_v21_template_keeps_the_import_contract_and_adds_scoped_human_lookup_sheets(): void
+    public function test_v22_template_has_scoped_dropdowns_positive_one_sided_amounts_and_text_codes(): void
     {
         $export = new CentralFinanceGroupImportTemplateV2Export(
             schools: [
-                ['code' => 'SCH202615', 'name' => 'Zixuan'],
+                ['code' => 'MMBOWEN01', 'name' => 'Zixuan'],
                 ['code' => 'SCH202616', 'name' => 'Times City'],
             ],
             accounts: [
-                ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'SCH202615', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
+                ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'MMBOWEN01', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
                 ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'SCH202616', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
                 ['code' => 'HQ-MMK', 'name' => 'HQ MMK', 'school_code' => null, 'account_type' => 'bank', 'owner_type' => 'hq', 'currency' => 'MMK'],
             ],
             categories: [
-                ['school_code' => 'SCH202615', 'type' => 'expense', 'category_code' => 'SUPPLIES-1', 'name' => 'Supplies'],
-                ['school_code' => 'SCH202615', 'type' => 'income', 'category_code' => 'OTHER-1', 'name' => 'Other Income'],
+                ['school_code' => 'MMBOWEN01', 'type' => 'expense', 'category_code' => 'SUPPLIES-1', 'name' => 'Supplies'],
+                ['school_code' => 'MMBOWEN01', 'type' => 'income', 'category_code' => 'OTHER-1', 'name' => 'Other Income'],
             ],
         );
 
@@ -82,24 +83,30 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $this->assertSame('=INDIRECT("FundAccounts_"&$B2)', $import->getCell('G2')->getDataValidation()->getFormula1());
             $this->assertTrue($import->getCell('C2')->getDataValidation()->getShowDropDown());
             $this->assertTrue($import->getCell('G2')->getDataValidation()->getShowDropDown());
-            $this->assertSame('=CategoryCodes', $import->getCell('J2')->getDataValidation()->getFormula1());
+            $this->assertSame('=IF($L2>0,INDIRECT("Categories_"&$B2&"_income"),IF($M2>0,INDIRECT("Categories_"&$B2&"_expense"),Empty_Options))', $import->getCell('J2')->getDataValidation()->getFormula1());
+            $this->assertSame('=Payment_Methods', $import->getCell('K2')->getDataValidation()->getFormula1());
+            $this->assertSame('custom', $import->getCell('L2')->getDataValidation()->getType());
+            $this->assertSame('=OR(L2="",AND(ISNUMBER(L2),L2>0,M2=""))', $import->getCell('L2')->getDataValidation()->getFormula1());
+            $this->assertSame('=OR(M2="",AND(ISNUMBER(M2),M2>0,L2=""))', $import->getCell('M2')->getDataValidation()->getFormula1());
+            $this->assertSame('@', $import->getStyle('G2')->getNumberFormat()->getFormatCode());
             $this->assertNull($import->getCell('O2')->getValue());
             $this->assertSame('hidden', $workbook->getSheetByName('Validation Lists')->getSheetState());
             $this->assertNotNull($workbook->getNamedRange('SchoolCodes'));
             $this->assertNotNull($workbook->getNamedRange('FundAccountCodes'));
             $this->assertNotNull($workbook->getNamedRange('CategoryCodes'));
-            $this->assertNotNull($workbook->getNamedRange('FundAccounts_SCH202615'));
+            $this->assertNotNull($workbook->getNamedRange('Payment_Methods'));
+            $this->assertNotNull($workbook->getNamedRange('FundAccounts_MMBOWEN01'));
             $this->assertNotNull($workbook->getNamedRange('FundAccounts_SCH202616'));
-            $this->assertNotNull($workbook->getNamedRange('Categories_SCH202615_expense'));
+            $this->assertNotNull($workbook->getNamedRange('Categories_MMBOWEN01_expense'));
 
-            $zixuanAccounts = $workbook->getNamedRange('FundAccounts_SCH202615');
+            $zixuanAccounts = $workbook->getNamedRange('FundAccounts_MMBOWEN01');
             $timesCityAccounts = $workbook->getNamedRange('FundAccounts_SCH202616');
             $zixuanRange = str_replace('$', '', preg_replace('/^.*!/', '', $zixuanAccounts->getRange()));
             $timesCityRange = str_replace('$', '', preg_replace('/^.*!/', '', $timesCityAccounts->getRange()));
             $this->assertContains('SHARED-CASH', array_column($zixuanAccounts->getWorksheet()->rangeToArray($zixuanRange), 0));
             $this->assertContains('SHARED-CASH', array_column($timesCityAccounts->getWorksheet()->rangeToArray($timesCityRange), 0));
 
-            $upload = new UploadedFile($path, 'group-finance-import-template-v2.1.xlsx', null, null, true);
+            $upload = new UploadedFile($path, 'group-finance-import-template-v2.2.xlsx', null, null, true);
             $imported = Excel::toArray([], $upload)[0];
             $this->assertSame(CentralFinanceGroupImportTemplateV2Export::HEADINGS, $imported[0]);
             $this->assertNotEmpty(array_filter(array_slice($imported, 1), static fn (array $row): bool => collect($row)->filter(static fn ($value): bool => $value !== null && trim((string) $value) !== '')->isNotEmpty()));
@@ -126,9 +133,9 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
                 $reopened->disconnectWorksheets();
             }
 
-            $parsed = $parser->invoke(app(CentralFinanceGroupImportService::class), new UploadedFile($path, 'group-finance-import-template-v2.1.xlsx', null, null, true));
+            $parsed = $parser->invoke(app(CentralFinanceGroupImportService::class), new UploadedFile($path, 'group-finance-import-template-v2.2.xlsx', null, null, true));
             $this->assertCount(1, $parsed);
-            $this->assertSame('SCH202615', $parsed[0]['School Code']);
+            $this->assertSame('MMBOWEN01', $parsed[0]['School Code']);
             $this->assertSame('cash', $parsed[0]['Fund Account Type']);
             $this->assertSame('school', $parsed[0]['Account Owner']);
             $this->assertSame('MMK', $parsed[0]['Currency']);
@@ -137,13 +144,13 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $legacyPath = tempnam(sys_get_temp_dir(), 'group-import-v2-');
             $legacy = new Spreadsheet();
             $legacy->getActiveSheet()->fromArray([
-                CentralFinanceGroupImportTemplateV2Export::HEADINGS,
-                ['1', 'SCH202615', 'Zixuan', '2026-09-02', 'Claimant', 'Direct V2 row', 'ZIX-CASH', 'cash', 'school', 'SUPPLIES-1', 'Cash', '', '100', '', 'REF-DIRECT', 'MMK', ''],
+                CentralFinanceGroupImportTemplateV2Export::LEGACY_HEADINGS,
+                ['1', 'MMBOWEN01', 'Zixuan', '2026-09-02', 'Claimant', 'Direct V2 row', 'ZIX-CASH', 'cash', 'school', 'SUPPLIES-1', 'Cash', '', '100', '', 'REF-DIRECT', 'MMK', ''],
             ]);
             IOFactory::createWriter($legacy, 'Xlsx')->save($legacyPath);
             try {
                 $direct = $parser->invoke(app(CentralFinanceGroupImportService::class), new UploadedFile($legacyPath, 'group-finance-import-template-v2.xlsx', null, null, true));
-                $this->assertSame('SCH202615', $direct[0]['School Code']);
+                $this->assertSame('MMBOWEN01', $direct[0]['School Code']);
                 $this->assertSame('cash', $direct[0]['Fund Account Type']);
                 $this->assertSame('REF-DIRECT', $direct[0]['Reference / 单据号']);
             } finally {

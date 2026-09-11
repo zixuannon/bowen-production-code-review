@@ -32,7 +32,7 @@ class DifyTokenMiddleware
         }
 
         // 2. Look up school in main database
-        $school = School::on('mysql')->where('code', $schoolCode)->first();
+        $school = School::on('mysql')->whereCanonicalCode($schoolCode)->first();
         if (!$school) {
             return response()->json([
                 'success' => false,

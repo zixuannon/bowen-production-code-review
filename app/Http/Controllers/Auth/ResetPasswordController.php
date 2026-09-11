@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 
 
 class ResetPasswordController extends Controller
@@ -44,13 +45,14 @@ class ResetPasswordController extends Controller
     {
         $request->validate(array_merge($this->rules(), [
             'school_code' => ['required', 'string', 'max:64'],
+            'purpose' => ['nullable', Rule::in(['password_reset', 'staff_invitation'])],
         ]), $this->validationErrorMessages());
 
         // Resolve the submitted code only through the central registry before
         // selecting a tenant connection. The broker then finds the user inside
         // that tenant and we additionally require the user's school_id to match.
         $school = School::on('mysql')
-            ->where('code', $request->school_code)
+            ->whereCanonicalCode($request->school_code)
             ->where('installed', 1)
             ->where('status', 1)
             ->first();
@@ -80,7 +82,10 @@ class ResetPasswordController extends Controller
                 return $this->sendResetFailedResponse($request, Password::INVALID_USER);
             }
 
-            $response = $this->broker()->reset(
+            $broker = $request->input('purpose', 'password_reset') === 'staff_invitation'
+                ? app(TenantPasswordBroker::class)->invitationBroker()
+                : $this->broker();
+            $response = $broker->reset(
                 $this->credentials($request), function ($user, $password) {
                     $this->resetPassword($user, $password);
                 }

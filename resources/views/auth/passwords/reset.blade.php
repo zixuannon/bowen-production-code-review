@@ -12,6 +12,7 @@
                         @csrf
 
                         <input type="hidden" name="token" value="{{ $token }}">
+                        <input type="hidden" name="purpose" value="{{ request('purpose', 'password_reset') }}">
 
                         <div class="row mb-3">
                             <label for="email" class="col-md-4 col-form-label text-md-end">{{ __('Email Address') }}</label>
@@ -95,6 +96,7 @@
                         <form method="POST" action="{{ route('password.update') }}">
                             @csrf
                             <input type="hidden" name="token" value="{{ $token }}">
+                            <input type="hidden" name="purpose" value="{{ request('purpose', 'password_reset') }}">
 
                             <div class="form-group">
                                 <label for="school_code">{{ __('school_code') }}</label>

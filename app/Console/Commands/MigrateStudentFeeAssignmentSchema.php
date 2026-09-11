@@ -19,12 +19,12 @@ final class MigrateStudentFeeAssignmentSchema extends Command
 
     /** Demo is intentionally absent. Keep this exact release allowlist. */
     public const PRODUCTION_TENANTS = [
-        'SCH202615' => 'eschool_saas_15_zixuan', 'SCH202616' => 'eschool_saas_17_bahan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan', 'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys', 'SCH202620' => 'eschool_saas_20_',
         'SCH202621' => 'eschool_saas_21_', 'SCH202631' => 'eschool_saas_31_zixuanyang',
         'SCH202632' => 'eschool_saas_32_',
     ];
-    private const CANARY = 'SCH202615';
+    private const CANARY = 'MMBOWEN01';
 
     protected $signature = 'finance:migrate-student-fee-assignments
         {--tenant=* : Exact trusted School Code(s); database names are refused}
@@ -63,12 +63,9 @@ final class MigrateStudentFeeAssignmentSchema extends Command
     private function validateRegistry(array $trusted): bool
     {
         if (app()->environment('production') && $trusted !== self::PRODUCTION_TENANTS) return $this->reject('Production trusted tenant mapping differs from the fixed active-school allowlist.');
-        try { $rows = DB::connection('mysql')->table('schools')->whereIn('code', array_keys($trusted))->whereNull('deleted_at')->whereNotNull('database_name')->orderBy('code')->get(['code','database_name']); }
+        try { $rows = app(\App\Services\SchoolCodeService::class)->resolveTrustedRegistry($trusted); }
         catch (\Throwable) { return $this->reject('Trusted central School registry is unavailable.'); }
-        $actual = [];
-        foreach ($rows as $row) { if (isset($actual[$row->code])) return $this->reject('Trusted central School registry has an ambiguous School Code.'); $actual[$row->code] = $row->database_name; }
-        $expected = $trusted; ksort($actual); ksort($expected);
-        return $actual === $expected ? true : $this->reject('Trusted central School registry does not match the approved tenant mapping.');
+        return $rows !== null ? true : $this->reject('Trusted central School registry does not match the approved tenant mapping.');
     }
 
     /** @param array<string,string> $trusted @return list<string>|null */

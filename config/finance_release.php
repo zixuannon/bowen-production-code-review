@@ -8,7 +8,7 @@ return [
      */
     'p31_p32_tenants' => [
         'SCH20261' => 'eschool_saas_1_demo',
-        'SCH202615' => 'eschool_saas_15_zixuan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan',
         'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',

@@ -5,6 +5,7 @@ namespace App\Models;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use App\Traits\DateFormatTrait;
@@ -40,6 +41,23 @@ class School extends Model
 
     public function user(){
         return $this->belongsTo(User::class,'admin_id')->withTrashed();
+    }
+
+    public function codeHistory()
+    {
+        return $this->hasMany(SchoolCodeHistory::class);
+    }
+
+    /** Runtime identity accepts only the current canonical School Code. */
+    public function scopeWhereCanonicalCode(Builder $query, string $code): Builder
+    {
+        return $query->where('schools.code', strtoupper(trim($code)));
+    }
+
+    /** Canonical codes are always stored uppercase and whitespace-free. */
+    public function setCodeAttribute($value): void
+    {
+        $this->attributes['code'] = strtoupper(trim((string) $value));
     }
 
     public function subscription()

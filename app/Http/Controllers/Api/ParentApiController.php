@@ -121,7 +121,7 @@ class ParentApiController extends Controller
             ResponseService::validationError($validator->errors()->first());
         }
 
-        $school = School::on('mysql')->where('code', $request->school_code)->first();
+        $school = School::on('mysql')->whereCanonicalCode($request->school_code)->first();
 
         if ($school) {
             DB::setDefaultConnection('school');

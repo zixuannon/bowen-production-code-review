@@ -1,5 +1,14 @@
 # eSchool Finance V2 Roadmap
 
+## Operational UX & Identity — local candidate
+
+- [x] Group Finance Import Template V2.2 validations and clean lookup data
+- [x] Canonical School Code redesign with Zixuan `MMBOWEN01` and locked sequence
+- [x] Runtime identity accepts only current, uppercase-normalized canonical codes; legacy codes are audit-only
+- [x] Tenant-bound 60-minute password reset and separate 24-hour staff invitation lifecycle
+- [x] Exact-path additive migration runner, focused tests, fresh MySQL, browser smoke, and full regression
+- [ ] Production migration/deployment requires a separate Human Gate
+
 ## P0 — Money Integrity
 
 - [x] Income must link to Fund Account

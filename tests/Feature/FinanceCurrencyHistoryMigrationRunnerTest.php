@@ -22,7 +22,7 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
         $this->school = config('database.connections.school');
         $central = $this->database();
         $this->trusted = [
-            'SCH202615' => $this->database(),
+            'MMBOWEN01' => $this->database(),
             'SCH202616' => $this->database(),
             'SCH202619' => $this->database(),
         ];
@@ -30,9 +30,9 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
             'driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true,
         ];
         Config::set('database.connections.mysql', $sqlite($central));
-        Config::set('database.connections.school', $sqlite($this->trusted['SCH202615']));
+        Config::set('database.connections.school', $sqlite($this->trusted['MMBOWEN01']));
         Config::set('finance_release.currency_history_tenants', $this->trusted);
-        Config::set('finance_release.currency_history_canary', 'SCH202615');
+        Config::set('finance_release.currency_history_canary', 'MMBOWEN01');
         DB::purge('mysql');
         DB::purge('school');
         DB::setDefaultConnection('mysql');
@@ -65,7 +65,7 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
     public function test_runner_has_the_fixed_non_demo_allowlist_and_exact_migration(): void
     {
         $this->assertSame(
-            ['SCH202615', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632'],
+            ['MMBOWEN01', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632'],
             array_keys(FinanceMigrateCurrencyHistory::PRODUCTION_TENANTS),
         );
         $this->assertArrayNotHasKey('SCH20261', FinanceMigrateCurrencyHistory::PRODUCTION_TENANTS);
@@ -79,7 +79,7 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
     {
         $this->artisan('finance:migrate-currency-history')->assertExitCode(0);
         foreach ($this->trusted as $database) $this->assertFalse($this->complete($database));
-        $this->artisan('finance:migrate-currency-history', ['--tenant' => [$this->trusted['SCH202615']]])->assertExitCode(1);
+        $this->artisan('finance:migrate-currency-history', ['--tenant' => [$this->trusted['MMBOWEN01']]])->assertExitCode(1);
         $this->artisan('finance:migrate-currency-history', ['--tenant' => ['UNKNOWN']])->assertExitCode(1);
     }
 
@@ -91,9 +91,9 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
         $this->assertFalse($this->complete($this->trusted['SCH202616']));
 
         $this->artisan('finance:migrate-currency-history', [
-            '--tenant' => ['SCH202615'], '--execute' => true,
+            '--tenant' => ['MMBOWEN01'], '--execute' => true,
         ])->assertExitCode(0);
-        $this->assertTrue($this->complete($this->trusted['SCH202615']));
+        $this->assertTrue($this->complete($this->trusted['MMBOWEN01']));
 
         $this->artisan('finance:migrate-currency-history', [
             '--tenant' => ['SCH202616', 'SCH202619'], '--execute' => true,
@@ -104,10 +104,10 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
 
     public function test_partial_schema_fails_closed_without_recording_migration(): void
     {
-        $database = $this->trusted['SCH202615'];
+        $database = $this->trusted['MMBOWEN01'];
         $this->on($database, fn () => Schema::connection('school')->create('fee_payment_fx_snapshots', fn ($table) => $table->increments('id')));
 
-        $this->artisan('finance:migrate-currency-history', ['--tenant' => ['SCH202615']])->assertExitCode(1);
+        $this->artisan('finance:migrate-currency-history', ['--tenant' => ['MMBOWEN01']])->assertExitCode(1);
 
         $recorded = $this->on($database, fn () => DB::connection('school')->table('migrations')
             ->where('migration', FinanceMigrateCurrencyHistory::MIGRATION)->exists());

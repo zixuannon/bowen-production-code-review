@@ -7,5 +7,5 @@
  * silently changing a School's navigation before its UX rollout is approved.
  */
 return [
-    'school_finance_navigation_rollout_codes' => ['SCH202615'],
+    'school_finance_navigation_rollout_codes' => ['MMBOWEN01'],
 ];

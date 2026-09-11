@@ -11,7 +11,7 @@ Finance cutover.
 - The tenant `students.central_finance_source_uuid` migration.
 - Trusted-registry Student Profile reconciliation and an explicit future
   backfill/sync command.
-- A fixed active-school code allowlist: `SCH202615`, `SCH202616`,
+- A fixed active-school code allowlist: `MMBOWEN01`, `SCH202616`,
   `SCH202619`, `SCH202620`, `SCH202621`, `SCH202631`, `SCH202632`.
 - A read-only legacy-cutover inventory/reconciliation command. It has no
   execute mode and cannot write a migration manifest or Finance document.

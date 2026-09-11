@@ -95,7 +95,7 @@ Verify each tenant after migration.
 ### Zixuan Student Import V2.1 targeted runner
 
 `student-import-v2:migrate` is verification-only by default and is limited to
-the trusted Zixuan registry code `SCH202615`. The V2.1 tenant migration is
+the trusted Zixuan registry code `MMBOWEN01`. The V2.1 tenant migration is
 forward-only: it makes `users.email` and `users.last_name` nullable and adds
 `students.notes`, without rewriting historical users or Finance records.
 Before any approved execution, verify a tenant backup, the exact migration
@@ -120,6 +120,29 @@ stop. Never auto-delete or merge a conflicting Production row. `--execute`
 requires a separate Production migration Human Gate, backup, reviewed data
 remediation where applicable, and a fresh read-only rerun immediately before
 execution.
+
+### Operational UX & Identity targeted runner
+
+`operational-identity:migrate` is the only candidate runner for the School Code
+finalization and staff-invitation token schemas. It is read-only by default,
+uses the fixed seven-School Production registry, and permits only these exact
+additive migrations:
+
+- central `2026_09_11_000001_finalize_school_code_identity`
+- tenant `2026_09_11_000001_create_staff_invitation_tokens_table`
+
+The central migration verifies the legacy value belongs to the approved Zixuan
+tenant, changes that one School row to canonical `MMBOWEN01`, stores
+`SCH202615` only in immutable audit history, and initializes the locked
+`MMBOWEN02...` sequence. It is not a bulk string replacement and the old value
+is never a runtime alias. Registry and format validation happen before the
+first DDL. The runner refuses registry mismatch, missing migration history, and
+partial table/column/index/FK states. Apply this exact central identity migration
+before any downstream runner whose fixed registry now names `MMBOWEN01`.
+`--execute` is a Production schema-migration Human Gate and must follow backup
+plus a captured zero-write preflight; never substitute broad `migrate` or
+`migrate:school`. The canonical identity migration is forward-only; preserve its
+audit history and use an audited forward fix rather than rollback.
 
 ### Finance P2/P3 targeted runner
 
@@ -150,7 +173,7 @@ php artisan finance:migrate-p31-p32
 ```
 
 After a new Human Gate, a canary would use
-`php artisan finance:migrate-p31-p32 --tenant=SCH202615 --execute`; all known
+`php artisan finance:migrate-p31-p32 --tenant=MMBOWEN01 --execute`; all known
 tenants require a separately approved `--execute` invocation. The runner
 refuses partial, history/schema-inconsistent, or one-applied/one-absent states,
 and verifies migration 000002 completely before it can run 000001. It restores
@@ -174,7 +197,7 @@ php artisan finance:migrate-currency-history
 ```
 
 After backup and a Production migration Human Gate, execute Zixuan canary alone
-with `--tenant=SCH202615 --execute`, verify migration history, columns, foreign
+with `--tenant=MMBOWEN01 --execute`, verify migration history, columns, foreign
 keys, application health, and zero unexpected financial writes, then execute
 exactly the remaining allowlisted School codes. Never use generic `migrate`,
 `migrate:school`, restore/updater migration paths, or a raw tenant database

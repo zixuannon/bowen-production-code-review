@@ -34,7 +34,7 @@ class DifyTokenCreate extends Command
         $schoolCode = $this->argument('school-code');
 
         // Look up school
-        $school = School::on('mysql')->where('code', $schoolCode)->first();
+        $school = School::on('mysql')->whereCanonicalCode($schoolCode)->first();
 
         if (!$school) {
             $this->error("学校不存在: {$schoolCode}");

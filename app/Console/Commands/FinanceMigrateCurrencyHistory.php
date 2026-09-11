@@ -15,13 +15,13 @@ final class FinanceMigrateCurrencyHistory extends Command
 
     /** Demo is intentionally absent. Keep this exact release allowlist. */
     public const PRODUCTION_TENANTS = [
-        'SCH202615' => 'eschool_saas_15_zixuan', 'SCH202616' => 'eschool_saas_17_bahan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan', 'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys', 'SCH202620' => 'eschool_saas_20_',
         'SCH202621' => 'eschool_saas_21_', 'SCH202631' => 'eschool_saas_31_zixuanyang',
         'SCH202632' => 'eschool_saas_32_',
     ];
 
-    private const CANARY = 'SCH202615';
+    private const CANARY = 'MMBOWEN01';
 
     protected $signature = 'finance:migrate-currency-history
         {--tenant=* : Exact trusted School Code(s); database names are refused}

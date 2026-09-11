@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Services\FeesPaymentService;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithTitle;
@@ -17,18 +18,18 @@ final class CentralFinanceGroupImportV21ValidationListsSheet implements FromArra
     public function title(): string { return 'Validation Lists'; }
     public function array(): array
     {
-        $rows = [['School Code', 'School Name', 'Fund Account Code', 'Fund Account Type', 'Account Owner', 'Currency', 'Category Code', 'Category School', 'Category Type']];
-        $max = max(count($this->schools), count($this->accounts), count($this->categories), 1);
+        $rows = [['School Code', 'School Name', 'Fund Account Code', 'Fund Account Type', 'Account Owner', 'Currency', 'Category Code', 'Category School', 'Category Type', 'Payment Method']];
+        $max = max(count($this->schools), count($this->accounts), count($this->categories), count(FeesPaymentService::PAYMENT_METHODS), 1);
         for ($index = 0; $index < $max; $index++) {
             $school = $this->schools[$index] ?? []; $account = $this->accounts[$index] ?? []; $category = $this->categories[$index] ?? [];
-            $rows[] = [$school['code'] ?? '', $school['name'] ?? '', $account['code'] ?? '', $account['account_type'] ?? '', $account['owner_type'] ?? '', $account['currency'] ?? '', $category['category_code'] ?? '', $category['school_code'] ?? '', $category['type'] ?? ''];
+            $rows[] = [$school['code'] ?? '', $school['name'] ?? '', $account['code'] ?? '', $account['account_type'] ?? '', $account['owner_type'] ?? '', $account['currency'] ?? '', $category['category_code'] ?? '', $category['school_code'] ?? '', $category['type'] ?? '', FeesPaymentService::PAYMENT_METHODS[$index] ?? ''];
         }
         return $rows;
     }
     public function registerEvents(): array
     {
         return [AfterSheet::class => function (AfterSheet $event): void {
-            $sheet = $event->sheet->getDelegate(); $workbook = $sheet->getParent(); $max = max(count($this->schools), count($this->accounts), count($this->categories), 1) + 1;
+            $sheet = $event->sheet->getDelegate(); $workbook = $sheet->getParent(); $max = max(count($this->schools), count($this->accounts), count($this->categories), count(FeesPaymentService::PAYMENT_METHODS), 1) + 1;
             $workbook->addNamedRange(new NamedRange('SchoolCodes', $sheet, "\$A\$2:\$A\${$max}"));
             $workbook->addNamedRange(new NamedRange('SchoolNames', $sheet, "\$B\$2:\$B\${$max}"));
             $workbook->addNamedRange(new NamedRange('FundAccountCodes', $sheet, "\$C\$2:\$C\${$max}"));
@@ -36,6 +37,9 @@ final class CentralFinanceGroupImportV21ValidationListsSheet implements FromArra
             $workbook->addNamedRange(new NamedRange('FundAccountOwners', $sheet, "\$E\$2:\$E\${$max}"));
             $workbook->addNamedRange(new NamedRange('FundAccountCurrencies', $sheet, "\$F\$2:\$F\${$max}"));
             $workbook->addNamedRange(new NamedRange('CategoryCodes', $sheet, "\$G\$2:\$G\${$max}"));
+            $workbook->addNamedRange(new NamedRange('Payment_Methods', $sheet, '$J$2:$J$'.(count(FeesPaymentService::PAYMENT_METHODS) + 1)));
+            $sheet->setCellValue('N2', '');
+            $workbook->addNamedRange(new NamedRange('Empty_Options', $sheet, '$N$2'));
             $this->addSchoolAccountRanges($workbook, $sheet); $this->addCategoryRanges($workbook, $sheet);
             $sheet->setSheetState(Worksheet::SHEETSTATE_HIDDEN);
         }];

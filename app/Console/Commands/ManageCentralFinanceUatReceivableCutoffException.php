@@ -19,12 +19,12 @@ use Illuminate\Support\Str;
  */
 final class ManageCentralFinanceUatReceivableCutoffException extends Command
 {
-    private const SCHOOL_CODE = 'SCH202615';
+    private const SCHOOL_CODE = 'MMBOWEN01';
     private const REASON = 'Production Finance E2E UAT';
 
     protected $signature = 'central-finance:uat-receivable-cutoff-exception
         {action : enable, disable, or verify}
-        {--school-code= : Trusted School code; only SCH202615 is accepted}
+        {--school-code= : Trusted School code; only MMBOWEN01 is accepted}
         {--student-source-uuid= : Exact Central Student Profile UUID}
         {--authorized-by= : Existing Central Finance user id}
         {--reason= : Required exact approved audit reason}

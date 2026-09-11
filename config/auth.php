@@ -102,6 +102,13 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+        'school_staff_invitations' => [
+            'provider' => 'school_users',
+            'table' => 'staff_invitation_tokens',
+            'connection' => 'school',
+            'expire' => 1440,
+            'throttle' => 60,
+        ],
         // Tenant reset tokens must always use the selected school connection;
         // they must never fall back to whichever default connection was first
         // resolved during the request lifecycle.

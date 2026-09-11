@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 final class MigrateRound5IntegritySchema extends Command
 {
     public const TENANTS = [
-        'SCH202615' => 'eschool_saas_15_zixuan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan',
         'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',

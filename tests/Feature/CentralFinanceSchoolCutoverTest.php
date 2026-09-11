@@ -35,7 +35,7 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         Schema::connection('mysql')->create('model_has_roles', fn (Blueprint $t) => [$t->unsignedBigInteger('role_id'), $t->string('model_type'), $t->unsignedBigInteger('model_id')]);
         foreach (['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php','2026_08_25_000005_add_fresh_start_receivable_cutoff.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([
-            ['id' => 1, 'name' => 'Zixuan', 'code' => 'SCH202615', 'database_name' => 'local_zixuan', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 1, 'name' => 'Zixuan', 'code' => 'MMBOWEN01', 'database_name' => 'local_zixuan', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 2, 'name' => 'Timecity', 'code' => 'SCH202619', 'database_name' => 'local_timecity', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'school_id'=>null,'central_finance_principal_type'=>'central_user','first_name'=>'Head','last_name'=>'Finance','created_at'=>now(),'updated_at'=>now()], ['id'=>101,'school_id'=>1,'central_finance_principal_type'=>'school_staff_identity','first_name'=>'Zixuan','last_name'=>'Accountant','created_at'=>now(),'updated_at'=>now()]]);
@@ -107,7 +107,7 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $zixuan = School::on('mysql')->findOrFail(1);
         $navigation = app(CentralFinanceSchoolFinanceNavigationService::class);
 
-        Config::set('central_finance.school_finance_navigation_rollout_codes', ['SCH202615']);
+        Config::set('central_finance.school_finance_navigation_rollout_codes', ['MMBOWEN01']);
         Config::set('database.connections.school.database', 'local_zixuan');
         $this->assertFalse($navigation->usesCentralFinanceDailyWorkspace());
 

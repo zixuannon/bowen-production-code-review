@@ -467,19 +467,15 @@ class UserService {
 
         $templateContent = $schoolSettings['email-template-staff'] ?? '';
 
-        // Generate password reset token and reset link
-        $token = Password::createToken($user);
         $schoolCode = $user->school->code ?? Auth::user()->school->code;
-        $resetUrl = url('/password/reset/' . $token)
-            . '?email=' . urlencode($user->email)
-            . '&school_code=' . $schoolCode;
+        $resetUrl = app(StaffInvitationService::class)->createUrl($user, $schoolCode);
 
         // Define the placeholders and their replacements
         $placeholders = [
             '{full_name}' => $user->full_name,
             '{code}' => $schoolCode,
             '{email}' => $user->email,
-            '{password}' => "请点击以下链接设置您的登录密码（链接 60 分钟内有效）：\n{$resetUrl}",
+            '{password}' => "请点击以下链接设置您的登录密码（链接 24 小时内有效）：\n{$resetUrl}",
             '{reset_link}' => $resetUrl,
             '{school_name}' => $schoolSettings['school_name'],
             

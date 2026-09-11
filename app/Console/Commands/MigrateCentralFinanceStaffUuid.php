@@ -18,7 +18,7 @@ final class MigrateCentralFinanceStaffUuid extends Command
 
     /** Demo is intentionally absent. Keep this exact production allowlist. */
     public const PRODUCTION_TENANTS = [
-        'SCH202615' => 'eschool_saas_15_zixuan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan',
         'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',
@@ -27,7 +27,7 @@ final class MigrateCentralFinanceStaffUuid extends Command
         'SCH202632' => 'eschool_saas_32_',
     ];
 
-    private const CANARY = 'SCH202615';
+    private const CANARY = 'MMBOWEN01';
     private const ACTIVE_PRODUCTION_ROOT = '/www/wwwroot/43.160.241.126';
     private const PRODUCTION_RELEASES_ROOT = '/www/wwwroot/releases';
 
@@ -116,24 +116,12 @@ final class MigrateCentralFinanceStaffUuid extends Command
         }
 
         try {
-            $rows = DB::connection('mysql')->table('schools')
-                ->whereIn('code', array_keys($trusted))
-                ->whereNull('deleted_at')->whereNotNull('database_name')
-                ->orderBy('code')->get(['code', 'database_name']);
+            $rows = app(\App\Services\SchoolCodeService::class)->resolveTrustedRegistry($trusted);
         } catch (\Throwable) {
             return $this->reject('Trusted central School registry is unavailable.');
         }
 
-        $actual = [];
-        foreach ($rows as $row) {
-            if (isset($actual[$row->code])) {
-                return $this->reject('Trusted central School registry has an ambiguous School Code.');
-            }
-            $actual[$row->code] = $row->database_name;
-        }
-        ksort($actual); $expected = $trusted; ksort($expected);
-
-        return $actual === $expected
+        return $rows !== null
             ? true
             : $this->reject('Trusted central School registry does not match the approved tenant mapping.');
     }

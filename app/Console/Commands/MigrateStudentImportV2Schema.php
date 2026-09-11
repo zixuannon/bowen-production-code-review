@@ -8,11 +8,12 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Services\SchoolCodeService;
 
 /** Targeted, additive-only schema runner for the approved Zixuan V2 pilot. */
 final class MigrateStudentImportV2Schema extends Command
 {
-    public const SCHOOL_CODE = 'SCH202615';
+    public const SCHOOL_CODE = 'MMBOWEN01';
     public const TENANT_MIGRATION = '2026_09_03_000001_create_student_import_identities_table';
     public const TENANT_V21_MIGRATION = '2026_09_03_000002_make_student_import_v21_identity_fields_nullable';
     public const CENTRAL_MIGRATION = '2026_09_03_000002_add_student_code_to_central_finance_student_profiles';
@@ -24,8 +25,8 @@ final class MigrateStudentImportV2Schema extends Command
     {
         $original = config('database.connections.school.database');
         try {
-            $school = DB::connection('mysql')->table('schools')->where('code', self::SCHOOL_CODE)->whereNull('deleted_at')->whereNotNull('database_name')->first(['id', 'code', 'database_name']);
-            if ($school === null || $school->code !== self::SCHOOL_CODE) return $this->fail('Trusted Zixuan School registry row is unavailable or ambiguous.');
+            $school = app(SchoolCodeService::class)->resolveCanonical(self::SCHOOL_CODE);
+            if ($school === null || $school->trashed() || !$school->database_name) return $this->fail('Trusted Zixuan School registry row is unavailable or ambiguous.');
             if (!$this->connect((string) $school->database_name) || !$this->tenantBase()) return self::FAILURE;
 
             $central = $this->centralState(); $tenant = $this->tenantState();

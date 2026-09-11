@@ -130,7 +130,7 @@ class StudentApiController extends Controller
             ResponseService::validationError($validator->errors()->first());
         }
 
-        $school = School::on('mysql')->where('code', $request->school_code)->first();
+        $school = School::on('mysql')->whereCanonicalCode($request->school_code)->first();
 
         if ($school) {
             DB::setDefaultConnection('school');
@@ -210,7 +210,7 @@ class StudentApiController extends Controller
         try {
             $schoolCode = $request->school_code;
             if ($schoolCode) {
-                $school = School::on('mysql')->where('code', $schoolCode)->first();
+                $school = School::on('mysql')->whereCanonicalCode($schoolCode)->first();
             
                 if ($school) {
                     DB::setDefaultConnection('school');

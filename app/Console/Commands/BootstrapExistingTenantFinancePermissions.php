@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\School;
 use App\Services\ExistingTenantFinancePermissionBootstrap;
+use App\Services\SchoolCodeService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +14,7 @@ class BootstrapExistingTenantFinancePermissions extends Command
 {
     /** @var array<string, string> Trusted school-code => tenant database mapping. */
     public const ACTIVE_TENANTS = [
-        'SCH202615' => 'eschool_saas_15_zixuan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan',
         'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',
@@ -39,19 +40,15 @@ class BootstrapExistingTenantFinancePermissions extends Command
         $previousSchoolDatabase = config('database.connections.school.database');
 
         try {
-            $schools = School::on('mysql')
-                ->whereIn('code', $schoolCodes)
-                ->where('status', 1)
-                ->get()
-                ->keyBy('code');
-            if ($schools->count() !== count($schoolCodes)
-                || $schools->contains(fn (School $school) => self::ACTIVE_TENANTS[$school->code] !== $school->database_name)) {
+            $requested = array_intersect_key(self::ACTIVE_TENANTS, array_flip($schoolCodes));
+            $schools = app(SchoolCodeService::class)->resolveTrustedRegistry($requested);
+            if ($schools === null || collect($schools)->contains(fn (School $school): bool => !in_array((string) $school->status, ['1', 'active'], true))) {
                 return $this->fail('Trusted central registry does not contain exactly the requested active tenants; refused.');
             }
 
             // Preflight every selected tenant before the first permission write.
             foreach ($schoolCodes as $schoolCode) {
-                $school = $schools->get($schoolCode);
+                $school = $schools[$schoolCode];
                 $tenant = $school->database_name;
                 if (!$this->connect($tenant)) {
                     return self::FAILURE;
@@ -74,7 +71,7 @@ class BootstrapExistingTenantFinancePermissions extends Command
             }
 
             foreach ($schoolCodes as $schoolCode) {
-                $school = $schools->get($schoolCode);
+                $school = $schools[$schoolCode];
                 $tenant = $school->database_name;
                 if (!$this->connect($tenant)) {
                     return self::FAILURE;

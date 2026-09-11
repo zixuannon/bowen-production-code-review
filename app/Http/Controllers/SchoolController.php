@@ -88,23 +88,20 @@ class SchoolController extends Controller
         $baseUrlWithoutScheme = preg_replace("(^https?://)", "", $baseUrl);
         $baseUrlWithoutScheme = str_replace("www.", "", $baseUrlWithoutScheme);
 
-        $schools = $this->schoolsRepository->builder()->latest()->first();
         try {
             $demoSchool = $this->schoolsRepository->builder()->where('type', 'demo')->withTrashed()->first() !== null ? 1 : 0;
         } catch (\Exception $e) {
             $demoSchool = 0;
         }
 
-        $school_code = date('Y') . (($schools->id ?? 0) + 1);
+        $school_code = app(\App\Services\SchoolCodeService::class)->previewNextCode();
         $settings = $this->cache->getSystemSettings();
-
-        $prefix = $settings['school_code_prefix'] ?? 'SCH';
 
         $email_verified = $settings['email_verified'] ? 1 : 0;
 
         $extraFields = $this->formFields->defaultModel()->orderBy('rank')->get();
 
-        return view('schools.index', compact('packages', 'baseUrlWithoutScheme', 'school_code', 'prefix', 'demoSchool', 'extraFields', 'email_verified'));
+        return view('schools.index', compact('packages', 'baseUrlWithoutScheme', 'school_code', 'demoSchool', 'extraFields', 'email_verified'));
     }
 
 
@@ -146,7 +143,7 @@ class SchoolController extends Controller
             'school_address' => 'required',
             'school_image' => 'required|mimes:jpg,jpeg,png,svg,svg+xml|max:2048',
             'domain' => 'nullable|unique:schools,domain',
-            'school_code_prefix' => 'required'
+            'school_code' => ['required', 'string', 'max:64', 'regex:/^MMBOWEN[0-9]{2,}$/i'],
 
         ], [
             'school_support_email.regex' => 'Please enter a valid email (e.g. user@example.com).',
@@ -174,7 +171,6 @@ class SchoolController extends Controller
             if (strtolower($request->domain) == 'demo') {
                 ResponseService::errorResponse("The demo domain name is already reserved.Please choose any other domain name.");
             }
-            $school_code = $request->school_code_prefix . $request->school_code;
             $settings = $this->cache->getSystemSettings();
 
             if (!$settings['email_verified']) {
@@ -182,6 +178,7 @@ class SchoolController extends Controller
             }
 
             DB::beginTransaction();
+            $school_code = app(\App\Services\SchoolCodeService::class)->claimRequestedCode($request->school_code);
 
             $school_data = array(
                 'name' => $request->school_name,
@@ -281,7 +278,7 @@ class SchoolController extends Controller
             SetupSchoolDatabase::dispatch(
                 $schoolData->id,
                 $request->assign_package,
-                $request->school_code_prefix
+                null
             );
 
             ResponseService::successResponse('School creation process has been started. You will receive an email notification once the setup is complete.');
@@ -309,7 +306,7 @@ class SchoolController extends Controller
         // Order matters: Config::set before any DB call so reconnect picks up
         // the correct database name.
         $previousConnection = DB::getDefaultConnection();
-        $schoolModel = School::where('code', $school_code)->first();
+        $schoolModel = School::whereCanonicalCode($school_code)->first();
         $switched = $schoolModel && $schoolModel->database_name;
         if ($switched) {
             Config::set('database.connections.school.database', $schoolModel->database_name);
@@ -319,20 +316,7 @@ class SchoolController extends Controller
         }
 
         try {
-            // Manually write reset token into the school's password_resets table
-            // instead of using Password broker (which caches connections and breaks
-            // in long-running queue workers).
-            $token = Str::random(64);
-            DB::connection('school')->table('password_resets')
-                ->where('email', $user->email)->delete();
-            DB::connection('school')->table('password_resets')->insert([
-                'email'      => $user->email,
-                'token'      => Hash::make($token),
-                'created_at' => now(),
-            ]);
-            $resetUrl = url('/password/reset/' . $token)
-                . '?email=' . urlencode($user->email)
-                . '&school_code=' . $school_code;
+            $resetUrl = app(\App\Services\StaffInvitationService::class)->createUrl($user, $school_code);
         } finally {
             // Restore previous database connection even if token generation fails
             if ($switched && $previousConnection !== 'school') {
@@ -346,7 +330,7 @@ class SchoolController extends Controller
             '{school_admin_name}' => $user->full_name,
             '{code}' => $school_code,
             '{email}' => $user->email,
-            '{password}' => "请点击以下链接设置您的登录密码（链接 60 分钟内有效）：\n{$resetUrl}",
+            '{password}' => "请点击以下链接设置您的登录密码（链接 24 小时内有效）：\n{$resetUrl}",
             '{reset_link}' => $resetUrl,
             '{school_name}' => $request->school_name,
 
@@ -810,7 +794,7 @@ class SchoolController extends Controller
                 $schoolCode = $users->code;
 
                 if ($schoolCode) {
-                    $school = School::on('mysql')->where('code', $schoolCode)->first();
+                    $school = School::on('mysql')->whereCanonicalCode($schoolCode)->first();
 
                     if ($school) {
                         DB::setDefaultConnection('school');
@@ -833,7 +817,7 @@ class SchoolController extends Controller
             if ((int) $request->two_factor_verification != (int) $users->user->two_factor_enabled) {
                 if ($request->two_factor_verification == "0" || $request->two_factor_verification == null || $request->two_factor_verification == "1") {
                     if ($users->code) {
-                        $school = School::on('mysql')->where('code', $users->code)->first();
+                        $school = School::on('mysql')->whereCanonicalCode($users->code)->first();
                         if ($school) {
 
                             // Super Admin Database Connection
@@ -1054,11 +1038,8 @@ class SchoolController extends Controller
                     ResponseService::errorResponse(trans('Please contact the super admin to configure the email.'));
                 }
                 DB::beginTransaction();
-                $schools = $this->schoolsRepository->builder()->latest()->first();
-                $school_code = date('Y') . (($schools->id ?? 0) + 1);
                 $settings = $this->cache->getSystemSettings();
-                $prefix = $settings['school_code_prefix'] ?? 'SCH';
-                $school_code = $prefix . $school_code;
+                $school_code = app(\App\Services\SchoolCodeService::class)->allocateNextCode();
                 $school_data = array(
                     'name' => $request->school_name,
                     'address' => $request->school_address,
@@ -1237,11 +1218,7 @@ class SchoolController extends Controller
         try {
             DB::beginTransaction();
 
-            $schools = $this->schoolsRepository->builder()->latest()->first();
-            $school_code = date('Y') . (($schools->id ?? 0) + 1);
-            $settings = $this->cache->getSystemSettings();
-            $prefix = $settings['school_prefix'] ?? 'SCH';
-            $school_code = $prefix . $school_code;
+            $school_code = app(\App\Services\SchoolCodeService::class)->allocateNextCode();
 
             $school_data = array(
                 'name' => 'Demo School',
@@ -1313,13 +1290,11 @@ class SchoolController extends Controller
         $baseUrlWithoutScheme = preg_replace("(^https?://)", "", $baseUrl);
         $baseUrlWithoutScheme = str_replace("www.", "", $baseUrlWithoutScheme);
 
-        $schools = $this->schoolsRepository->builder()->latest()->first();
-        $school_code = date('Y') . (($schools->id ?? 0) + 1);
+        $school_code = app(\App\Services\SchoolCodeService::class)->previewNextCode();
         $settings = $this->cache->getSystemSettings();
-        $prefix = $settings['school_prefix'] ?? 'SCH';
         $extraFields = $this->formFields->defaultModel()->orderBy('rank')->get();
 
-        return view('schools.school_inquiry', compact('baseUrlWithoutScheme', 'school_code', 'prefix', 'extraFields'));
+        return view('schools.school_inquiry', compact('baseUrlWithoutScheme', 'school_code', 'extraFields'));
     }
 
     public function schoolInquiryList()
@@ -1411,7 +1386,7 @@ class SchoolController extends Controller
             'school_tagline' => 'required',
             'school_address' => 'required',
             'domain' => 'nullable|unique:schools,domain',
-            'school_code_prefix' => 'required'
+            'school_code' => ['required', 'string', 'max:64', 'regex:/^MMBOWEN[0-9]{2,}$/i'],
 
         ]);
         if ($validator->fails()) {
@@ -1440,8 +1415,8 @@ class SchoolController extends Controller
             }
 
             if ($request->status == 1) {
-                $school_code = $request->school_code_prefix . $request->school_code;
                 DB::beginTransaction();
+                $school_code = app(\App\Services\SchoolCodeService::class)->claimRequestedCode($request->school_code);
 
                 $school_data = array(
                     'name' => $request->school_name,
@@ -1505,7 +1480,7 @@ class SchoolController extends Controller
                 SetupSchoolDatabase::dispatch(
                     $schoolData->id,
                     null,
-                    $request->school_code_prefix
+                    null
                 );
 
                 $this->schoolInquiry->builder()->where('id', $request->edit_id)->delete();

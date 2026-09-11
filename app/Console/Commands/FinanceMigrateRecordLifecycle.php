@@ -22,7 +22,7 @@ final class FinanceMigrateRecordLifecycle extends Command
 
     /** Demo is intentionally excluded from this lifecycle release. */
     public const PRODUCTION_TENANTS = [
-        'SCH202615' => 'eschool_saas_15_zixuan',
+        'MMBOWEN01' => 'eschool_saas_15_zixuan',
         'SCH202616' => 'eschool_saas_17_bahan',
         'SCH202619' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',
@@ -31,7 +31,7 @@ final class FinanceMigrateRecordLifecycle extends Command
         'SCH202632' => 'eschool_saas_32_',
     ];
 
-    private const CANARY = 'SCH202615';
+    private const CANARY = 'MMBOWEN01';
 
     protected $signature = 'finance:migrate-record-lifecycle
         {--tenant=* : Exact trusted School Code(s); Demo, unknown Schools, and database names are refused}
@@ -100,24 +100,12 @@ final class FinanceMigrateRecordLifecycle extends Command
         }
 
         try {
-            $rows = DB::connection('mysql')->table('schools')->whereIn('code', array_keys($trusted))
-                ->whereNull('deleted_at')->whereNotNull('database_name')->orderBy('code')->get(['code', 'database_name']);
+            $rows = app(\App\Services\SchoolCodeService::class)->resolveTrustedRegistry($trusted);
         } catch (\Throwable) {
             return $this->reject('Trusted central School registry is unavailable.');
         }
 
-        $actual = [];
-        foreach ($rows as $row) {
-            if (isset($actual[$row->code])) {
-                return $this->reject('Trusted central School registry has an ambiguous School Code.');
-            }
-            $actual[$row->code] = $row->database_name;
-        }
-        $expected = $trusted;
-        ksort($actual);
-        ksort($expected);
-
-        return $actual === $expected ?: $this->reject('Trusted central School registry does not match the approved lifecycle allowlist.');
+        return $rows !== null ?: $this->reject('Trusted central School registry does not match the approved lifecycle allowlist.');
     }
 
     /** @param array<string, string> $trusted
@@ -145,11 +133,11 @@ final class FinanceMigrateRecordLifecycle extends Command
             return true;
         }
         if ($comparison !== $remaining) {
-            return $this->reject('--execute requires SCH202615 alone for canary, then exactly the remaining six active Schools after canary verification.');
+            return $this->reject('--execute requires MMBOWEN01 alone for canary, then exactly the remaining six active Schools after canary verification.');
         }
 
         return $this->connect($trusted[self::CANARY]) && $this->baseSchemaPresent() && $this->state() === 'complete'
-            ?: $this->reject('SCH202615 canary is not schema/history verified; remaining Schools were not touched.');
+            ?: $this->reject('MMBOWEN01 canary is not schema/history verified; remaining Schools were not touched.');
     }
 
     /** @param array<string, string> $trusted */

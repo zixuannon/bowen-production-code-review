@@ -35,7 +35,7 @@ class ForgotPasswordController extends Controller
         ]);
 
         $school = School::on('mysql')
-            ->where('code', $request->school_code)
+            ->whereCanonicalCode($request->school_code)
             ->where('installed', 1)
             ->where('status', 1)
             ->first();

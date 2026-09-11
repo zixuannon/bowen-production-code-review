@@ -4,12 +4,11 @@ use App\Models\BankAccount;
 use App\Models\User;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
-use App\Services\TenantPasswordBroker;
+use App\Services\StaffInvitationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -50,8 +49,7 @@ class FinanceStaffController extends Controller {
             return $staff;
         });
         try {
-            $response=app(TenantPasswordBroker::class)->broker()->sendResetLink(['email'=>$staff->email]);
-            if($response!==Password::RESET_LINK_SENT) throw ValidationException::withMessages(['email'=>[trans($response)]]);
+            app(StaffInvitationService::class)->send($staff);
         } catch (\Throwable $exception) {
             DB::transaction(function () use ($staff) { $staff->authorized_bank_accounts()->detach(); $staff->syncRoles([]); $staff->forceDelete(); });
             throw $exception;
