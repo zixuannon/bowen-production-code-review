@@ -60,6 +60,7 @@ class FinanceMigrateP31P32 extends Command
                 return $this->fail('Execution guard refused this environment or trusted registry. Verification remains available.');
             }
 
+            $targetStates = [];
             foreach ($selected as $code) {
                 $database = $trusted[$code];
                 if (!$this->connect($database) || !$this->baseSchemaPresent()) {
@@ -74,8 +75,28 @@ class FinanceMigrateP31P32 extends Command
                     return $this->fail("[{$code}] {$pair} P3.1/P3.2 state; no migration was run.");
                 }
 
-                if (!$this->option('execute') || $pair === 'complete') {
+                $targetStates[$code] = $pair;
+            }
+
+            if (!$this->option('execute')) {
+                return self::SUCCESS;
+            }
+
+            // Validate every selected target before the first schema write.
+            // A later School must never invalidate an already-mutated batch.
+            foreach ($selected as $code) {
+                if ($targetStates[$code] === 'complete') {
                     continue;
+                }
+
+                $database = $trusted[$code];
+                if (!$this->connect($database) || !$this->baseSchemaPresent()) {
+                    return self::FAILURE;
+                }
+
+                $pair = self::pairState($this->states());
+                if ($pair !== $targetStates[$code]) {
+                    return $this->fail("[{$code}] target validation changed after preflight; no further migration was run.");
                 }
 
                 if (!$this->migrateAndVerify(self::MIGRATIONS[0], 'expense_import')) {
@@ -88,6 +109,8 @@ class FinanceMigrateP31P32 extends Command
             }
 
             return self::SUCCESS;
+        } catch (\Throwable $exception) {
+            return $this->fail('P3.1/P3.2 migration runner failed closed during target validation: '.get_class($exception).': '.$exception->getMessage());
         } finally {
             Config::set('database.connections.school.database', $originalDatabase);
             DB::purge('school');
@@ -111,19 +134,22 @@ class FinanceMigrateP31P32 extends Command
                 ->whereNull('deleted_at')->whereNotNull('database_name')
                 ->orderBy('code')->get(['code', 'database_name']);
         } catch (\Throwable) {
-            return $this->fail('Trusted central schools registry is unavailable.');
+            return $this->reject('Trusted central schools registry is unavailable.');
         }
 
         $actual = [];
         foreach ($rows as $row) {
             if (isset($actual[$row->code])) {
-                return $this->fail('Trusted central schools registry has an ambiguous school code.');
+                return $this->reject('Trusted central schools registry has an ambiguous school code.');
             }
             $actual[$row->code] = $row->database_name;
         }
 
-        if ($actual !== $trusted) {
-            return $this->fail('Trusted central schools registry does not match the approved tenant mapping.');
+        $expected = $trusted;
+        ksort($actual);
+        ksort($expected);
+        if ($actual !== $expected) {
+            return $this->reject('Trusted central schools registry mismatch: the School/database mapping differs from the approved allowlist.');
         }
 
         return true;
@@ -190,12 +216,12 @@ class FinanceMigrateP31P32 extends Command
             $connection->getPdo();
 
             if ($connection->getDatabaseName() !== $database) {
-                return $this->fail('Tenant connection did not resolve to the registry-selected database.');
+                return $this->reject('Tenant target mismatch: the connection did not resolve to the registry-selected database.');
             }
 
             return true;
         } catch (\Throwable) {
-            return $this->fail('Tenant connection failed.');
+            return $this->reject('Tenant connection failed.');
         }
     }
 
@@ -203,7 +229,7 @@ class FinanceMigrateP31P32 extends Command
     {
         foreach (self::REQUIRED_BASE_TABLES as $table) {
             if (!Schema::connection('school')->hasTable($table)) {
-                return $this->fail("Required base table missing: {$table}");
+                return $this->reject("Required base table missing: {$table}");
             }
         }
 
@@ -263,7 +289,7 @@ class FinanceMigrateP31P32 extends Command
         ]);
         $this->output->write(Artisan::output());
         if ($exit !== self::SUCCESS) {
-            return $this->fail("Targeted migration {$migration} failed.");
+            return $this->reject("Targeted migration {$migration} failed.");
         }
 
         $state = $this->states()[$stateKey];
@@ -356,5 +382,11 @@ class FinanceMigrateP31P32 extends Command
     {
         $this->error($message);
         return self::FAILURE;
+    }
+
+    private function reject(string $message): bool
+    {
+        $this->error($message);
+        return false;
     }
 }

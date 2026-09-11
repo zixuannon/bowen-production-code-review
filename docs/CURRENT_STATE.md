@@ -14,6 +14,28 @@ Last updated: 2026-09-11
 
 Finance V2
 
+## Final Quality Gate migration runner fail-closed fix — local PASS
+
+- Branch `codex/migration-runner-fail-closed` starts exactly from accepted
+  Production/audit baseline `177e62b31bf75dbc89f1a31f63aba68e5385e5c7`.
+- `finance:migrate-p31-p32`, `finance:p2-p3-migration-safety`, and
+  `schema:round5-integrity` now return explicit boolean rejection from target
+  validators. Registry, connection, School/database identity, base-schema, and
+  unexpected validation failures terminate with exit code 1 and a specific
+  mismatch/fail-closed log instead of coercing `Command::FAILURE` to `true`.
+- P3.1/P3.2 and P2/P3 execute/rollback paths complete a read-only validation
+  pass across the entire selected allowlist before the first schema write.
+  Later-target failure therefore leaves every earlier tenant unchanged and the
+  runner never continues to another School after an error.
+- Runtime regression covers reordered valid registries, registry mismatch,
+  missing tenants, wrong School/database mappings, later-target validation,
+  no-write guarantees, non-zero exits, and valid allowlisted verification.
+  Focused migration-runner regression passes (51 tests, 243 assertions), the
+  disposable local MySQL rehearsal passes (1 test, 20 assertions), and full
+  regression passes (712 tests, 4,646 assertions; one expected opt-in skip).
+- No Production connection, migration, schema/data write, deployment, Finance
+  business-rule change, Phase 5.5B change, or homepage/assets change occurred.
+
 ## Round 3–5 consolidated candidate — local PASS
 
 - Branch `codex/round3-5-consolidated` starts exactly from active Production

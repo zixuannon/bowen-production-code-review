@@ -84,32 +84,32 @@ final class MigrateRound5IntegritySchema extends Command
     {
         $expected = self::TENANTS[$code] ?? null;
         $row = DB::connection('mysql')->table('schools')->where('code', $code)->whereNull('deleted_at')->first(['id','database_name']);
-        if ($expected === null || $row === null || $row->database_name !== $expected) return $this->fail("[$code] central registry mapping is unavailable or changed.");
+        if ($expected === null || $row === null || $row->database_name !== $expected) return $this->reject("[$code] central registry School/database mismatch or missing target.");
         Config::set('database.connections.school.database', $expected);
         DB::purge('school');
         try {
-            if (DB::connection('school')->getDatabaseName() !== $expected) return $this->fail("[$code] tenant connection identity mismatch.");
+            if (DB::connection('school')->getDatabaseName() !== $expected) return $this->reject("[$code] tenant connection identity mismatch.");
             foreach (['migrations','students','users','bank_accounts','bank_transfers'] as $table) {
-                if (!Schema::connection('school')->hasTable($table)) return $this->fail("[$code] required base table missing: $table");
+                if (!Schema::connection('school')->hasTable($table)) return $this->reject("[$code] required base table missing: $table");
             }
             $schoolId = (int) $row->id;
             foreach (['students','bank_accounts','bank_transfers'] as $table) {
                 if (DB::connection('school')->table($table)->where('school_id', '<>', $schoolId)->orWhereNull('school_id')->exists()) {
-                    return $this->fail("[$code] $table contains a row outside trusted School ID $schoolId.");
+                    return $this->reject("[$code] $table contains a row outside trusted School ID $schoolId.");
                 }
             }
             if (Schema::connection('school')->hasTable('student_import_identities')
                 && DB::connection('school')->table('student_import_identities')->where('school_id', '<>', $schoolId)->exists()) {
-                return $this->fail("[$code] student_import_identities contains a cross-School row.");
+                return $this->reject("[$code] student_import_identities contains a cross-School row.");
             }
             $integrity = app(LegacySchemaIntegrityService::class);
             if (!$integrity->bankBaseComplete() || !$integrity->transferBaseComplete()
                 || !Schema::connection('school')->hasColumns('bank_accounts', ['created_by','updated_by'])) {
-                return $this->fail("[$code] base schema is incomplete.");
+                return $this->reject("[$code] base schema is incomplete.");
             }
             return true;
         } catch (\Throwable) {
-            return $this->fail("[$code] tenant connection/schema verification failed.");
+            return $this->reject("[$code] tenant connection/schema verification failed.");
         }
     }
 
@@ -147,5 +147,11 @@ final class MigrateRound5IntegritySchema extends Command
     {
         $this->error($message);
         return self::FAILURE;
+    }
+
+    private function reject(string $message): bool
+    {
+        $this->error($message);
+        return false;
     }
 }

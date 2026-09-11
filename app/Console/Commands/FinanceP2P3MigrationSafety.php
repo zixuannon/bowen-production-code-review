@@ -21,35 +21,51 @@ class FinanceP2P3MigrationSafety extends Command
 
     public function handle(): int
     {
-        if ($this->option('execute') && $this->option('rollback-batch')) return $this->fail('Choose execute or rollback, not both.');
-        $tenants = $this->option('tenant') ?: self::TENANTS;
-        if (array_diff($tenants, self::TENANTS) || count($tenants) !== count(array_unique($tenants))) return $this->fail('Tenant selection must contain unique names from the fixed approved allowlist only.');
-        foreach ($tenants as $tenant) {
-            if (!$this->connect($tenant) || !$this->baseSchema()) return self::FAILURE;
-            $state = $this->state();
-            if ($state === 'partial') return $this->fail("[$tenant] partial P2/P3 migration state; stop and forward-fix.");
-            $this->line("[$tenant] P2/P3 state: $state");
-            if ($this->option('rollback-batch')) {
-                if (!$this->rollback((int) $this->option('rollback-batch'), $tenant)) return self::FAILURE;
-                continue;
-            }
-            // Verification-only mode intentionally accepts a clean `none`
-            // state before the approved cutover, and confirms `both` only
-            // after a completed cutover. A partial state is always fatal.
-            if (!$this->option('execute')) {
+        $originalDatabase = config('database.connections.school.database');
+
+        try {
+            if ($this->option('execute') && $this->option('rollback-batch')) return $this->fail('Choose execute or rollback, not both.');
+            $tenants = $this->option('tenant') ?: self::TENANTS;
+            if (array_diff($tenants, self::TENANTS) || count($tenants) !== count(array_unique($tenants))) return $this->fail('Tenant selection must contain unique names from the fixed approved allowlist only.');
+
+            $states = [];
+            foreach ($tenants as $tenant) {
+                if (!$this->connect($tenant) || !$this->baseSchema()) return self::FAILURE;
+                $state = $this->state();
+                if ($state === 'partial') return $this->fail("[$tenant] partial P2/P3 migration state; stop and forward-fix.");
                 if ($state === 'both' && !$this->schemaComplete()) return $this->fail("[$tenant] P2/P3 schema verification failed.");
-                continue;
+                if ($this->option('rollback-batch') && !$this->rollbackAllowed((int) $this->option('rollback-batch'), $tenant)) return self::FAILURE;
+                $states[$tenant] = $state;
+                $this->line("[$tenant] P2/P3 state: $state");
             }
-            if ($this->option('execute') && $state === 'none') {
-                $code = Artisan::call('migrate', ['--database' => 'school', '--path' => $this->paths(), '--realpath' => true, '--force' => true]);
-                $this->output->write(Artisan::output());
-                if ($code !== self::SUCCESS) return $this->fail("[$tenant] targeted P2/P3 migration failed; stop before next tenant.");
+
+            if (!$this->option('execute') && !$this->option('rollback-batch')) return self::SUCCESS;
+
+            // The first pass validates the complete selected set. Only after
+            // every target is safe may the runner make its first schema write.
+            foreach ($tenants as $tenant) {
+                if (!$this->connect($tenant)) return self::FAILURE;
+                if ($this->option('rollback-batch')) {
+                    if (!$this->rollback((int) $this->option('rollback-batch'), $tenant)) return self::FAILURE;
+                    continue;
+                }
+                if ($states[$tenant] === 'none') {
+                    $code = Artisan::call('migrate', ['--database' => 'school', '--path' => $this->paths(), '--realpath' => true, '--force' => true]);
+                    $this->output->write(Artisan::output());
+                    if ($code !== self::SUCCESS) return $this->fail("[$tenant] targeted P2/P3 migration failed; stop before next tenant.");
+                }
+                if ($this->state() !== 'both' || !$this->schemaComplete()) return $this->fail("[$tenant] P2/P3 schema verification failed.");
+                $batch = DB::connection('school')->table('migrations')->whereIn('migration', self::MIGRATIONS)->pluck('batch')->unique();
+                if ($batch->count() !== 1) return $this->fail("[$tenant] P2/P3 migrations are not one isolated batch.");
+                $this->info("[$tenant] verified P2/P3-only batch {$batch->first()}.");
             }
-            if ($this->state() !== 'both' || !$this->schemaComplete()) return $this->fail("[$tenant] P2/P3 schema verification failed.");
-            $batch = DB::connection('school')->table('migrations')->whereIn('migration', self::MIGRATIONS)->pluck('batch')->unique();
-            if ($batch->count() !== 1) return $this->fail("[$tenant] P2/P3 migrations are not one isolated batch.");
-            $this->info("[$tenant] verified P2/P3-only batch {$batch->first()}.");
+        } catch (\Throwable $exception) {
+            return $this->fail('P2/P3 migration runner failed closed during target validation: '.get_class($exception).': '.$exception->getMessage());
+        } finally {
+            Config::set('database.connections.school.database', $originalDatabase);
+            DB::purge('school');
         }
+
         return self::SUCCESS;
     }
 
@@ -68,12 +84,22 @@ class FinanceP2P3MigrationSafety extends Command
     }
     private function connect(string $tenant): bool
     {
-        try { Config::set('database.connections.school.database', $tenant); DB::purge('school'); DB::connection('school')->getPdo(); return true; }
-        catch (\Throwable $e) { return $this->fail("[$tenant] tenant connection failed."); }
+        try {
+            Config::set('database.connections.school.database', $tenant);
+            DB::purge('school');
+            $connection = DB::connection('school');
+            $connection->getPdo();
+            if ($connection->getDriverName() !== 'sqlite' && $connection->getDatabaseName() !== $tenant) {
+                return $this->reject("[$tenant] tenant target database mismatch.");
+            }
+            return true;
+        } catch (\Throwable $e) {
+            return $this->reject("[$tenant] tenant connection failed.");
+        }
     }
     private function baseSchema(): bool
     {
-        foreach (['migrations', 'users', 'bank_accounts', 'bank_transfers'] as $table) if (!Schema::connection('school')->hasTable($table)) return $this->fail("Required base table missing: $table");
+        foreach (['migrations', 'users', 'bank_accounts', 'bank_transfers'] as $table) if (!Schema::connection('school')->hasTable($table)) return $this->reject("[$table] required base table is missing from the selected tenant target.");
         return true;
     }
     private function state(): string { return self::classify(DB::connection('school')->table('migrations')->whereIn('migration', self::MIGRATIONS)->pluck('migration')->all()); }
@@ -87,13 +113,19 @@ class FinanceP2P3MigrationSafety extends Command
     }
     private function rollback(int $batch, string $tenant): bool
     {
-        $actual = DB::connection('school')->table('migrations')->where('batch', $batch)->orderBy('migration')->pluck('migration')->all(); $expected = self::MIGRATIONS; sort($expected);
-        if ($batch < 1 || $actual !== $expected) return $this->fail("[$tenant] rollback batch is not exactly P2/P3; refused.");
-        if (DB::connection('school')->table('bank_account_user')->exists() || DB::connection('school')->table('fund_handovers')->exists()) return $this->fail("[$tenant] P2/P3 activity exists; schema rollback is unsafe. Forward-fix only.");
+        if (!$this->rollbackAllowed($batch, $tenant)) return false;
         $code = Artisan::call('migrate:rollback', ['--database' => 'school', '--path' => self::paths(), '--realpath' => true, '--batch' => $batch, '--force' => true]); $this->output->write(Artisan::output());
         return ($code === self::SUCCESS && $this->state() === 'none')
             ? true
-            : $this->fail("[$tenant] rollback did not complete.");
+            : $this->reject("[$tenant] rollback did not complete.");
+    }
+    private function rollbackAllowed(int $batch, string $tenant): bool
+    {
+        $actual = DB::connection('school')->table('migrations')->where('batch', $batch)->orderBy('migration')->pluck('migration')->all(); $expected = self::MIGRATIONS; sort($expected);
+        if ($batch < 1 || $actual !== $expected) return $this->reject("[$tenant] rollback batch is not exactly P2/P3; refused.");
+        if (DB::connection('school')->table('bank_account_user')->exists() || DB::connection('school')->table('fund_handovers')->exists()) return $this->reject("[$tenant] P2/P3 activity exists; schema rollback is unsafe. Forward-fix only.");
+        return true;
     }
     private function fail(string $message): int { $this->error($message); return self::FAILURE; }
+    private function reject(string $message): bool { $this->error($message); return false; }
 }

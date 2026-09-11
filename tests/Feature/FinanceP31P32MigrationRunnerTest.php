@@ -102,6 +102,60 @@ class FinanceP31P32MigrationRunnerTest extends TestCase
         $this->assertFalse($this->tableExists($this->tenantOne, 'other_incomes'));
     }
 
+    public function test_valid_allowlisted_registry_is_order_independent(): void
+    {
+        Config::set('finance_release.p31_p32_tenants', array_reverse($this->trustedTenants, true));
+
+        $this->artisan('finance:migrate-p31-p32')->assertExitCode(0);
+
+        $this->assertSame(0, $this->migrationCount($this->tenantOne));
+        $this->assertSame(0, $this->migrationCount($this->tenantTwo));
+    }
+
+    public function test_registry_mismatch_is_non_zero_and_writes_no_tenant_schema(): void
+    {
+        DB::connection('mysql')->table('schools')->where('code', 'QA002')->update([
+            'database_name' => $this->tenantTwo.'-mismatch',
+        ]);
+
+        $this->artisan('finance:migrate-p31-p32', ['--execute' => true])
+            ->expectsOutputToContain('registry mismatch')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, $this->migrationCount($this->tenantOne));
+        $this->assertSame(0, $this->migrationCount($this->tenantTwo));
+        $this->assertFalse($this->tableExists($this->tenantOne, 'expense_import_batches'));
+        $this->assertFalse($this->tableExists($this->tenantTwo, 'expense_import_batches'));
+    }
+
+    public function test_missing_registry_tenant_is_non_zero_and_writes_nothing(): void
+    {
+        DB::connection('mysql')->table('schools')->where('code', 'QA002')->delete();
+
+        $this->artisan('finance:migrate-p31-p32', ['--execute' => true])
+            ->expectsOutputToContain('registry mismatch')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, $this->migrationCount($this->tenantOne));
+        $this->assertSame(0, $this->migrationCount($this->tenantTwo));
+    }
+
+    public function test_later_target_validation_failure_blocks_all_schema_writes(): void
+    {
+        $this->onTenant($this->tenantTwo, function (): void {
+            Schema::connection('school')->drop('bank_accounts');
+        });
+
+        $this->artisan('finance:migrate-p31-p32', ['--execute' => true])
+            ->expectsOutputToContain('Required base table missing: bank_accounts')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, $this->migrationCount($this->tenantOne));
+        $this->assertSame(0, $this->migrationCount($this->tenantTwo));
+        $this->assertFalse($this->tableExists($this->tenantOne, 'expense_import_batches'));
+        $this->assertFalse($this->tableExists($this->tenantOne, 'other_incomes'));
+    }
+
     public function test_raw_database_name_and_unknown_school_code_are_refused(): void
     {
         $this->artisan('finance:migrate-p31-p32', ['--tenant' => [$this->tenantOne]])->assertExitCode(1);
