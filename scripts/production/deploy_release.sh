@@ -12,6 +12,8 @@ switch=${2:-}
 [[ -z "$switch" || "$switch" == "--switch" ]] || usage
 
 repo=${REPO_ROOT:-/www/wwwroot/eschool-github/bowen-production-code-review}
+script_root=$(cd "$(dirname "$0")/../.." && pwd)
+baseline_contract="$script_root/config/production-baseline.json"
 release_root=${RELEASE_ROOT:-/www/wwwroot/releases}
 active_link=${ACTIVE_LINK:-/www/wwwroot/43.160.241.126}
 php_bin=${PHP_BIN:-/usr/bin/php83}
@@ -21,13 +23,13 @@ release_dir="$release_root/$release_name"
 [[ -d "$repo/.git" ]] || { echo "DEPLOY_FAIL: repository unavailable" >&2; exit 1; }
 [[ -x "$php_bin" ]] || { echo "DEPLOY_FAIL: PHP 8.3 binary unavailable" >&2; exit 1; }
 git -C "$repo" cat-file -e "$commit^{commit}" || { echo "DEPLOY_FAIL: candidate commit unavailable" >&2; exit 1; }
-base=$("$php_bin" -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$repo/config/production-baseline.json")
+base=$("$php_bin" -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$baseline_contract")
 git -C "$repo" merge-base --is-ancestor "$base" "$commit" || { echo "DEPLOY_FAIL: candidate is not baseline descendant" >&2; exit 1; }
-JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$repo/scripts/production/verify_runtime_links.sh" "$active_link" "$repo/config/production-baseline.json" \
+JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$script_root/scripts/production/verify_runtime_links.sh" "$active_link" "$baseline_contract" \
   || { echo "DEPLOY_FAIL: active runtime contract is unsafe" >&2; exit 1; }
-shared_env=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_env_target"];' "$repo/config/production-baseline.json")
-shared_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_storage_target"];' "$repo/config/production-baseline.json")
-shared_public_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_public_storage_target"];' "$repo/config/production-baseline.json")
+shared_env=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_env_target"];' "$baseline_contract")
+shared_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_storage_target"];' "$baseline_contract")
+shared_public_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_public_storage_target"];' "$baseline_contract")
 
 [[ ! -e "$release_dir" ]] || { echo "DEPLOY_FAIL: release directory already exists" >&2; exit 1; }
 git -C "$repo" worktree add --detach "$release_dir" "$commit" >/dev/null
@@ -58,9 +60,9 @@ if id www >/dev/null 2>&1; then
   chmod 775 "$release_dir/bootstrap/cache"
 fi
 printf '%s\n' "$commit" > "$release_dir/.release-commit"
-baseline=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$repo/config/production-baseline.json")
+baseline=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$baseline_contract")
 SOURCE_REPO="$release_dir" "$release_dir/scripts/production/write_release_manifest.sh" "$release_dir" "$baseline" "${GITHUB_REF:-main}"
-"$repo/scripts/production/verify_release_guard.sh" "$release_dir"
+"$release_dir/scripts/production/verify_release_guard.sh" "$release_dir"
 echo "DRY_RUN_PASS:$commit:$release_dir"
 
 if [[ "$switch" == "--switch" ]]; then
