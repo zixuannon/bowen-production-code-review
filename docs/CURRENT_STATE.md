@@ -14,6 +14,34 @@ Last updated: 2026-09-11
 
 Finance V2
 
+## Round 3–5 consolidated candidate — local PASS
+
+- Branch `codex/round3-5-consolidated` starts exactly from active Production
+  `f3a898de68d8f2b4d3320e6e508365e572f9071a` and integrates Round 3
+  `ff00b1d15a490b1dc58814d541c781405377abaa`, Round 4
+  `24d6b73dcfaa62b7334473b32b3c2ef4ac4fecbf`, then Round 5
+  `0a67c912765f3ca9826269239912ab1bfe1ed8e7` in that order.
+- Semantic conflict resolution preserves Round 3 payment locking and Round 4
+  immutable payment-level FX snapshots. The Production migration guard keeps
+  both independent exact-path runners without exposing a broad migration path.
+- Consolidated Finance, Handover, API role isolation, payment concurrency,
+  import identity/schema, partial-schema, and deployment-guard regression passes
+  (100 tests, 511 assertions). Full regression passes (681 tests, 4,455
+  assertions; one intentional opt-in rehearsal skip).
+- The disposable local MySQL rehearsal applies the Round 4 migration before the
+  Round 5 migration, exercises orphan/duplicate fail-closed behavior and
+  concurrent Student Code identity insertion, and passes (1 test, 17 assertions).
+- Read-only Production preflight confirms all seven registry mappings. Round 4
+  is eligible and unexecuted for all seven tenants. Round 5 is unexecuted and
+  correctly blocks on one duplicate non-null transfer-reference group in
+  `SCH202615`; the other six tenants have no detected data-integrity issue.
+- Release runtime preflight correctly blocks because active `.env` resolves to
+  an old release instead of `/www/wwwroot/shared/eschool/.env`, and shared
+  `public/storage` is `root:root` and not writable by `www`. These require a
+  separate audited data remediation and operations repair before deployment.
+- No Production migration, schema/data write, deployment, or financial write
+  was performed. Phase 5.5B and homepage/assets remain untouched.
+
 ## Round 3 P1A authorization and concurrency — local candidate
 
 - Branch `codex/round3-p1a-authorization-concurrency` starts from current

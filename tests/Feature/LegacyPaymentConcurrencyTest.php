@@ -128,6 +128,7 @@ class LegacyPaymentConcurrencyTest extends TestCase
             $compulsoryIds = CompulsoryFee::withTrashed()->whereIn('fees_paid_id', $feesPaidIds)->pluck('id');
             DB::table('session_years_trackings')->where('modal_type', CompulsoryFee::class)->whereIn('modal_id', $compulsoryIds)->delete();
             CompulsoryFee::withTrashed()->whereIn('id', $compulsoryIds)->forceDelete();
+            DB::table('fee_payment_fx_snapshots')->whereIn('fees_paid_id', $feesPaidIds)->delete();
             FeesPaid::withTrashed()->whereIn('id', $feesPaidIds)->forceDelete();
             FeesClassType::query()->where('fees_id', $fee->id)->delete();
             Fee::withTrashed()->whereKey($fee->id)->forceDelete();

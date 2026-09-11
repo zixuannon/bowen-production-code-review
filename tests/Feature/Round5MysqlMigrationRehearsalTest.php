@@ -51,6 +51,13 @@ final class Round5MysqlMigrationRehearsalTest extends TestCase
         (require database_path('migrations/schools/2026_06_25_000001_create_bank_transfers_table.php'))->up();
         (require database_path('migrations/schools/2026_08_10_000004_add_audit_fields_to_bank_accounts.php'))->up();
         (require database_path('migrations/schools/2026_09_03_000001_create_student_import_identities_table.php'))->up();
+        $this->createRound4BaseSchema();
+        (require database_path('migrations/schools/2026_09_11_000001_add_financial_currency_history_integrity.php'))->up();
+        $this->assertTrue(Schema::connection('school')->hasTable('fee_payment_fx_snapshots'));
+        $this->assertTrue(Schema::connection('school')->hasColumn('compulsory_fees', 'fee_payment_fx_snapshot_id'));
+        $this->assertTrue(Schema::connection('school')->hasColumn('optional_fees', 'fee_payment_fx_snapshot_id'));
+        $this->assertTrue(Schema::connection('school')->hasColumn('other_incomes', 'exchange_rate_snapshot'));
+        $this->assertTrue(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'amount_mmk_snapshot'));
 
         DB::connection('school')->table('users')->insert([['id'=>1,'school_id'=>15],['id'=>2,'school_id'=>15],['id'=>3,'school_id'=>15],['id'=>4,'school_id'=>15],['id'=>5,'school_id'=>15]]);
         DB::connection('school')->table('students')->insert([['id'=>10,'user_id'=>2,'school_id'=>15],['id'=>11,'user_id'=>3,'school_id'=>15],['id'=>12,'user_id'=>4,'school_id'=>15],['id'=>13,'user_id'=>5,'school_id'=>15]]);
@@ -96,6 +103,25 @@ final class Round5MysqlMigrationRehearsalTest extends TestCase
         DB::connection('school')->statement('ALTER TABLE bank_transfers DROP CONSTRAINT '.LegacySchemaIntegrityService::CHECKS[4]);
         $this->assertTrue(app(LegacySchemaIntegrityService::class)->round5SchemaPresent());
         $this->assertFalse(app(LegacySchemaIntegrityService::class)->round5SchemaComplete());
+    }
+
+    private function createRound4BaseSchema(): void
+    {
+        Schema::connection('school')->create('fees_paids', fn (Blueprint $table): mixed => $table->id());
+        foreach (['compulsory_fees', 'optional_fees'] as $name) {
+            Schema::connection('school')->create($name, function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('bank_account_id')->nullable();
+            });
+        }
+        Schema::connection('school')->create('other_incomes', function (Blueprint $table): void {
+            $table->id();
+            $table->decimal('amount', 20, 4);
+        });
+        Schema::connection('school')->create('student_fee_assignment_items', function (Blueprint $table): void {
+            $table->id();
+            $table->string('currency_snapshot', 3);
+        });
     }
 
     private function assertConstraintRejects(callable $write): void
