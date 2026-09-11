@@ -7,6 +7,7 @@ use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\NamedRange;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
@@ -30,6 +31,9 @@ final class CentralFinanceGroupImportV21ValidationListsSheet implements FromArra
     {
         return [AfterSheet::class => function (AfterSheet $event): void {
             $sheet = $event->sheet->getDelegate(); $workbook = $sheet->getParent(); $max = max(count($this->schools), count($this->accounts), count($this->categories), count(FeesPaymentService::PAYMENT_METHODS), 1) + 1;
+            foreach ($this->schools as $index => $school) $sheet->setCellValueExplicit('A'.($index + 2), (string) $school['code'], DataType::TYPE_STRING);
+            foreach ($this->accounts as $index => $account) $sheet->setCellValueExplicit('C'.($index + 2), (string) $account['code'], DataType::TYPE_STRING);
+            foreach ($this->categories as $index => $category) $sheet->setCellValueExplicit('G'.($index + 2), (string) $category['category_code'], DataType::TYPE_STRING);
             $workbook->addNamedRange(new NamedRange('SchoolCodes', $sheet, "\$A\$2:\$A\${$max}"));
             $workbook->addNamedRange(new NamedRange('SchoolNames', $sheet, "\$B\$2:\$B\${$max}"));
             $workbook->addNamedRange(new NamedRange('FundAccountCodes', $sheet, "\$C\$2:\$C\${$max}"));
@@ -49,7 +53,7 @@ final class CentralFinanceGroupImportV21ValidationListsSheet implements FromArra
         foreach ($this->schools as $school) {
             $code = $school['code']; $accounts = array_values(array_filter($this->accounts, static fn (array $account): bool => $account['school_code'] === $code || $account['owner_type'] === 'hq'));
             $rowStart = $sheet->getHighestRow() + 2; $sheet->setCellValue("K{$rowStart}", "Fund Accounts for {$code}");
-            foreach ($accounts as $offset => $account) $sheet->setCellValue('K'.($rowStart + 1 + $offset), $account['code']);
+            foreach ($accounts as $offset => $account) $sheet->setCellValueExplicit('K'.($rowStart + 1 + $offset), (string) $account['code'], DataType::TYPE_STRING);
             $rowEnd = max($rowStart + 1, $rowStart + count($accounts));
             $workbook->addNamedRange(new NamedRange('FundAccounts_'.$this->safeName($code), $sheet, "\$K\$".($rowStart + 1).":\$K\${$rowEnd}"));
         }
@@ -59,7 +63,7 @@ final class CentralFinanceGroupImportV21ValidationListsSheet implements FromArra
         foreach ($this->schools as $school) foreach (['income', 'expense'] as $type) {
             $categories = array_values(array_filter($this->categories, static fn (array $category): bool => $category['school_code'] === $school['code'] && $category['type'] === $type));
             $rowStart = $sheet->getHighestRow() + 2; $sheet->setCellValue("L{$rowStart}", "Categories {$school['code']} {$type}");
-            foreach ($categories as $offset => $category) $sheet->setCellValue('L'.($rowStart + 1 + $offset), $category['category_code']);
+            foreach ($categories as $offset => $category) $sheet->setCellValueExplicit('L'.($rowStart + 1 + $offset), (string) $category['category_code'], DataType::TYPE_STRING);
             $rowEnd = max($rowStart + 1, $rowStart + count($categories));
             $workbook->addNamedRange(new NamedRange('Categories_'.$this->safeName($school['code']).'_'.$type, $sheet, "\$L\$".($rowStart + 1).":\$L\${$rowEnd}"));
         }

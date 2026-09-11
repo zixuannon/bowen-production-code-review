@@ -202,11 +202,12 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         ])->count());
     }
 
-    public function test_formal_template_lookups_exclude_explicit_uat_and_test_master_data(): void
+    public function test_formal_template_lookups_exclude_explicit_test_and_preview_master_data(): void
     {
         $uatAccount = $this->account('CENTRAL-PROD-UAT-ZXN-MMK', 'Retained UAT Account', 1);
         $testAccount = $this->account('TEMP-CASH', 'Test Petty Cash', 1);
-        foreach ([$uatAccount, $testAccount] as $account) {
+        $compactTestAccount = $this->account('12345', 'testzixuan', 1);
+        foreach ([$uatAccount, $testAccount, $compactTestAccount] as $account) {
             DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
                 'fund_account_id' => $account->id,
                 'user_id' => $this->head->id,
@@ -219,13 +220,17 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->category(1, CentralFinanceCategory::EXPENSE, 'CENTRAL-PROD-UAT-EXPENSE');
         $testCategory = $this->category(1, CentralFinanceCategory::INCOME, 'TEMP-INCOME');
         $testCategory->update(['name' => 'Test Income']);
+        $previewCategory = $this->category(1, CentralFinanceCategory::INCOME, 'CATEGORY-0EA183FE-360');
+        $previewCategory->update(['name' => 'SFA P1 Preview Income']);
 
         $lookups = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
 
         $this->assertNotContains($uatAccount->account_code, array_column($lookups['accounts'], 'code'));
         $this->assertNotContains($testAccount->account_code, array_column($lookups['accounts'], 'code'));
+        $this->assertNotContains($compactTestAccount->account_code, array_column($lookups['accounts'], 'code'));
         $this->assertNotContains('CENTRAL-PROD-UAT-EXPENSE', array_column($lookups['categories'], 'category_code'));
         $this->assertNotContains($testCategory->category_code, array_column($lookups['categories'], 'category_code'));
+        $this->assertNotContains($previewCategory->category_code, array_column($lookups['categories'], 'category_code'));
         $this->assertContains($this->zixuanAccount->account_code, array_column($lookups['accounts'], 'code'));
         $this->assertContains($this->zixuanIncome->category_code, array_column($lookups['categories'], 'category_code'));
     }

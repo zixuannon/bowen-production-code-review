@@ -14,12 +14,34 @@ Last updated: 2026-09-11
 
 Finance V2
 
+## Final Quality Gate Group Import template blocker fix — local PASS
+
+- Branch `codex/final-quality-gate-template-fix` starts exactly from the
+  accepted GitHub main/Production/audit SHA
+  `26022c5cb7e8d0f94ba481ee7475c9d95f6cf886`.
+- Formal Group Finance Template V2.2 lookup filtering now rejects compact
+  test-prefix names such as `testzixuan` and explicit preview/dummy/sample
+  markers. The retained Production master records are neither changed nor
+  deleted; they are only excluded from the distributed workbook.
+- Numeric-looking School, Fund Account, and Category codes are written as
+  explicit Excel strings in both human-readable lookup sheets and hidden
+  validation ranges. Leading zeroes and text identity survive XLSX
+  save/reopen, including the School-scoped Fund Account dropdown ranges.
+- Group Import targeted regression passes (18 tests, 181 assertions). Full
+  direct PHPUnit regression passes (716 tests, 4,681 assertions; one expected
+  opt-in skip) with the Quality Gate's process-only 1024 MB allowance.
+- No migration/schema change, financial write, Production data change,
+  deployment, Finance posting-rule change, Phase 5.5B change, or
+  homepage/assets change occurred. Production deployment and re-running the
+  authenticated XLSX gate remain a separate Human Gate.
+
 ## Migration runner Production release + final quality gate
 
-- Approved commit `ca217f62d3f1800b089adbb4dd69e162629c0040` is deployed as the
-  immutable active release after verified ancestry, a fresh nine-database
-  backup, release guards, and read-only migration/schema preflight. GitHub
-  `main`, Production, and the audit checkout are aligned to that SHA.
+- Approved commit `ca217f62d3f1800b089adbb4dd69e162629c0040` and browser follow-up
+  `26022c5cb7e8d0f94ba481ee7475c9d95f6cf886` are deployed as the immutable
+  active release after verified ancestry, fresh nine-database backups, release
+  guards, and read-only migration/schema preflight. GitHub `main`, Production,
+  and the audit checkout are aligned to `26022c5`.
 - P31/P32, Round 5, and Finance P2/P3 runners reject unknown, missing, and
   wrongly mapped targets immediately with exit code 1; valid allowlisted
   targets pass read-only validation. No Production migration or Finance write
@@ -28,16 +50,14 @@ Finance V2
   Super Admin. School Admin Finance/direct URLs return 403, Head Finance is
   restricted to Central Finance, Super Admin authenticates without a School
   Code, and the School management form exposes canonical `MMBOWEN##` codes.
-- Browser QA found three pre-existing compatibility defects now fixed in the
-  follow-up candidate: the removed `database_backups` table caused its obsolete
+- Browser QA found three pre-existing compatibility defects fixed and deployed
+  in the follow-up release: the removed `database_backups` table caused its obsolete
   list endpoint to return 500, the unused resource `schools.create` route called
   a nonexistent controller action, and the V2.2 workbook link retained a V2.1
   label. A missing dashboard chart target also now exits without an ApexCharts
   console error.
-- The follow-up candidate passes 716 tests / 4,661 assertions with one expected
+- The deployed follow-up passed 716 tests / 4,661 assertions with one expected
   opt-in skip, plus the disposable MySQL rehearsal (1 test / 20 assertions).
-  It requires a separate Production deployment gate before final browser
-  revalidation and completion of the quality gate.
 
 ## Final Quality Gate migration runner fail-closed fix — local PASS
 

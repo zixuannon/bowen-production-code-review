@@ -60,6 +60,8 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
                 ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'MMBOWEN01', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
                 ['code' => 'SHARED-CASH', 'name' => 'Shared Cash', 'school_code' => 'SCH202616', 'account_type' => 'cash', 'owner_type' => 'school', 'currency' => 'MMK'],
                 ['code' => 'HQ-MMK', 'name' => 'HQ MMK', 'school_code' => null, 'account_type' => 'bank', 'owner_type' => 'hq', 'currency' => 'MMK'],
+                ['code' => '00123', 'name' => 'Leading Zero Account', 'school_code' => 'MMBOWEN01', 'account_type' => 'bank', 'owner_type' => 'school', 'currency' => 'MMK'],
+                ['code' => '12345', 'name' => 'Numeric-looking Account', 'school_code' => 'MMBOWEN01', 'account_type' => 'bank', 'owner_type' => 'school', 'currency' => 'MMK'],
             ],
             categories: [
                 ['school_code' => 'MMBOWEN01', 'type' => 'expense', 'category_code' => 'SUPPLIES-1', 'name' => 'Supplies'],
@@ -89,6 +91,14 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $this->assertSame('=OR(L2="",AND(ISNUMBER(L2),L2>0,M2=""))', $import->getCell('L2')->getDataValidation()->getFormula1());
             $this->assertSame('=OR(M2="",AND(ISNUMBER(M2),M2>0,L2=""))', $import->getCell('M2')->getDataValidation()->getFormula1());
             $this->assertSame('@', $import->getStyle('G2')->getNumberFormat()->getFormatCode());
+            $this->assertSame('00123', $workbook->getSheetByName('Fund Accounts')->getCell('A5')->getValue());
+            $this->assertSame('s', $workbook->getSheetByName('Fund Accounts')->getCell('A5')->getDataType());
+            $this->assertSame('00123', $workbook->getSheetByName('Validation Lists')->getCell('C5')->getValue());
+            $this->assertSame('s', $workbook->getSheetByName('Validation Lists')->getCell('C5')->getDataType());
+            $this->assertSame('12345', $workbook->getSheetByName('Fund Accounts')->getCell('A6')->getValue());
+            $this->assertSame('s', $workbook->getSheetByName('Fund Accounts')->getCell('A6')->getDataType());
+            $this->assertSame('12345', $workbook->getSheetByName('Validation Lists')->getCell('C6')->getValue());
+            $this->assertSame('s', $workbook->getSheetByName('Validation Lists')->getCell('C6')->getDataType());
             $this->assertNull($import->getCell('O2')->getValue());
             $this->assertSame('hidden', $workbook->getSheetByName('Validation Lists')->getSheetState());
             $this->assertNotNull($workbook->getNamedRange('SchoolCodes'));
@@ -105,6 +115,8 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             $timesCityRange = str_replace('$', '', preg_replace('/^.*!/', '', $timesCityAccounts->getRange()));
             $this->assertContains('SHARED-CASH', array_column($zixuanAccounts->getWorksheet()->rangeToArray($zixuanRange), 0));
             $this->assertContains('SHARED-CASH', array_column($timesCityAccounts->getWorksheet()->rangeToArray($timesCityRange), 0));
+            $this->assertContains('00123', array_column($zixuanAccounts->getWorksheet()->rangeToArray($zixuanRange), 0));
+            $this->assertContains('12345', array_column($zixuanAccounts->getWorksheet()->rangeToArray($zixuanRange), 0));
 
             $upload = new UploadedFile($path, 'group-finance-import-template-v2.2.xlsx', null, null, true);
             $imported = Excel::toArray([], $upload)[0];
@@ -129,6 +141,14 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
                 $this->assertSame('=INDIRECT("FundAccounts_"&$B2)', $reopenedImport->getCell('G2')->getDataValidation()->getFormula1());
                 $this->assertTrue($reopenedImport->getCell('C2')->getDataValidation()->getShowDropDown());
                 $this->assertTrue($reopenedImport->getCell('G2')->getDataValidation()->getShowDropDown());
+                $this->assertSame('00123', $reopened->getSheetByName('Fund Accounts')->getCell('A5')->getValue());
+                $this->assertSame('s', $reopened->getSheetByName('Fund Accounts')->getCell('A5')->getDataType());
+                $this->assertSame('00123', $reopened->getSheetByName('Validation Lists')->getCell('C5')->getValue());
+                $this->assertSame('s', $reopened->getSheetByName('Validation Lists')->getCell('C5')->getDataType());
+                $this->assertSame('12345', $reopened->getSheetByName('Fund Accounts')->getCell('A6')->getValue());
+                $this->assertSame('s', $reopened->getSheetByName('Fund Accounts')->getCell('A6')->getDataType());
+                $this->assertSame('12345', $reopened->getSheetByName('Validation Lists')->getCell('C6')->getValue());
+                $this->assertSame('s', $reopened->getSheetByName('Validation Lists')->getCell('C6')->getDataType());
             } finally {
                 $reopened->disconnectWorksheets();
             }

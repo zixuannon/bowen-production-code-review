@@ -8,6 +8,7 @@ use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
@@ -30,6 +31,11 @@ final class CentralFinanceGroupImportV21LookupSheet implements FromArray, Should
                 if (str_contains($heading, 'Code')) {
                     $column = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($index + 1);
                     $sheet->getStyle("{$column}2:{$column}".$sheet->getHighestRow())->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+                    foreach ($this->rows as $rowIndex => $row) {
+                        if (array_key_exists($index, $row) && $row[$index] !== null) {
+                            $sheet->setCellValueExplicit($column.($rowIndex + 2), (string) $row[$index], DataType::TYPE_STRING);
+                        }
+                    }
                 }
             }
         }];

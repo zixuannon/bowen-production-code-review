@@ -180,13 +180,19 @@ final class CentralFinanceGroupImportService
     }
 
     /**
-     * Keep explicitly-labelled UAT/test master data out of the distributed
-     * workbook without changing or deleting the audited Production records.
+     * Keep explicitly-labelled UAT/test/preview master data out of the
+     * distributed workbook without changing or deleting the audited
+     * Production records.
      */
     private function isFormalTemplateLookup(?string ...$values): bool
     {
         foreach ($values as $value) {
-            if (preg_match('/(?:^|[^A-Z0-9])(?:UAT|TEST)(?:[^A-Z0-9]|$)/i', (string) $value)) {
+            $normalized = strtoupper(trim((string) $value));
+
+            if (
+                preg_match('/(?:^|[^A-Z0-9])(?:UAT|TEST|PREVIEW|DUMMY|SAMPLE)(?:[^A-Z0-9]|$)/', $normalized)
+                || preg_match('/^(?:UAT|TEST|PREVIEW|DUMMY|SAMPLE)[A-Z0-9]/', $normalized)
+            ) {
                 return false;
             }
         }
