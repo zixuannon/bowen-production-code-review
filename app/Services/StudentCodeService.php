@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\StudentImportIdentity;
 use App\Models\Students;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 
 /** Owns the tenant-local School + Student Code identity. */
@@ -56,12 +57,25 @@ final class StudentCodeService
 
         $this->assertAvailable((int) $student->school_id, $code);
 
-        return StudentImportIdentity::query()->create([
-            'school_id' => (int) $student->school_id,
-            'student_code' => $code,
-            'student_id' => (int) $student->id,
-            'user_id' => (int) $student->user_id,
-            'created_by' => (int) $actor->id,
-        ]);
+        try {
+            return StudentImportIdentity::query()->create([
+                'school_id' => (int) $student->school_id,
+                'student_code' => $code,
+                'student_id' => (int) $student->id,
+                'user_id' => (int) $student->user_id,
+                'created_by' => (int) $actor->id,
+            ]);
+        } catch (QueryException $exception) {
+            // The database unique constraint is the final concurrency gate.
+            // Convert only duplicate-key races into the same closed validation
+            // result as a normal replay; other database failures remain fatal.
+            $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+            if ($driverCode === 1062 || str_contains(strtolower($exception->getMessage()), 'unique constraint')) {
+                throw ValidationException::withMessages([
+                    'student_code' => __('This Student Code is already in use for this School.'),
+                ]);
+            }
+            throw $exception;
+        }
     }
 }

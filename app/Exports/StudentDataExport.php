@@ -8,11 +8,13 @@ use Illuminate\Database\Eloquent\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 
-class StudentDataExport implements FromCollection, WithTitle, WithHeadings, ShouldAutoSize, WithStrictNullComparison, WithMultipleSheets {
+class StudentDataExport implements FromCollection, WithTitle, WithHeadings, ShouldAutoSize, WithStrictNullComparison, WithMultipleSheets, WithColumnFormatting {
     protected mixed $results;
     protected Collection $formFields;
 
@@ -28,6 +30,7 @@ class StudentDataExport implements FromCollection, WithTitle, WithHeadings, Shou
 
     public function headings(): array {
         $columns = [
+            'student_code',
             'first_name',
             'last_name',
             'mobile',
@@ -64,8 +67,13 @@ class StudentDataExport implements FromCollection, WithTitle, WithHeadings, Shou
         return $sheets;
     }
 
+    public function columnFormats(): array {
+        return ['A' => NumberFormat::FORMAT_TEXT];
+    }
+
     private function getActionItems() {
         $fields = [
+            '00125',
             'student1',
             'example',
             '1234567899',

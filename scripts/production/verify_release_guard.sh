@@ -89,8 +89,5 @@ actual_sha=$(git -C "$source_repo" rev-parse HEAD)
 expect "$manifest_sha" "$actual_sha" manifest_commit_sha
 git -C "$source_repo" merge-base --is-ancestor "$(read_json "$baseline_file" accepted_production_sha)" "$actual_sha" || { echo "GUARD_FAIL: candidate is not an accepted-baseline descendant" >&2; exit 1; }
 git -C "$source_repo" show-ref --verify --quiet "refs/remotes/origin/$github_ref" || { echo "GUARD_FAIL: GitHub ref unavailable" >&2; exit 1; }
-test -L "$release_dir/.env" || { echo "GUARD_FAIL: .env must be a symlink" >&2; exit 1; }
-test -L "$release_dir/storage" || { echo "GUARD_FAIL: storage must be a symlink" >&2; exit 1; }
-test -L "$release_dir/public/storage" || { echo "GUARD_FAIL: public/storage must be a symlink" >&2; exit 1; }
-test -d "$release_dir/bootstrap/cache" && test -w "$release_dir/bootstrap/cache" || { echo "GUARD_FAIL: bootstrap/cache unavailable" >&2; exit 1; }
+JSON_PHP_BIN="$json_php_bin" PHP_BIN="$php_bin" "$release_dir/scripts/production/verify_runtime_links.sh" "$release_dir" "$baseline_file"
 echo "RELEASE_GUARD_PASS:$actual_sha"

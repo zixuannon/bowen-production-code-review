@@ -10,5 +10,8 @@
   "approved_homepage_assets_sha256": "6d319169dad8139d39fbee347406ba6544449f7971de66a12ef9e967eb74ed53",
   "shared_env_target": "/www/wwwroot/shared/eschool/.env",
   "shared_storage_target": "/www/wwwroot/shared/eschool/storage",
+  "shared_public_storage_target": "/www/wwwroot/shared/eschool/storage/app/public",
+  "runtime_user": "www",
+  "runtime_group": "www",
   "required_manifest": ".release-manifest.json"
 }

@@ -23,21 +23,25 @@ release_dir="$release_root/$release_name"
 git -C "$repo" cat-file -e "$commit^{commit}" || { echo "DEPLOY_FAIL: candidate commit unavailable" >&2; exit 1; }
 base=$("$php_bin" -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$repo/config/production-baseline.json")
 git -C "$repo" merge-base --is-ancestor "$base" "$commit" || { echo "DEPLOY_FAIL: candidate is not baseline descendant" >&2; exit 1; }
-[[ -L "$active_link/.env" && -L "$active_link/storage" ]] || { echo "DEPLOY_FAIL: shared runtime links missing" >&2; exit 1; }
+JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$repo/scripts/production/verify_runtime_links.sh" "$active_link" "$repo/config/production-baseline.json" \
+  || { echo "DEPLOY_FAIL: active runtime contract is unsafe" >&2; exit 1; }
+shared_env=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_env_target"];' "$repo/config/production-baseline.json")
+shared_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_storage_target"];' "$repo/config/production-baseline.json")
+shared_public_storage=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["shared_public_storage_target"];' "$repo/config/production-baseline.json")
 
 [[ ! -e "$release_dir" ]] || { echo "DEPLOY_FAIL: release directory already exists" >&2; exit 1; }
 git -C "$repo" worktree add --detach "$release_dir" "$commit" >/dev/null
 cleanup() { if [[ "$switch" != "--switch" ]]; then git -C "$repo" worktree remove --force "$release_dir" >/dev/null 2>&1 || true; fi; }
 trap cleanup EXIT
-ln -s "$(readlink "$active_link/.env")" "$release_dir/.env"
+ln -s "$shared_env" "$release_dir/.env"
 if [[ -d "$release_dir/storage" && ! -L "$release_dir/storage" ]]; then
   rm -rf "$release_dir/storage"
 fi
-ln -s "$(readlink "$active_link/storage")" "$release_dir/storage"
+ln -s "$shared_storage" "$release_dir/storage"
 if [[ -L "$release_dir/public/storage" || -e "$release_dir/public/storage" ]]; then
   rm -f "$release_dir/public/storage"
 fi
-ln -s "$(readlink "$active_link/public/storage")" "$release_dir/public/storage"
+ln -s "$shared_public_storage" "$release_dir/public/storage"
 mkdir -p "$release_dir/bootstrap/cache"
 if id www >/dev/null 2>&1; then
   chown -R www:www "$release_dir/bootstrap/cache"

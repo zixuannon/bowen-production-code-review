@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\LegacySchemaIntegrityService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
@@ -64,9 +65,10 @@ final class MigrateStudentImportV2Schema extends Command
         $recorded = $this->tenantMigration(self::TENANT_MIGRATION);
         $v21Recorded = $this->tenantMigration(self::TENANT_V21_MIGRATION);
         $table = Schema::connection('school')->hasTable('student_import_identities');
+        $identityComplete = app(LegacySchemaIntegrityService::class)->identityBaseComplete();
         $notes = Schema::connection('school')->hasColumn('students', 'notes');
-        if ($recorded && $table && $this->identityIndex() && $v21Recorded && $this->v21Fields()) return 'complete';
-        if ((!$recorded && !$table && !$v21Recorded && !$notes) || ($recorded && $table && $this->identityIndex() && !$v21Recorded && !$notes)) return 'eligible';
+        if ($recorded && $identityComplete && $v21Recorded && $this->v21Fields()) return 'complete';
+        if ((!$recorded && !$table && !$v21Recorded && !$notes) || ($recorded && $identityComplete && !$v21Recorded && !$notes)) return 'eligible';
         return 'unexpected';
     }
     private function tenantMigration(string $migration): bool { return DB::connection('school')->table('migrations')->where('migration', $migration)->exists(); }
@@ -80,12 +82,6 @@ final class MigrateStudentImportV2Schema extends Command
         } catch (\Throwable) {
             return false;
         }
-    }
-    private function identityIndex(): bool
-    {
-        try { foreach (Schema::connection('school')->getIndexes('student_import_identities') as $index) if (($index['name'] ?? null) === 'student_import_identity_school_code_unique' && ($index['unique'] ?? false)) return true; }
-        catch (\Throwable) { return false; }
-        return false;
     }
     private function migrate(string $connection, string $path): bool
     {

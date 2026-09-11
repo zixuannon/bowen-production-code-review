@@ -78,6 +78,44 @@ Finance V2
 - No Production migration, deployment, or Production financial/data write was
   performed. Phase 5.5B and homepage/assets remain untouched.
 
+## Round 5 P1C schema/import/deployment integrity — local candidate
+
+- Branch `codex/round5-p1c-schema-import-deployment` starts exactly from the
+  current Production/main SHA `f3a898de68d8f2b4d3320e6e508365e572f9071a`.
+- Every approved legacy-import School uses the tenant-local text identity
+  `school_id + student_code`. The legacy template makes Student Code a Text
+  column, preserves leading zeroes, rejects duplicate rows before writes, and
+  commits Student/Guardian/identity atomically. Admission/login identifiers use
+  UUID entropy and no longer derive from the latest Student ID. The database
+  unique key is the final concurrent-import gate.
+- The additive Round 5 tenant migration preflights identity, Bank Account, and
+  Bank Transfer duplicates, orphans, School mismatches, actor references,
+  amounts, account pairs, statuses, and transfer references before its first
+  ALTER. It adds exact composite unique/FK and CHECK constraints and verifies
+  them from `information_schema`. Existing create migrations now reject partial
+  tables rather than recording `hasTable()` as success.
+- `schema:round5-integrity` is read-only by default, validates the fixed seven
+  School-code/database registry mapping in a complete first pass, and can run
+  only the two exact allowlisted files after a separate Production migration
+  approval. No broad or discovered migration is reachable.
+- Immutable release guards resolve `.env`, `storage`, and `public/storage` to
+  exact approved shared paths, verify owner/runtime-user access, writable
+  targets, bootstrap cache, and checksum-required assets. A wrong or broken
+  symlink blocks release creation/switching.
+- Read-only Production-shaped preflight found no identity/account/actor/orphan
+  mismatch, but found one duplicate non-null transfer-reference group in
+  `SCH202615`; the new schema runner correctly remains fail-closed until a
+  separately audited remediation is approved. Runtime inspection also found
+  the active `.env` resolves outside the approved shared path and
+  `public/storage` is owned `root:root` and not writable by `www`; the hardened
+  release guard will block until operations repairs those links/ownership.
+- Local focused tests pass (21 tests / 109 assertions). Disposable MariaDB DDL,
+  orphan/duplicate preflight, partial-schema detection, and two-process
+  concurrent Student Code insertion pass (1 test / 12 assertions). Full
+  regression passes (653 tests / 4,277 assertions; one intentional opt-in
+  rehearsal skip). No Production migration, schema/data write, deployment,
+  Finance business-logic, Phase 5.5B, or homepage/assets change was made.
+
 ## Round 2 P0B financial integrity — Production
 
 - The approved `c0ba941d2c4b1a8bdbfb53e4d766cbbc9a2f0e37` release and its

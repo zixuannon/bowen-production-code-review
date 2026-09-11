@@ -8,11 +8,22 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('bank_accounts')) {
+        $complete = static function (): bool {
+            $schema = Schema::connection('school');
+            if (!$schema->hasTable('bank_accounts')) return false;
+            foreach (['id','school_id','account_name','account_number','bank_name','account_type','currency','opening_balance','opening_balance_date','is_active','is_default','notes','created_at','updated_at','deleted_at'] as $column) {
+                if (!$schema->hasColumn('bank_accounts', $column)) return false;
+            }
+            $indexes = collect($schema->getIndexes('bank_accounts'));
+            return $indexes->contains(fn (array $index): bool => ($index['columns'] ?? []) === ['school_id'])
+                && $indexes->contains(fn (array $index): bool => ($index['columns'] ?? []) === ['is_active']);
+        };
+        if (Schema::connection('school')->hasTable('bank_accounts')) {
+            if (!$complete()) throw new RuntimeException('bank_accounts exists with a partial schema; refusing to record migration success.');
             return;
         }
 
-        Schema::create('bank_accounts', function (Blueprint $table) {
+        Schema::connection('school')->create('bank_accounts', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('school_id');
             $table->string('account_name', 255);
@@ -31,10 +42,11 @@ return new class extends Migration
             $table->index('school_id');
             $table->index('is_active');
         });
+        if (!$complete()) throw new RuntimeException('bank_accounts creation failed exact schema verification.');
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('bank_accounts');
+        Schema::connection('school')->dropIfExists('bank_accounts');
     }
 };

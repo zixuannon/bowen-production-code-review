@@ -10,19 +10,20 @@ use App\Repositories\User\UserInterface;
 use App\Rules\TrimmedEnum;
 use App\Services\CachingService;
 use App\Services\ResponseService;
+use App\Services\StudentCodeService;
 use App\Services\UserService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use JsonException;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 use Str;
 use Throwable;
-use TypeError;
 
 class StudentsImport implements WithMultipleSheets
 {
@@ -83,6 +84,7 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
         $cache = app(CachingService::class);
 
         $validator = Validator::make($collection->toArray(), [
+            '*.student_code'  => 'required|string|max:100',
             '*.first_name'     => 'required',
             '*.last_name'      => 'required',
             '*.mobile'         => 'nullable|regex:/^([0-9\s\-\+\(\)]*)$/',
@@ -117,6 +119,18 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
         //             If Validation fails then this will throw the ValidationFail Exception
         $validator->validate();
 
+        $studentCodeService = app(StudentCodeService::class);
+        $normalizedCodes = [];
+        foreach ($collection as $index => $row) {
+            $code = $studentCodeService->normalize($row['student_code'] ?? null);
+            if (isset($normalizedCodes[$code])) {
+                throw ValidationException::withMessages([
+                    "{$index}.student_code" => __('Duplicate Student Code in the import file.'),
+                ]);
+            }
+            $normalizedCodes[$code] = true;
+        }
+
         // Check free trial package
         $today_date = Carbon::now()->format('Y-m-d');
         $get_subscription = $subscription->builder()->doesntHave('subscription_bill')->whereDate('start_date','<=',$today_date)->where('end_date','>=',$today_date)->whereHas('package',function($q){
@@ -125,8 +139,8 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
 
         $userService = app(UserService::class);
         $sessionYear = $sessionYear->findById($this->sessionYearID);
-        DB::beginTransaction();
-        foreach ($collection as $row) {
+        DB::connection('school')->transaction(function () use ($collection, $get_subscription, $cache, $user, $userService, $sessionYear, $studentCodeService, $student, $formFields): void {
+            foreach ($collection as $row) {
 
             // Check free trial package
             
@@ -150,8 +164,10 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
 
 
             $guardian = $userService->createOrUpdateParent($row['guardian_first_name'], $row['guardian_last_name'], $row['guardian_email'], $row['guardian_mobile'], $row['guardian_gender']);
-            $get_student = $student->builder()->where('session_year_id', $sessionYear->id)->select('id')->latest('id')->pluck('id')->first();
-            $admission_no = $sessionYear->name .'0'.  Auth::user()->school_id .'0'. ($get_student + 1);
+            $studentCode = $studentCodeService->assertAvailable((int) Auth::user()->school_id, $row['student_code']);
+            // The legacy admission field remains an internal login identifier;
+            // it no longer derives business identity from a racy latest row ID.
+            $admission_no = 'LEGACY-'.Auth::user()->school_id.'-'.Str::orderedUuid();
             $extraDetails = array();
             // Check that Extra Details Exists
             if (!empty($extraDetailsFields)) {
@@ -198,22 +214,11 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
                 }
             }
             //                $userService->createOrUpdateStudentUser($row['first_name'], $row['last_name'], $admission_no, $row['mobile'], $row['dob'], $row['gender'], null, $this->class_section_id, now(), $extraDetails, null, $guardian->id);
-            try {
-                $userService->createStudentUser($row['first_name'], $row['last_name'], $admission_no, $row['mobile'], $row['dob'], $row['gender'], null, $this->classSectionID, $row['admission_date'],$row['current_address'],$row['permanent_address'], $sessionYear->id, $guardian->id, $extraDetails, 0, $this->is_send_notification);
-            } catch (Throwable $e) {
-                // IF Exception is TypeError and message contains Mail keywords then email is not sent successfully
-                if ($e instanceof TypeError && Str::contains($e->getMessage(), [
-                        'Mail',
-                        'Mailer',
-                        'MailManager'
-                    ])) {
-                    continue;
-                }
-                DB::rollBack();
-                throw $e;
+            $studentUser = $userService->createStudentUser($row['first_name'], $row['last_name'], $admission_no, $row['mobile'], $row['dob'], $row['gender'], null, $this->classSectionID, $row['admission_date'],$row['current_address'],$row['permanent_address'], $sessionYear->id, $guardian->id, $extraDetails, 0, $this->is_send_notification);
+            $createdStudent = $student->builder()->where('user_id', $studentUser->id)->firstOrFail();
+            $studentCodeService->assign($createdStudent, Auth::user(), $studentCode);
             }
-        }
-        DB::commit();
+        });
         return true;
     }
 }

@@ -39,6 +39,16 @@ After an atomic release switch, preserve the existing shared `public/storage`
 target and use a shared writable `VIEW_COMPILED_PATH`; never point compiled
 views into a release directory that will later be removed.
 
+Before creating an immutable release, run the versioned runtime-link guard. It
+must resolve (not merely identify as symlinks) `.env`, `storage`, and
+`public/storage` to the exact `shared_*_target` paths in
+`config/production-baseline.json`. Their resolved targets must be owned by the
+configured runtime user/group and be readable/writable as required;
+`bootstrap/cache` and every checksum-pinned runtime asset must also pass. Do
+not copy `readlink` output from the active release into a candidate. A broken,
+relative-to-the-wrong-release, incorrectly owned, or unexpected target blocks
+deployment before release creation and atomic switch.
+
 Clear configuration, route, and view caches after the switch, then reload the
 PHP-FPM master serving the active Nginx vhost. Determine that master/socket from
 the vhost's included PHP configuration and PID file—do not assume a similarly
@@ -92,6 +102,24 @@ Before any approved execution, verify a tenant backup, the exact migration
 history, nullable column state, and the `students.notes` column. Do not use a
 broad tenant migrate command or run its `--execute` option without a Production
 deployment/migration Human Gate.
+
+### Round 5 identity and Bank schema targeted runner
+
+`schema:round5-integrity` is verification-only by default. It binds the seven
+approved active School codes to exact tenant database names and performs a
+read-only pass across every selected tenant before applying anything. The only
+allowlisted paths are the tenant Student Import identity-table migration and
+`2026_09_12_000001_harden_legacy_student_import_and_bank_transfer_integrity`.
+
+The preflight must report zero duplicate Student Codes/student/user identities,
+zero duplicate non-null transfer references, zero orphan/cross-School
+student/user/actor/account references, and zero invalid transfer account,
+amount, School, or status rows. Any partial migration history, required-column
+or index mismatch, or partially present Round 5 constraint is a forward-fix
+stop. Never auto-delete or merge a conflicting Production row. `--execute`
+requires a separate Production migration Human Gate, backup, reviewed data
+remediation where applicable, and a fresh read-only rerun immediately before
+execution.
 
 ### Finance P2/P3 targeted runner
 

@@ -44,6 +44,10 @@ final class ProductionMigrationGuard
         'finance:migrate-currency-history' => [
             'database/migrations/schools/2026_09_11_000001_add_financial_currency_history_integrity.php',
         ],
+        'schema:round5-integrity' => [
+            'database/migrations/schools/2026_09_03_000001_create_student_import_identities_table.php',
+            'database/migrations/schools/2026_09_12_000001_harden_legacy_student_import_and_bank_transfer_integrity.php',
+        ],
     ];
 
     /**

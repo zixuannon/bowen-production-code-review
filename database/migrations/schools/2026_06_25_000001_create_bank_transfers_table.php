@@ -8,11 +8,24 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('bank_transfers')) {
+        $complete = static function (): bool {
+            $schema = Schema::connection('school');
+            if (!$schema->hasTable('bank_transfers')) return false;
+            foreach (['id','school_id','from_account_id','to_account_id','amount','transfer_date','reference_no','notes','status','created_by','created_at','updated_at','deleted_at'] as $column) {
+                if (!$schema->hasColumn('bank_transfers', $column)) return false;
+            }
+            $indexes = collect($schema->getIndexes('bank_transfers'));
+            foreach ([['school_id'],['from_account_id'],['to_account_id'],['transfer_date'],['status']] as $columns) {
+                if (!$indexes->contains(fn (array $index): bool => ($index['columns'] ?? []) === $columns)) return false;
+            }
+            return true;
+        };
+        if (Schema::connection('school')->hasTable('bank_transfers')) {
+            if (!$complete()) throw new RuntimeException('bank_transfers exists with a partial schema; refusing to record migration success.');
             return;
         }
 
-        Schema::create('bank_transfers', function (Blueprint $table) {
+        Schema::connection('school')->create('bank_transfers', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('school_id');
             $table->unsignedBigInteger('from_account_id');
@@ -32,10 +45,11 @@ return new class extends Migration
             $table->index('transfer_date');
             $table->index('status');
         });
+        if (!$complete()) throw new RuntimeException('bank_transfers creation failed exact schema verification.');
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('bank_transfers');
+        Schema::connection('school')->dropIfExists('bank_transfers');
     }
 };
