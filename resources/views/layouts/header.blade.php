@@ -7,19 +7,28 @@
             if ($path === '') {
                 return asset($fallback);
             }
-            if (\Illuminate\Support\Str::startsWith($path, ['http://', 'https://', '/'])) {
+            if (\Illuminate\Support\Str::startsWith($path, ['http://', 'https://'])) {
                 return $path;
             }
-            if (\Illuminate\Support\Str::startsWith($path, 'storage/')) {
-                return '/'.$path;
+
+            $relativePath = ltrim($path, '/');
+            if (\Illuminate\Support\Str::startsWith($relativePath, 'assets/')) {
+                return is_file(public_path($relativePath)) ? asset('/'.$relativePath) : asset($fallback);
             }
 
-            return \Illuminate\Support\Facades\Storage::url($path);
+            $relativePath = \Illuminate\Support\Str::after($relativePath, 'storage/');
+            if (! \Illuminate\Support\Facades\Storage::disk('public')->exists($relativePath)) {
+                return asset($fallback);
+            }
+
+            return \Illuminate\Support\Facades\Storage::disk('public')->url($relativePath);
         };
+
         $horizontalPath = $schoolSettings['horizontal_logo'] ?? null;
         $verticalPath = $schoolSettings['vertical_logo'] ?? null;
         $horizontalLogo = $resolveLogoUrl($horizontalPath ?: ($systemSettings['horizontal_logo'] ?? null), '/assets/horizontal-logo2.svg');
         $verticalLogo = $resolveLogoUrl($verticalPath ?: ($systemSettings['vertical_logo'] ?? null), '/assets/vertical-logo.svg');
+        $profileImage = $resolveLogoUrl(Auth::user()->getRawOriginal('image'), '/assets/no_image_available.jpg');
     @endphp
     <div class="text-center navbar-brand-wrapper d-flex align-items-center justify-content-center">
         <a class="navbar-brand brand-logo" href="{{ URL::to('/dashboard') }}" aria-label="{{ __('Dashboard') }}">
@@ -105,7 +114,7 @@
                 <a class="nav-link dropdown-toggle" id="profileDropdown" href="#" data-toggle="dropdown" aria-expanded="false"
                    aria-label="{{ __('Open user menu') }}" title="{{ __('Open user menu') }}">
                     <div class="nav-profile-img">
-                        <img src="{{ Auth::user()->image }}" alt="" onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/no_image_available.jpg') }}';">
+                        <img src="{{ $profileImage }}" alt="" onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/no_image_available.jpg') }}';">
                     </div>
                     <div class="nav-profile-text">
                         <p class="mb-1 text-black">{{ Auth::user()->first_name }}</p>

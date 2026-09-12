@@ -450,11 +450,16 @@ function assignmentSubmissionFeedbackUpdateFormatter(value, row) {
 }
 
 function imageFormatter(value) {
-    if (value) {
-        return "<a data-toggle='lightbox' href='" + value + "' class=''><img src='" + value + "' class=''  alt='image'  onerror='onErrorImage(event)' /></a>";
-    } else {
-        return '-'
+    var normalized = value ? String(value).trim() : '';
+    if (!normalized || /\/storage\/?$/i.test(normalized)) {
+        return '-';
     }
+    if (/\/storage\/no_image_available\.jpg(?:\?.*)?$/i.test(normalized)) {
+        normalized = window.location.origin + '/assets/no_image_available.jpg';
+    } else {
+        normalized = safeUrlAttr(normalized);
+    }
+    return "<a data-toggle='lightbox' href='" + escapeHtml(normalized) + "' class=''><img src='" + escapeHtml(normalized) + "' class='' alt='image' onerror='onErrorImage(event)' /></a>";
 }
 
 function StudentNameFormatter(value, row) {

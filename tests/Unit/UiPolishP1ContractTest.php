@@ -137,6 +137,15 @@ final class UiPolishP1ContractTest extends TestCase
         $this->assertStringContainsString('canonical tenant identity and cannot be edited here', $school);
         $this->assertStringContainsString('aria-label="{{ __(\'schools_help\') }}"', $school);
 
+        $header = $this->read('resources/views/layouts/header.blade.php');
+        $this->assertStringContainsString("Storage::disk('public')->exists", $header);
+        $this->assertStringContainsString("Auth::user()->getRawOriginal('image')", $header);
+        $this->assertStringContainsString('src="{{ $profileImage }}"', $header);
+
+        $formatter = $this->read('public/assets/js/custom/bootstrap-table/formatter.js');
+        $this->assertStringContainsString('/\\/storage\\/?$/i.test(normalized)', $formatter);
+        $this->assertStringContainsString("window.location.origin + '/assets/no_image_available.jpg'", $formatter);
+
         foreach ([
             'resources/views/schools/index.blade.php',
             'resources/views/bank-account/index.blade.php',
