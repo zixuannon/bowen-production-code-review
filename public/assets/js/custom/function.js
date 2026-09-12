@@ -856,11 +856,76 @@ function formatMoney(n) {
     return n.toLocaleString().split(".")[0] + "." + n.toFixed(2).split(".")[1];
 }
 
+function getApexChartTarget(selector) {
+    if (typeof window.ApexCharts !== 'function') {
+        return null;
+    }
+
+    return document.querySelector(selector);
+}
+
+function chartTranslation(key, fallback) {
+    var value = window.trans && window.trans[key];
+    return value && value !== 'undefined' ? value : fallback;
+}
+
+function safeChartNumbers(values) {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return values.map(function (value) {
+        var number = Number(value);
+        return Number.isFinite(number) ? number : 0;
+    });
+}
+
+function safeChartLabels(values) {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return values.map(function (value) {
+        return value === null || value === undefined || String(value).trim() === ''
+            ? '—'
+            : String(value);
+    });
+}
+
+function renderChartEmptyState(chartElement) {
+    chartElement.innerHTML = '<div class="ui-empty-state" role="status"><i class="fa fa-bar-chart ui-empty-state__icon" aria-hidden="true"></i><span class="ui-empty-state__title">'
+        + chartTranslation('No data available', 'No data available')
+        + '</span></div>';
+}
+
+function renderApexChart(chartElement, options) {
+    $(chartElement).html('');
+
+    try {
+        var chart = new ApexCharts(chartElement, options);
+        var renderResult = chart.render();
+        if (renderResult && typeof renderResult.catch === 'function') {
+            renderResult.catch(function () {
+                renderChartEmptyState(chartElement);
+            });
+        }
+    } catch (error) {
+        renderChartEmptyState(chartElement);
+    }
+}
+
 function expense_graph(months, data) {
+    var chartElement = getApexChartTarget("#expenseChart");
+    if (!chartElement) {
+        return;
+    }
+
+    var safeMonths = safeChartLabels(months);
+    var safeData = safeChartNumbers(data);
     var options = {
         series: [{
-            name: window.trans['Amount'],
-            data: isRTL() ? data.reverse() : data,
+            name: chartTranslation('Amount', 'Amount'),
+            data: isRTL() ? safeData.slice().reverse() : safeData,
         }],
         chart: {
             height: 380,
@@ -876,16 +941,14 @@ function expense_graph(months, data) {
 
         },
         xaxis: {
-            categories: isRTL() ? months.reverse() : months,
+            categories: isRTL() ? safeMonths.slice().reverse() : safeMonths,
         },
         yaxis: {
             opposite: isRTL(),
             min: 0
         }
     };
-    $('#expenseChart').html('');
-    var chart = new ApexCharts(document.querySelector("#expenseChart"), options);
-    chart.render();
+    renderApexChart(chartElement, options);
 }
 
 function getMinutes(minute) {
@@ -897,8 +960,13 @@ function getMinutes(minute) {
 }
 
 function gender_ratio(boys, girls, total_students) {
+    var chartElement = getApexChartTarget("#gender-ratio-chart");
+    if (!chartElement) {
+        return;
+    }
+
     var options = {
-        series: [boys, girls],
+        series: safeChartNumbers([boys, girls]),
         chart: {
             height: 390,
             type: 'radialBar',
@@ -914,18 +982,18 @@ function gender_ratio(boys, girls, total_students) {
                     },
                     total: {
                         show: true,
-                        label: window.trans['total'],
+                        label: chartTranslation('total', 'Total'),
                         formatter: function (w) {
                             // By default this function returns the average of all series. The below is just an example to show the use of custom formatter function
                             // return 60
-                            return total_students
+                            return Number.isFinite(Number(total_students)) ? Number(total_students) : 0
                         }
                     }
                 },
             },
         },
 
-        labels: [window.trans['male'], window.trans['female']],
+        labels: [chartTranslation('male', 'Male'), chartTranslation('female', 'Female')],
         legend: {
             show: true,
             floating: true,
@@ -935,8 +1003,7 @@ function gender_ratio(boys, girls, total_students) {
         },
     };
 
-    var chart = new ApexCharts(document.querySelector("#gender-ratio-chart"), options);
-    chart.render();
+    renderApexChart(chartElement, options);
 }
 
 function fees_details(data) {
@@ -944,9 +1011,19 @@ function fees_details(data) {
     if (!chartElement) {
         return;
     }
+    if (typeof window.ApexCharts !== 'function') {
+        return;
+    }
+
+    data = data && typeof data === 'object' ? data : {};
+    var feeSeries = safeChartNumbers([data.fullPaidFees, data.partialPaidFees, data.unPaidFees]);
+    if (!feeSeries.some(function (value) { return value > 0; })) {
+        renderChartEmptyState(chartElement);
+        return;
+    }
 
     var options = {
-        series: [data.fullPaidFees, data.partialPaidFees, data.unPaidFees],
+        series: feeSeries,
         chart: {
             width: '100%',
             type: 'donut',
@@ -966,7 +1043,7 @@ function fees_details(data) {
                 }
             }
         }],
-        labels: [window.trans['paid'], window.trans['Partial Paid'], window.trans['unpaid']],
+        labels: [chartTranslation('paid', 'Paid'), chartTranslation('Partial Paid', 'Partially paid'), chartTranslation('unpaid', 'Unpaid')],
         legend: {
             show: true,
             position: 'bottom',
@@ -976,16 +1053,31 @@ function fees_details(data) {
         colors: ['#1BCFB4', '#198AE3', '#FE7C96']
     };
 
-    var chart = new ApexCharts(chartElement, options);
-    chart.render();
+    $(chartElement).html('');
+    try {
+        var chart = new ApexCharts(chartElement, options);
+        var renderResult = chart.render();
+        if (renderResult && typeof renderResult.catch === 'function') {
+            renderResult.catch(function () {
+                renderChartEmptyState(chartElement);
+            });
+        }
+    } catch (error) {
+        renderChartEmptyState(chartElement);
+    }
 }
 
 function class_attendance(section, data) {
+    var chartElement = getApexChartTarget("#attendanChart");
+    if (!chartElement) {
+        return;
+    }
+
     var options = {
         series: [
             {
-                name: window.trans['attendance'],
-                data: data
+                name: chartTranslation('attendance', 'Attendance'),
+                data: safeChartNumbers(data)
             }
         ],
         chart: {
@@ -1013,7 +1105,7 @@ function class_attendance(section, data) {
         },
 
         xaxis: {
-            categories: section,
+            categories: safeChartLabels(section),
             position: "bottom",
             axisBorder: {
                 show: false
@@ -1060,19 +1152,22 @@ function class_attendance(section, data) {
         }
     };
 
-    $('#attendanChart').html('');
-    var chart = new ApexCharts(document.querySelector("#attendanChart"), options);
-    chart.render();
+    renderApexChart(chartElement, options);
 
 }
 
 
 function subscription_transaction(labels, data) {
+    var chartElement = getApexChartTarget("#subscriptionTransactionChart");
+    if (!chartElement) {
+        return;
+    }
+
     var options = {
         series: [
             {
-                name: window.trans['Amount'],
-                data: data
+                name: chartTranslation('Amount', 'Amount'),
+                data: safeChartNumbers(data)
             }
         ],
         chart: {
@@ -1100,7 +1195,7 @@ function subscription_transaction(labels, data) {
         },
 
         xaxis: {
-            categories: labels,
+            categories: safeChartLabels(labels),
             position: "bottom",
             axisBorder: {
                 show: false
@@ -1147,16 +1242,19 @@ function subscription_transaction(labels, data) {
 
     };
 
-    $('#subscriptionTransactionChart').html('');
-    var chart = new ApexCharts(document.querySelector("#subscriptionTransactionChart"), options);
-    chart.render();
+    renderApexChart(chartElement, options);
 }
 function addon_graph(labels, data) {
+    var chartElement = getApexChartTarget("#addonChart");
+    if (!chartElement) {
+        return;
+    }
+
     var options = {
         series: [
             {
-                name: window.trans['No'],
-                data: data
+                name: chartTranslation('No', 'Count'),
+                data: safeChartNumbers(data)
             }
         ],
         chart: {
@@ -1182,7 +1280,7 @@ function addon_graph(labels, data) {
         },
 
         xaxis: {
-            categories: labels,
+            categories: safeChartLabels(labels),
             position: "bottom",
             axisBorder: {
                 show: false
@@ -1224,20 +1322,29 @@ function addon_graph(labels, data) {
         }
     };
 
-    $('#addonChart').html('');
-    var chart = new ApexCharts(document.querySelector("#addonChart"), options);
-    chart.render();
+    renderApexChart(chartElement, options);
 }
 
 function package_graph(labels, data) {
+    var chartElement = getApexChartTarget("#packageChart");
+    if (!chartElement) {
+        return;
+    }
+
+    var packageSeries = safeChartNumbers(data);
+    if (!packageSeries.some(function (value) { return value > 0; })) {
+        renderChartEmptyState(chartElement);
+        return;
+    }
+
     var options = {
-        series: data,
+        series: packageSeries,
         chart: {
             width: "100%",
             type: "donut",
             height: 450,
         },
-        labels: labels,
+        labels: safeChartLabels(labels),
 
         plotOptions: {
             donut: {
@@ -1258,9 +1365,7 @@ function package_graph(labels, data) {
         colors: ['#008FFB', '#00E396', '#FEB019', '#FF4560', '#775DD0', '#546E7A', '#E308F7', '#FF8400', '#00F5FE', '#0DFF00', '#AC40FF', '#F200FF']
     };
 
-    $('#packageChart').html('');
-    var chart = new ApexCharts(document.querySelector("#packageChart"), options);
-    chart.render();
+    renderApexChart(chartElement, options);
 }
 
 

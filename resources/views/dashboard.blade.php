@@ -836,7 +836,7 @@
 
     @if (!Auth::user()->school_id)
         <script>
-            window.onload = setTimeout(() => {
+            window.setTimeout(() => {
                 $('.year-filter').trigger('change');
 
                 addon_graph(<?php    echo json_encode($addon_graph[0]); ?>, <?php    echo json_encode($addon_graph[1]); ?>);
@@ -847,7 +847,7 @@
 
 
     <script>
-        window.onload = setTimeout(() => {
+        window.setTimeout(() => {
             $('#filter_expense_session_year_id').trigger('change');
             $('.filter_birthday').trigger('change');
             $('.filter_leaves').trigger('change');

@@ -30,7 +30,9 @@
                 <div class="form-group col-md-3"><label>{{ __('Reference No.') }}</label><input class="form-control" name="reference_no" maxlength="100"></div>
                 <div class="form-group col-md-6"><label>{{ __('Notes') }}</label><input class="form-control" name="notes" maxlength="1000"></div>
             </div>
-            <button class="btn btn-theme" type="submit" id="request-handover-submit" disabled>{{ __('Request Handover') }}</button>
+            <div class="ui-sticky-actions">
+                <button class="btn btn-theme" type="submit" id="request-handover-submit" disabled>{{ __('Request Handover') }}</button>
+            </div>
         </form>
     </div></div></div></div>
     @else

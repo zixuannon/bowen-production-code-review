@@ -167,7 +167,7 @@
                             </table>
                         </div>
                     @else
-                        <p class="text-muted">{{ __('No income data for this period.') }}</p>
+                        <x-ui-empty-state :message="__('No income data for this period.')" />
                     @endif
 
                     <h4 class="card-title mt-3">{{ __('Expense by Category') }}</h4>
@@ -191,7 +191,7 @@
                             </table>
                         </div>
                     @else
-                        <p class="text-muted">{{ __('No expense data for this period.') }}</p>
+                        <x-ui-empty-state :message="__('No expense data for this period.')" />
                     @endif
                 </div>
             </div>
@@ -236,7 +236,7 @@
                             </table>
                         </div>
                     @else
-                        <p class="text-muted">{{ __('No payments in this period.') }}</p>
+                        <x-ui-empty-state :message="__('No payments in this period.')" />
                     @endif
                 </div>
             </div>
@@ -267,7 +267,7 @@
                             </table>
                         </div>
                     @else
-                        <p class="text-muted">{{ __('No expenses in this period.') }}</p>
+                        <x-ui-empty-state :message="__('No expenses in this period.')" />
                     @endif
                 </div>
             </div>

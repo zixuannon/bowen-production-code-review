@@ -70,9 +70,10 @@
                                 </div>
                             </div>
 
-                            <input class="btn btn-theme float-right ml-3" id="create-btn" type="submit"
-                                value="{{ __('submit') }}">
-                            <input class="btn btn-secondary float-right" type="reset" value="{{ __('reset') }}">
+                            <div class="ui-sticky-actions">
+                                <input class="btn btn-secondary" type="reset" value="{{ __('Reset') }}">
+                                <input class="btn btn-theme" id="create-btn" type="submit" value="{{ __('Create Transfer') }}">
+                            </div>
                         </form>
                     </div>
                 </div>

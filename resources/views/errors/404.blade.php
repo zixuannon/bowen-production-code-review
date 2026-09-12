@@ -1,31 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
+@extends('errors.layout')
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Error Page</title>
-    <style>
-        body {
-          /* background-image: url("{{ url('images/404 error.svg') }}"); */
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-size: cover; 
-            /* height: 100vh;  */
-            margin: 0; 
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        body img {
-            margin: 10%  0px;
-        }
-    </style>
-</head>
-
-<body>
-    <img class="" src="{{ url('images/404 error.svg') }}" alt="404 error">
-</body>
-
-</html>
+@section('title', __('Page not found'))
+@section('code', '404')
+@section('icon', 'fa-map-marker')
+@section('heading', __('Page not found'))
+@section('message')
+    {{ __('The page may have moved, or you may not have access to this location. Return to a safe starting point and try again.') }}
+@endsection

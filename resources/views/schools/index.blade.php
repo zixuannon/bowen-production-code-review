@@ -56,7 +56,7 @@
                                         <label>{{ __('logo') }} <span class="text-danger">*</span></label>
                                         <input type="file" required name="school_image" id="school_image" class="file-upload-default" accept="image/png, image/jpg, image/jpeg, image/svg+xml"/>
                                         <div class="input-group col-xs-12">
-                                            <input type="text" class="form-control file-upload-info" disabled="" placeholder="{{ __('logo') }}" required aria-label=""/>
+                                            <input type="text" class="form-control file-upload-info" disabled="" placeholder="{{ __('logo') }}" required aria-label="{{ __('Selected logo file') }}"/>
                                             <span class="input-group-append">
                                                 <button class="file-upload-browse btn btn-theme" type="button">{{ __('upload') }}</button>
                                             </span>
@@ -226,10 +226,10 @@
                                 @endif
                             </div>
                             
-                            <input class="btn btn-theme float-right ml-3" id="create-btn" type="submit"  value={{ __('submit') }} {{ $email_verified == 0 ? 'disabled' : '' }}>
-                            
-                           
-                            <input class="btn btn-secondary float-right" type="reset" value={{ __('reset') }}>
+                            <div class="ui-sticky-actions">
+                                <input class="btn btn-secondary" type="reset" value="{{ __('Reset') }}">
+                                <input class="btn btn-theme" id="create-btn" type="submit" value="{{ __('Create School') }}" {{ $email_verified == 0 ? 'disabled' : '' }}>
+                            </div>
                             
                             <div class="p-4 mt-5 mb-4">
                                 @if($email_verified == 0)
@@ -282,13 +282,13 @@
                                 <th scope="col" data-field="no">{{ __('no.') }}</th>
                                 <th scope="col" data-field="code" data-visible="false">{{ __('code')}}</th>
                                 <th scope="col" data-field="name" data-formatter="SchoolNameFormatter">{{ __('name') }}</th>
-                                <th scope="col" data-field="support_phone">{{__('school').' '.__('phone')}}</th>
+                                <th scope="col" data-field="support_phone" data-formatter="plainTextFormatter">{{__('school').' '.__('phone')}}</th>
                                 <th scope="col" data-field="email_verified_at" data-formatter="verifyEmailStatusFormatter">{{ __('verify_email') }}</th>
                                 <th scope="col" data-field="tagline" data-visible="false">{{ __('tagline') }}</th>
-                                <th scope="col" data-field="address">{{ __('address') }}</th>
+                                <th scope="col" data-field="address" data-formatter="plainTextFormatter">{{ __('address') }}</th>
                                 <th scope="col" data-field="admin_id" data-visible="false">{{ __('admin').' '.__('id')}}</th>
                                 <th scope="col" data-field="user" data-formatter="schoolAdminFormatter">{{ __('school').' '.__('admin') }}</th>
-                                <th scope="col" data-field="active_plan">{{ __('active_plan') }}</th>
+                                <th scope="col" data-field="active_plan" data-formatter="plainTextFormatter">{{ __('active_plan') }}</th>
                                 <th scope="col" data-field="status" data-formatter="schoolActiveStatusFormatter">{{ __('status') }}</th>
                                 <th scope="col" data-field="operate" data-formatter="actionColumnFormatter" data-events="schoolEvents" data-escape="false">{{ __('action') }}</th>
                             </tr>
@@ -322,7 +322,7 @@
                                 <label>{{ __('logo') }}</label>
                                 <input type="file" id="edit_school_image" name="edit_school_image" class="file-upload-default" accept="image/png, image/jpg, image/jpeg, image/svg+xml"/>
                                 <div class="input-group">
-                                    <input type="text" class="form-control file-upload-info" disabled="" placeholder="{{ __('logo') }}" aria-label=""/>
+                                    <input type="text" class="form-control file-upload-info" disabled="" placeholder="{{ __('logo') }}" aria-label="{{ __('Selected logo file') }}"/>
                                     <span class="input-group-append">
                                         <button class="file-upload-browse btn btn-theme" type="button">{{ __('upload') }}</button>
                                     </span>
@@ -352,7 +352,10 @@
                             <div class="form-group col-sm-12 col-md-3">
                                 <label for="school_code">{{ __('school_code')}} </label>
                                 <input type="text" name="code" disabled id="school_code" placeholder="{{__('school_code')}}" class="form-control" required>
-
+                                <small class="form-text text-muted" id="school-code-lock-reason">
+                                    <i class="fa fa-lock" aria-hidden="true"></i>
+                                    {{ __('School Code is the canonical tenant identity and cannot be edited here. Use the audited School Code migration workflow for an approved change.') }}
+                                </small>
                             </div>
 
                             <div class="form-group col-sm-12 col-md-6">
@@ -552,7 +555,7 @@
                                 <label>{{ __('admin') . ' ' . __('image') }}</label>
                                 <input type="file" name="edit_admin_image" class="edit-admin-image file-upload-default" accept="image/png, image/jpg, image/jpeg, image/svg+xml"/>
                                 <div class="input-group col-xs-12">
-                                    <input type="text" class="form-control file-upload-info" disabled="" placeholder="{{ __('admin') . ' ' . __('image') }}" aria-label=""/>
+                                    <input type="text" class="form-control file-upload-info" disabled="" placeholder="{{ __('admin') . ' ' . __('image') }}" aria-label="{{ __('Selected administrator image file') }}"/>
                                     <span class="input-group-append">
                                     <button class="file-upload-browse btn btn-theme" id="file-upload-admin-browse" type="button">{{ __('upload') }}</button>
                                 </span>

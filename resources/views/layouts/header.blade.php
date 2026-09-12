@@ -22,21 +22,24 @@
         $verticalLogo = $resolveLogoUrl($verticalPath ?: ($systemSettings['vertical_logo'] ?? null), '/assets/vertical-logo.svg');
     @endphp
     <div class="text-center navbar-brand-wrapper d-flex align-items-center justify-content-center">
-        <a class="navbar-brand brand-logo" href="{{ URL::to('/dashboard') }}">
-            <img src="{{ $horizontalLogo }}" alt="logo" data-custom-image="{{ $horizontalLogo }}" class="custom-default-image">
+        <a class="navbar-brand brand-logo" href="{{ URL::to('/dashboard') }}" aria-label="{{ __('Dashboard') }}">
+            <img src="{{ $horizontalLogo }}" alt="" data-custom-image="{{ asset('/assets/horizontal-logo2.svg') }}" class="custom-default-image"
+                 onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/horizontal-logo2.svg') }}';">
         </a>
-        <a class="navbar-brand brand-logo-mini" href="{{ URL::to('/dashboard') }}">
-            <img src="{{ $verticalLogo }}" alt="logo" data-custom-image="{{ $verticalLogo }}">
+        <a class="navbar-brand brand-logo-mini" href="{{ URL::to('/dashboard') }}" aria-label="{{ __('Dashboard') }}">
+            <img src="{{ $verticalLogo }}" alt="" data-custom-image="{{ asset('/assets/vertical-logo.svg') }}" class="custom-default-image"
+                 onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/vertical-logo.svg') }}';">
         </a>
     </div>
     <div class="navbar-menu-wrapper d-flex align-items-stretch">
-        <button class="navbar-toggler navbar-toggler align-self-center" type="button" data-toggle="minimize">
+        <button class="navbar-toggler navbar-toggler align-self-center" type="button" data-toggle="minimize"
+                aria-label="{{ __('Toggle sidebar navigation') }}" title="{{ __('Toggle sidebar navigation') }}">
             <span class="fa fa-bars"></span>
         </button>
 
         @if ($schoolSettings['school_name'] ?? '')
-            <div class="align-items-stretch d-none d-md-block d-sm-block cache-clear">
-                <span class="ml-3">{{ $schoolSettings['school_name'] ?? '' }}</span>
+            <div class="align-items-stretch cache-clear app-header-context">
+                <span class="ml-3" title="{{ $schoolSettings['school_name'] ?? '' }}">{{ $schoolSettings['school_name'] ?? '' }}</span>
             </div>
         @endif  
         @if (isset($systemSettings['email_verified']) && !$systemSettings['email_verified'])
@@ -61,7 +64,7 @@
             @if (isset($sessionYear) && !Auth::user()->hasRole('Super Admin'))
                 <li class="d-none d-md-block d-sm-block nav-item">
                     <div class="text-dark">
-                        {{ __('session_years') . ' : '}}
+                        {{ __('Academic Year') . ' : '}}
                         <span id="sessionYearNameHeader">{{ $sessionYear->name }}</span>
                         <span id="semesterNameHeader">
                             @if(isset($semester) && !empty($semester->name))
@@ -79,7 +82,8 @@
             </li> --}}
 
             <li class="nav-item dropdown">
-                <a class="nav-link count-indicator dropdown-toggle" id="messageDropdown" href="#" data-toggle="dropdown" aria-expanded="false">
+                <a class="nav-link count-indicator dropdown-toggle" id="messageDropdown" href="#" data-toggle="dropdown" aria-expanded="false"
+                   aria-label="{{ __('Change language') }}" title="{{ __('Change language') }}">
                     <i class="fa fa-language"></i>
                 </a>
                 <div class="dropdown-menu dropdown-menu-right navbar-dropdown preview-list" aria-labelledby="messageDropdown">
@@ -98,9 +102,10 @@
                 </div>
             </li>
             <li class="nav-item nav-profile dropdown">
-                <a class="nav-link dropdown-toggle" id="profileDropdown" href="#" data-toggle="dropdown" aria-expanded="true">
+                <a class="nav-link dropdown-toggle" id="profileDropdown" href="#" data-toggle="dropdown" aria-expanded="false"
+                   aria-label="{{ __('Open user menu') }}" title="{{ __('Open user menu') }}">
                     <div class="nav-profile-img">
-                        <img src="{{ Auth::user()->image }}" alt="image">
+                        <img src="{{ Auth::user()->image }}" alt="" onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/no_image_available.jpg') }}';">
                     </div>
                     <div class="nav-profile-text">
                         <p class="mb-1 text-black">{{ Auth::user()->first_name }}</p>
@@ -123,7 +128,8 @@
                 </div>
             </li>
         </ul>
-        <button class="navbar-toggler navbar-toggler-right d-lg-none align-self-center" type="button" data-toggle="offcanvas">
+        <button class="navbar-toggler navbar-toggler-right d-lg-none align-self-center" type="button" data-toggle="offcanvas"
+                aria-label="{{ __('Open navigation menu') }}" title="{{ __('Open navigation menu') }}">
             <span class="fa fa-bars"></span>
         </button>
     </div>

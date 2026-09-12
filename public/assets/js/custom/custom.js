@@ -1314,6 +1314,76 @@ $(document).ready(function () {
     });
 });
 
+function uiTranslation(key, fallback) {
+    var value = window.trans && window.trans[key];
+    return value && value !== 'undefined' ? value : fallback;
+}
+
+function inferAccessibleName(element) {
+    var explicit = element.getAttribute('title') || element.getAttribute('data-original-title');
+    if (explicit) return explicit;
+    if (element.matches('.close')) return uiTranslation('Close', 'Close');
+    if (element.matches('.table-action-column > button')) return uiTranslation('Actions', 'Table actions');
+    if (element.closest('.columns')) return uiTranslation('Choose table columns', 'Choose table columns');
+    if (element.closest('.export')) return uiTranslation('Export table', 'Export table');
+    if (element.closest('.refresh')) return uiTranslation('Refresh table', 'Refresh table');
+
+    var icon = element.querySelector('i');
+    if (icon) {
+        if (icon.classList.contains('fa-edit') || icon.classList.contains('fa-pencil')) return uiTranslation('Edit', 'Edit');
+        if (icon.classList.contains('fa-trash')) return uiTranslation('Delete', 'Delete');
+        if (icon.classList.contains('fa-eye')) return uiTranslation('View', 'View');
+        if (icon.classList.contains('fa-download')) return uiTranslation('Download', 'Download');
+        if (icon.classList.contains('fa-print')) return uiTranslation('Print', 'Print');
+        if (icon.classList.contains('fa-refresh')) return uiTranslation('Refresh', 'Refresh');
+        if (icon.classList.contains('fa-ellipsis-v')) return uiTranslation('Actions', 'Table actions');
+    }
+
+    return uiTranslation('Action', 'Action');
+}
+
+function polishInteractiveAccessibility(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('button, a.btn, [role="button"]').forEach(function (element) {
+        if (element.matches('.close') && !(element.getAttribute('aria-label') || '').trim()) {
+            element.setAttribute('aria-label', uiTranslation('Close', 'Close'));
+            return;
+        }
+
+        var hasName = (element.getAttribute('aria-label') || '').trim()
+            || (element.textContent || '').replace(/\s+/g, ' ').trim()
+            || (element.querySelector('img[alt]') && element.querySelector('img[alt]').getAttribute('alt'));
+        if (!hasName) {
+            element.setAttribute('aria-label', inferAccessibleName(element));
+        }
+    });
+
+    scope.querySelectorAll('.no-records-found > td').forEach(function (cell) {
+        if (cell.querySelector('.ui-empty-state')) return;
+        var message = (cell.textContent || '').trim() || uiTranslation('No records found', 'No records found');
+        cell.textContent = '';
+        var state = document.createElement('div');
+        state.className = 'ui-empty-state';
+        state.setAttribute('role', 'status');
+        var icon = document.createElement('i');
+        icon.className = 'fa fa-inbox ui-empty-state__icon';
+        icon.setAttribute('aria-hidden', 'true');
+        var text = document.createElement('span');
+        text.className = 'ui-empty-state__title';
+        text.textContent = message;
+        state.appendChild(icon);
+        state.appendChild(text);
+        cell.appendChild(state);
+    });
+}
+
+$(document).ready(function () {
+    polishInteractiveAccessibility(document);
+    $(document).on('post-body.bs.table load-success.bs.table shown.bs.modal', function (event) {
+        polishInteractiveAccessibility(event.target || document);
+    });
+});
+
 $('#assign-roll-no-form').on('submit', function (e) {
     e.preventDefault();
     Swal.fire({
@@ -3387,7 +3457,7 @@ $('.filter_birthday').change(function (e) {
                     html += '<tr> <td> <img src="' + value.image + '" onerror="onErrorImage(event)" class="me-2" alt="image"> </td> <td>' + value.full_name + ' </td> <td class="text-right">' + value.dob_date + '</td> </tr>';
                 });
             } else {
-                html += '<tr> <td colspan="2" class="text-center"> ' + window.trans['no_data_found'] + ' </td> </tr>';
+                html += '<tr> <td colspan="2" class="text-center"> ' + uiTranslation('no_data_found', 'No data found') + ' </td> </tr>';
             }
             setTimeout(() => {
                 $('.birthday-list').html(html);
@@ -3421,7 +3491,7 @@ $('.filter_leaves').change(function (e) {
             });
         } else {
             // 
-            html += '<tr> <td colspan="2" class="text-center"> ' + window.trans['All are presents'] + ' </td> </tr>';
+            html += '<tr> <td colspan="2" class="text-center"> ' + uiTranslation('All are presents', 'Everyone is present') + ' </td> </tr>';
         }
         $('.leave-list').html(html);
     }
@@ -3466,13 +3536,13 @@ $('#exam_result_session_year_id,#exam_reuslt_exam_name').on('change', function (
 
                     });
                 } else {
-                    html += '<div class="text-center"> <span class="text-small"> ' + window.trans['no_exam_result_found'] + ' </span> </div>';
+                    html += '<div class="text-center"> <span class="text-small"> ' + uiTranslation('no_exam_result_found', 'No exam results found') + ' </span> </div>';
                 }
                 $('#class-progress-report').html(html);
             }
         });
     } else {
-        $('#class-progress-report').html('<div class="text-center"> <span class="text-small"> ' + window.trans['no_exam_result_found'] + ' </span> </div>');
+        $('#class-progress-report').html('<div class="text-center"> <span class="text-small"> ' + uiTranslation('no_exam_result_found', 'No exam results found') + ' </span> </div>');
     }
 })
 
@@ -3587,7 +3657,7 @@ $('.fees-over-due-class').change(function (e) {
                 });
                 $('.fees-overdue-btn').removeClass('d-none');
             } else {
-                html += '<tr> <td colspan="2" class="text-center"> ' + window.trans['no_data_found'] + ' </td> </tr>';
+                html += '<tr> <td colspan="2" class="text-center"> ' + uiTranslation('no_data_found', 'No data found') + ' </td> </tr>';
                 $('.fees-overdue-btn').addClass('d-none');
             }
             setTimeout(() => {

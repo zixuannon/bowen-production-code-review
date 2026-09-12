@@ -30,7 +30,7 @@
                                     </select>
                                 </div>
                                 <div class="form-group col-sm-12 col-md-4">
-                                    <label for="class_section">{{ __('class_section') }} <span class="text-danger">*</span></label>
+                                    <label for="class_section">{{ __('Class Section') }} <span class="text-danger">*</span></label>
                                     <select name="class_section_id" id="class_section" class="form-control select2">
                                         <option value="">{{ __('select') . ' ' . __('Class') . ' ' . __('section') }}
                                         </option>
@@ -41,10 +41,10 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-4">
-                                    <label for="file-upload-default">{{ __('file_upload') }} <span class="text-danger">*</span></label>
+                                    <label for="file-upload-default">{{ __('File Upload') }} <span class="text-danger">*</span></label>
                                     <input type="file" name="file" class="file-upload-default" />
                                     <div class="input-group col-xs-12">
-                                        <input type="text" class="form-control file-upload-info" id="file-upload-default" disabled="" placeholder="{{ __('file_upload') }}" required="required" />
+                                        <input type="text" class="form-control file-upload-info" id="file-upload-default" disabled="" placeholder="{{ __('File Upload') }}" aria-label="{{ __('Selected import file') }}" required="required" />
                                         <span class="input-group-append">
                                             <button class="file-upload-browse btn btn-theme" type="button">{{ __('upload') }}</button>
                                         </span>
@@ -52,12 +52,12 @@
                                     <div class="form-check w-fit-content">
                                         <label class="form-check-label user-select-none">
                                             <input type="checkbox" class="form-check-input" name="is_send_notification" id="send_notification">
-                                            {{ __('send_notification') }}
+                                            {{ __('Send Notification') }}
                                         </label>
                                     </div>
                                 </div>
-                                <div class="form-group col-sm-12 col-xs-12">
-                                    <input class="btn btn-theme submit_bulk_file float-right" type="submit" value="{{ __('submit') }}"
+                                <div class="form-group col-sm-12 col-xs-12 ui-sticky-actions">
+                                    <input class="btn btn-theme submit_bulk_file" type="submit" value="{{ __('Import Students') }}"
                                         name="submit" id="submit_bulk_file">
                                 </div>
                             </div>
@@ -65,7 +65,7 @@
                         <hr>
                         <div class="row form-group col-sm-12 col-md-4 mt-5">
                             <a class="btn btn-theme form-control" href="{{ route('student.bulk-data-sample') }}" download>
-                                <strong>{{ __('download_dummy_file') }}</strong>
+                                <strong>{{ __('Download Import Template') }}</strong>
                             </a>
                         </div>
                         @if ($studentImportV2Enabled ?? false)

@@ -187,7 +187,7 @@
                                 </table>
                             </div>
                         @else
-                            <p class="text-muted text-center py-3">{{ __('No data found for the selected period.') }}</p>
+                            <x-ui-empty-state :message="__('No data found for the selected period.')" />
                         @endif
                     </div>
                 </div>

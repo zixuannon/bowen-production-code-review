@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 ## Active production target
 
@@ -13,6 +13,38 @@ Last updated: 2026-09-11
 ## Current area
 
 Finance V2
+
+## UI Polish P1 — local PASS
+
+- Branch `codex/ui-polish-p1` starts exactly from active Production source
+  `03278a4fc37e01d42c85e82c1e6a3482277978fa` and contains only the verified
+  School-list `User -> roles` eager-load/query-detector safeguard plus the
+  approved P1 presentation changes.
+- Shared header/sidebar behavior now has one named menu search, consistent
+  desktop/mobile controls, reliable logo fallbacks, readable disabled and
+  read-only states, keyboard focus treatment, and responsive layout guards.
+  Common 400/403/404/503 and empty states use accessible, non-leaking shared
+  presentation components. Long School, Fund Account, Transfer, Handover, and
+  Student Import forms retain a visible primary-action region.
+- English and Simplified Chinese catalogs cover the visible dashboard,
+  sidebar, School, and Student raw keys. Dynamic table/empty output rejects
+  null, literal `undefined`, and missing translated labels. Finance and Student
+  tables keep page width stable while preserving scoped table scrolling and
+  named icon actions.
+- Dashboard charts validate both target DOM and input data, show an empty state
+  for zero-value donut data, and contain asynchronous render failures. The
+  School edit dialog explains why canonical School Code is locked.
+- Authenticated browser acceptance covers Super Admin, Head Finance, School
+  Accountant, and School Admin at 1440, 1280, and 390 px across Dashboard,
+  Schools, Finance Groups, Central Finance, Group Import, Fund Accounts,
+  Ledger, Statements, Payments, Students, Student Import, and the generic 403.
+  Checked pages have no page-level overflow, raw key, literal `undefined`,
+  unnamed interactive control, or console error. Principal and Front Desk
+  acceptance remains intentionally deferred until formal QA identities exist.
+- Full direct PHPUnit regression passes 725 tests / 5,611 assertions with one
+  expected opt-in skip; PHP 8.5 reports only existing dependency deprecations.
+  No route, permission, schema, migration, amount-calculation, Handover rule,
+  Production data, deployment, Phase 5.5B, or homepage change occurred.
 
 ## UI audit prerequisite — School list User role N+1 local PASS
 

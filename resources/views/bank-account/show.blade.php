@@ -112,7 +112,7 @@
                             <span class="badge badge-success float-right">{{ number_format($totalCompulsory, 2) }}</span>
                         </h4>
                         @if ($compulsoryFees->isEmpty())
-                            <p class="text-muted text-center py-3">{{ __('No compulsory fee transactions for this account.') }}</p>
+                            <x-ui-empty-state :message="__('No compulsory fee transactions for this account.')" />
                         @else
                             <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                                 <table class="table table-sm table-hover">
@@ -150,7 +150,7 @@
                             <span class="badge badge-info float-right">{{ number_format($totalOptional, 2) }}</span>
                         </h4>
                         @if ($optionalFees->isEmpty())
-                            <p class="text-muted text-center py-3">{{ __('No optional fee transactions for this account.') }}</p>
+                            <x-ui-empty-state :message="__('No optional fee transactions for this account.')" />
                         @else
                             <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                                 <table class="table table-sm table-hover">
@@ -190,7 +190,7 @@
                             <span class="badge badge-danger float-right">{{ number_format($totalExpenses, 2) }}</span>
                         </h4>
                         @if ($expenses->isEmpty())
-                            <p class="text-muted text-center py-3">{{ __('No expense transactions for this account.') }}</p>
+                            <x-ui-empty-state :message="__('No expense transactions for this account.')" />
                         @else
                             <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
                                 <table class="table table-sm table-hover">
@@ -243,7 +243,7 @@
                             @endif
                         </h4>
                         @if ($ledgerRows->isEmpty())
-                            <p class="text-muted text-center py-3">{{ __('No transactions for this account.') }}</p>
+                            <x-ui-empty-state :message="__('No transactions for this account.')" />
                         @else
                             <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
                                 <table class="table table-sm table-hover table-bordered">

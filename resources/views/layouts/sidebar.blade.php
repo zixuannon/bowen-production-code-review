@@ -1,14 +1,10 @@
 <!-- partial:../../partials/_sidebar.html -->
 <nav class="sidebar sidebar-offcanvas" id="sidebar">
 
-    <div class="sidebar-search pl-4 pr-4">
+    <div class="sidebar-search sidebar-primary-search pl-4 pr-4">
         <input type="text" id="menu-search" placeholder="{{ __('search_menu') }}"
-            class="form-control menu-search border-theme form-control-sm">
-    </div>
-
-    <div class="sidebar-search pl-4 pr-4 mt-2">
-        <input type="text" id="menu-search-mini" placeholder="{{ __('search_menu') }}"
-            class="form-control d-lg-none border-theme">
+            class="form-control menu-search border-theme form-control-sm"
+            aria-label="{{ __('search_menu') }}" autocomplete="off">
     </div>
 
     <ul class="nav">
@@ -815,7 +811,7 @@
                             </li>
                             <li class="nav-item">
                                 <a href="{{ route('outstanding-fees.index') }}" class="nav-link" data-access="@hasFeatureAccess('Fees Management')">
-                                    {{ __('Student Finance') }}
+                                    {{ __('Outstanding Fees') }}
                                 </a>
                             </li>
                             <li class="nav-item">
@@ -888,10 +884,6 @@
                 </a>
                 <div class="collapse" id="expense-menu">
                     <ul class="nav flex-column sub-menu">
-                        {{-- Expense Management 支出管理 --}}
-                        <li class="nav-item menu-group-label">
-                            <span class="menu-group-text">{{ __('Expense Management') }}</span>
-                        </li>
                         @canany(['expense-category-create', 'expense-category-list', 'expense-category-edit',
                             'expense-category-delete'])
                             <li class="nav-item">
@@ -919,9 +911,9 @@
                             </li>
                         @endcanany
 
-                        {{-- Bank Accounts 银行账户 --}}
+                        {{-- Fund management / 资金管理 --}}
                         <li class="nav-item menu-group-label">
-                            <span class="menu-group-text">{{ __('Bank Accounts') }}</span>
+                            <span class="menu-group-text">{{ __('Fund Management') }}</span>
                         </li>
 
                         @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))

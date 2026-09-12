@@ -86,7 +86,7 @@
                                     </table>
                                 </div>
                             @else
-                                <p class="text-muted">{{ __('No students found.') }}</p>
+                                <x-ui-empty-state :message="__('No students found.')" />
                             @endif
                         </div>
                     </div>

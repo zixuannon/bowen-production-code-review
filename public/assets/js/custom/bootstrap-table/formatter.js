@@ -15,6 +15,28 @@ function escapeHtml(value) {
     return $('<div>').text(String(value)).html();
 }
 
+function safeDisplay(value, fallback) {
+    var normalizedFallback = fallback === undefined ? '—' : fallback;
+    if (value === null || value === undefined || String(value).trim() === '' || String(value) === 'undefined') {
+        return escapeHtml(normalizedFallback);
+    }
+
+    return escapeHtml(value);
+}
+
+function translatedLabel(key, fallback) {
+    var value = window.trans && window.trans[key];
+    if (value === null || value === undefined || value === '' || value === 'undefined') {
+        return fallback || key;
+    }
+
+    return value;
+}
+
+function plainTextFormatter(value) {
+    return safeDisplay(value);
+}
+
 /**
  * Safely validate a URL for use in href attributes.
  * Blocks javascript: and data: protocol URLs.
@@ -437,7 +459,8 @@ function imageFormatter(value) {
 
 function StudentNameFormatter(value, row) {
     let html = '';
-    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.user.image) + ' <div class="ms-3"> <h6 class="mb-0">' + escapeHtml(row.user.full_name) + '</h6> <small class="text-muted"> ' + escapeHtml(row.user.email) + ' </small> </div> </div>';
+    var user = row && row.user ? row.user : {};
+    html = '<div class="d-flex align-items-center"> ' + imageFormatter(user.image) + ' <div class="ms-3"> <h6 class="mb-0">' + safeDisplay(user.full_name) + '</h6> <small class="text-muted"> ' + safeDisplay(user.email) + ' </small> </div> </div>';
     return html;
 }
 
@@ -455,13 +478,14 @@ function GuardianNameFormatter(value, row) {
 
 function StudentGuardianNameFormatter(value, row) {
     let html = '';
-    html = '<div class="d-flex align-items-center"> ' 
-        + imageFormatter(row.guardian.image) 
-        + ' <div class="ms-3"> <h6 class="mb-0">' 
-        + row.guardian.full_name 
+    var guardian = row && row.guardian ? row.guardian : {};
+    html = '<div class="d-flex align-items-center"> '
+        + imageFormatter(guardian.image)
+        + ' <div class="ms-3"> <h6 class="mb-0">'
+        + safeDisplay(guardian.full_name)
         + '</h6> <small class="text-muted">'
-        + row.guardian.email + '<br>'
-        + (row.guardian.mobile ? + row.guardian.mobile : '') 
+        + safeDisplay(guardian.email) + '<br>'
+        + (guardian.mobile ? safeDisplay(guardian.mobile, '') : '')
         + ' </small> </div> </div>';
     return html;
 }
@@ -511,7 +535,8 @@ function HelperNameFormatter(value, row) {
 
 function SchoolNameFormatter(value, row) {
     let html = '';
-    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.logo) + ' <div class="ms-3"> <h6 class="mb-0">' + row.name + '</h6> <small class="text-muted"> ' + row.support_email + ' </small> </div> </div>';
+    row = row || {};
+    html = '<div class="d-flex align-items-center"> ' + imageFormatter(row.logo) + ' <div class="ms-3"> <h6 class="mb-0">' + safeDisplay(row.name) + '</h6> <small class="text-muted"> ' + safeDisplay(row.support_email) + ' </small> </div> </div>';
     return html;
 }
 
@@ -581,8 +606,9 @@ function schoolNameFormatter(value, row) {
 
 function schoolAdminFormatter(value, row) {
     let html = '';
-    html += row.user.full_name;
-    html += '<p class="mt-1 text-facebook"><small>' + row.user.email + '</small></p>';
+    var user = row && row.user ? row.user : {};
+    html += safeDisplay(user.full_name);
+    html += '<p class="mt-1 text-facebook"><small>' + safeDisplay(user.email) + '</small></p>';
     return html;
 }
 
@@ -1175,26 +1201,29 @@ function shiftStatusFormatter(value, row) {
 
 function activeStatusFormatter(value, row) {
     if (row.status == 1) {
-        return "<span class='badge badge-success'>" + window.trans["Active"] + "</span>";
+        return "<span class='badge badge-success'>" + translatedLabel("Active", "Active") + "</span>";
     } else {
-        return "<span class='badge badge-danger'>" + window.trans["Inactive"] + "</span>";
+        return "<span class='badge badge-danger'>" + translatedLabel("Inactive", "Inactive") + "</span>";
     }
 }
 
 function schoolActiveStatusFormatter(value, row) {
     if (row.installed == 1) {
         return activeStatusFormatter(value, row);
-    } else {
+    } else if (row.installed === 0 || row.installed === '0') {
         return '<div class="bar-loader"> <span></span> <span></span> <span></span> <span></span> </div>';
     }
+
+    return safeDisplay(value);
 }
 
 function verifyEmailStatusFormatter(value, row) {
 
-    if (row.user.email_verified_at != null) {
-        return "<span class='badge badge-success'>" + window.trans["verified"] + "</span>";
+    var user = row && row.user ? row.user : {};
+    if (user.email_verified_at != null) {
+        return "<span class='badge badge-success'>" + translatedLabel("verified", "Verified") + "</span>";
     } else {
-        return "<span class='badge badge-danger'>" + window.trans["unverified"] + "</span>";
+        return "<span class='badge badge-danger'>" + translatedLabel("unverified", "Not verified") + "</span>";
     }
 }
 
