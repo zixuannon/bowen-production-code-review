@@ -1342,6 +1342,41 @@ function inferAccessibleName(element) {
     return uiTranslation('Action', 'Action');
 }
 
+function inferFormControlAccessibleName(element) {
+    var placeholder = (element.getAttribute('placeholder') || '').trim();
+    if (placeholder) return placeholder;
+
+    var group = element.closest('.form-group');
+    var groupLabel = group && group.querySelector('label');
+    if (groupLabel && (groupLabel.textContent || '').trim()) {
+        return groupLabel.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    var names = {
+        from: uiTranslation('From', 'From'),
+        to: uiTranslation('To', 'To'),
+        school_id: uiTranslation('School', 'School'),
+        fund_account_id: uiTranslation('Fund Account', 'Fund Account'),
+        direction: uiTranslation('Direction', 'Direction'),
+        operating_classification: uiTranslation('Operating', 'Operating'),
+        category_id: uiTranslation('Category', 'Category'),
+        operator_id: uiTranslation('Operator', 'Operator'),
+        group_import: uiTranslation('Group Import File', 'Group Import File'),
+        payment_import: uiTranslation('Payment Import File', 'Payment Import File')
+    };
+    var fieldName = (element.getAttribute('name') || '').replace(/\[\]$/, '');
+    if (names[fieldName]) return names[fieldName];
+
+    if (element.matches('select') && element.options.length) {
+        var optionText = (element.options[0].textContent || '').replace(/\s+/g, ' ').trim();
+        if (optionText) return optionText;
+    }
+
+    return fieldName.replace(/[_-]+/g, ' ').replace(/\b\w/g, function (character) {
+        return character.toUpperCase();
+    });
+}
+
 function polishInteractiveAccessibility(root) {
     var scope = root && root.querySelectorAll ? root : document;
     scope.querySelectorAll('button, a.btn, [role="button"]').forEach(function (element) {
@@ -1355,6 +1390,19 @@ function polishInteractiveAccessibility(root) {
             || (element.querySelector('img[alt]') && element.querySelector('img[alt]').getAttribute('alt'));
         if (!hasName) {
             element.setAttribute('aria-label', inferAccessibleName(element));
+        }
+    });
+
+    scope.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(function (element) {
+        var id = element.getAttribute('id');
+        var nativeLabel = id && document.querySelector('label[for="' + CSS.escape(id) + '"]');
+        var hasName = (element.getAttribute('aria-label') || '').trim()
+            || (element.getAttribute('aria-labelledby') || '').trim()
+            || nativeLabel
+            || element.closest('label');
+        if (!hasName) {
+            var inferredName = inferFormControlAccessibleName(element);
+            if (inferredName) element.setAttribute('aria-label', inferredName);
         }
     });
 

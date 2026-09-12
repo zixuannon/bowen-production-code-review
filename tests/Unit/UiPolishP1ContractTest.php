@@ -84,7 +84,24 @@ final class UiPolishP1ContractTest extends TestCase
         $this->assertStringContainsString('translatedLabel("verified", "Verified")', $formatter);
         $this->assertStringContainsString('polishInteractiveAccessibility', $custom);
         $this->assertStringContainsString("element.setAttribute('aria-label', inferAccessibleName(element))", $custom);
+        $this->assertStringContainsString('inferFormControlAccessibleName', $custom);
+        $this->assertStringContainsString("scope.querySelectorAll('input:not([type=\"hidden\"]), select, textarea')", $custom);
+        $this->assertStringContainsString("element.setAttribute('aria-label', inferredName)", $custom);
         $this->assertStringContainsString("state.className = 'ui-empty-state'", $custom);
+    }
+
+    public function test_central_finance_upload_and_ledger_filters_have_accessible_names(): void
+    {
+        $groupImport = $this->read('resources/views/central-finance/group-import/index.blade.php');
+        $workspace = $this->read('resources/views/central-finance/workspace.blade.php');
+
+        $this->assertStringContainsString('label for="group-import-finance-group"', $groupImport);
+        $this->assertStringContainsString('label for="group-import-file"', $groupImport);
+        $this->assertStringContainsString('id="group-import-file"', $groupImport);
+
+        foreach (['From', 'To', 'School', 'Fund Account', 'Direction', 'Operating', 'Category', 'Operator'] as $label) {
+            $this->assertStringContainsString("aria-label=\"{{ __('{$label}') }}\"", $workspace);
+        }
     }
 
     public function test_every_dashboard_chart_helper_checks_its_dom_target(): void
