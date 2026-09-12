@@ -77,6 +77,7 @@ final class UiPolishP1ContractTest extends TestCase
     {
         $formatter = $this->read('public/assets/js/custom/bootstrap-table/formatter.js');
         $custom = $this->read('public/assets/js/custom/custom.js');
+        $footer = $this->read('resources/views/layouts/footer_js.blade.php');
 
         $this->assertStringContainsString("String(value) === 'undefined'", $formatter);
         $this->assertStringContainsString('function plainTextFormatter(value)', $formatter);
@@ -88,6 +89,7 @@ final class UiPolishP1ContractTest extends TestCase
         $this->assertStringContainsString("scope.querySelectorAll('input:not([type=\"hidden\"]), select, textarea')", $custom);
         $this->assertStringContainsString("element.setAttribute('aria-label', inferredName)", $custom);
         $this->assertStringContainsString("state.className = 'ui-empty-state'", $custom);
+        $this->assertStringContainsString("hash_file('sha256', public_path('assets/js/custom/bootstrap-table/formatter.js'))", $footer);
     }
 
     public function test_central_finance_upload_and_ledger_filters_have_accessible_names(): void
