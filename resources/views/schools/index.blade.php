@@ -9,7 +9,8 @@
         <div class="page-header">
             <h3 class="page-title">
                 {{ __('manage') . ' ' . __('schools') }}
-                <a href="https://wrteam-in.github.io/eSchool-SaaS-Doc/superadmin/schools/" target="_blank">
+                <a href="https://wrteam-in.github.io/eSchool-SaaS-Doc/superadmin/schools/" target="_blank"
+                    aria-label="{{ __('schools_help') }}">
                     <i class="fa fa-question-circle help-icon ml-2" data-toggle="tooltip" title="{{ __('Click for help') }}"></i>
                 </a>
             </h3>

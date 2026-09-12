@@ -118,6 +118,7 @@ final class UiPolishP1ContractTest extends TestCase
 
         $this->assertStringContainsString('id="school-code-lock-reason"', $school);
         $this->assertStringContainsString('canonical tenant identity and cannot be edited here', $school);
+        $this->assertStringContainsString('aria-label="{{ __(\'schools_help\') }}"', $school);
 
         foreach ([
             'resources/views/schools/index.blade.php',
