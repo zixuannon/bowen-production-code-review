@@ -36,6 +36,8 @@ final class UiPolishP1ContractTest extends TestCase
     public function test_ui_language_catalogs_cover_the_p1_raw_keys(): void
     {
         $keys = [
+            'login', 'email', 'password', 'email_or_mobile', 'forgot_password',
+            'New user Sign up to manage your school activities seamlessly',
             'session_years', 'my_attendance', 'student_admission', 'admission_inquiries',
             'student_details', 'add_bulk_data', 'class_section', 'file_upload',
             'send_notification', 'download_dummy_file', 'all_rights_reserved',
@@ -52,6 +54,7 @@ final class UiPolishP1ContractTest extends TestCase
             }
 
             foreach ([
+                'resources/views/auth/login.blade.php',
                 'resources/views/layouts/header.blade.php',
                 'resources/views/layouts/sidebar.blade.php',
                 'resources/views/schools/index.blade.php',
@@ -59,7 +62,7 @@ final class UiPolishP1ContractTest extends TestCase
             ] as $view) {
                 preg_match_all('/__\([\'\"]([^\'\"]+)[\'\"]\)/', $this->read($view), $matches);
                 foreach ($matches[1] as $key) {
-                    if (! str_contains($key, '_')) {
+                    if ($view !== 'resources/views/auth/login.blade.php' && ! str_contains($key, '_')) {
                         continue;
                     }
 
