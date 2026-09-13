@@ -3826,8 +3826,9 @@ $('.fees-over-due-class').change(function (e) {
         url: baseUrl + '/fees/fees-over-due/' + class_section_id,
         success: function (response) {
             let html = '';
-            if (response.data.length) {
-                $.each(response.data, function (index, value) {
+            const overdueStudents = response && Array.isArray(response.data) ? response.data : [];
+            if (overdueStudents.length) {
+                $.each(overdueStudents, function (index, value) {
                     html += '<tr> <td> <img src="' + value.user.image + '"/></td><td>' + value.full_name + '</td> <td> <input type="checkbox" name="studentids[]" data-id="' + value.user.id + '"> </td> </tr>';
                 });
                 $('.fees-overdue-btn').removeClass('d-none');
