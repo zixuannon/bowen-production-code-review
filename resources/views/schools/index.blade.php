@@ -22,7 +22,13 @@
             module="Manage_Schools"
         />
 
-        <div class="row">
+        <div class="ui-section-switcher" data-ui-section-switcher="#schools-workspace" aria-label="{{ __('Schools workspace') }}">
+            <button type="button" class="btn btn-light" data-ui-section="create" aria-pressed="false"><i class="fa fa-plus" aria-hidden="true"></i> {{ __('Create School') }}</button>
+            <button type="button" class="btn btn-theme" data-ui-section="list" aria-pressed="true"><i class="fa fa-list" aria-hidden="true"></i> {{ __('School list') }}</button>
+        </div>
+
+        <div id="schools-workspace">
+        <div class="row" data-ui-section-panel="create" hidden>
             
             @if($demoSchool == 0)
                 <div class="col-lg-12 grid-margin stretch-card">
@@ -45,9 +51,8 @@
                         <form class="create-form school-registration-form school-registration-validate" enctype="multipart/form-data" action="{{ route('schools.store') }}" method="POST" novalidate="novalidate">
                             @csrf
                             <div class="bg-light p-4 mt-4 mb-4">
-                                <h4 class="card-title mb-4">
-                                    {{ __('create') . ' ' . __('schools') }}
-                                </h4>
+                                <div class="ui-form-section__header"><h4 class="card-title mb-1">{{ __('create') . ' ' . __('schools') }}</h4><p>{{ __('Complete the School identity first, then tenant, contact, and subscription details.') }}</p></div>
+                                <div class="ui-form-section__header"><h5>{{ __('Identity') }}</h5><p>{{ __('Canonical School identity and public branding.') }}</p></div>
                                 <div class="row">
                                     <div class="form-group col-sm-12 col-md-6">
                                         <label for="school_name">{{ __('name') }} <span class="text-danger">*</span></label>
@@ -63,6 +68,13 @@
                                             </span>
                                         </div>
                                     </div>
+                                    <div class="form-group col-sm-12 col-md-6">
+                                        <label for="new_school_code">{{ __('school_code')}}</label> <span class="text-danger">*</span>
+                                        <input type="text" class="form-control school_code" id="new_school_code" name="school_code"
+                                               value="{{ $school_code }}" pattern="[Mm][Mm][Bb][Oo][Ww][Ee][Nn][0-9]{2,}"
+                                               maxlength="64" required autocomplete="off">
+                                    </div>
+                                    <div class="col-12 mt-3"><div class="ui-form-section__header"><h5>{{ __('Contact') }}</h5><p>{{ __('Primary School contact and display information.') }}</p></div></div>
                                     <div class="form-group col-sm-12 col-md-6">
                                         <label for="school_support_email">{{ __('school').' '.__('email') }} <span class="text-danger">*</span></label>
                                         <input type="email" name="school_support_email" id="school_support_email" placeholder="{{__('support').' '.__('email')}}" class="form-control" required>
@@ -86,14 +98,9 @@
                                         {!! Form::select('assign_package', $packages, null, ['class' => 'form-control', 'placeholder' => __('select_package')]) !!}
                                     </div> --}}
 
-                                    <div class="form-group col-sm-12 col-md-6">
-                                        <label for="new_school_code">{{ __('school_code')}}</label> <span class="text-danger">*</span>
-                                        <input type="text" class="form-control school_code" id="new_school_code" name="school_code"
-                                               value="{{ $school_code }}" pattern="[Mm][Mm][Bb][Oo][Ww][Ee][Nn][0-9]{2,}"
-                                               maxlength="64" required autocomplete="off">
-                                    </div>
                                 </div>
 
+                                <div class="ui-form-section__header mt-3"><h5>{{ __('Tenant') }}</h5><p>{{ __('Domain and tenant access settings.') }}</p></div>
                                 <div class="row">
                                     <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">
                                         <label>{{ __('domain').' '. __('type') }} <span class="text-danger">*</span></label><br>
@@ -129,6 +136,7 @@
                                     </div>
                                 </div>
                              
+                                <div class="ui-form-section__header mt-3"><h5>{{ __('Subscription') }}</h5><p>{{ __('Additional School setup fields used by the active subscription configuration.') }}</p></div>
                                 @if(!empty($extraFields))
                                     <div class="row other-details">
 
@@ -247,13 +255,11 @@
                 </div>
             </div>
         </div>
-        <div class="row">
+        <div class="row" data-ui-section-panel="list">
             <div class="col-md-12 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body">
-                        <h4 class="card-title">
-                            {{ __('list') . ' ' . __('schools') }}
-                        </h4>
+                        <div class="ui-list-toolbar"><div><h4 class="card-title mb-1">{{ __('list') . ' ' . __('schools') }}</h4><p class="text-muted mb-0">{{ __('Use Columns for secondary details and More actions for School management.') }}</p></div><button type="button" class="btn btn-theme" data-ui-section="create" onclick="document.querySelector('[data-ui-section-switcher] [data-ui-section=create]').click()"><i class="fa fa-plus" aria-hidden="true"></i> {{ __('Create School') }}</button></div>
                         <div class="row" id="toolbar">
                             <div class="form-group col-sm-12 col-md-4">
                                 <label class="filter-menu" for="package">{{ __('package') }}</label>
@@ -268,7 +274,7 @@
                                 </div>
                             </div>
                         </div>
-                        <table aria-describedby="mydesc" class='table' id='table_list'
+                        <table aria-describedby="mydesc" class='table ui-responsive-list ui-wide-table' id='table_list'
                                data-toggle="table" data-url="{{ route('schools.show', 1) }}"
                                data-click-to-select="true" data-side-pagination="server"
                                data-pagination="true" data-page-list="[5, 10, 20, 50, 100, 200]"
@@ -299,6 +305,7 @@
                 </div>
             </div>
         </div>
+        </div>
     </div>
 
     {{-- School Edit Model --}}
@@ -314,6 +321,7 @@
                 <form id="edit-form" class="pt-3 edit-form" action="{{ url('schools') }}">
                     <input type="hidden" name="edit_id" id="edit_id">
                     <div class="modal-body">
+                        <div class="ui-form-section__header"><h5>{{ __('Identity') }}</h5><p>{{ __('Canonical School identity and public branding.') }}</p></div>
                         <div class="row">                        
                             <div class="form-group col-sm-12 col-md-6">
                                 <label for="edit_school_name">{{ __('name') }} <span class="text-danger">*</span></label>
@@ -332,6 +340,15 @@
                                     <img src="" id="edit-school-logo-tag" class="img-fluid w-100" alt=""/>
                                 </div>
                             </div>
+                            <div class="form-group col-sm-12 col-md-6">
+                                <label for="school_code">{{ __('school_code')}} </label>
+                                <input type="text" name="code" disabled id="school_code" placeholder="{{__('school_code')}}" class="form-control" required>
+                                <small class="form-text text-muted" id="school-code-lock-reason">
+                                    <i class="fa fa-lock" aria-hidden="true"></i>
+                                    {{ __('School Code is the canonical tenant identity and cannot be edited here. Use the audited School Code migration workflow for an approved change.') }}
+                                </small>
+                            </div>
+                            <div class="col-12 mt-3"><div class="ui-form-section__header"><h5>{{ __('Contact') }}</h5><p>{{ __('Primary School contact and display information.') }}</p></div></div>
                             <div class="form-group col-sm-12 col-md-3">
                                 <label for="edit_school_support_email">{{ __('school').' '.__('email') }} <span class="text-danger">*</span></label>
                                 <input type="email" name="edit_school_support_email" id="edit_school_support_email" placeholder="{{__('support').' '.__('email')}}" class="form-control" required>
@@ -341,24 +358,6 @@
                                 <input type="number" name="edit_school_support_phone" min="0" id="edit_school_support_phone" placeholder="{{__('support').' '.__('phone')}}" class="form-control remove-number-increment" required>
                             </div>
                             
-                            <div class="form-group col-sm-12 col-md-3" id="edit_assign_package_container">
-                                <label for="assign_package">{{ __('assign_package')}} </label>
-                                {!! Form::select('assign_package', $packages, null, ['class' => 'form-control mb-2', 'placeholder' => __('select_package'),'id' => 'edit_assign_package']) !!}
-                                {{-- <span class="text-danger text-small">
-                                    {{ __('note') }}: {{ __('if_the_school_does_not_currently_have_a_plan_please_assign_from_here_If_there_is_already_an_active_plan_proceed_to_the_subscription_page_to_make_any_necessary_changes') }}.
-                                </span> --}}
-
-                            </div>
-
-                            <div class="form-group col-sm-12 col-md-3">
-                                <label for="school_code">{{ __('school_code')}} </label>
-                                <input type="text" name="code" disabled id="school_code" placeholder="{{__('school_code')}}" class="form-control" required>
-                                <small class="form-text text-muted" id="school-code-lock-reason">
-                                    <i class="fa fa-lock" aria-hidden="true"></i>
-                                    {{ __('School Code is the canonical tenant identity and cannot be edited here. Use the audited School Code migration workflow for an approved change.') }}
-                                </small>
-                            </div>
-
                             <div class="form-group col-sm-12 col-md-6">
                                 <label for="edit_school_tagline">{{ __('tagline')}} <span class="text-danger">*</span></label>
                                 <textarea name="edit_school_tagline" id="edit_school_tagline" cols="30" rows="3" class="form-control" placeholder="{{__('tagline')}}" required></textarea>
@@ -370,6 +369,7 @@
 
                             
                         </div>
+                        <div class="ui-form-section__header mt-3"><h5>{{ __('Tenant') }}</h5><p>{{ __('Domain and tenant access settings.') }}</p></div>
                         <div class="row">    
                             <div class="form-group col-sm-12 col-md-3">
                                 <label>{{ __('domain').' '. __('type') }} <span class="text-danger">*</span></label><br>
@@ -408,6 +408,13 @@
                                 <div class="mt-2">
                                     <label>{{ __('url')}}: <a href="" target="_blank" class="text-theme school_url"></a></label>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="ui-form-section__header mt-3"><h5>{{ __('Subscription') }}</h5><p>{{ __('Additional School setup fields used by the active subscription configuration.') }}</p></div>
+                        <div class="row">
+                            <div class="form-group col-sm-12 col-md-6" id="edit_assign_package_container">
+                                <label for="edit_assign_package">{{ __('assign_package')}} </label>
+                                {!! Form::select('assign_package', $packages, null, ['class' => 'form-control mb-2', 'placeholder' => __('select_package'),'id' => 'edit_assign_package']) !!}
                             </div>
                         </div>
                         @if(!empty($extraFields))

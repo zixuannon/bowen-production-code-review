@@ -1314,6 +1314,132 @@ $(document).ready(function () {
     });
 });
 
+function initializeUiPolishP2(scope) {
+    var root = scope || document;
+
+    root.querySelectorAll('.central-finance-page form[method="GET"]').forEach(function (form) {
+        form.classList.add('cf-filter-bar', 'ui-filter-bar');
+        if (form.dataset.uiFilterReady === '1') return;
+        var fields = Array.from(form.children).filter(function (child) {
+            return child.matches('div') && child.querySelector('input, select') && !child.querySelector('button');
+        });
+        if (fields.length <= 5) return;
+        form.dataset.uiFilterReady = '1';
+        var secondary = fields.slice(4);
+        var details = document.createElement('details');
+        details.className = 'ui-filter-bar__more';
+        var summary = document.createElement('summary');
+        summary.textContent = uiTranslation('More Filters', 'More Filters');
+        var row = document.createElement('div');
+        row.className = 'row mt-2';
+        details.append(summary, row);
+        secondary.forEach(function (field) {
+            var activeControl = Array.from(field.querySelectorAll('input, select')).some(function (control) {
+                return String(control.value || '').trim() !== '';
+            });
+            if (activeControl) details.open = true;
+            row.appendChild(field);
+        });
+        var action = Array.from(form.children).find(function (child) { return child.querySelector && child.querySelector('button'); });
+        form.insertBefore(details, action || null);
+    });
+
+    root.querySelectorAll('.central-finance-page .table-responsive').forEach(function (wrapper) {
+        wrapper.classList.add('ui-responsive-list-wrap');
+        var table = wrapper.querySelector('table');
+        if (!table) return;
+        table.classList.add('ui-responsive-list');
+        if (table.querySelectorAll('thead th').length >= 8 && !table.classList.contains('cf-mobile-card-table')) {
+            table.classList.add('ui-wide-table');
+        }
+    });
+
+    var responsiveTables = Array.from(root.querySelectorAll('table.ui-responsive-list'));
+    if (root.matches && root.matches('table.ui-responsive-list')) responsiveTables.push(root);
+    responsiveTables.forEach(function (table) {
+        var labels = Array.from(table.querySelectorAll('thead th')).map(function (cell) {
+            return cell.textContent.trim();
+        });
+        table.querySelectorAll('tbody tr').forEach(function (row) {
+            Array.from(row.children).forEach(function (cell, index) {
+                if (!cell.hasAttribute('data-label')) cell.dataset.label = labels[index] || '';
+            });
+        });
+    });
+
+    root.querySelectorAll('[data-ui-section-switcher]').forEach(function (switcher) {
+        if (switcher.dataset.uiReady === '1') return;
+        switcher.dataset.uiReady = '1';
+        var targetSelector = switcher.dataset.uiSectionSwitcher;
+        var target = document.querySelector(targetSelector);
+        if (!target) return;
+
+        switcher.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-ui-section]');
+            if (!button) return;
+            var section = button.dataset.uiSection;
+            target.querySelectorAll('[data-ui-section-panel]').forEach(function (panel) {
+                panel.hidden = panel.dataset.uiSectionPanel !== section;
+            });
+            switcher.querySelectorAll('[data-ui-section]').forEach(function (candidate) {
+                var active = candidate === button;
+                candidate.classList.toggle('btn-theme', active);
+                candidate.classList.toggle('btn-light', !active);
+                candidate.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+        });
+    });
+
+    root.querySelectorAll('[data-ui-file-input]').forEach(function (input) {
+        if (input.dataset.uiReady === '1') return;
+        input.dataset.uiReady = '1';
+        var output = input.closest('.ui-upload-zone')?.querySelector('[data-ui-file-name]');
+        if (!output) return;
+        input.addEventListener('change', function () {
+            output.textContent = input.files && input.files.length
+                ? input.files[0].name
+                : (output.dataset.emptyLabel || '');
+        });
+    });
+
+    root.querySelectorAll('[data-ui-list-view]').forEach(function (control) {
+        if (control.dataset.uiReady === '1') return;
+        control.dataset.uiReady = '1';
+        control.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-view]');
+            if (!button) return;
+            var list = document.querySelector(control.dataset.uiListView);
+            if (!list) return;
+            var cards = button.dataset.view === 'cards';
+            list.classList.toggle('ui-mobile-cards', cards);
+            control.querySelectorAll('[data-view]').forEach(function (candidate) {
+                var active = candidate === button;
+                candidate.classList.toggle('active', active);
+                candidate.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+        });
+    });
+
+    root.querySelectorAll('[data-ui-column-toggle]').forEach(function (input) {
+        if (input.dataset.uiReady === '1') return;
+        input.dataset.uiReady = '1';
+        input.addEventListener('change', function () {
+            var list = document.querySelector(input.dataset.uiColumnToggle);
+            var column = input.dataset.column;
+            if (!list || !column) return;
+            list.querySelectorAll('[data-column="' + CSS.escape(column) + '"]').forEach(function (cell) {
+                cell.hidden = !input.checked;
+            });
+        });
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { initializeUiPolishP2(document); });
+} else {
+    initializeUiPolishP2(document);
+}
+
 function uiTranslation(key, fallback) {
     var value = window.trans && window.trans[key];
     return value && value !== 'undefined' ? value : fallback;
@@ -1429,6 +1555,7 @@ $(document).ready(function () {
     polishInteractiveAccessibility(document);
     $(document).on('post-body.bs.table load-success.bs.table shown.bs.modal', function (event) {
         polishInteractiveAccessibility(event.target || document);
+        initializeUiPolishP2(event.target || document);
     });
 });
 

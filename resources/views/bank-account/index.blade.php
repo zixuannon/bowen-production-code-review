@@ -113,9 +113,10 @@
             <div class="col-md-12 grid-margin stretch-card">
                 <div class="card">
                     <div class="card-body">
-                        <h4 class="card-title">{{ __('Bank Account List') }}</h4>
+                        <div class="ui-list-toolbar"><div><h4 class="card-title mb-1">{{ __('Bank Account List') }}</h4><p class="text-muted mb-0">{{ __('Account identity and current balance stay visible; use Columns for secondary bank details.') }}</p></div></div>
+                        <p class="ui-table-scroll-hint"><i class="fa fa-arrows-h" aria-hidden="true"></i> {{ __('Swipe horizontally to review every Fund Account column.') }}</p>
 
-                        <table aria-describedby="mydesc" class='table' id='table_list' data-toggle="table"
+                        <table aria-describedby="mydesc" class='table ui-responsive-list ui-wide-table' id='table_list' data-toggle="table"
                             data-url="{{ route('bank-accounts.list') }}" data-click-to-select="true"
                             data-side-pagination="server" data-pagination="true" data-page-list="[5, 10, 20, 50, 100]"
                             data-search="true" data-show-columns="true" data-show-refresh="true"

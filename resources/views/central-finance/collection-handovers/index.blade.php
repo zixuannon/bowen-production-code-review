@@ -1,10 +1,12 @@
 @extends('layouts.master')
 @section('content')
-<div class="container-fluid py-3">
+<div class="container-fluid py-3 central-finance-page">
+@include('central-finance.partials.foundation-styles')
 <div class="card"><div class="card-body">
     <p class="text-uppercase text-muted mb-1">{{ $isHeadFinance ? __('Central Finance') : __('School Finance') }} · {{ $school->name }}</p>
     <h3>{{ __('Collection Handover Batches') }}</h3>
     <p class="text-muted">{{ __('A handover summary is not an official receipt. Official receipts are issued only after Head Finance confirmation.') }}</p>
+    <div class="ui-status-timeline mb-3" aria-label="{{ __('Handover workflow') }}"><span class="ui-status-timeline__step is-current">{{ __('Draft') }}</span><span class="ui-status-timeline__step">{{ __('Submitted') }}</span><span class="ui-status-timeline__step">{{ __('Finance review') }}</span><span class="ui-status-timeline__step">{{ __('Receipt issued') }}</span></div>
 
     @if($errors->any())
         <div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
@@ -21,21 +23,22 @@
     </form>
     @endunless
 
-    <div class="table-responsive mt-4"><table class="table cf-data-table">
+    <p class="ui-table-scroll-hint mt-4"><i class="fa fa-arrows-h" aria-hidden="true"></i> {{ __('Swipe horizontally to review every handover field.') }}</p>
+    <div class="table-responsive ui-responsive-list-wrap mt-4"><table class="table cf-data-table ui-responsive-list ui-mobile-cards">
     <thead><tr><th>{{ __('Reference') }}</th><th>{{ __('Channel') }}</th><th>{{ __('Items') }}</th><th>{{ __('Expected') }}</th><th>{{ __('Declared') }}</th><th>{{ __('Actual') }}</th><th>{{ __('Difference') }}</th><th>{{ __('Status') }}</th><th>{{ __('Actions') }}</th></tr></thead>
     <tbody>
     @forelse($batches as $batch)
         @php($attachedItems = $batch->items->where('status', \App\Models\CentralFinanceCollectionHandoverItem::ATTACHED))
         @php($displayExpected = $batch->status === 'draft' ? $attachedItems->sum(fn($item) => (float) $item->expected_amount_snapshot) : $batch->expected_amount)
         <tr>
-            <td data-label="{{ __('Reference') }}">{{ $batch->reference }}</td>
+            <td data-label="{{ __('Reference') }}"><span class="ui-cell-primary">{{ $batch->reference }}</span><span class="ui-cell-secondary">{{ $batch->currency }}</span></td>
             <td data-label="{{ __('Channel') }}">{{ $batch->payment_channel }} · {{ $batch->currency }}</td>
             <td data-label="{{ __('Items') }}">{{ $attachedItems->count() }}</td>
-            <td data-label="{{ __('Expected') }}">{{ number_format((float) $displayExpected, 2) }}</td>
-            <td data-label="{{ __('Declared') }}">{{ number_format((float) $batch->declared_handed_over_amount, 2) }}</td>
-            <td data-label="{{ __('Actual') }}">{{ $batch->actual_handed_over_amount === null ? '—' : number_format((float) $batch->actual_handed_over_amount, 2) }}</td>
-            <td data-label="{{ __('Difference') }}">{{ $batch->difference_amount === null ? '—' : number_format((float) $batch->difference_amount, 2) }}</td>
-            <td data-label="{{ __('Status') }}"><span class="badge badge-light">{{ __($batch->status) }}</span></td>
+            <td data-label="{{ __('Expected') }}" class="ui-handover-amount">{{ number_format((float) $displayExpected, 2) }} {{ $batch->currency }}</td>
+            <td data-label="{{ __('Declared') }}" class="ui-handover-amount">{{ number_format((float) $batch->declared_handed_over_amount, 2) }} {{ $batch->currency }}</td>
+            <td data-label="{{ __('Actual') }}" class="ui-handover-amount">{{ $batch->actual_handed_over_amount === null ? '—' : number_format((float) $batch->actual_handed_over_amount, 2).' '.$batch->currency }}</td>
+            <td data-label="{{ __('Difference') }}" class="ui-handover-amount">{{ $batch->difference_amount === null ? '—' : number_format((float) $batch->difference_amount, 2).' '.$batch->currency }}</td>
+            <td data-label="{{ __('Status') }}"><span class="badge badge-light">{{ __($batch->status) }}</span><div class="ui-status-timeline" aria-label="{{ __('Handover workflow') }}"><span class="ui-status-timeline__step {{ in_array($batch->status, ['draft','submitted','held','confirmed','rejected','cancelled'], true) ? 'is-complete' : '' }}">{{ __('Draft') }}</span><span class="ui-status-timeline__step {{ in_array($batch->status, ['submitted','held','confirmed','rejected'], true) ? 'is-complete' : '' }}">{{ __('Submitted') }}</span><span class="ui-status-timeline__step {{ in_array($batch->status, ['held','confirmed','rejected'], true) ? 'is-complete' : ($batch->status === 'submitted' ? 'is-current' : '') }}">{{ __('Finance review') }}</span><span class="ui-status-timeline__step {{ $batch->status === 'confirmed' ? 'is-complete' : '' }}">{{ __('Receipt issued') }}</span></div></td>
             <td data-label="{{ __('Actions') }}">
                 <details><summary>{{ __('Review') }}</summary><div class="mt-2">
                     @foreach($attachedItems as $item)
@@ -77,7 +80,7 @@
             </td>
         </tr>
     @empty
-        <tr><td colspan="9">{{ __('No handover batches.') }}</td></tr>
+        <tr><td colspan="9" data-label=""><div class="cf-empty-state">{{ __('No handover batches.') }}</div></td></tr>
     @endforelse
     </tbody></table></div>
     {{ $batches->links() }}

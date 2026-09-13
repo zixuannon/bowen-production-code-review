@@ -7,8 +7,8 @@
     <div class="page-header"><h3 class="page-title">{{ __('Fund Handover') }}</h3></div>
     @if($canParticipate)
     <div class="row"><div class="col-12 grid-margin stretch-card"><div class="card"><div class="card-body">
-        <h4 class="card-title">{{ __('New Pending Handover') }}</h4>
-        <p class="text-muted">{{ __('A pending handover does not change balances. The designated receiver must confirm before a transfer is recorded. Fund Handovers are between Head Finance and Accountant.') }}</p>
+        <div class="ui-form-section__header"><h4 class="card-title mb-1">{{ __('New Pending Handover') }}</h4><p>{{ __('A pending handover does not change balances. The designated receiver must confirm before a transfer is recorded. Fund Handovers are between Head Finance and Accountant.') }}</p></div>
+        <div class="ui-status-timeline mb-3" aria-label="{{ __('Handover workflow') }}"><span class="ui-status-timeline__step is-current">{{ __('Requested') }}</span><span class="ui-status-timeline__step">{{ __('Receiver review') }}</span><span class="ui-status-timeline__step">{{ __('Balance transfer') }}</span></div>
         <form id="fund-handover-form"><input type="hidden" name="_token" value="{{ csrf_token() }}">
             <div class="row">
                 <div class="form-group col-md-3"><label>{{ __('Receiver') }}</label><select class="form-control" name="receiver_id" id="receiver_id" required><option value="">{{ __('Select receiver') }}</option>@foreach($recipients as $user)<option value="{{ $user->id }}">{{ $user->first_name }} {{ $user->last_name }}</option>@endforeach</select></div>
@@ -39,8 +39,9 @@
     <div class="alert alert-info">{{ __('Read-only oversight: School Admin can review current-school Fund Handovers and their audit history.') }}</div>
     @endif
     <div class="row"><div class="col-12 grid-margin stretch-card"><div class="card"><div class="card-body">
-        <h4 class="card-title">{{ $canParticipate ? __('My Fund Handovers') : __('Fund Handover Register') }}</h4>
-        <table class="table" id="handover-table"><thead><tr><th>{{ __('Date') }}</th><th>{{ __('Reference') }}</th><th>{{ __('From') }}</th><th>{{ __('To') }}</th><th>{{ __('Sender') }}</th><th>{{ __('Receiver') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Audit') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody></tbody></table>
+        <div class="ui-list-toolbar"><div><h4 class="card-title mb-1">{{ $canParticipate ? __('My Fund Handovers') : __('Fund Handover Register') }}</h4><p class="text-muted mb-0">{{ __('Follow each request from pending review to its final audited state.') }}</p></div></div>
+        <p class="ui-table-scroll-hint"><i class="fa fa-arrows-h" aria-hidden="true"></i> {{ __('Swipe horizontally to review every handover field.') }}</p>
+        <div class="table-responsive ui-responsive-list-wrap"><table class="table ui-responsive-list ui-mobile-cards" id="handover-table"><thead><tr><th>{{ __('Date') }}</th><th>{{ __('Reference') }}</th><th>{{ __('From') }}</th><th>{{ __('To') }}</th><th>{{ __('Sender') }}</th><th>{{ __('Receiver') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Audit') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody></tbody></table></div>
     </div></div></div></div>
 </div>
 
@@ -83,11 +84,17 @@ function loadAvailableBalance() {
         : '{{ __('Available balance:') }} ' + Number(balance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 function actionButton(row, label, action) { return `<button type="button" class="btn btn-sm btn-outline-primary handover-action" data-id="${row.id}" data-action="${action}">${label}</button>`; }
+function handoverTimeline(status) {
+    const normalized = String(status || '').toLowerCase();
+    const reviewComplete = ['confirmed', 'rejected', 'cancelled'].includes(normalized);
+    const transferComplete = normalized === 'confirmed';
+    return `<div class="ui-status-timeline" aria-label="{{ __('Handover workflow') }}"><span class="ui-status-timeline__step is-complete">{{ __('Requested') }}</span><span class="ui-status-timeline__step ${reviewComplete ? 'is-complete' : 'is-current'}">{{ __('Receiver review') }}</span><span class="ui-status-timeline__step ${transferComplete ? 'is-complete' : ''}">{{ __('Balance transfer') }}</span></div>`;
+}
 async function loadHandovers() {
     const response = await fetch('{{ route('fund-handovers.list') }}'); const data = await response.json();
     document.querySelector('#handover-table tbody').innerHTML = data.rows.map(row => {
         let actions = ''; if (row.can_confirm) actions += actionButton(row, '{{ __('Confirm') }}', 'confirm') + ' ' + actionButton(row, '{{ __('Reject') }}', 'reject'); if (row.can_cancel) actions += actionButton(row, '{{ __('Cancel') }}', 'cancel');
-        return `<tr><td>${row.handover_date}</td><td>${row.reference_no || '-'}</td><td>${row.from_account_name || '-'}</td><td>${row.to_account_name || '-'}</td><td>${row.sender_name}</td><td>${row.receiver_name}</td><td>${row.amount}</td><td>${row.status}</td><td>${row.audit || '-'}</td><td>${actions}</td></tr>`;
+        return `<tr><td data-label="{{ __('Date') }}">${row.handover_date}</td><td data-label="{{ __('Reference') }}"><span class="ui-cell-primary">${row.reference_no || '-'}</span></td><td data-label="{{ __('From') }}">${row.from_account_name || '-'}</td><td data-label="{{ __('To') }}">${row.to_account_name || '-'}</td><td data-label="{{ __('Sender') }}">${row.sender_name}</td><td data-label="{{ __('Receiver') }}">${row.receiver_name}</td><td data-label="{{ __('Amount') }}" class="ui-handover-amount"><strong>${row.amount}</strong></td><td data-label="{{ __('Status') }}"><span class="badge badge-light">${row.status}</span>${handoverTimeline(row.status)}</td><td data-label="{{ __('Audit') }}">${row.audit || '-'}</td><td data-label="">${actions || '<span class="text-muted">{{ __('No action') }}</span>'}</td></tr>`;
     }).join('');
 }
 const canParticipate = @json($canParticipate);

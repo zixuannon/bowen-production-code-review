@@ -26,7 +26,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h4 class="card-title">{{ __('Search Student') }}</h4>
-                        <form method="GET" action="{{ route('student-ledger.index') }}">
+                        <form method="GET" action="{{ route('student-ledger.index') }}" class="ui-filter-bar">
                             <div class="row">
                                 <div class="form-group col-md-8">
                                     <input type="text" name="search" class="form-control"
@@ -51,8 +51,8 @@
                         <div class="card-body">
                             <h4 class="card-title">{{ __('Search Results') }} ({{ $students->count() }})</h4>
                             @if ($students->count() > 0)
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
+                                <div class="table-responsive ui-responsive-list-wrap">
+                                    <table class="table table-hover ui-responsive-list ui-mobile-cards">
                                         <thead>
                                             <tr>
                                                 <th>{{ __('Name') }}</th>
@@ -65,16 +65,16 @@
                                         <tbody>
                                             @foreach ($students as $stu)
                                                 <tr>
-                                                    <td>{{ $stu->user->full_name ?? 'N/A' }}</td>
-                                                    <td>{{ $stu->admission_no }}</td>
-                                                    <td>
+                                                    <td data-label="{{ __('Name') }}"><span class="ui-cell-primary">{{ $stu->user->full_name ?? 'N/A' }}</span></td>
+                                                    <td data-label="{{ __('GR No.') }}">{{ $stu->admission_no }}</td>
+                                                    <td data-label="{{ __('Class') }}">
                                                         {{ $stu->class_section->class->name ?? 'N/A' }}
                                                         @if ($stu->class_section->section->name ?? null)
                                                             - {{ $stu->class_section->section->name }}
                                                         @endif
                                                     </td>
-                                                    <td>{{ $stu->guardian->full_name ?? 'N/A' }}</td>
-                                                    <td>
+                                                    <td data-label="{{ __('Guardian') }}">{{ $stu->guardian->full_name ?? 'N/A' }}</td>
+                                                    <td data-label="">
                                                         <a href="{{ route('student-ledger.show', ['userId' => $stu->user_id]) }}"
                                                             class="btn btn-sm btn-theme">
                                                             {{ __('View Ledger') }}

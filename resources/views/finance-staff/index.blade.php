@@ -6,18 +6,20 @@
 <div class="content-wrapper">
     <div class="page-header"><h3 class="page-title">{{ __('Finance Staff') }}</h3></div>
     <div class="card"><div class="card-body">
-        <button type="button" class="btn btn-theme float-right" data-toggle="modal" data-target="#addAccountantModal"><i class="fa fa-plus"></i> {{ __('Add Accountant') }}</button>
-        <p class="text-muted">{{ __('Manage Finance roles and Accountant Fund Account access for the current school.') }}</p>
-        <div class="table-responsive"><table class="table table-striped" id="finance-staff-table">
+        <div class="ui-list-toolbar">
+            <div><h4 class="card-title mb-1">{{ __('Finance Staff') }}</h4><p class="text-muted mb-0">{{ __('Manage Finance roles and Accountant Fund Account access for the current school.') }}</p></div>
+            <button type="button" class="btn btn-theme" data-toggle="modal" data-target="#addAccountantModal"><i class="fa fa-plus" aria-hidden="true"></i> {{ __('Add Accountant') }}</button>
+        </div>
+        <div class="table-responsive ui-responsive-list-wrap"><table class="table table-striped ui-responsive-list ui-mobile-cards" id="finance-staff-table">
             <thead><tr><th>{{ __('User') }}</th><th>{{ __('Finance Role') }}</th><th>{{ __('Fund Accounts') }}</th><th>{{ __('Status') }}</th><th>{{ __('Actions') }}</th></tr></thead>
             <tbody>@foreach($users as $user)
                 @php($roles = collect(['Head Finance', 'Cashier'])->filter(fn ($role) => $user->hasRole($role))->values())
                 <tr>
-                    <td>{{ $user->full_name }}</td>
-                    <td>{{ $roles->isNotEmpty() ? $roles->map(fn ($role) => $role === 'Cashier' ? __('Accountant') : $role)->implode(', ') : __('No Finance Role') }}</td>
-                    <td>{{ $user->authorized_bank_accounts->pluck('account_name')->implode(', ') ?: __('None assigned') }}</td>
-                    <td><span class="badge badge-{{ $user->status ? 'success' : 'secondary' }}">{{ $user->status ? __('Active') : __('Inactive') }}</span></td>
-                    <td>
+                    <td data-label="{{ __('User') }}"><span class="ui-cell-primary">{{ $user->full_name }}</span></td>
+                    <td data-label="{{ __('Finance Role') }}">{{ $roles->isNotEmpty() ? $roles->map(fn ($role) => $role === 'Cashier' ? __('Accountant') : $role)->implode(', ') : __('No Finance Role') }}</td>
+                    <td data-label="{{ __('Fund Accounts') }}">{{ $user->authorized_bank_accounts->pluck('account_name')->implode(', ') ?: __('None assigned') }}</td>
+                    <td data-label="{{ __('Status') }}"><span class="badge badge-{{ $user->status ? 'success' : 'secondary' }}">{{ $user->status ? __('Active') : __('Inactive') }}</span></td>
+                    <td data-label="">
                         @if($actor->hasRole('School Admin') || ($actor->hasRole('Head Finance') && $user->hasRole('Cashier')))
                             <button type="button" class="btn btn-sm btn-outline-primary finance-staff-manage"
                                 data-user-id="{{ $user->id }}"
@@ -37,10 +39,10 @@
     </div></div>
 </div>
 
-<div class="modal fade" id="addAccountantModal" tabindex="-1" role="dialog" aria-labelledby="addAccountantTitle" aria-hidden="true"><div class="modal-dialog modal-lg" role="document"><div class="modal-content"><form id="add-accountant-form"><div class="modal-header"><h5 class="modal-title" id="addAccountantTitle">{{ __('Add Accountant') }}</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><div class="modal-body"><div id="add-accountant-error" class="alert alert-danger d-none"></div><p class="text-muted">{{ __('A secure password setup link will be sent to the new Accountant.') }}</p><div class="row"><div class="form-group col-md-6"><label>{{ __('First Name') }} *</label><input class="form-control" name="first_name" required></div><div class="form-group col-md-6"><label>{{ __('Last Name') }} *</label><input class="form-control" name="last_name" required></div><div class="form-group col-md-6"><label>{{ __('Email') }} *</label><input type="email" class="form-control" name="email" required></div><div class="form-group col-md-6"><label>{{ __('Mobile') }}</label><input class="form-control" name="mobile"></div></div><h6>{{ __('Fund Accounts') }}</h6><p class="text-muted small">{{ __('Optional. An Accountant without an assigned Fund Account can log in but cannot access Fund Accounts until one is assigned.') }}</p>@foreach($accounts as $account)<div class="form-check"><label class="form-check-label"><input class="form-check-input" type="checkbox" name="account_ids[]" value="{{ $account->id }}"> {{ $account->account_name }}</label></div>@endforeach</div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button class="btn btn-theme" type="submit">{{ __('Create Accountant') }}</button></div></form></div></div></div>
+<div class="modal fade" id="addAccountantModal" tabindex="-1" role="dialog" aria-labelledby="addAccountantTitle" aria-hidden="true"><div class="modal-dialog modal-lg finance-staff-mobile-sheet" role="document"><div class="modal-content"><form id="add-accountant-form" class="d-flex flex-column h-100"><div class="modal-header"><h5 class="modal-title" id="addAccountantTitle">{{ __('Add Accountant') }}</h5><button type="button" class="close" data-dismiss="modal" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button></div><div class="modal-body"><div id="add-accountant-error" class="alert alert-danger d-none" role="alert"></div><p class="text-muted">{{ __('A secure password setup link will be sent to the new Accountant.') }}</p><div class="row"><div class="form-group col-md-6"><label>{{ __('First Name') }} *</label><input class="form-control" name="first_name" required></div><div class="form-group col-md-6"><label>{{ __('Last Name') }} *</label><input class="form-control" name="last_name" required></div><div class="form-group col-md-6"><label>{{ __('Email') }} *</label><input type="email" class="form-control" name="email" required></div><div class="form-group col-md-6"><label>{{ __('Mobile') }}</label><input class="form-control" name="mobile"></div></div><h6>{{ __('Fund Accounts') }}</h6><p class="text-muted small">{{ __('Optional. An Accountant without an assigned Fund Account can log in but cannot access Fund Accounts until one is assigned.') }}</p>@foreach($accounts as $account)<div class="form-check"><label class="form-check-label"><input class="form-check-input" type="checkbox" name="account_ids[]" value="{{ $account->id }}"> {{ $account->account_name }}</label></div>@endforeach</div><div class="modal-footer"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button class="btn btn-theme" type="submit">{{ __('Create Accountant') }}</button></div></form></div></div></div>
 
 <div class="modal fade" id="financeStaffModal" tabindex="-1" role="dialog" aria-labelledby="financeStaffModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-lg" role="document"><div class="modal-content">
+    <div class="modal-dialog modal-lg finance-staff-mobile-sheet" role="document"><div class="modal-content">
         <div class="modal-header"><h5 class="modal-title" id="financeStaffModalTitle">{{ __('Manage Finance Staff') }}</h5><button type="button" class="close" data-dismiss="modal" aria-label="{{ __('Close') }}"><span>&times;</span></button></div>
         <div class="modal-body">
             <div id="finance-staff-error" class="alert alert-danger d-none" role="alert"></div>
@@ -57,7 +59,7 @@
             <form id="finance-staff-accounts-form">
                 <h6>{{ __('Accountant Fund Accounts') }}</h6><p class="text-muted small">{{ __('Only active current-school Fund Accounts can be assigned.') }}</p>
                 <div id="finance-staff-account-options" class="row">@foreach($accounts as $account)<div class="col-md-6"><div class="form-check mb-2"><label class="form-check-label"><input class="form-check-input finance-staff-account" type="checkbox" value="{{ $account->id }}"> {{ $account->account_name }}</label></div></div>@endforeach</div>
-                <div class="modal-footer px-0 pb-0"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button type="submit" class="btn btn-theme">{{ __('Save Fund Accounts') }}</button></div>
+                <div class="modal-footer ui-mobile-sheet-actions px-0 pb-0"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Cancel') }}</button><button type="submit" class="btn btn-theme">{{ __('Save Fund Accounts') }}</button></div>
             </form>
         </div>
         <div class="modal-footer" id="finance-staff-close-actions"><button type="button" class="btn btn-light" data-dismiss="modal">{{ __('Close') }}</button></div>
