@@ -697,9 +697,16 @@
                                         </thead>
                                         <tbody>
                                             @foreach ($schools as $school)
+                                                @php
+                                                    $schoolLogoUrl = (string) $school->logo;
+                                                    $schoolLogoPath = parse_url($schoolLogoUrl, PHP_URL_PATH) ?: '';
+                                                    if (\Illuminate\Support\Str::endsWith($schoolLogoPath, '/storage/no_image_available.jpg')) {
+                                                        $schoolLogoUrl = asset('/assets/no_image_available.jpg');
+                                                    }
+                                                @endphp
                                                 <tr>
                                                     <td>
-                                                        <img src="{{ $school->logo }}" onerror="onErrorImage(event)" class="me-2"
+                                                        <img src="{{ $schoolLogoUrl }}" onerror="onErrorImage(event)" class="me-2"
                                                             alt="image">
                                                     </td>
                                                     <td>{{ $school->name }}</td>
