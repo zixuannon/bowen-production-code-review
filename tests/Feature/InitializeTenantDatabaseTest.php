@@ -44,6 +44,18 @@ class InitializeTenantDatabaseTest extends TestCase
             'first_name' => 'Tenant', 'last_name' => 'Context', 'email' => $email, 'password' => $password,
             'school_id' => 1, 'status' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
+        DB::connection('school')->table('schools')->insertOrIgnore([
+            'id' => 1,
+            'name' => 'Tenant Context Test',
+            'address' => 'Local only',
+            'support_phone' => '0',
+            'support_email' => 'tenant-context@test.local',
+            'tagline' => 'Local only',
+            'logo' => '',
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         DB::connection('school')->table('users')->insert([
             'id' => $centralId, 'first_name' => 'Tenant', 'last_name' => 'Context', 'email' => $email, 'password' => $password,
             'school_id' => 1, 'status' => 1, 'created_at' => now(), 'updated_at' => now(),

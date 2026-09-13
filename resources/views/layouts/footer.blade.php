@@ -1,5 +1,9 @@
- <footer class="footer">
-    <div class="d-sm-flex justify-content-end">
-        <span class="text-muted text-center text-sm-left d-block d-sm-inline-block">{{ __('Copyright') }} © <?= date('Y') ?> <a class="text-theme" href="{{ url('/') }}">{{ config('app.name') }}</a>. {{ __('All rights reserved') }}.</span>
-     </div>
+<footer class="footer app-footer">
+    <div class="app-footer__inner">
+        <a class="app-footer__brand" href="{{ url('/') }}" aria-label="BOWEN SCHOOL">
+            <span class="app-footer__mark" aria-hidden="true">B</span>
+            <span><strong>BOWEN SCHOOL</strong><small>eSchool</small></span>
+        </a>
+        <span class="text-muted app-footer__copyright">{{ __('Copyright') }} © <?= date('Y') ?> {{ config('app.name') }}. {{ __('All rights reserved') }}.</span>
+    </div>
 </footer>

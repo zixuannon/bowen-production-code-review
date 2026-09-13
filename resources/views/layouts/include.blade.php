@@ -14,11 +14,11 @@
         <link rel="stylesheet" href="{{ asset('/assets/css/custom-rtl.css') }}">
     @else
         <link rel="stylesheet" href="{{ asset('/assets/css/style.min.css') }}">
-        <link rel="stylesheet" href="{{ asset('/assets/css/custom.css') }}">
+        <link rel="stylesheet" href="{{ asset('/assets/css/custom.css') }}?v={{ hash_file('sha256', public_path('assets/css/custom.css')) }}">
     @endif
 @else
     <link rel="stylesheet" href="{{ asset('/assets/css/style.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('/assets/css/custom.css') }}">
+    <link rel="stylesheet" href="{{ asset('/assets/css/custom.css') }}?v={{ hash_file('sha256', public_path('assets/css/custom.css')) }}">
 @endif
 
 <link rel="stylesheet" href="{{ asset('/assets/css/comman.css') }}">

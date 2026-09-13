@@ -1,5 +1,5 @@
 <!-- partial:../../partials/_sidebar.html -->
-<nav class="sidebar sidebar-offcanvas" id="sidebar">
+<nav class="sidebar sidebar-offcanvas" id="sidebar" aria-label="{{ __('Primary navigation') }}">
 
     <div class="sidebar-search sidebar-primary-search pl-4 pr-4">
         <input type="text" id="menu-search" placeholder="{{ __('search_menu') }}"
@@ -7,11 +7,14 @@
             aria-label="{{ __('search_menu') }}" autocomplete="off">
     </div>
 
-    <ul class="nav">
+    <ul class="nav" data-ui-sidebar-nav>
+        <li class="nav-item menu-group-label" aria-hidden="true">
+            <span class="menu-group-text">{{ __('Workspace') }}</span>
+        </li>
         {{-- dashboard --}}
-        <li class="nav-item">
-            <a href="{{ url('/dashboard') }}" class="nav-link">
-                <i class="fa fa-home menu-icon"></i>
+        <li class="nav-item {{ request()->is('dashboard') ? 'active' : '' }}">
+            <a href="{{ url('/dashboard') }}" class="nav-link {{ request()->is('dashboard') ? 'active' : '' }}" @if(request()->is('dashboard')) aria-current="page" @endif>
+                <i class="fa fa-home menu-icon" aria-hidden="true"></i>
                 <span class="menu-title">{{ __('dashboard') }}</span>
             </a>
         </li>
@@ -87,7 +90,7 @@
         @endphp
         @if ($hasCentralFinanceIdentity)
             @if($centralIsFrontDesk)
-                <li class="nav-item">
+                <li class="nav-item {{ request()->routeIs('central-finance.*') ? 'active' : '' }}">
                     <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
                         <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ __('School Finance') }}</span><i class="menu-arrow"></i>
                     </a>
@@ -97,7 +100,7 @@
                     </ul></div>
                 </li>
             @else
-            <li class="nav-item">
+            <li class="nav-item {{ request()->routeIs('central-finance.*') ? 'active' : '' }}">
                 <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
                     <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ $centralIsSchoolStaffPrincipal ? __('School Finance') : __('Central Finance') }}</span><i class="menu-arrow"></i>
                 </a>

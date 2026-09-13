@@ -199,7 +199,7 @@
             <div class="row">
 
                 {{-- Expense Graph --}}
-                @if (Auth::user()->canany(['expense-create', 'expense-list']))
+                @if (!Auth::user()->hasRole('School Admin') && Auth::user()->canany(['finance-expense-view', 'expense-list']))
                     <div class="col-md-8 grid-margin stretch-card">
                         <div class="card">
                             <div class="card-body custom-card-body">
@@ -209,6 +209,7 @@
                                     </div>
                                     <div class="col-md-3 text-right">
                                         <select name="session_year_id" id="filter_expense_session_year_id"
+                                            data-finance-request-authorized="true"
                                             class="form-control form-control-sm">
                                             @foreach ($sessionYear as $session)
                                                 @if ($session->default == 1)
@@ -399,6 +400,7 @@
                         </div>
                     </div>
                 </div>
+                @if (!Auth::user()->hasRole('School Admin') && Auth::user()->canany(['finance-dashboard-view', 'fees-paid']))
                 <div class="col-md-4 grid-margin stretch-card">
                     <div class="card">
                         <div class="card-body custom-card-body">
@@ -412,7 +414,8 @@
                                 <div class="col-sm-12 col-md-5">
                                     {!! Form::select('class_section_id', $class_section_names, null, [
                 'class' => 'form-control form-control-sm fees-over-due-class',
-                'id' => 'fees-over-due-class-section'
+                'id' => 'fees-over-due-class-section',
+                'data-finance-request-authorized' => 'true'
             ]) !!}
                                 </div>
                             </div>
@@ -444,6 +447,7 @@
                         </div>
                     </div>
                 </div>
+                @endif
                 <div class="col-md-4 grid-margin stretch-card">
                     <div class="card">
                         <div class="card-body custom-card-body">

@@ -16,6 +16,9 @@ module.exports = defineConfig({
     baseURL,
     storageState: 'qa/playwright/.auth/bowen-qa.json',
     headless: true,
+    launchOptions: process.env.LOCAL_QA_BROWSER_EXECUTABLE
+      ? { executablePath: process.env.LOCAL_QA_BROWSER_EXECUTABLE }
+      : undefined,
     trace: 'off',
     screenshot: 'off',
     video: 'off',

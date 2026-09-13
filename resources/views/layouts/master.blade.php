@@ -28,7 +28,11 @@
     @yield('css')
 </head>
 
-<body class="sidebar-fixed {{ $lang ? 'locale-' . ($lang->code ?? 'en') : 'locale-en' }}">
+<body class="sidebar-fixed ui-page-loading {{ $lang ? 'locale-' . ($lang->code ?? 'en') : 'locale-en' }}" aria-busy="true">
+    <div class="ui-page-progress" role="status" aria-live="polite" aria-label="{{ __('Loading content') }}">
+        <span class="ui-page-progress__bar" aria-hidden="true"></span>
+        <span class="sr-only">{{ __('Loading content') }}</span>
+    </div>
     <div class="container-scroller">
         {{-- header --}}
         @include('layouts.header')
