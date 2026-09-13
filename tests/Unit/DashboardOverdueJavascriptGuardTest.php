@@ -27,4 +27,14 @@ final class DashboardOverdueJavascriptGuardTest extends TestCase
         $this->assertStringContainsString('src="{{ $schoolLogoUrl }}"', $view);
         $this->assertStringNotContainsString('src="{{ $school->logo }}"', $view);
     }
+
+    public function test_school_list_replaces_missing_stored_logos_before_the_browser_requests_them(): void
+    {
+        $controller = file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/SchoolController.php');
+
+        $this->assertStringContainsString("getRawOriginal('logo')", $controller);
+        $this->assertStringContainsString("Storage::disk('public')->exists(\$storageLogoPath)", $controller);
+        $this->assertStringContainsString("asset('/assets/no_image_available.jpg')", $controller);
+        $this->assertStringContainsString("\$tempRow['logo'] = \$isStoredLogo", $controller);
+    }
 }

@@ -454,6 +454,16 @@ class SchoolController extends Controller
             // scalar role attribute, not the full roles/pivot payload.
             $row->user?->makeHidden('roles');
             $tempRow = $row->toArray();
+            $rawLogoPath = ltrim((string) $row->getRawOriginal('logo'), '/');
+            $storageLogoPath = Str::startsWith($rawLogoPath, 'storage/')
+                ? Str::after($rawLogoPath, 'storage/')
+                : $rawLogoPath;
+            $isStoredLogo = $storageLogoPath !== ''
+                && !Str::startsWith($storageLogoPath, ['http://', 'https://'])
+                && Storage::disk('public')->exists($storageLogoPath);
+            $tempRow['logo'] = $isStoredLogo
+                ? url(Storage::disk('public')->url($storageLogoPath))
+                : asset('/assets/no_image_available.jpg');
             $tempRow['no'] = $no++;
             $tempRow['active_plan'] = '-';
             ;
