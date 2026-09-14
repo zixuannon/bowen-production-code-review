@@ -45,6 +45,30 @@ class ProductionMigrationGuardTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_bahan_timecity_school_code_runner_is_exact_path_allowlisted(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $path = database_path('migrations/2026_09_14_000002_canonicalize_bahan_timecity_school_codes.php');
+
+        $guard->assertAllowed(
+            'migrate',
+            'centralization:migrate-school-codes',
+            [$path],
+            true,
+            true,
+        );
+        $this->addToAssertionCount(1);
+
+        $this->expectException(RuntimeException::class);
+        $guard->assertAllowed(
+            'migrate',
+            'centralization:migrate-school-codes',
+            [database_path('migrations/2026_09_11_000001_finalize_school_code_identity.php')],
+            true,
+            true,
+        );
+    }
+
     public function test_guard_does_not_change_local_or_test_migration_behavior(): void
     {
         (new ProductionMigrationGuard())->assertAllowed('migrate', 'migrate', [], false, false);

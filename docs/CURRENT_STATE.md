@@ -56,7 +56,10 @@ Finance V2
 - Local mapping, no-write, canonical-only, Central Finance scope, Group Import
   V2.2, Student Import, invitation, role, and migration-runner regressions pass.
   The exact migration also passes a disposable fresh MySQL rehearsal. Final
-  full regression passes 755 tests / 6,095 assertions with three expected
+  Production preflight also verified that the runner's exact central path is
+  registered with `ProductionMigrationGuard`; an initially missing guard entry
+  failed closed with zero write and was fixed before deployment. Final full
+  regression passes 756 tests / 6,097 assertions with three expected
   opt-in skips and existing PHP 8.5/PHPUnit deprecations only. Production
   deployment and execution of the exact central migration remain separate
   Human Gates; cutover remains stopped.

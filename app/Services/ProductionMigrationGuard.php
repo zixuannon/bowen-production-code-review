@@ -55,6 +55,9 @@ final class ProductionMigrationGuard
         'student-code:migrate' => [
             'database/migrations/schools/2026_09_14_000001_create_student_code_sequences.php',
         ],
+        'centralization:migrate-school-codes' => [
+            'database/migrations/2026_09_14_000002_canonicalize_bahan_timecity_school_codes.php',
+        ],
     ];
 
     /**
