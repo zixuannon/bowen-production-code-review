@@ -72,10 +72,10 @@ final class MigrateCentralFinanceDataIsolation extends Command
     {
         $schema = Schema::connection('mysql');
         return $schema->hasColumns('central_finance_data_classifications', [
-            'id', 'classification_uuid', 'school_id', 'subject_type', 'subject_id',
+            'id', 'classification_uuid', 'school_id', 'subject_scope', 'subject_type', 'subject_id',
             'classification', 'reason', 'classified_by', 'created_at', 'updated_at',
         ]) && $schema->hasColumns('central_finance_data_classification_audits', [
-            'id', 'audit_uuid', 'classification_id', 'school_id', 'subject_type', 'subject_id',
+            'id', 'audit_uuid', 'classification_id', 'school_id', 'subject_scope', 'subject_type', 'subject_id',
             'before_classification', 'after_classification', 'reason', 'actor_id', 'created_at',
         ]) && $this->hasUniqueIndex('central_finance_data_classifications', 'cf_data_classification_uuid_unique')
             && $this->hasUniqueIndex('central_finance_data_classifications', 'cf_data_classification_subject_unique')

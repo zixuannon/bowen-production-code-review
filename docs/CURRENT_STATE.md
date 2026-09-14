@@ -16,7 +16,8 @@ Finance V2
 
 ## Go-live QA/Test data isolation — local candidate / no Production data change
 
-- Branch `codex/go-live-data-isolation` starts exactly from Production source
+- Branch `codex/go-live-data-isolation-complete` starts from the clean local
+  isolation candidate whose parent baseline is Production source
   `4c88e46981619e57abf9cc56955ebd10dcdc5f3e`. It adds canonical
   `Production / QA-Test / Archived` metadata without renaming, rewriting, or
   deleting any master, workflow, or financial record.
@@ -36,12 +37,20 @@ Finance V2
   fail closed. Existing Payment, Receipt, Ledger, posted operating documents,
   transfers, and confirmed handovers remain append-only and queryable through
   the authorized history/detail surface.
+- Tenant-backed Student, Staff/identity, Fee, Fee Type, and Fee Item records
+  use centrally audited `tenant:<school_id>` classification scopes. This keeps
+  tenant-local numeric IDs collision-safe, verifies the active tenant database
+  against the trusted School registry, filters School lists/Staff provisioning
+  and Fee Assignment selectors, and makes QA identities ineligible for Central
+  operations while leaving every source row intact. Central student projections
+  inherit their tenant Student classification.
 - The additive central metadata schema is available only through the exact-path
   `finance:migrate-data-isolation` runner. Partial or mismatched schema fails
   closed. Disposable fresh MySQL migration rehearsal passes, and no Production
   migration or Production data mutation has occurred.
-- Focused isolation, role/scope, no-write, Group Import/Excel, audit, and
-  migration-runner regressions pass. Full regression passes 774 tests / 6,265
+- Focused isolation, role/scope, tenant-ID collision, registry mismatch,
+  Student/Staff/Fee dropdown, no-write, Group Import/Excel, audit, and
+  migration-runner regressions pass. Full regression passes 777 tests / 6,291
   assertions with four expected opt-in skips and existing PHP 8.5/PHPUnit
   deprecation notices only.
 

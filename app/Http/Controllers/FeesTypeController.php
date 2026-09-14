@@ -66,6 +66,8 @@ class FeesTypeController extends Controller
             ->when(!empty($showDeleted), function ($query) {
                 $query->onlyTrashed();
             });
+        app(\App\Services\CentralFinanceDataIsolationService::class)
+            ->applyTenant($sql, 'fee_type', (int) auth()->user()->school_id, false, 'fees_types.id');
 
         $total = $sql->count();
         if ($offset >= $total && $total > 0) {

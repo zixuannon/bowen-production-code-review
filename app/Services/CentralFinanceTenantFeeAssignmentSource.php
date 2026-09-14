@@ -12,7 +12,10 @@ use RuntimeException;
 
 /** Reads only compulsory tenant fee assignments through the trusted registry. */
 final class CentralFinanceTenantFeeAssignmentSource {
-    public function __construct(private readonly CentralFinanceReceivableSyncUatExceptionService $uatExceptions) {}
+    public function __construct(
+        private readonly CentralFinanceReceivableSyncUatExceptionService $uatExceptions,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
+    ) {}
     /** @return list<array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable}> */
     public function forProfile(CentralFinanceStudentProfile $profile): array {
         return array_values(array_filter(
@@ -51,6 +54,8 @@ final class CentralFinanceTenantFeeAssignmentSource {
             if ($hasCurrency) $select[] = 'fees_class_types.fee_currency';
             $query = DB::connection('school')->table('fees_class_types')->leftJoin('fees','fees.id','=','fees_class_types.fees_id')
                 ->where('fees_class_types.class_id',$fresh->class_id)->where('fees_class_types.optional',0);
+            $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $fresh->school_id, false, 'fees_class_types.id');
+            $this->dataIsolation->applyTenantMetadata($query, 'fee', (int) $fresh->school_id, false, 'fees.id');
             if (Schema::connection('school')->hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('fees_class_types.deleted_at');
             if (Schema::connection('school')->hasColumn('fees', 'deleted_at')) $query->whereNull('fees.deleted_at');
             $rows=$query
@@ -76,11 +81,12 @@ final class CentralFinanceTenantFeeAssignmentSource {
             ->whereNull('deleted_at')
             ->orderBy('id')->get(['id', 'confirmed_at']);
         if ($assignments->isEmpty()) return ['has_confirmed_assignment' => false, 'rows' => []];
-        $rows = DB::connection('school')->table('student_fee_assignment_items')
+        $rowsQuery = DB::connection('school')->table('student_fee_assignment_items')
             ->whereIn('student_fee_assignment_id', $assignments->pluck('id'))
             ->where('status', 'active')
-            ->where('source_type', 'fees_class_type')
-            ->orderBy('id')->get();
+            ->where('source_type', 'fees_class_type');
+        $this->dataIsolation->applyTenantMetadata($rowsQuery, 'fee_item', (int) $profile->school_id, false, 'source_id');
+        $rows = $rowsQuery->orderBy('id')->get();
         $confirmedAt = $assignments->keyBy('id');
         return ['has_confirmed_assignment' => true, 'rows' => $rows->map(function (object $row) use ($confirmedAt): array {
             $time = $confirmedAt->get($row->student_fee_assignment_id)->confirmed_at ?? $row->created_at;

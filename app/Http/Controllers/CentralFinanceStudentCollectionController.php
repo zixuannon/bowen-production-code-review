@@ -64,6 +64,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             }])
             ->where('school_id', $school->id);
         $this->dataIsolation->apply($profilesQuery, 'student_profile', $includeQaTest);
+        $this->dataIsolation->applyTenantMetadata($profilesQuery, 'student', (int) $school->id, $includeQaTest, 'tenant_student_id');
         $profiles = $profilesQuery
             ->when($class !== '', fn ($query) => $query->where('class_name', $class))
             ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
@@ -76,12 +77,14 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->orderBy('student_name')
             ->paginate(20)
             ->withQueryString();
-        $profiles->getCollection()->each(function (CentralFinanceStudentProfile $profile): void {
+        $profiles->getCollection()->each(function (CentralFinanceStudentProfile $profile) use ($school): void {
             $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
-            $profile->setAttribute('production_eligible', $this->dataIsolation->isProduction('student_profile', (int) $profile->id));
+            $profile->setAttribute('production_eligible', $this->dataIsolation->isProduction('student_profile', (int) $profile->id)
+                && $this->dataIsolation->isTenantMetadataProduction('student', (int) $school->id, (int) $profile->tenant_student_id));
         });
         $classesQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
         $this->dataIsolation->apply($classesQuery, 'student_profile', $includeQaTest);
+        $this->dataIsolation->applyTenantMetadata($classesQuery, 'student', (int) $school->id, $includeQaTest, 'tenant_student_id');
         $classes = $classesQuery->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
         $canCollect = $this->canCollect($actor, $school->id);
         $canSubmitPending = $this->canSubmitPending($actor, $school->id);
@@ -102,7 +105,8 @@ final class CentralFinanceStudentCollectionController extends Controller
         // actor's current, explicitly selected School.
         $currentSchool = $this->workspace->currentSchool($actor);
         $isCurrentSchool = $currentSchool !== null && (int) $currentSchool->id === (int) $school->id;
-        $productionEligible = $this->dataIsolation->isProduction('student_profile', (int) $profile->id);
+        $productionEligible = $this->dataIsolation->isProduction('student_profile', (int) $profile->id)
+            && $this->dataIsolation->isTenantMetadataProduction('student', (int) $school->id, (int) $profile->tenant_student_id);
         $canCollect = $productionEligible && $isCurrentSchool && $this->canCollect($actor, $school->id);
         $canSubmitPending = $productionEligible && $isCurrentSchool && $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
@@ -234,6 +238,7 @@ final class CentralFinanceStudentCollectionController extends Controller
     {
         $query = CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId);
         $this->dataIsolation->apply($query, 'student_profile');
+        $this->dataIsolation->applyTenantMetadata($query, 'student', $schoolId, false, 'tenant_student_id');
         return $query->findOrFail($profileId);
     }
 

@@ -17,6 +17,8 @@ use RuntimeException;
  */
 final class CentralFinanceStudentProfileSource
 {
+    public function __construct(private readonly CentralFinanceDataIsolationService $dataIsolation) {}
+
     /** @return list<CentralFinanceStudentProfilePayload> */
     public function forSchool(School $requestedSchool): array
     {
@@ -91,6 +93,7 @@ final class CentralFinanceStudentProfileSource
         } else {
             $query->addSelect(DB::raw('NULL as student_code'));
         }
+        $this->dataIsolation->applyTenantMetadata($query, 'student', (int) $school->id, false, 'students.id');
 
         return $query;
     }

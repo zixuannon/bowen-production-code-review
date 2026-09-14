@@ -467,6 +467,8 @@ class StaffController extends Controller
                 });
             })
             ->with($eagerLoads);
+        app(\App\Services\CentralFinanceDataIsolationService::class)
+            ->applyTenant($sql, 'staff', (int) Auth::user()->school_id, false, 'users.id');
 
         if ($session_year_id) {
             $sql->whereHas('staff', function ($q) use ($session_year_id) {

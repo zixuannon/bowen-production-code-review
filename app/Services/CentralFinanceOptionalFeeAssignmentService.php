@@ -29,6 +29,7 @@ final class CentralFinanceOptionalFeeAssignmentService
         private readonly FinanceGroupScopeService $groups,
         private readonly StudentFeeAssignmentService $assignments,
         private readonly CentralFinanceReceivableSyncService $receivables,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     /** @return Collection<int, object> */
@@ -36,7 +37,10 @@ final class CentralFinanceOptionalFeeAssignmentService
     {
         return $this->withinTenant($actor, $profile, function (Students $student): Collection {
             $student->loadMissing('session_year');
-            return $this->assignments->availableAdditionalItems($student)->map(fn ($item) => (object) [
+            return $this->assignments->availableAdditionalItems($student)
+                ->filter(fn ($item): bool => $this->dataIsolation->isTenantMetadataProduction('fee_item', (int) $student->school_id, (int) $item->id)
+                    && $this->dataIsolation->isTenantMetadataProduction('fee', (int) $student->school_id, (int) $item->fees_id))
+                ->map(fn ($item) => (object) [
                 'id' => (int) $item->id,
                 'name' => (string) ($item->fee?->name ?: 'Optional fee'),
                 'fee_type' => (string) ($item->fees_type?->name ?: ''),
@@ -117,6 +121,7 @@ final class CentralFinanceOptionalFeeAssignmentService
         $this->cutovers->assertCentralWritesAllowed($school->id);
 
         return $this->executeAsTrustedTenant($actor, $school, function ($tenant) use ($profile, $operation) {
+            $this->dataIsolation->assertTenantProduction('student', (int) $profile->school_id, (int) $profile->tenant_student_id);
             $student = Students::on('school')->where([
                 'id' => $profile->tenant_student_id,
                 'school_id' => $profile->school_id,

@@ -29,7 +29,10 @@ final class CentralFinanceSchoolStaffIdentityService
     private const ACCOUNTANT_ROLE_NAMES = ['School Accountant', 'Accountant', 'Cashier'];
     private const FRONT_DESK_ROLE_NAMES = ['Front Desk', 'Admissions & Collection', 'Front Desk / Admissions & Collection'];
 
-    public function __construct(private readonly FinanceGroupScopeService $groups) {}
+    public function __construct(
+        private readonly FinanceGroupScopeService $groups,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
+    ) {}
 
     /** @return Collection<int, object> Existing tenant Staff, resolved only through the trusted registry. */
     public function availableStaff(FinanceGroup $group): Collection
@@ -40,11 +43,13 @@ final class CentralFinanceSchoolStaffIdentityService
                 if (!$school) return collect();
 
                 return $this->inSchool($school, function () use ($school): Collection {
-                    return DB::connection('school')->table('users')
+                    $query = DB::connection('school')->table('users')
                         ->join('staffs', 'staffs.user_id', '=', 'users.id')
                         ->where('users.school_id', $school->id)
                         ->whereNull('users.deleted_at')
-                        ->orderBy('users.first_name')
+                        ->orderBy('users.first_name');
+                    $this->dataIsolation->applyTenant($query, 'staff', (int) $school->id, false, 'users.id');
+                    return $query
                         ->get(['users.id as tenant_user_id', 'users.first_name', 'users.last_name', 'users.email'])
                         ->map(fn ($staff) => (object) [
                             'school_id' => (int) $school->id,
@@ -177,6 +182,7 @@ final class CentralFinanceSchoolStaffIdentityService
                 ->where('users.school_id', $school->id)->whereNull('users.deleted_at')
                 ->select(['users.id', 'users.central_finance_source_uuid', 'users.first_name', 'users.last_name'])->first();
             if (!$staff) return null;
+            $this->dataIsolation->assertTenantProduction('staff', (int) $school->id, (int) $staff->id);
             $staff->role_names = $this->tenantRoleNames($connection, (int) $staff->id);
             if (!Str::isUuid((string) $staff->central_finance_source_uuid)) {
                 $uuid = (string) Str::uuid();
@@ -253,13 +259,22 @@ final class CentralFinanceSchoolStaffIdentityService
         if (!$principal || $principal->getRawOriginal('central_finance_principal_type') !== self::PRINCIPAL_TYPE || (int) $principal->getRawOriginal('school_id') !== $schoolId) {
             throw new AuthorizationException('The School Staff Finance identity is not authorized.');
         }
+        $this->dataIsolation->assertProduction('central_staff_identity', (int) $identity->id);
+        $this->dataIsolation->assertProduction('central_user', (int) $principal->id);
         return $principal;
     }
 
     public function isActivePrincipal(CentralFinanceUser $principal): bool
     {
+        $identity = CentralFinanceSchoolStaffIdentity::on('mysql')->where([
+            'central_user_id' => $principal->id,
+            'school_id' => $principal->getRawOriginal('school_id'),
+            'status' => 'active',
+        ])->first();
         return $principal->getRawOriginal('central_finance_principal_type') === self::PRINCIPAL_TYPE
-            && CentralFinanceSchoolStaffIdentity::on('mysql')->where(['central_user_id' => $principal->id, 'school_id' => $principal->getRawOriginal('school_id'), 'status' => 'active'])->exists();
+            && $identity !== null
+            && $this->dataIsolation->isProduction('central_staff_identity', (int) $identity->id)
+            && $this->dataIsolation->isProduction('central_user', (int) $principal->id);
     }
 
     /**
@@ -292,6 +307,8 @@ final class CentralFinanceSchoolStaffIdentityService
         if ($identity === null) {
             throw new AuthorizationException('The School Staff Finance identity is not authorized.');
         }
+        $this->dataIsolation->assertProduction('central_staff_identity', (int) $identity->id);
+        $this->dataIsolation->assertProduction('central_user', (int) $principal->id);
 
         return $this->inSchool($school, function () use ($identity, $school, $operation) {
             try {
@@ -313,6 +330,7 @@ final class CentralFinanceSchoolStaffIdentityService
             if ($tenant === null) {
                 throw new AuthorizationException('The mapped School Staff user is unavailable.');
             }
+            $this->dataIsolation->assertTenantProduction('staff', (int) $school->id, (int) $tenant->id);
 
             return $operation($tenant, $school);
         });

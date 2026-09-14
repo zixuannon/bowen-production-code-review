@@ -12,7 +12,7 @@ final class CentralFinanceDataClassificationAudit extends Model
 
     protected $connection = 'mysql';
     protected $fillable = [
-        'audit_uuid', 'classification_id', 'school_id', 'subject_type', 'subject_id',
+        'audit_uuid', 'classification_id', 'school_id', 'subject_scope', 'subject_type', 'subject_id',
         'before_classification', 'after_classification', 'reason', 'actor_id',
     ];
 

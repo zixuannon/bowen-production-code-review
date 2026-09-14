@@ -65,7 +65,7 @@ final class CentralFinanceDataIsolationMysqlRehearsalTest extends TestCase
         $this->artisan('finance:migrate-data-isolation', ['--execute'=>true])->assertExitCode(0);
 
         $this->assertTrue(Schema::connection('mysql')->hasColumns('central_finance_data_classifications', [
-            'classification_uuid', 'school_id', 'subject_type', 'subject_id', 'classification', 'reason', 'classified_by',
+            'classification_uuid', 'school_id', 'subject_scope', 'subject_type', 'subject_id', 'classification', 'reason', 'classified_by',
         ]));
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_data_classification_audits'));
         $indexes = collect(Schema::connection('mysql')->getIndexes('central_finance_data_classifications'));

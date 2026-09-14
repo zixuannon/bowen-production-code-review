@@ -335,6 +335,8 @@ class FeesController extends Controller
                     $q->where('medium_id', $medium_id);
                 });
             });
+        app(\App\Services\CentralFinanceDataIsolationService::class)
+            ->applyTenant($sql, 'fee', (int) Auth::user()->school_id, false, 'fees.id');
 
         $total = $sql->count();
         if ($offset >= $total && $total > 0) {
@@ -746,7 +748,10 @@ class FeesController extends Controller
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         try {
-            $data = $this->fees->builder()->where('session_year_id', $request->session_year_id)->get();
+            $query = $this->fees->builder()->where('session_year_id', $request->session_year_id);
+            app(\App\Services\CentralFinanceDataIsolationService::class)
+                ->applyTenant($query, 'fee', (int) Auth::user()->school_id, false, 'fees.id');
+            $data = $query->get();
             ResponseService::successResponse("Data Restored Successfully", $data);
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);

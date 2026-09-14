@@ -1019,7 +1019,7 @@ final class CentralFinanceWorkspaceController extends Controller
                 })->sortBy('category')->values();
         }
         $canOperate=false; if($school){try{$this->workspace->requireOperatingSchool($actor);$canOperate=$this->dataIsolation->isProduction('school',(int)$school->id)&&$this->cutovers->allowsCentralWrites($school->id);}catch(AuthorizationException){$canOperate=false;}}
-        $schoolUsers = $schoolId ? CentralFinanceUser::on('mysql')->whereIn('id',
+        $schoolUsersQuery = $schoolId ? CentralFinanceUser::on('mysql')->whereIn('id',
             \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
                 ->join('finance_group_users as group_users', 'group_users.central_user_id', '=', 'scopes.user_id')
                 ->join('finance_groups as groups', 'groups.id', '=', 'group_users.group_id')
@@ -1032,7 +1032,9 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->where('group_schools.school_id', $schoolId)
                 ->where('group_schools.status', 'active')
                 ->pluck('scopes.user_id')->unique()
-        )->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']) : collect();
+        ) : null;
+        if ($schoolUsersQuery) $this->dataIsolation->applyCentralStaffUsers($schoolUsersQuery, (int) $schoolId, $includeQaTest);
+        $schoolUsers = $schoolUsersQuery ? $schoolUsersQuery->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']) : collect();
         $canConfigureAccounts=false; if($school){try{app(\App\Services\CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureSchool($actor,$school);$canConfigureAccounts=true;}catch(AuthorizationException){$canConfigureAccounts=false;}}
         $receivableQuery = $schoolId ? CentralFinanceReceivable::on('mysql')->with('studentProfile')->where('school_id', $schoolId) : null;
         if ($receivableQuery) {
@@ -1053,7 +1055,10 @@ final class CentralFinanceWorkspaceController extends Controller
             $aging = collect($this->currencySummaries->aging((clone $receivableQuery)->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])->get(['due_date', 'amount_due', 'amount_paid', 'currency']), $today));
         }
         $profileQuery=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()->with('payments.receipt')])->where('school_id',$schoolId) : null;
-        if ($profileQuery) $this->dataIsolation->apply($profileQuery, 'student_profile', $includeQaTest);
+        if ($profileQuery) {
+            $this->dataIsolation->apply($profileQuery, 'student_profile', $includeQaTest);
+            $this->dataIsolation->applyTenantMetadata($profileQuery, 'student', (int) $schoolId, $includeQaTest, 'tenant_student_id');
+        }
         $profiles=$profileQuery ? $profileQuery->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")->orWhere('student_code','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
         if ($profiles instanceof LengthAwarePaginator) {
             $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
@@ -1062,6 +1067,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $paymentProfileQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
         if ($paymentProfileQuery) {
             $this->dataIsolation->apply($paymentProfileQuery, 'student_profile');
+            $this->dataIsolation->applyTenantMetadata($paymentProfileQuery, 'student', (int) $schoolId, false, 'tenant_student_id');
             $paymentProfileQuery
                 ->when($filters['payment_class'] ?? null, fn ($query, $class) => $query->where('class_name', $class))
                 ->when($filters['payment_student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested
@@ -1073,7 +1079,10 @@ final class CentralFinanceWorkspaceController extends Controller
         $paymentProfiles = $paymentProfileQuery ? $paymentProfileQuery->orderBy('student_name')->get(['id','student_name','student_code','admission_no','class_name','section_name']) : collect();
         $paymentProfiles->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         $paymentClassQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
-        if ($paymentClassQuery) $this->dataIsolation->apply($paymentClassQuery, 'student_profile');
+        if ($paymentClassQuery) {
+            $this->dataIsolation->apply($paymentClassQuery, 'student_profile');
+            $this->dataIsolation->applyTenantMetadata($paymentClassQuery, 'student', (int) $schoolId, false, 'tenant_student_id');
+        }
         $paymentClasses = $paymentClassQuery ? $paymentClassQuery->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name') : collect();
         $paymentReceivableQuery=$schoolId ? CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->whereIn('status',['open','partial']) : null;
         if ($paymentReceivableQuery) $this->dataIsolation->apply($paymentReceivableQuery, 'receivable');
@@ -1087,7 +1096,9 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $ledgerCategories = $page === 'ledger' && method_exists($ledger, 'getCollection')
             ? $this->ledgerCategoryNames($ledger->getCollection()) : [];
-        $staff=$schoolId && $canConfigureAccounts ? CentralFinanceUser::on('mysql')->whereIn('id', \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id',$schoolId)->where('can_view',true)->pluck('user_id'))->with(['authorizedFundAccounts' => fn ($query) => $query->where(function ($account) use ($schoolId) { $account->where('school_id',$schoolId)->orWhere('owner_type',CentralFinanceFundAccount::OWNER_HQ); })])->orderBy('first_name')->paginate(25, ['*'], 'staff_page')->withQueryString() : collect();
+        $staffQuery=$schoolId && $canConfigureAccounts ? CentralFinanceUser::on('mysql')->whereIn('id', \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id',$schoolId)->where('can_view',true)->pluck('user_id'))->with(['authorizedFundAccounts' => fn ($query) => $query->where(function ($account) use ($schoolId) { $account->where('school_id',$schoolId)->orWhere('owner_type',CentralFinanceFundAccount::OWNER_HQ); })]) : null;
+        if ($staffQuery) $this->dataIsolation->applyCentralStaffUsers($staffQuery, (int) $schoolId, $includeQaTest);
+        $staff=$staffQuery ? $staffQuery->orderBy('first_name')->paginate(25, ['*'], 'staff_page')->withQueryString() : collect();
         $accountReport=null;
         if ($requestedAccountId !== null) {
             $accountReport=$accounts->firstWhere('id',$requestedAccountId);

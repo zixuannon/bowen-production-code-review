@@ -352,6 +352,8 @@ class StudentController extends Controller
                     $query->where('session_year_id', $sessionYearID);
                 });
             });
+        app(\App\Services\CentralFinanceDataIsolationService::class)
+            ->applyTenant($sql, 'student', (int) Auth::user()->school_id, false, 'students.id');
 
         // Filter by student status (active/inactive)
         if ($showInactive) {

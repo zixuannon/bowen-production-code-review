@@ -16,7 +16,7 @@ final class CentralFinanceDataClassification extends Model
 
     protected $connection = 'mysql';
     protected $fillable = [
-        'classification_uuid', 'school_id', 'subject_type', 'subject_id',
+        'classification_uuid', 'school_id', 'subject_scope', 'subject_type', 'subject_id',
         'classification', 'reason', 'classified_by',
     ];
 
@@ -32,7 +32,7 @@ final class CentralFinanceDataClassification extends Model
             if (!in_array($record->classification, self::VALUES, true)) {
                 throw new RuntimeException('Invalid Central Finance data classification.');
             }
-            foreach (['school_id', 'subject_type', 'subject_id', 'classification_uuid'] as $immutable) {
+            foreach (['school_id', 'subject_scope', 'subject_type', 'subject_id', 'classification_uuid'] as $immutable) {
                 if ($record->isDirty($immutable)) {
                     throw new RuntimeException('Central Finance classification identity is immutable.');
                 }

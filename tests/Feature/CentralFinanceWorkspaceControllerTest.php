@@ -637,7 +637,11 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         ]);
         $isolation = app(CentralFinanceDataIsolationService::class);
         $isolation->classify($this->head, 2, 'category', $qaCategory->id, CentralFinanceDataClassification::QA_TEST, 'Preview-only category.');
-        $isolation->classify($this->head, 2, 'student_profile', 502, CentralFinanceDataClassification::ARCHIVED, 'Archived QA student.');
+        CentralFinanceDataClassification::on('mysql')->create([
+            'school_id'=>2, 'subject_scope'=>'tenant:2', 'subject_type'=>'student', 'subject_id'=>502,
+            'classification'=>CentralFinanceDataClassification::ARCHIVED,
+            'reason'=>'Archived QA tenant student.', 'classified_by'=>$this->head->id,
+        ]);
 
         $this->actingAs($this->head);
         app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 2);
