@@ -41,6 +41,9 @@
     .cf-file-name { display: block; max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cf-technical-detail summary { color: var(--cf-navy); cursor: pointer; font-size: .8rem; font-weight: 600; }
     .cf-technical-detail pre { max-width: 30rem; max-height: 14rem; margin: .65rem 0 0; padding: .65rem; overflow: auto; border: 1px solid var(--cf-border); border-radius: .4rem; background: #f8fafc; color: #52616b; white-space: pre-wrap; }
+    .cf-audit-snapshot > summary { color: var(--cf-navy); cursor: pointer; font-size: .8rem; font-weight: 600; }
+    .cf-audit-diff { min-width: 34rem; table-layout: fixed; }
+    .cf-audit-diff th, .cf-audit-diff td { overflow-wrap: anywhere; white-space: normal; }
     .cf-export-card { display: flex; flex-direction: column; min-height: 5.5rem; justify-content: space-between; padding: 1rem; border: 1px solid var(--cf-border); border-radius: .6rem; background: #fff; color: #263b4a; text-decoration: none; }
     .cf-export-card:hover { border-color: var(--cf-navy); color: var(--cf-navy); text-decoration: none; }
     .cf-export-card span { color: var(--cf-muted); font-size: .8rem; }

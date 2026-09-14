@@ -8,6 +8,7 @@ use App\Services\ProductionMigrationGuard;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider {
@@ -42,6 +43,9 @@ class AppServiceProvider extends ServiceProvider {
         //
         Schema::defaultStringLength(191);
         Schema::useNativeSchemaOperationsIfPossible();
+        // The application ships Bootstrap pagination styles. Rendering the
+        // Tailwind template leaves its utility-sized SVG arrows unbounded.
+        Paginator::useBootstrap();
         Students::observe(CentralFinanceStudentProfileObserver::class);
         Event::listen(CommandStarting::class, function (CommandStarting $event): void {
             $paths = [];

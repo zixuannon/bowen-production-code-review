@@ -4523,14 +4523,39 @@ function polishSidebarHierarchy(root) {
         : scope.querySelector('[data-ui-sidebar-nav]');
     if (!sidebar) return;
 
+    if (!sidebar.hasAttribute('data-route-active-bound')) {
+        sidebar.setAttribute('data-route-active-bound', 'true');
+        sidebar.addEventListener('click', function (event) {
+            var pendingLink = event.target.closest('a.nav-link[href]');
+            if (!pendingLink || !sidebar.contains(pendingLink)) return;
+            var pendingTarget;
+            try {
+                pendingTarget = new URL(pendingLink.href, window.location.origin);
+            } catch (error) {
+                return;
+            }
+            if (pendingTarget.origin !== window.location.origin || pendingTarget.href === window.location.href) return;
+            // Clear the previous route immediately while the next page loads.
+            // The destination route—not click history—will select the new leaf.
+            sidebar.querySelectorAll('a.nav-link.active, a.nav-link[aria-current="page"]').forEach(function (link) {
+                link.classList.remove('active');
+                link.removeAttribute('aria-current');
+            });
+            sidebar.querySelectorAll('.nav-item.active, .nav-item.is-current').forEach(function (item) {
+                item.classList.remove('active', 'is-current');
+            });
+        });
+    }
+
     var normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/';
     sidebar.querySelectorAll('.menu-icon, .menu-arrow').forEach(function (icon) {
         icon.setAttribute('aria-hidden', 'true');
     });
 
-    var hasServerActiveLink = sidebar.querySelector('a.nav-link.active, a.nav-link[aria-current="page"]');
+    var serverActiveLinks = Array.from(sidebar.querySelectorAll('a.nav-link.active, a.nav-link[aria-current="page"]'));
+    var exactLinks = [];
+    var pathLinks = [];
     sidebar.querySelectorAll('a.nav-link[href]').forEach(function (link) {
-        if (hasServerActiveLink) return;
         var href = link.getAttribute('href');
         if (!href || href.charAt(0) === '#') return;
         var target;
@@ -4540,36 +4565,49 @@ function polishSidebarHierarchy(root) {
             return;
         }
         var targetPath = target.pathname.replace(/\/+$/, '') || '/';
-        if (target.origin === window.location.origin && targetPath === normalizedPath) {
-            link.classList.add('active');
-            link.setAttribute('aria-current', 'page');
-            hasServerActiveLink = link;
-        }
+        if (target.origin !== window.location.origin || targetPath !== normalizedPath) return;
+        pathLinks.push(link);
+        if (target.search === window.location.search) exactLinks.push(link);
     });
 
+    var activeLink = exactLinks[0] || serverActiveLinks[0] || pathLinks[0] || null;
     sidebar.querySelectorAll('a.nav-link.active, a.nav-link[aria-current="page"]').forEach(function (link) {
-        link.setAttribute('aria-current', 'page');
-        var item = link.closest('.nav-item');
-        if (item) item.classList.add('is-current');
+        link.classList.remove('active');
+        link.removeAttribute('aria-current');
+    });
+    sidebar.querySelectorAll('.nav-item.active, .nav-item.is-current').forEach(function (item) {
+        item.classList.remove('active', 'is-current');
+    });
+    sidebar.querySelectorAll('.is-parent-active, .is-ancestor').forEach(function (ancestor) {
+        ancestor.classList.remove('is-parent-active', 'is-ancestor');
+    });
+    if (!activeLink) return;
 
-        var details = link.closest('details');
+    var link = activeLink;
+    link.classList.add('active');
+    link.setAttribute('aria-current', 'page');
+    var item = activeLink.closest('.nav-item');
+    if (item) item.classList.add('is-current');
+
+        var details = activeLink.closest('details');
         while (details && sidebar.contains(details)) {
             details.open = true;
             var summary = details.querySelector(':scope > summary');
-            if (summary) summary.classList.add('is-parent-active');
+            if (summary) summary.classList.add('is-ancestor');
             details = details.parentElement && details.parentElement.closest('details');
         }
 
-        var collapse = link.closest('.collapse');
+        var collapse = activeLink.closest('.collapse');
         if (collapse) {
             collapse.classList.add('show');
             var trigger = sidebar.querySelector('[aria-controls="' + CSS.escape(collapse.id) + '"]');
             if (trigger) {
                 trigger.setAttribute('aria-expanded', 'true');
-                trigger.classList.add('is-parent-active');
+                trigger.classList.add('is-ancestor');
+                var parentItem = trigger.closest('.nav-item');
+                if (parentItem) parentItem.classList.add('is-ancestor');
             }
         }
-    });
 }
 
 function polishIconTooltips(root) {

@@ -47,14 +47,15 @@ class CentralFinanceLocalizationContractTest extends TestCase
     public function test_runtime_status_and_audit_values_use_translation_entries_instead_of_english_formatters(): void
     {
         $workspace = (string) file_get_contents($this->basePath('resources/views/central-finance/workspace.blade.php'));
+        $pageHeader = (string) file_get_contents($this->basePath('resources/views/components/central-finance/page-header.blade.php'));
         $views = $workspace."\n".(string) file_get_contents($this->basePath('resources/views/central-finance/reimbursement-detail.blade.php'));
         $views .= "\n".(string) file_get_contents($this->basePath('resources/views/central-finance/ledger-source.blade.php'));
 
         self::assertStringNotContainsString('ucfirst($status)', $views);
         self::assertStringNotContainsString('strtoupper($document->status)', $views);
-        self::assertStringContainsString('{{ __($cutoverStatus) }}', $workspace);
-        self::assertStringContainsString("__(\$check['reason']", $workspace);
-        self::assertStringContainsString("\$check['reason_params'] ?? []", $workspace);
+        self::assertStringContainsString(':status="$cutoverStatus"', $workspace);
+        self::assertStringContainsString('{{ __($status) }}', $pageHeader);
+        self::assertStringNotContainsString('central-finance-cutover-readiness', $workspace);
         self::assertStringContainsString('{{ __($r->status) }}', $workspace);
         self::assertStringContainsString('{{ __($document->status) }}', $workspace);
         self::assertStringContainsString("{{ __('HQ') }}", $workspace);

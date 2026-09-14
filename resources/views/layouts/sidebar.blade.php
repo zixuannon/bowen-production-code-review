@@ -90,7 +90,7 @@
         @endphp
         @if ($hasCentralFinanceIdentity)
             @if($centralIsFrontDesk)
-                <li class="nav-item {{ request()->routeIs('central-finance.*') ? 'active' : '' }}">
+                <li class="nav-item {{ request()->routeIs('central-finance.*') ? 'is-ancestor' : '' }}">
                     <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
                         <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ __('School Finance') }}</span><i class="menu-arrow"></i>
                     </a>
@@ -100,7 +100,7 @@
                     </ul></div>
                 </li>
             @else
-            <li class="nav-item {{ request()->routeIs('central-finance.*') ? 'active' : '' }}">
+            <li class="nav-item {{ request()->routeIs('central-finance.*') ? 'is-ancestor' : '' }}">
                 <a class="nav-link" data-toggle="collapse" href="#central-finance-menu" aria-expanded="{{ request()->routeIs('central-finance.*') ? 'true' : 'false' }}" aria-controls="central-finance-menu">
                     <i class="fa fa-line-chart menu-icon"></i><span class="menu-title">{{ $centralIsSchoolStaffPrincipal ? __('School Finance') : __('Central Finance') }}</span><i class="menu-arrow"></i>
                 </a>
@@ -123,7 +123,7 @@
                         @if($centralIsHeadFinance)
                             <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.other-income.*','central-finance.expenses.*','central-finance.reimbursements.*','central-finance.categories') || (request()->routeIs('central-finance.operations') && in_array(request('operation'),['expense','income','reimbursement'],true))) open @endif><summary class="nav-link">{{ __('收入与支出') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu"><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.other-income.*') ? 'active' : '' }}" href="{{ route('central-finance.other-income.index') }}">{{ __('其他收入') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.expenses.*') ? 'active' : '' }}" href="{{ route('central-finance.expenses.index') }}">{{ __('支出记录') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.reimbursements.*') ? 'active' : '' }}" href="{{ route('central-finance.reimbursements.index') }}">{{ __('报销申请') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.categories') ? 'active' : '' }}" href="{{ route('central-finance.categories') }}">{{ __('收支分类') }}</a></li></ul></details></li>
                         @endif
-                        <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.accounts*','central-finance.transfers','central-finance.handovers','central-finance.funding')) open @endif><summary class="nav-link">{{ __('资金管理') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu"><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts') ? 'active' : '' }}" href="{{ route('central-finance.accounts') }}">{{ __('资金账户') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts.statements','central-finance.accounts.statement') ? 'active' : '' }}" href="{{ route('central-finance.accounts.statements') }}">{{ __('账户流水') }}</a></li>
+                        <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.accounts*','central-finance.transfers','central-finance.handovers','central-finance.funding')) open @endif><summary class="nav-link">{{ __('资金管理') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu"><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts','central-finance.accounts.manage','central-finance.accounts.report') ? 'active' : '' }}" href="{{ route('central-finance.accounts') }}">{{ __('资金账户') }}</a></li><li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts.statements','central-finance.accounts.statement') ? 'active' : '' }}" href="{{ route('central-finance.accounts.statements') }}">{{ __('账户流水') }}</a></li>
                             @if($centralIsHeadFinance || $centralCanMoveFunds)
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.transfers') ? 'active' : '' }}" href="{{ route('central-finance.transfers') }}">{{ __('银行转账') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.handovers') ? 'active' : '' }}" href="{{ route('central-finance.handovers') }}">{{ __('资金交接') }}</a></li>
@@ -141,7 +141,7 @@
                             @endif
                             @if($centralIsHeadFinance)
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.audits','central-finance.audits.*') ? 'active' : '' }}" href="{{ route('central-finance.audits') }}">{{ __('审计日志') }}</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.imports') ? 'active' : '' }}" href="{{ route('central-finance.imports') }}">{{ __('导入批次') }}</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.imports*') ? 'active' : '' }}" href="{{ route('central-finance.imports') }}">{{ __('导入批次') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.group-import.*') ? 'active' : '' }}" href="{{ route('central-finance.group-import.index') }}">{{ __('Group Finance Import') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.exports') ? 'active' : '' }}" href="{{ route('central-finance.exports') }}">{{ __('导出中心') }}</a></li>
                             @endif
@@ -154,7 +154,6 @@
                                     @if($centralCanConfigureAnySchool)
                                         <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.staff') ? 'active' : '' }}" href="{{ route('central-finance.staff') }}">{{ __('Finance Staff / Scope') }}</a></li>
                                         <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts') && request('setup') === 'opening' ? 'active' : '' }}" href="{{ route('central-finance.accounts', ['setup' => 'opening']) }}#central-finance-setup">{{ __('Opening Balance') }}</a></li>
-                                        <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.accounts') && request('setup') === 'cutover' ? 'active' : '' }}" href="{{ route('central-finance.accounts', ['setup' => 'cutover']) }}#central-finance-cutover-readiness">{{ __('Cutover Readiness') }}</a></li>
                                     @endif
                                     @if($centralCanManageGroups)
                                         <li class="nav-item"><a class="nav-link" href="{{ route('finance-groups.index') }}">{{ __('Finance Groups') }}</a></li>

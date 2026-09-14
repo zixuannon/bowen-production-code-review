@@ -74,11 +74,19 @@ final class CentralFinanceWorkspaceService
 
     public function enterSchool(CentralFinanceUser $actor, int $schoolId): School
     {
+        $school = $this->assertCanViewSchool($actor, $schoolId);
+        Session::put(self::SESSION_SCHOOL_KEY, $school->id);
+        return $school;
+    }
+
+    /** Resolve a School only through the existing Central + Group read boundary. */
+    public function assertCanViewSchool(CentralFinanceUser $actor, int $schoolId): School
+    {
         $school = $this->accessibleSchools($actor)->firstWhere('id', $schoolId);
         if ($school === null) {
-            throw new AuthorizationException('The Central Finance actor cannot enter this School.');
+            throw new AuthorizationException('The Central Finance actor cannot view this School.');
         }
-        Session::put(self::SESSION_SCHOOL_KEY, $school->id);
+
         return $school;
     }
 

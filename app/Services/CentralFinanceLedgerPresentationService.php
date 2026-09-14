@@ -138,6 +138,31 @@ final class CentralFinanceLedgerPresentationService
         return blank($reason) ? '—' : __($reason);
     }
 
+    /** @return list<array{field:string,before:string,after:string}> */
+    public function auditDiff(?array $before, ?array $after): array
+    {
+        $before ??= [];
+        $after ??= [];
+        $keys = array_values(array_unique([...array_keys($before), ...array_keys($after)]));
+
+        return array_map(fn (string $key): array => [
+            'field' => str($key)->replace(['_', '-'], ' ')->title()->toString(),
+            'before' => $this->auditValue($before[$key] ?? null),
+            'after' => $this->auditValue($after[$key] ?? null),
+        ], $keys);
+    }
+
+    private function auditValue(mixed $value): string
+    {
+        if ($value === null || $value === '') return '—';
+        if (is_bool($value)) return $value ? __('Yes') : __('No');
+        if (is_array($value) || is_object($value)) {
+            return (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        return (string) $value;
+    }
+
     public function operating(CentralFinanceLedgerEntry $entry): string
     {
         if ((float) $entry->operating_income !== 0.0) return __('Income');

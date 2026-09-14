@@ -232,12 +232,18 @@ fieldset:disabled .form-control {
 
 .sidebar .nav .nav-item .nav-link.active,
 .sidebar .nav .nav-item.active > .nav-link,
-.sidebar .nav .nav-item.is-current > .nav-link,
-.sidebar .nav .nav-link.is-parent-active {
+.sidebar .nav .nav-item.is-current > .nav-link {
     background: var(--ui-primary-soft);
     color: var(--ui-primary);
     font-weight: 700;
     box-shadow: inset 3px 0 0 var(--ui-primary);
+}
+
+.sidebar .nav .nav-link.is-ancestor {
+    background: transparent;
+    color: #2f5269;
+    font-weight: 600;
+    box-shadow: none;
 }
 
 .sidebar .nav .nav-item .nav-link .menu-icon {
@@ -1694,8 +1700,7 @@ a:focus-visible {
 
 .sidebar .nav .nav-item .nav-link.active,
 .sidebar .nav .nav-item.active > .nav-link,
-.sidebar .nav .nav-item.is-current > .nav-link,
-.sidebar .nav .nav-link.is-parent-active {
+.sidebar .nav .nav-item.is-current > .nav-link {
     background: var(--ui-primary-soft);
     color: var(--ui-primary);
     font-weight: 700;

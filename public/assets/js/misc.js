@@ -17,32 +17,26 @@ var lightColor = getComputedStyle(document.body).getPropertyValue('--light');
         var footer = $('.footer');
         var sidebar = $('.sidebar');
 
-        //Add active class to nav-link based on url dynamically
-        //Active class can be hard coded directly in html file also as required
+        // Derive only the current leaf from the URL. Parent rows express
+        // expanded/ancestor state and must never compete with the leaf's
+        // selected state.
 
         function addActiveClass(element) {
             var current = window.location.href;
             if (current === "") {
                 //for root url
                 if (element.attr('href').indexOf("index.html") !== -1) {
-                    element.parents('.nav-item').last().addClass('active');
-                    if (element.parents('.sub-menu').length) {
-                        element.closest('.collapse').addClass('show');
-                        element.addClass('active');
-                    }
+                    element.addClass('active').attr('aria-current', 'page');
+                    element.closest('.nav-item').addClass('is-current');
+                    element.closest('.collapse').addClass('show');
                 }
             } else {
                 //for other url
                 // if (element.attr('href').includes(current)) {
                 if (element.attr('href') === current) {
-                    element.parents('.nav-item').last().addClass('active');
-                    if (element.parents('.sub-menu').length) {
-                        element.closest('.collapse').addClass('show');
-                        element.addClass('active');
-                    }
-                    if (element.parents('.submenu-item').length) {
-                        element.addClass('active');
-                    }
+                    element.addClass('active').attr('aria-current', 'page');
+                    element.closest('.nav-item').addClass('is-current');
+                    element.closest('.collapse').addClass('show');
                 }
             }
         }

@@ -15,6 +15,7 @@ use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
+use App\Exceptions\FinanceGroupTenantUnavailableException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -78,12 +79,18 @@ final class CentralFinanceStudentCollectionController extends Controller
 
     public function show(int $profile): View
     {
-        [$actor, $school] = $this->readContext();
-        $profile = $this->profileForSchool($profile, $school->id);
+        $actor = $this->actor();
+        $profile = CentralFinanceStudentProfile::on('mysql')->findOrFail($profile);
+        $school = $this->workspace->assertCanViewSchool($actor, (int) $profile->school_id);
         $profile->load(['receivables' => fn ($query) => $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy'])]);
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
-        $canCollect = $this->canCollect($actor, $school->id);
-        $canSubmitPending = $this->canSubmitPending($actor, $school->id);
+        // Direct read URLs do not mutate the selected operating context. A
+        // write remains available only when this profile belongs to the
+        // actor's current, explicitly selected School.
+        $currentSchool = $this->workspace->currentSchool($actor);
+        $isCurrentSchool = $currentSchool !== null && (int) $currentSchool->id === (int) $school->id;
+        $canCollect = $isCurrentSchool && $this->canCollect($actor, $school->id);
+        $canSubmitPending = $isCurrentSchool && $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
         $optionalItems = collect();
@@ -95,7 +102,7 @@ final class CentralFinanceStudentCollectionController extends Controller
                     $optionalAttemptUuid = (string) Str::uuid();
                     $this->storeOptionalAttempt($optionalAttemptUuid, $actor, $school->id, $profile->id);
                 }
-            } catch (AuthorizationException) {
+            } catch (AuthorizationException|FinanceGroupTenantUnavailableException) {
                 // A read-capable Principal or an unavailable mapped Head
                 // tenant identity must never turn this read page into a 500.
             }

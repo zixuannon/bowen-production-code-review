@@ -49,7 +49,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         ]);
         Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
         Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
-        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_24_000002_create_central_finance_school_staff_identities.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
         DB::connection('mysql')->table('system_settings')->insert(['name' => 'date_format', 'data' => 'd-m-Y', 'type' => 'text']);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null],['id'=>400,'first_name'=>'School','last_name'=>'Staff','email'=>'staff@example.test','school_id'=>1]]);
@@ -181,9 +181,107 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString("->orderByDesc('occurred_at')->orderByDesc('id')->get()", (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/CentralFinanceWorkspaceController.php'));
     }
 
+    public function test_fund_account_manage_page_reuses_head_finance_boundary_and_existing_account_services(): void
+    {
+        $headRole = DB::connection('mysql')->table('roles')->insertGetId([
+            'name' => 'Head Finance', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('model_has_roles')->insert([
+            'role_id' => $headRole, 'model_type' => User::class, 'model_id' => $this->head->id,
+        ]);
+
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $view = app(CentralFinanceWorkspaceController::class)->manageFundAccount(new Request(), $this->zixuan->id);
+        $this->assertSame('account-manage', $view->getData()['page']);
+        $this->assertSame($this->zixuan->id, $view->getData()['accountReport']->id);
+        $this->assertStringContainsString('Opening Allocation / Adjustment', $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
+
+        $this->actingAs($this->zixuanAccountant);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceWorkspaceController::class)->manageFundAccount(new Request(), $this->zixuan->id);
+    }
+
+    public function test_group_report_keeps_school_and_currency_dimensions_separate(): void
+    {
+        $now = now();
+        foreach ([
+            ['school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'currency'=>'MMK', 'money_in'=>100, 'money_out'=>0, 'operating_income'=>100, 'operating_expense'=>0, 'source_id'=>'MMK-IN'],
+            ['school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'currency'=>'USD', 'money_in'=>5, 'money_out'=>0, 'operating_income'=>5, 'operating_expense'=>0, 'source_id'=>'USD-IN'],
+            ['school_id'=>2, 'fund_account_id'=>$this->timecity->id, 'currency'=>'MMK', 'money_in'=>0, 'money_out'=>20, 'operating_income'=>0, 'operating_expense'=>20, 'source_id'=>'MMK-OUT'],
+        ] as $index => $entry) {
+            CentralFinanceLedgerEntry::on('mysql')->create(array_merge($entry, [
+                'entry_uuid'=>(string) Str::uuid(), 'entry_date'=>$now->toDateString(), 'occurred_at'=>$now,
+                'source_type'=>'ux_report_test', 'source_line'=>(string) $index, 'reference_no'=>'REPORT-'.$index,
+                'transaction_type'=>$entry['operating_income'] ? 'operating_income' : 'operating_expense',
+                'memo'=>'Read-only report fixture', 'created_by'=>$this->head->id,
+            ]));
+        }
+
+        $this->actingAs($this->head);
+        $view = app(CentralFinanceWorkspaceController::class)->reports(new Request());
+        $comparison = $view->getData()['reportSchoolComparison'];
+        $this->assertCount(3, $comparison);
+        $this->assertSame(['MMK', 'USD', 'MMK'], $comparison->pluck('currency')->all());
+        $this->assertSame([1, 1, 2], $comparison->pluck('school_id')->all());
+        $this->assertCount(2, $view->getData()['reportTrend']);
+        $this->assertCount(3, $view->getData()['reportCategoryAnalysis']);
+    }
+
+    public function test_import_error_detail_is_scoped_read_only_and_correction_keeps_original_batch(): void
+    {
+        $batch = \App\Models\CentralFinanceImportBatch::on('mysql')->create([
+            'school_id'=>1, 'uploaded_by'=>$this->head->id, 'import_type'=>'payment', 'template_version'=>'2.2',
+            'file_name'=>'invalid.xlsx', 'file_hash'=>hash('sha256', 'invalid'), 'status'=>'pending',
+            'total_rows'=>1, 'valid_rows'=>0, 'error_rows'=>1,
+            'preview_data'=>[['row_number'=>2, 'status'=>'error', 'errors'=>['Amount must be greater than zero.']]],
+            'summary'=>['valid'=>0, 'errors'=>1],
+        ]);
+        $before = [
+            'batches'=>DB::connection('mysql')->table('central_finance_import_batches')->count(),
+            'payments'=>DB::connection('mysql')->table('central_finance_payments')->count(),
+            'receipts'=>DB::connection('mysql')->table('central_finance_receipts')->count(),
+            'ledger'=>DB::connection('mysql')->table('central_finance_ledger_entries')->count(),
+        ];
+
+        $this->actingAs($this->head);
+        $controller = app(CentralFinanceWorkspaceController::class);
+        $detail = $controller->importBatchDetail($batch->token);
+        $download = $controller->downloadImportErrors($batch->token);
+        $this->assertSame('validation_failed', $detail->getData()['state']['key']);
+        $this->assertStringContainsString('new Batch', $detail->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
+        $this->assertStringContainsString('.csv', $download->headers->get('content-disposition'));
+        $this->assertSame($before, [
+            'batches'=>DB::connection('mysql')->table('central_finance_import_batches')->count(),
+            'payments'=>DB::connection('mysql')->table('central_finance_payments')->count(),
+            'receipts'=>DB::connection('mysql')->table('central_finance_receipts')->count(),
+            'ledger'=>DB::connection('mysql')->table('central_finance_ledger_entries')->count(),
+        ]);
+
+        $this->actingAs($this->zixuanAccountant);
+        $otherSchoolBatch = \App\Models\CentralFinanceImportBatch::on('mysql')->create([
+            'school_id'=>2, 'uploaded_by'=>$this->head->id, 'import_type'=>'payment', 'template_version'=>'2.2',
+            'file_name'=>'other.xlsx', 'file_hash'=>hash('sha256', 'other'), 'status'=>'pending',
+            'total_rows'=>1, 'valid_rows'=>0, 'error_rows'=>1, 'preview_data'=>[], 'summary'=>['valid'=>0, 'errors'=>1],
+        ]);
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        $controller->importBatchDetail($otherSchoolBatch->token);
+    }
+
+    public function test_bootstrap_pagination_prevents_unbounded_tailwind_svg_arrows(): void
+    {
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(range(1, 25), 50, 25, 1, ['path'=>'/central-finance/ledger']);
+        $html = (string) $paginator->links();
+
+        $this->assertStringContainsString('page-link', $html);
+        $this->assertStringNotContainsString('<svg', $html);
+    }
+
     public function test_reporting_audit_and_import_workspaces_use_the_shared_read_only_presentation_contract(): void
     {
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
+        $auditSnapshot = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/partials/audit-snapshot.blade.php');
         $styles = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/partials/foundation-styles.blade.php');
 
         foreach (['reports', 'audits', 'imports', 'exports', 'ledger'] as $page) {
@@ -193,7 +291,8 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString('cf-workspace-toolbar', $workspace);
         $this->assertStringContainsString('cf-mobile-card-table', $workspace);
         $this->assertStringContainsString('cf-file-name', $workspace);
-        $this->assertStringContainsString('cf-technical-detail', $workspace);
+        $this->assertStringContainsString('cf-technical-detail', $auditSnapshot);
+        $this->assertStringContainsString('cf-audit-diff', $auditSnapshot);
         $this->assertStringContainsString('cf-export-card', $workspace);
         $this->assertStringContainsString('cf-workspace-toolbar', $styles);
         $this->assertStringContainsString('cf-danger-panel', $styles);

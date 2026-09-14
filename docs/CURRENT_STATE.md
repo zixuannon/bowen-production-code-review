@@ -1,6 +1,6 @@
 # eSchool Current State
 
-Last updated: 2026-09-12
+Last updated: 2026-09-14
 
 ## Active production target
 
@@ -13,6 +13,39 @@ Last updated: 2026-09-12
 ## Current area
 
 Finance V2
+
+## Central Finance UX bugfix batch — local PASS
+
+- Branch `codex/central-finance-ux-batch` starts exactly from the accepted UI
+  Polish P3 Production source `34aa909e47129541a5797b04ba292399a5764463`.
+  Head Finance can open an authorized School student-collection detail by
+  direct URL without mutating the selected operating context; an unauthorized
+  School remains denied, and all collection writes still require the explicit
+  current-School context and existing capability checks.
+- The Fund Account list no longer renders the readiness card or oversized
+  action dropdown. It links to a scoped Head-Finance-only management page that
+  reuses the existing configuration, allocation, adjustment, and audit flows.
+  Backend cutover/readiness services, health checks, and guards remain intact.
+- Standard Ledger uses the Bootstrap paginator, removing the unbounded
+  Tailwind navigation SVGs. Group reports add date/School/currency filters,
+  School comparison, daily trends, category analysis, and canonical-ledger
+  drill-downs while keeping every aggregation separated by currency.
+- Audit snapshots render a field-level Before/After table with the original
+  JSON retained as secondary technical detail. Import batches expose explicit
+  validation-failed, pending-confirmation, completed, and cancelled states,
+  plus read-only error details/CSV and a correction link that creates a new
+  batch; preview/error inspection writes no Finance records and preserves the
+  original batch audit trail.
+- Sidebar state is derived from the current route: only the current leaf is
+  active, while parent rows express expanded/ancestor state. Local browser
+  acceptance passes at 1440, 1280, and 390 px with no page-level overflow,
+  console/page error, raw key, giant paginator icon, or HTTP 404/500 on the
+  audited paths. Full direct PHPUnit regression passes 740 tests / 6,006
+  assertions with one expected opt-in skip and existing PHP 8.5/PHPUnit
+  deprecation notices only.
+- No Production deployment or data write, migration/schema change, Finance
+  posting/calculation change, permission-boundary expansion, or Handover-rule
+  change occurred.
 
 ## UI Polish P1 — local PASS
 
