@@ -23,7 +23,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as SpreadsheetDate;
 
 /**
- * Preview-first, Zixuan-only student admission importer.
+ * Preview-first, canonical-School-allowlisted student admission importer.
  *
  * Preview rows are kept in the cache only.  The identity table is written
  * during Confirm, inside the same tenant transaction as the Student and its
@@ -100,7 +100,7 @@ final class StudentImportV2Service
         return [$school, $classes, $years, $fields];
     }
 
-    /** The V2 entry and template are restricted to the explicitly approved pilot School. */
+    /** The V2 entry and template are restricted to explicitly approved canonical Schools. */
     public function assertPilot(User $actor): School
     {
         if ((int) $actor->school_id < 1) throw new AuthorizationException('A trusted School Student identity is required.');
@@ -120,12 +120,17 @@ final class StudentImportV2Service
             $database = trim((string) DB::connection('school')->getDatabaseName());
         }
         $school = School::on('mysql')->where('database_name', $database)->first();
-        $pilot = app(SchoolCodeService::class)->resolveCanonical((string) config('student_import_v2.enabled_school_code'));
+        $canonical = app(SchoolCodeService::class)->resolveCanonical((string) $school?->code);
+        $enabledCodes = collect((array) config('student_import_v2.enabled_school_codes', []))
+            ->map(static fn ($code): string => strtoupper(trim((string) $code)))
+            ->filter()
+            ->unique();
         if ($school === null
             || (int) $school->id !== (int) $actor->school_id
-            || !$pilot
-            || (int) $pilot->id !== (int) $school->id) {
-            throw new AuthorizationException('Student Import V2 is currently available only to the approved Zixuan School.');
+            || !$canonical
+            || (int) $canonical->id !== (int) $school->id
+            || !$enabledCodes->contains((string) $canonical->code)) {
+            throw new AuthorizationException('Student Import V2 is available only to an approved canonical School.');
         }
         return $school;
     }

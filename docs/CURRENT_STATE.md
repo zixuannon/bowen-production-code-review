@@ -47,6 +47,9 @@ Finance V2
   Central Payment, Receipt, Ledger, Receivable, Pending Collection, or Handover
   rows. Timecity students `202601901` and `202601902` remain cleanup-eligible,
   but were not deleted or archived.
+- Student Import V2 uses an explicit canonical allowlist for Zixuan, Bahan,
+  and Timecity (`MMBOWEN01/02/03`). Tenant database identity and authenticated
+  `school_id` are still cross-checked server-side; other Schools remain denied.
 - Fresh Production backup
   `/root/backups/centralization_setup_20260914T050644Z` passed 8/8 SHA-256
   checks. Disposable restores of Bahan and Timecity matched all 121 tables,
@@ -59,7 +62,7 @@ Finance V2
   Production preflight also verified that the runner's exact central path is
   registered with `ProductionMigrationGuard`; an initially missing guard entry
   failed closed with zero write and was fixed before deployment. Final full
-  regression passes 756 tests / 6,097 assertions with three expected
+  regression passes 757 tests / 6,101 assertions with three expected
   opt-in skips and existing PHP 8.5/PHPUnit deprecations only. Production
   deployment and execution of the exact central migration remain separate
   Human Gates; cutover remains stopped.
@@ -1128,7 +1131,7 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 ## Zixuan Student Import V2 — Phase 2 (local)
 
-- Student Import V2 is XLSX-only and remains a Zixuan-only pilot. The workbook is School-local: it contains no School routing field, and Class Section plus Academic Year are human-readable dropdowns resolved and re-validated against the authenticated tenant.
+- Student Import V2 is XLSX-only and remains restricted to the explicit canonical School allowlist. The workbook is School-local: it contains no School routing field, and Class Section plus Academic Year are human-readable dropdowns resolved and re-validated against the authenticated tenant.
 - The template has a first Import sheet, readable Class Sections / Academic Years / Custom Fields lookup sheets, and a hidden validation sheet. Student Code, Student Mobile, and Guardian Mobile use Excel Text formatting so leading zeroes survive save/reopen.
 - Preview caches only row metadata and reports New, Duplicate, Error, or Conflict. It writes no Student, Guardian, identity, assignment, receivable, payment, receipt, ledger, or Fund Account record. Confirm is all-or-nothing for New rows, re-checks placement, readiness and compulsory setup, creates only compulsory assignment items, and relies on the established Central profile/receivable publisher after commit.
 - The local BOWEN_QA command correctly refused because this worktree is not a local/test runtime; no environment or database configuration was changed to bypass that guard. Targeted PHPUnit covers real workbook structure/save-reopen, leading-zero formats, School-local mapping, XLSX-only parsing, identity uniqueness, Central profile sync, cutover, fee assignment, receivable, payment and ledger regression.

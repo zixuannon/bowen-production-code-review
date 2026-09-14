@@ -3,7 +3,10 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\MigrateBahanTimecitySchoolCodes;
+use App\Models\User;
 use App\Services\SchoolCodeService;
+use App\Services\StudentImportV2Service;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -147,6 +150,36 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
         $this->assertStringNotContainsString('PAYMENT', strtoupper($source));
         $this->assertStringNotContainsString('RECEIPT', strtoupper($source));
         $this->assertStringNotContainsString('LEDGER', strtoupper($source));
+    }
+
+    public function test_student_import_v2_accepts_only_the_three_approved_canonical_schools(): void
+    {
+        (require database_path('migrations/'.MigrateBahanTimecitySchoolCodes::CENTRAL_MIGRATION.'.php'))->up();
+        Config::set('student_import_v2.enabled_school_codes', ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03']);
+        $service = app(StudentImportV2Service::class);
+
+        foreach ([
+            15 => 'eschool_saas_15_zixuan',
+            17 => 'eschool_saas_17_bahan',
+            19 => 'eschool_saas_19_timecitys',
+        ] as $schoolId => $database) {
+            session(['school_database_name' => $database]);
+            $actor = (new User())->forceFill(['school_id' => $schoolId]);
+            $this->assertSame($schoolId, (int) $service->assertPilot($actor)->id);
+        }
+
+        DB::connection('mysql')->table('schools')->insert([
+            'id' => 20,
+            'name' => 'Unapproved School',
+            'code' => 'MMBOWEN04',
+            'database_name' => 'eschool_saas_20_unapproved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        session(['school_database_name' => 'eschool_saas_20_unapproved']);
+
+        $this->expectException(AuthorizationException::class);
+        $service->assertPilot((new User())->forceFill(['school_id' => 20]));
     }
 
     private function code(int $schoolId): string

@@ -559,12 +559,12 @@ class StudentController extends Controller
             app(StudentImportV2Service::class)->assertPilot(Auth::user());
             $studentImportV2Enabled = true;
         } catch (AuthorizationException) {
-            // V2 is an explicit Zixuan pilot. Legacy import remains available.
+            // V2 is an explicit canonical-School allowlist. Legacy import remains available.
         }
         return view('students.add_bulk_data', compact('class_section', 'sessionYears', 'studentImportV2Enabled'));
     }
 
-    /** Preview-first pilot; legacy CSV import remains unchanged for other Schools. */
+    /** Preview-first allowlisted import; legacy CSV import remains available to other Schools. */
     public function createBulkDataV2(StudentImportV2Service $imports)
     {
         ResponseService::noPermissionThenRedirect('student-create');
