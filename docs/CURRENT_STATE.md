@@ -21,7 +21,10 @@ Finance V2
   Head Finance can open an authorized School student-collection detail by
   direct URL without mutating the selected operating context; an unauthorized
   School remains denied, and all collection writes still require the explicit
-  current-School context and existing capability checks.
+  current-School context and existing capability checks. If a historical
+  Central profile's tenant Student row is no longer available, only the
+  optional-fee panel degrades to empty; the canonical read-only detail remains
+  visible instead of returning 404.
 - The Fund Account list no longer renders the readiness card or oversized
   action dropdown. It links to a scoped Head-Finance-only management page that
   reuses the existing configuration, allocation, adjustment, and audit flows.
@@ -40,7 +43,7 @@ Finance V2
   active, while parent rows express expanded/ancestor state. Local browser
   acceptance passes at 1440, 1280, and 390 px with no page-level overflow,
   console/page error, raw key, giant paginator icon, or HTTP 404/500 on the
-  audited paths. Full direct PHPUnit regression passes 740 tests / 6,006
+  audited paths. Full direct PHPUnit regression passes 741 tests / 6,010
   assertions with one expected opt-in skip and existing PHP 8.5/PHPUnit
   deprecation notices only.
 - No Production deployment or data write, migration/schema change, Finance

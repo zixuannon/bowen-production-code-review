@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\FinanceGroupTenantUnavailableException;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinancePayment;
 use App\Models\CentralFinanceReceivable;
@@ -15,7 +16,7 @@ use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
-use App\Exceptions\FinanceGroupTenantUnavailableException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -102,9 +103,9 @@ final class CentralFinanceStudentCollectionController extends Controller
                     $optionalAttemptUuid = (string) Str::uuid();
                     $this->storeOptionalAttempt($optionalAttemptUuid, $actor, $school->id, $profile->id);
                 }
-            } catch (AuthorizationException|FinanceGroupTenantUnavailableException) {
+            } catch (AuthorizationException|FinanceGroupTenantUnavailableException|ModelNotFoundException) {
                 // A read-capable Principal or an unavailable mapped Head
-                // tenant identity must never turn this read page into a 500.
+                // tenant identity/student must never hide the Central profile.
             }
         }
 
