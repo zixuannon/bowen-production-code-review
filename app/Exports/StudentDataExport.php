@@ -30,7 +30,7 @@ class StudentDataExport implements FromCollection, WithTitle, WithHeadings, Shou
 
     public function headings(): array {
         $columns = [
-            'student_code',
+            'import_reference',
             'first_name',
             'last_name',
             'mobile',
@@ -73,7 +73,7 @@ class StudentDataExport implements FromCollection, WithTitle, WithHeadings, Shou
 
     private function getActionItems() {
         $fields = [
-            '00125',
+            'ROW-001',
             'student1',
             'example',
             '1234567899',

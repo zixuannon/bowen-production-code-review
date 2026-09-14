@@ -175,7 +175,7 @@ final class CentralFinancePaymentImportService
     {
         $query = CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId);
         if ($data['student_uuid'] !== '') $query->where('source_uuid', $data['student_uuid']);
-        if ($data['student_code'] !== '') $query->where('admission_no', $data['student_code']);
+        if ($data['student_code'] !== '') $query->where('student_code', $data['student_code']);
         return $query->firstOrFail();
     }
 

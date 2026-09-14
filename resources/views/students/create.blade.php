@@ -28,9 +28,9 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-3">
-                                    <label for="student_code">{{ __('Student Code') }} <span class="text-danger">*</span></label>
-                                    <input id="student_code" name="student_code" type="text" inputmode="text" autocomplete="off" maxlength="100" value="{{ old('student_code') }}" class="form-control" required>
-                                    <small class="text-muted">{{ __('School-specific code. Leading zeroes are kept.') }}</small>
+                                    <label for="student_code">{{ __('Student Code') }}</label>
+                                    <input id="student_code" type="text" value="{{ __('Generated when the Student is saved') }}" class="form-control" readonly aria-describedby="student-code-help">
+                                    <small id="student-code-help" class="text-muted">{{ __('The School sequence assigns 000001, 000002, and so on. The code cannot be edited or reused.') }}</small>
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-3">

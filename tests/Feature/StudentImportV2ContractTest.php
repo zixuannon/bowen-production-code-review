@@ -37,7 +37,7 @@ final class StudentImportV2ContractTest extends TestCase
         @unlink($this->schoolDatabase);
         parent::tearDown();
     }
-    public function test_v21_template_keeps_only_school_admin_fields_and_preserves_text_safe_identity_values(): void
+    public function test_v21_template_uses_text_import_reference_and_server_generated_student_code(): void
     {
         $export = new StudentImportV2TemplateExport(
             [['id' => 31, 'name' => 'Grade 1 - A']],
@@ -45,7 +45,7 @@ final class StudentImportV2ContractTest extends TestCase
             [['name' => 'Nationality', 'type' => 'dropdown', 'required' => true, 'values' => ['Myanmar', 'China']]],
         );
         $this->assertSame([
-            'Student Code *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期', '学生电话',
+            'Import Reference *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期', '学生电话',
             '家长/监护人姓名 *', '家长/监护人电话 *', '家长 Email', '备注', 'Nationality',
         ], $export->headings());
 
@@ -56,7 +56,7 @@ final class StudentImportV2ContractTest extends TestCase
             $this->assertSame('Import', $book->getSheet(0)->getTitle());
             $this->assertSame(['Import', 'Class Sections', 'Academic Years', 'Custom Fields', 'Validation Lists'], $book->getSheetNames());
             $sheet = $book->getSheet(0);
-            $this->assertSame('Student Code *', (string) $sheet->getCell('A1')->getValue());
+            $this->assertSame('Import Reference *', (string) $sheet->getCell('A1')->getValue());
             $this->assertSame('@', $sheet->getStyle('A2')->getNumberFormat()->getFormatCode());
             $this->assertSame('@', $sheet->getStyle('H2')->getNumberFormat()->getFormatCode());
             $this->assertSame('@', $sheet->getStyle('J2')->getNumberFormat()->getFormatCode());
@@ -64,13 +64,13 @@ final class StudentImportV2ContractTest extends TestCase
             $this->assertSame('=StudentImportAcademicYears', $sheet->getCell('D2')->getDataValidation()->getFormula1());
             $this->assertSame('=StudentImportGenders', $sheet->getCell('E2')->getDataValidation()->getFormula1());
             $this->assertSame(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN, $book->getSheetByName('Validation Lists')->getSheetState());
-            $sheet->setCellValueExplicit('A2', '00125', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('A2', 'SRC-000125', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             $sheet->setCellValueExplicit('H2', '0912345678', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
             $book->disconnectWorksheets();
             $book = IOFactory::load($path);
             $sheet = $book->getSheetByName('Import');
-            $this->assertSame('00125', (string) $sheet->getCell('A2')->getValue());
+            $this->assertSame('SRC-000125', (string) $sheet->getCell('A2')->getValue());
             $this->assertSame('0912345678', (string) $sheet->getCell('H2')->getValue());
             $this->assertSame('=StudentImportClassSections', $sheet->getCell('C2')->getDataValidation()->getFormula1());
         } finally {
@@ -105,18 +105,18 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringNotContainsString('CentralFinancePaymentService', $source);
     }
 
-    public function test_parser_keeps_text_codes_and_rejects_numeric_identity_cells_that_have_lost_leading_zeroes(): void
+    public function test_parser_keeps_text_import_references_and_rejects_numeric_identity_cells(): void
     {
         $service = app(StudentImportV2Service::class);
         $text = new \ReflectionMethod($service, 'text');
         $text->setAccessible(true);
         $errors = [];
-        $this->assertSame('00125', $text->invokeArgs($service, ['00125', 'Student Code', &$errors, true]));
+        $this->assertSame('00125', $text->invokeArgs($service, ['00125', 'Import Reference', &$errors, true]));
         $this->assertSame([], $errors);
 
         $errors = [];
-        $this->assertSame('', $text->invokeArgs($service, [125, 'Student Code', &$errors, true]));
-        $this->assertSame(['Student Code must be stored as Text to preserve leading zeroes.'], $errors);
+        $this->assertSame('', $text->invokeArgs($service, [125, 'Import Reference', &$errors, true]));
+        $this->assertSame(['Import Reference must be stored as Text to preserve leading zeroes.'], $errors);
     }
 
     public function test_phase_two_contract_keeps_school_routing_server_side_and_finance_effects_receivable_only(): void
@@ -176,7 +176,7 @@ final class StudentImportV2ContractTest extends TestCase
         $book = new Spreadsheet();
         $sheet = $book->getActiveSheet();
         $sheet->fromArray(StudentImportV2TemplateExport::HEADINGS, null, 'A1');
-        $sheet->setCellValueExplicit('A2', '00125', DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('A2', 'SRC-00125', DataType::TYPE_STRING);
         $sheet->setCellValue('B2', '张 三');
         $sheet->setCellValue('C2', 'Grade 1 - A');
         $sheet->setCellValue('D2', '2026');
@@ -193,7 +193,8 @@ final class StudentImportV2ContractTest extends TestCase
             $readRows = new \ReflectionMethod($service, 'readRows');
             $readRows->setAccessible(true);
             $rows = $readRows->invoke($service, $uploaded);
-            $this->assertSame('00125', $rows[0]['student_code']);
+            $this->assertSame('SRC-00125', $rows[0]['import_reference']);
+            $this->assertArrayNotHasKey('student_code', $rows[0]);
             $this->assertSame('张 三', $rows[0]['student_name']);
             $this->assertSame('0912345678', $rows[0]['mobile']);
             $this->assertSame('0998765432', $rows[0]['guardian_mobile']);

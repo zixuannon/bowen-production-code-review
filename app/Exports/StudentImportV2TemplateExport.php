@@ -4,11 +4,11 @@ namespace App\Exports;
 
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
-/** Zixuan Student Import V2: identity and phone fields are explicitly text. */
+/** Student Import V2: the external import reference and phone fields are text. */
 final class StudentImportV2TemplateExport implements WithMultipleSheets
 {
     public const HEADINGS = [
-        'Student Code *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期',
+        'Import Reference *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期',
         '学生电话', '家长/监护人姓名 *', '家长/监护人电话 *', '家长 Email', '备注',
     ];
 

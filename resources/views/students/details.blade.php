@@ -116,9 +116,9 @@
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">
-                                    <label>{{ __('Student Code') }} <span class="text-danger">*</span></label>
-                                    <input id="edit_student_code" name="student_code" type="text" inputmode="text" autocomplete="off" maxlength="100" class="form-control" required>
-                                    <small class="text-muted">{{ __('School-specific code. Leading zeroes are kept.') }}</small>
+                                    <label for="edit_student_code">{{ __('Student Code') }}</label>
+                                    <input id="edit_student_code" type="text" class="form-control" readonly aria-describedby="edit-student-code-help">
+                                    <small id="edit-student-code-help" class="text-muted">{{ __('Student Code is permanent after creation and cannot be edited or reused.') }}</small>
                                 </div>
 
                                 <div class="form-group col-sm-12 col-md-12 col-lg-6 col-xl-4">

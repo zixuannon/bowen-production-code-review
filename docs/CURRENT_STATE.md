@@ -14,6 +14,56 @@ Last updated: 2026-09-14
 
 Finance V2
 
+## Student Code self-service redesign — rebased local candidate
+
+- Branch `codex/student-code-rebase-current-production` starts exactly from
+  current Production source `8a03762e481f680bbebd3f96d46eb30586516c59`
+  and semantically carries forward only the Student Code redesign from
+  `ccf4158decd448eeedf1b75d376f319399dd20e7`.
+- New Students receive an immutable six-digit `000001` sequence scoped to
+  `school_id`. Allocation runs inside the Student transaction under a
+  sequence-row lock; the existing `school_id + student_code` unique key is the
+  final concurrency gate. Soft-deleted and inactive Students keep their
+  identity reservation, so numbers are never reused.
+- Student create and accepted online applications allocate server-side codes;
+  create/edit UI no longer submits an editable Student Code. Student Import V2
+  now accepts a School-scoped text Import Reference, generates Student Code at
+  confirm, and uses a unique `school_id + import_reference` key for replay and
+  concurrent exactly-once protection. Older V2 headings remain read-compatible
+  as import references, not as canonical codes.
+- The legacy CSV self-service path follows the same rule: its current template
+  uses `import_reference`, old `student_code` headings are compatibility aliases
+  only, and the canonical code is generated under the same locked sequence.
+- Search, Dify API context, Central profile projection, fee/student displays,
+  and Central payment import resolve the canonical Student Code. The Central
+  payment workbook lookup no longer compares Student Code to `admission_no`.
+- The additive tenant migration creates `student_code_sequences`, adds the
+  nullable import idempotency reference, seeds above existing six-digit codes,
+  and fails closed on partial schema. Production use is restricted to the
+  exact-path, registry-validated `student-code:migrate` runner. No Production
+  migration has been executed.
+- Read-only Production verification for Timecity admissions `202601901` and
+  `202601902` found zero tenant fee/payment references and zero Central
+  receivable, Payment, Receipt, Ledger, Pending Collection, or Handover
+  references. Only their non-financial Central student profile projections
+  exist; they remain cleanup-eligible for the later rehearsal, and are not
+  deleted or archived by this branch.
+- Rebase verification passes 39 focused tests plus two PHP 8.5
+  deprecation-classified passes (258 assertions), including Student Code,
+  Student Import V2, legacy import, Central receivable/payment, Central Finance
+  UX, and release-asset contracts. A disposable fresh MySQL rehearsal passes
+  the additive DDL, real row-lock concurrency, and concurrent import
+  exactly-once cases (1 test / 5 assertions); its database is dropped during
+  teardown.
+- Authenticated local Playwright passes at 1280 and 390 px: Student Code is
+  server-generated/read-only, the form submits no `student_code`, leading-zero
+  guidance remains visible, and there is no page-level overflow or console
+  error. Full regression passes 745 tests / 6,052 assertions, plus two
+  deprecation-classified passes and two expected opt-in skips. The inherited
+  Central Finance student-view, Fund Account management, Ledger, reporting,
+  audit snapshot, import-batch, sidebar, and brand-asset regressions remain
+  green.
+
 ## Central Finance UX bugfix batch — local PASS
 
 - Branch `codex/central-finance-ux-batch` starts exactly from the accepted UI
@@ -49,7 +99,8 @@ Finance V2
   remain supported. Full direct PHPUnit regression passes 739 tests / 6,018
   assertions, plus two deprecation-classified tests and one expected opt-in
   skip, with existing PHP 8.5/PHPUnit deprecation notices only.
-- Deployment requires no migration or Production data write and makes no
+- The deployed Central Finance UX release required no migration or Production
+  data write and makes no
   Finance posting/calculation, permission-boundary, or Handover-rule change.
 
 ## UI Polish P1 — local PASS

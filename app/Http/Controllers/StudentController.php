@@ -134,7 +134,6 @@ class StudentController extends Controller
             'class_section_id' => 'required|numeric',
             /*NOTE : Unique constraint is used because it's not school specific*/
             'admission_no' => 'required|unique:users,email',
-            'student_code' => 'required|string|max:100',
             'admission_date' => 'required',
             'session_year_id' => 'required|numeric',
             'guardian_mode' => 'required|in:new,existing',
@@ -160,8 +159,6 @@ class StudentController extends Controller
         $request->validate($rules, [
             'guardian_email.regex' => 'Please enter a valid guardian email (e.g. user@example.com).',
         ]);
-        $studentCode = app(StudentCodeService::class)->assertAvailable((int) Auth::user()->school_id, $request->input('student_code'));
-
         if ($request->input('guardian_mode') === 'new'
             && $this->user->guardian()->withTrashed()->where('email', $request->guardian_email)->exists()) {
             // New admission data must never silently update an existing
@@ -225,7 +222,7 @@ class StudentController extends Controller
             $is_send_notification = true;
             $studentUser = $userService->createStudentUser($request->first_name, $request->last_name, $request->admission_no, $request->mobile, $request->dob, $request->gender, $request->image, $request->class_section_id, $request->admission_date, $request->current_address, $request->permanent_address, $sessionYear->id, $guardian->id, $request->extra_fields ?? [], $request->status ?? 0, $is_send_notification);
             $student = $this->student->builder()->where('user_id', $studentUser->id)->firstOrFail();
-            app(StudentCodeService::class)->assign($student, Auth::user(), $studentCode);
+            app(StudentCodeService::class)->assignGenerated($student, Auth::user());
             $studentId = $student->id;
 
             DB::commit();
@@ -265,7 +262,6 @@ class StudentController extends Controller
             'dob' => 'required',
             'session_year_id' => 'required|numeric',
             'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
-            'student_code' => 'required|string|max:100',
         ];
         if (is_numeric($request->guardian_id)) {
             $rules['guardian_email'] = 'required|email|unique:users,email,' . $request->guardian_id;
@@ -279,8 +275,6 @@ class StudentController extends Controller
             $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image, $request->parent_reset_password);
 
             $userService->updateStudentUser($id, $request->first_name, $request->last_name, $request->mobile, $request->dob, $request->gender, $request->image, $sessionYear->id, $request->extra_fields ?? [], $guardian->id, $request->current_address, $request->permanent_address, $request->reset_password, $request->class_section_id);
-            $student = $this->student->builder()->where('user_id', $id)->firstOrFail();
-            app(StudentCodeService::class)->assign($student, Auth::user(), $request->input('student_code'));
             DB::commit();
             ResponseService::successResponse('Data Updated Successfully');
         } catch (ValidationException $e) {
@@ -1194,6 +1188,7 @@ class StudentController extends Controller
                 }
                 if ($request->application_status == 1) {
                     $student->update(['application_status' => 1, 'class_section_id' => $request->class_section_id]);
+                    app(StudentCodeService::class)->assignGenerated($student, Auth::user());
                     $password = $userService->makeStudentPassword($user->dob);
                     $guardian = $this->user->guardian()->where('id', $student->guardian_id)->firstOrFail();
                     $userService->sendRegistrationEmail($guardian, $user, $student->admission_no, $password);
@@ -1245,6 +1240,7 @@ class StudentController extends Controller
             }
             if ($request->application_status == 1) {
                 $student->update(['application_status' => 1, 'class_section_id' => $request->class_section_id]);
+                app(StudentCodeService::class)->assignGenerated($student, Auth::user());
                 $password = $userService->makeStudentPassword($user->dob);
                 $guardian = $this->user->guardian()->where('id', $student->guardian_id)->firstOrFail();
                 $userService->sendRegistrationEmail($guardian, $user, $student->admission_no, $password);

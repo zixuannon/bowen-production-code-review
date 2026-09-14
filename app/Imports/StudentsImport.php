@@ -83,8 +83,19 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
         $user = app(UserInterface::class);
         $cache = app(CachingService::class);
 
-        $validator = Validator::make($collection->toArray(), [
-            '*.student_code'  => 'required|string|max:100',
+        // Older downloaded CSVs called this stable source key
+        // "student_code". Keep those files upload-compatible, but never use
+        // that supplied value as the canonical Student Code.
+        $rows = $collection->map(static function ($row): array {
+            $data = $row->toArray();
+            if (!array_key_exists('import_reference', $data) && array_key_exists('student_code', $data)) {
+                $data['import_reference'] = $data['student_code'];
+            }
+            return $data;
+        });
+
+        $validator = Validator::make($rows->all(), [
+            '*.import_reference'  => 'required|string|max:100',
             '*.first_name'     => 'required',
             '*.last_name'      => 'required',
             '*.mobile'         => 'nullable|regex:/^([0-9\s\-\+\(\)]*)$/',
@@ -120,15 +131,20 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
         $validator->validate();
 
         $studentCodeService = app(StudentCodeService::class);
-        $normalizedCodes = [];
-        foreach ($collection as $index => $row) {
-            $code = $studentCodeService->normalize($row['student_code'] ?? null);
-            if (isset($normalizedCodes[$code])) {
+        $normalizedReferences = [];
+        foreach ($rows as $index => $row) {
+            $reference = $studentCodeService->normalizeImportReference($row['import_reference'] ?? null);
+            if ($reference === null) {
                 throw ValidationException::withMessages([
-                    "{$index}.student_code" => __('Duplicate Student Code in the import file.'),
+                    "{$index}.import_reference" => __('Import Reference is required.'),
                 ]);
             }
-            $normalizedCodes[$code] = true;
+            if (isset($normalizedReferences[$reference]) || $studentCodeService->existsByImportReference((int) Auth::user()->school_id, $reference)) {
+                throw ValidationException::withMessages([
+                    "{$index}.import_reference" => __('Duplicate Import Reference in the import file or School.'),
+                ]);
+            }
+            $normalizedReferences[$reference] = true;
         }
 
         // Check free trial package
@@ -139,8 +155,8 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
 
         $userService = app(UserService::class);
         $sessionYear = $sessionYear->findById($this->sessionYearID);
-        DB::connection('school')->transaction(function () use ($collection, $get_subscription, $cache, $user, $userService, $sessionYear, $studentCodeService, $student, $formFields): void {
-            foreach ($collection as $row) {
+        DB::connection('school')->transaction(function () use ($rows, $get_subscription, $cache, $user, $userService, $sessionYear, $studentCodeService, $student, $formFields): void {
+            foreach ($rows as $row) {
 
             // Check free trial package
             
@@ -153,7 +169,6 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
                     break;
                 }
             }
-            $row = $row->toArray();
             // Find the index of the key after which to split the array
             $splitIndex = array_search('guardian_mobile', array_keys($row)) + 1;
 
@@ -164,7 +179,7 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
 
 
             $guardian = $userService->createOrUpdateParent($row['guardian_first_name'], $row['guardian_last_name'], $row['guardian_email'], $row['guardian_mobile'], $row['guardian_gender']);
-            $studentCode = $studentCodeService->assertAvailable((int) Auth::user()->school_id, $row['student_code']);
+            $importReference = $studentCodeService->normalizeImportReference($row['import_reference']);
             // The legacy admission field remains an internal login identifier;
             // it no longer derives business identity from a racy latest row ID.
             $admission_no = 'LEGACY-'.Auth::user()->school_id.'-'.Str::orderedUuid();
@@ -216,7 +231,7 @@ class FirstSheetImport implements ToCollection, WithHeadingRow
             //                $userService->createOrUpdateStudentUser($row['first_name'], $row['last_name'], $admission_no, $row['mobile'], $row['dob'], $row['gender'], null, $this->class_section_id, now(), $extraDetails, null, $guardian->id);
             $studentUser = $userService->createStudentUser($row['first_name'], $row['last_name'], $admission_no, $row['mobile'], $row['dob'], $row['gender'], null, $this->classSectionID, $row['admission_date'],$row['current_address'],$row['permanent_address'], $sessionYear->id, $guardian->id, $extraDetails, 0, $this->is_send_notification);
             $createdStudent = $student->builder()->where('user_id', $studentUser->id)->firstOrFail();
-            $studentCodeService->assign($createdStudent, Auth::user(), $studentCode);
+            $studentCodeService->assignGenerated($createdStudent, Auth::user(), $importReference);
             }
         });
         return true;

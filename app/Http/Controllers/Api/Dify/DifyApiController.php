@@ -140,7 +140,7 @@ class DifyApiController extends Controller
 
             // Base query with eager-loaded relations for name display
             $query = Students::query()
-                ->with(['user', 'class_section.class', 'class_section.section']);
+                ->with(['user', 'studentImportIdentity', 'class_section.class', 'class_section.section']);
 
             // Filter: single date
             if ($date = $request->query('admission_date')) {
@@ -169,6 +169,7 @@ class DifyApiController extends Controller
             if ($search = $request->query('search')) {
                 $query->where(function ($q) use ($search) {
                     $q->where('admission_no', 'like', "%{$search}%")
+                      ->orWhereHas('studentImportIdentity', fn ($identity) => $identity->where('student_code', 'like', "%{$search}%"))
                       ->orWhereHas('user', function ($uq) use ($search) {
                           $uq->where('first_name', 'like', "%{$search}%")
                             ->orWhere('last_name', 'like', "%{$search}%")
@@ -186,6 +187,7 @@ class DifyApiController extends Controller
                 return [
                     'id'                       => $student->id,
                     'admission_no'             => $student->admission_no,
+                    'student_code'             => $student->studentImportIdentity?->student_code,
                     'admission_date'           => $student->admission_date,
                     'student_name'             => trim(
                         ($student->user->first_name ?? '') . ' ' . ($student->user->last_name ?? '')
@@ -293,7 +295,7 @@ class DifyApiController extends Controller
             // Query students in this class section
             $query = Students::query()
                 ->where('class_section_id', $classSectionId)
-                ->with(['user']);
+                ->with(['user', 'studentImportIdentity']);
 
             if ($sessionYearId) {
                 $query->where('session_year_id', $sessionYearId);
@@ -303,6 +305,7 @@ class DifyApiController extends Controller
             if ($search = $request->query('search')) {
                 $query->where(function ($q) use ($search) {
                     $q->where('admission_no', 'like', "%{$search}%")
+                      ->orWhereHas('studentImportIdentity', fn ($identity) => $identity->where('student_code', 'like', "%{$search}%"))
                       ->orWhereHas('user', function ($uq) use ($search) {
                           $uq->where('first_name', 'like', "%{$search}%")
                             ->orWhere('last_name', 'like', "%{$search}%")
@@ -320,6 +323,7 @@ class DifyApiController extends Controller
                 return [
                     'student_id'          => $student->id,
                     'admission_no'        => $student->admission_no,
+                    'student_code'        => $student->studentImportIdentity?->student_code,
                     'roll_number'         => $student->roll_number,
                     'student_name'        => trim(
                         ($student->user->first_name ?? '') . ' ' . ($student->user->last_name ?? '')

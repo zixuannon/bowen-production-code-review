@@ -27,6 +27,7 @@ final class Round5LegacyImportIntegrityTest extends TestCase
             $table->id(); $table->unsignedBigInteger('user_id'); $table->unsignedBigInteger('school_id'); $table->timestamps();
         });
         (require database_path('migrations/schools/2026_09_03_000001_create_student_import_identities_table.php'))->up();
+        (require database_path('migrations/schools/2026_09_14_000001_create_student_code_sequences.php'))->up();
     }
 
     protected function tearDown(): void
@@ -35,22 +36,23 @@ final class Round5LegacyImportIntegrityTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_legacy_template_and_import_use_string_student_code_without_latest_id_identity(): void
+    public function test_legacy_template_uses_import_reference_and_generates_student_code_without_latest_id_identity(): void
     {
         $reflection = new \ReflectionClass(StudentDataExport::class);
         $export = $reflection->newInstanceWithoutConstructor();
         $property = $reflection->getProperty('formFields');
         $property->setAccessible(true);
         $property->setValue($export, new \Illuminate\Database\Eloquent\Collection());
-        $this->assertSame('student_code', $export->headings()[0]);
-        $this->assertSame('00125', $export->collection()->first()[0]);
+        $this->assertSame('import_reference', $export->headings()[0]);
+        $this->assertSame('ROW-001', $export->collection()->first()[0]);
         $this->assertSame(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT, $export->columnFormats()['A']);
 
         $source = file_get_contents(app_path('Imports/StudentsImport.php'));
         $this->assertIsString($source);
-        $this->assertStringContainsString("'*.student_code'  => 'required|string|max:100'", $source);
+        $this->assertStringContainsString("'*.import_reference'  => 'required|string|max:100'", $source);
+        $this->assertStringContainsString("array_key_exists('student_code', \$data)", $source);
         $this->assertStringContainsString("DB::connection('school')->transaction", $source);
-        $this->assertStringContainsString('$studentCodeService->assign(', $source);
+        $this->assertStringContainsString('$studentCodeService->assignGenerated(', $source);
         $this->assertStringContainsString('Str::orderedUuid()', $source);
         $this->assertStringNotContainsString("latest('id')", $source);
     }

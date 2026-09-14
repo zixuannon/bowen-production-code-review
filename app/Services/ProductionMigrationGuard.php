@@ -52,6 +52,9 @@ final class ProductionMigrationGuard
             'database/migrations/2026_09_11_000001_finalize_school_code_identity.php',
             'database/migrations/schools/2026_09_11_000001_create_staff_invitation_tokens_table.php',
         ],
+        'student-code:migrate' => [
+            'database/migrations/schools/2026_09_14_000001_create_student_code_sequences.php',
+        ],
     ];
 
     /**

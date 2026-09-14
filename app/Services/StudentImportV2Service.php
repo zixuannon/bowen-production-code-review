@@ -35,13 +35,13 @@ final class StudentImportV2Service
 
     /** @var list<string> */
     private const SIMPLIFIED_REQUIRED_HEADERS = [
-        'student_code', 'student_name', 'class_section', 'academic_year',
+        'import_reference', 'student_name', 'class_section', 'academic_year',
         'admission_date', 'guardian_name', 'guardian_mobile',
     ];
 
     /** V2.0 upload compatibility is retained while V2.1 is the downloaded template. */
     private const LEGACY_REQUIRED_HEADERS = [
-        'student_code', 'first_name', 'last_name', 'gender', 'date_of_birth',
+        'import_reference', 'first_name', 'last_name', 'gender', 'date_of_birth',
         'admission_date', 'current_address', 'permanent_address', 'guardian_email',
         'guardian_first_name', 'guardian_last_name', 'guardian_mobile', 'guardian_gender', 'class_section', 'academic_year',
     ];
@@ -56,7 +56,7 @@ final class StudentImportV2Service
         foreach ($rows as $line => $row) {
             if ($this->blank($row)) continue;
             $prepared = $this->prepareRow($row, $line + 2, $actor, $school, $classSections, $academicYears, $customFields, $seen);
-            $seen[$prepared['student_code']] = true;
+            $seen[$prepared['import_reference']] = true;
             $result[] = $prepared;
         }
         if ($result === []) throw ValidationException::withMessages(['file' => 'The workbook has no Student Import V2 data rows.']);
@@ -150,7 +150,7 @@ final class StudentImportV2Service
             foreach ($rows->where('status', 'new') as $row) {
                 // Re-check inside the write transaction: a stale preview can
                 // never silently become a duplicate Student admission.
-                if ($this->identityExists($actor, $row['student_code'])) continue;
+                if ($this->identityExists($actor, $row['import_reference'])) continue;
                 $this->assertStudentCapacity($actor);
                 [$sessionYear, $classSection] = $this->placementById($actor, (int) $row['academic_year_id'], (int) $row['class_section_id']);
                 $this->assertCompulsorySetup($actor, $sessionYear, $classSection);
@@ -164,17 +164,17 @@ final class StudentImportV2Service
                     null, null, $sessionYear->id, $guardian->id, $row['custom_fields'] ?? [], 1, false, $row['notes'] ?: null
                 );
                 $student = Students::query()->where('user_id', $studentUser->id)->lockForUpdate()->firstOrFail();
-                app(StudentCodeService::class)->assign($student, $actor, $row['student_code']);
+                $identity = app(StudentCodeService::class)->assignGenerated($student, $actor, $row['import_reference']);
                 $assignmentService = app(StudentFeeAssignmentService::class);
                 $draft = $assignmentService->saveDraft($student, $actor, []);
                 $confirmed = $assignmentService->confirm($student, $actor, $draft->uuid);
-                $created[] = ['student_id' => $student->id, 'user_id' => $studentUser->id, 'student_code' => $row['student_code'], 'assignment_uuid' => $confirmed->uuid];
+                $created[] = ['student_id' => $student->id, 'user_id' => $studentUser->id, 'student_code' => $identity->student_code, 'import_reference' => $row['import_reference'], 'assignment_uuid' => $confirmed->uuid];
             }
             return $created;
         });
         } catch (QueryException $exception) {
             if (str_contains(strtolower($exception->getMessage()), 'student_import_identity')) {
-                throw ValidationException::withMessages(['preview' => 'A Student Code was confirmed by another request. Re-preview the workbook before confirming again.']);
+                throw ValidationException::withMessages(['preview' => 'An Import Reference was confirmed by another request. Re-preview the workbook before confirming again.']);
             }
             throw $exception;
         }
@@ -222,7 +222,7 @@ final class StudentImportV2Service
             $row = [];
             foreach ($headers as $index => $header) if ($header !== '') $row[$header] = $values[$index] ?? null;
             $formulaColumns = [];
-            foreach (['student_code', 'mobile', 'guardian_mobile'] as $header) {
+            foreach (['import_reference', 'mobile', 'guardian_mobile'] as $header) {
                 $index = array_search($header, $headers, true);
                 if ($index !== false && $sheet->getCellByColumnAndRow($index + 1, $rowIndex + 2)->isFormula()) $formulaColumns[] = str_replace('_', ' ', $header);
             }
@@ -239,7 +239,7 @@ final class StudentImportV2Service
         $errors = [];
         $warnings = [];
         foreach (($row['__formula_errors'] ?? []) as $column) $errors[] = ucfirst($column).' must be a literal Text value, not an Excel formula.';
-        $code = $this->text($row['student_code'] ?? null, 'Student Code', $errors, true);
+        $reference = $this->text($row['import_reference'] ?? null, 'Import Reference', $errors, true);
         $mobile = $this->phone($row['mobile'] ?? null, 'Student Mobile', $errors, false);
         $guardianMobile = $this->phone($row['guardian_mobile'] ?? null, 'Guardian Mobile', $errors, true);
         $isLegacy = !array_key_exists('student_name', $row);
@@ -253,7 +253,7 @@ final class StudentImportV2Service
             ? $this->legacyName($row['guardian_first_name'] ?? null, $row['guardian_last_name'] ?? null, 'Guardian Name', $errors)
             : $this->requiredText($row['guardian_name'] ?? null, 'Guardian Name', $errors);
         $prepared = [
-            'line' => $line, 'student_code' => $code, 'student_name' => $studentName,
+            'line' => $line, 'import_reference' => $reference, 'student_code' => null, 'student_name' => $studentName,
             'student_first_name' => $studentFirstName,
             // V2.1 preserves the supplied cultural full name without splitting it.
             'student_last_name' => $isLegacy ? trim((string) ($row['last_name'] ?? '')) ?: null : null,
@@ -273,8 +273,8 @@ final class StudentImportV2Service
         if ($prepared['guardian_email'] === '' && $prepared['guardian_name'] !== '' && $prepared['guardian_mobile'] !== '') {
             $warnings[] = 'Possible existing Guardian match: import will create a new Guardian because no Email was supplied.';
         }
-        if ($code !== '' && isset($seen[$code])) $warnings[] = 'Duplicate Student Code in this workbook.';
-        if ($code !== '' && $this->identityExists($actor, $code)) $warnings[] = 'Student Code already exists in this School.';
+        if ($reference !== '' && isset($seen[$reference])) $warnings[] = 'Duplicate Import Reference in this workbook.';
+        if ($reference !== '' && $this->identityExists($actor, $reference)) $warnings[] = 'Import Reference already exists in this School.';
         if ($this->secondaryMatch($prepared, (int) $actor->school_id)) $warnings[] = 'A Student with the same name, date of birth, and Guardian email may already exist.';
         try {
             $this->assertCentralReady($school);
@@ -290,7 +290,7 @@ final class StudentImportV2Service
         }
         $prepared['errors'] = $errors;
         $prepared['warnings'] = $warnings;
-        $prepared['status'] = $prepared['placement_conflict'] ? 'conflict' : ($errors !== [] ? 'error' : ($warnings !== [] && str_contains(implode(' ', $warnings), 'Student Code') ? 'duplicate' : 'new'));
+        $prepared['status'] = $prepared['placement_conflict'] ? 'conflict' : ($errors !== [] ? 'error' : ($warnings !== [] && str_contains(implode(' ', $warnings), 'Import Reference') ? 'duplicate' : 'new'));
         return $prepared;
     }
 
@@ -335,10 +335,9 @@ final class StudentImportV2Service
         if (!$exists) throw ValidationException::withMessages(['fee_setup' => 'Compulsory Fee Setup is not ready for this Academic Year and Class.']);
     }
 
-    private function identityExists(User $actor, string $code): bool
+    private function identityExists(User $actor, string $reference): bool
     {
-        return app(StudentCodeService::class)->exists((int) $actor->school_id, $code)
-            || Students::query()->where('school_id', $actor->school_id)->where('admission_no', $code)->exists();
+        return app(StudentCodeService::class)->existsByImportReference((int) $actor->school_id, $reference);
     }
 
     /** @param array<string,mixed> $row */
@@ -403,6 +402,10 @@ final class StudentImportV2Service
     {
         $header = $this->header($value);
         return [
+            // Old V2 workbooks used "Student Code" as their external row key.
+            // Keep them upload-compatible without treating that value as the
+            // generated canonical Student Code.
+            'student_code' => 'import_reference',
             '学生姓名' => 'student_name',
             '班级' => 'class_section',
             '学年' => 'academic_year',

@@ -19,6 +19,7 @@ final class StudentImportIdentity extends Model
     protected $fillable = [
         'school_id',
         'student_code',
+        'import_reference',
         'student_id',
         'user_id',
         'created_by',

@@ -11,7 +11,7 @@
                 <section class="ui-form-section h-100 mb-0">
                     <div class="ui-form-section__header">
                         <h5>{{ __('File requirements') }}</h5>
-                        <p>{{ __('Use the current XLSX template for this School. Student Code remains text, including leading zeroes.') }}</p>
+                        <p>{{ __('Use the current XLSX template for this School. Student Code is generated automatically when the import is confirmed.') }}</p>
                     </div>
                     <a class="btn btn-outline-primary btn-block" href="{{ route('students.import-v2.template') }}">{{ __('Download V2 template') }}</a>
                     <ul class="small text-muted pl-3 mt-3 mb-0">
@@ -80,9 +80,9 @@
         addSummary(payload.summary || {});
         const hint = appendText('p', '{{ __('Swipe horizontally to review every validation column.') }}', 'ui-table-scroll-hint'); hint.setAttribute('aria-hidden', 'true');
         const table = document.createElement('table'); table.className = 'table ui-responsive-list ui-mobile-cards';
-        const headers = ['#', '{{ __('Student Code') }}', '{{ __('Student') }}', '{{ __('Class Section') }}', '{{ __('Session Year') }}', '{{ __('Status') }}', '{{ __('Reasons') }}'];
+        const headers = ['#', '{{ __('Import Reference') }}', '{{ __('Student Code') }}', '{{ __('Student') }}', '{{ __('Class Section') }}', '{{ __('Session Year') }}', '{{ __('Status') }}', '{{ __('Reasons') }}'];
         const head = document.createElement('thead'); const headerRow = document.createElement('tr'); headers.forEach(label => { const cell = document.createElement('th'); cell.textContent = label; headerRow.appendChild(cell); }); head.appendChild(headerRow); table.appendChild(head);
-        const body = document.createElement('tbody'); (payload.rows || []).forEach((item) => { const row = document.createElement('tr'); addCell(row, item.line, '#'); addCell(row, item.student_code, headers[1], 'ui-cell-primary'); addCell(row, item.student_name, headers[2]); addCell(row, item.class_section, headers[3]); addCell(row, item.academic_year, headers[4]); addCell(row, item.status, headers[5]); addCell(row, [...(item.errors || []), ...(item.warnings || [])].join(' '), headers[6]); body.appendChild(row); }); table.appendChild(body);
+        const body = document.createElement('tbody'); (payload.rows || []).forEach((item) => { const row = document.createElement('tr'); addCell(row, item.line, '#'); addCell(row, item.import_reference, headers[1], 'ui-cell-primary'); addCell(row, item.student_code || '{{ __('Assigned on confirm') }}', headers[2]); addCell(row, item.student_name, headers[3]); addCell(row, item.class_section, headers[4]); addCell(row, item.academic_year, headers[5]); addCell(row, item.status, headers[6]); addCell(row, [...(item.errors || []), ...(item.warnings || [])].join(' '), headers[7]); body.appendChild(row); }); table.appendChild(body);
         const wrapper = document.createElement('div'); wrapper.className = 'table-responsive ui-responsive-list-wrap'; wrapper.appendChild(table); result.appendChild(wrapper);
         const unsafe = Number(payload.summary?.error || 0) + Number(payload.summary?.conflict || 0); const confirm = document.createElement('button'); confirm.className = 'btn btn-theme mt-3'; confirm.type = 'button'; confirm.textContent = labels.confirm; confirm.disabled = unsafe > 0 || Number(payload.summary?.new || 0) === 0; result.appendChild(confirm);
         confirm.addEventListener('click', async () => {
