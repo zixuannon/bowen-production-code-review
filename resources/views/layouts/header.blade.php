@@ -8,7 +8,20 @@
                 return asset($fallback);
             }
             if (\Illuminate\Support\Str::startsWith($path, ['http://', 'https://'])) {
-                return $path;
+                $urlHost = strtolower((string) parse_url($path, PHP_URL_HOST));
+                $appHost = strtolower((string) parse_url(config('app.url'), PHP_URL_HOST));
+                $requestHost = strtolower((string) request()->getHost());
+                $urlPath = (string) parse_url($path, PHP_URL_PATH);
+
+                // Stored settings may contain an absolute URL back to this app.
+                // Treat same-origin /storage URLs as local files so a stale DB
+                // value falls back before the browser emits a 404.
+                if (! in_array($urlHost, array_filter([$appHost, $requestHost]), true)
+                    || ! \Illuminate\Support\Str::startsWith($urlPath, '/storage/')) {
+                    return $path;
+                }
+
+                $path = $urlPath;
             }
 
             $relativePath = ltrim($path, '/');

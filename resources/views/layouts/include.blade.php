@@ -1,5 +1,28 @@
 @php
     $lang = Session::get('language');
+    $faviconPath = trim((string) ($schoolSettings['favicon'] ?? $systemSettings['favicon'] ?? ''));
+    $faviconUrl = asset('/assets/vertical-logo.svg');
+    if ($faviconPath !== '') {
+        if (\Illuminate\Support\Str::startsWith($faviconPath, ['http://', 'https://'])) {
+            $faviconHost = strtolower((string) parse_url($faviconPath, PHP_URL_HOST));
+            $appHost = strtolower((string) parse_url(config('app.url'), PHP_URL_HOST));
+            $requestHost = strtolower((string) request()->getHost());
+            $faviconUrlPath = (string) parse_url($faviconPath, PHP_URL_PATH);
+            if (! in_array($faviconHost, array_filter([$appHost, $requestHost]), true)
+                || ! \Illuminate\Support\Str::startsWith($faviconUrlPath, '/storage/')) {
+                $faviconUrl = $faviconPath;
+                $faviconPath = '';
+            } else {
+                $faviconPath = $faviconUrlPath;
+            }
+        }
+        if ($faviconPath !== '') {
+            $faviconRelativePath = \Illuminate\Support\Str::after(ltrim($faviconPath, '/'), 'storage/');
+            if (\Illuminate\Support\Facades\Storage::disk('public')->exists($faviconRelativePath)) {
+                $faviconUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($faviconRelativePath);
+            }
+        }
+    }
 @endphp
 <link rel="stylesheet" href="{{ asset('/assets/css/materialdesignicons.min.css') }}">
 <link rel="stylesheet" href="{{ asset('/assets/css/vendor.bundle.base.css') }}">
@@ -36,7 +59,7 @@
 <script src='{{ asset('/assets/js/fullcalendar.js') }}'></script>
 
 {{-- <link rel="shortcut icon" href="{{asset(config('global.LOGO_SM')) }}" /> --}}
-<link rel="shortcut icon" href="{{$schoolSettings['favicon'] ?? $systemSettings['favicon'] ?? url('assets/vertical-logo.svg') }}"/>
+<link rel="shortcut icon" href="{{ $faviconUrl }}"/>
 
 {{--<script src="">--}}
 {{--    window.trans = {};--}}

@@ -43,12 +43,14 @@ Finance V2
   active, while parent rows express expanded/ancestor state. Local browser
   acceptance passes at 1440, 1280, and 390 px with no page-level overflow,
   console/page error, raw key, giant paginator icon, or HTTP 404/500 on the
-  audited paths. Full direct PHPUnit regression passes 741 tests / 6,010
-  assertions with one expected opt-in skip and existing PHP 8.5/PHPUnit
-  deprecation notices only.
-- No Production deployment or data write, migration/schema change, Finance
-  posting/calculation change, permission-boundary expansion, or Handover-rule
-  change occurred.
+  audited paths. Same-origin absolute `/storage` logo and favicon settings are
+  now existence-checked before rendering, so stale settings use the approved
+  static brand fallback instead of creating browser 404s; external CDN assets
+  remain supported. Full direct PHPUnit regression passes 739 tests / 6,018
+  assertions, plus two deprecation-classified tests and one expected opt-in
+  skip, with existing PHP 8.5/PHPUnit deprecation notices only.
+- Deployment requires no migration or Production data write and makes no
+  Finance posting/calculation, permission-boundary, or Handover-rule change.
 
 ## UI Polish P1 — local PASS
 
