@@ -14,6 +14,53 @@ Last updated: 2026-09-14
 
 Finance V2
 
+## Bahan + Timecity Centralization setup — local candidate / no cutover
+
+- Branch `codex/timecity-bahan-centralization-setup` starts exactly from
+  Production `607903a618228abd57887c779aa7438e68fd6476`. It prepares the
+  audited Bahan `SCH202616 -> MMBOWEN02` and Timecity
+  `SCH202619 -> MMBOWEN03` identity transition without enabling cutover or
+  creating a Payment, Receipt, Ledger entry, opening balance, allocation, or
+  staff account.
+- The forward-only central migration validates exact School/database
+  ownership, unique canonical codes, complete history/sequence schema, and
+  conflict-free audit history before locking and updating the two School rows.
+  Legacy codes are retained only in `school_code_history`; canonical runtime
+  lookup does not accept them. The read-only-by-default
+  `centralization:migrate-school-codes` runner can execute only that exact
+  migration and fails closed on registry, schema, history, or migration-state
+  mismatch.
+- Every fixed active-tenant registry and Gate A allowlist now expects
+  `MMBOWEN02` and `MMBOWEN03`, so the exact mapping migration must run from the
+  candidate release before its atomic application switch. Broad migration and
+  rollback remain prohibited.
+- Read-only Production inventory found both tenant databases active and fully
+  migrated, both Schools in the Finance group, Head Finance central scopes for
+  both, and tenant Student Code sequences ready at `000001`. It also found no
+  formal Principal, School Accountant, Front Desk identity links; no
+  School-owned formal Fund Account; no signed opening-balance audit; no active
+  Accountant assignment; and no approved receivable cutoff. Those are explicit
+  readiness blockers and must be completed through audited self-service flows
+  before rehearsal/cutover.
+- Bahan has no students or fee setup. Timecity has two test students and
+  existing fee definitions but no stable import identities; neither School has
+  Central Payment, Receipt, Ledger, Receivable, Pending Collection, or Handover
+  rows. Timecity students `202601901` and `202601902` remain cleanup-eligible,
+  but were not deleted or archived.
+- Fresh Production backup
+  `/root/backups/centralization_setup_20260914T050644Z` passed 8/8 SHA-256
+  checks. Disposable restores of Bahan and Timecity matched all 121 tables,
+  1,215 columns, 567 indexes, and every base-table row count, then were dropped.
+  All Production migration runners passed read-only schema/history preflight;
+  no Production migration or data write occurred.
+- Local mapping, no-write, canonical-only, Central Finance scope, Group Import
+  V2.2, Student Import, invitation, role, and migration-runner regressions pass.
+  The exact migration also passes a disposable fresh MySQL rehearsal. Final
+  full regression passes 755 tests / 6,095 assertions with three expected
+  opt-in skips and existing PHP 8.5/PHPUnit deprecations only. Production
+  deployment and execution of the exact central migration remain separate
+  Human Gates; cutover remains stopped.
+
 ## Student Code self-service redesign — rebased local candidate
 
 - Branch `codex/student-code-rebase-current-production` starts exactly from

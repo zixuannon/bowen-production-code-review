@@ -16,8 +16,8 @@ final class MigrateStudentCodeSchema extends Command
     public const TENANT_MIGRATION = '2026_09_14_000001_create_student_code_sequences';
     public const PRODUCTION_TENANTS = [
         'eschool_saas_15_zixuan' => ['MMBOWEN01'],
-        'eschool_saas_17_bahan' => ['SCH202616', 'MMBOWEN02'],
-        'eschool_saas_19_timecitys' => ['SCH202619', 'MMBOWEN03'],
+        'eschool_saas_17_bahan' => ['MMBOWEN02'],
+        'eschool_saas_19_timecitys' => ['MMBOWEN03'],
         'eschool_saas_20_' => ['SCH202620'],
         'eschool_saas_21_' => ['SCH202621'],
         'eschool_saas_31_zixuanyang' => ['SCH202631'],

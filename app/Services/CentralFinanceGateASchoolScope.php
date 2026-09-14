@@ -10,7 +10,7 @@ use Illuminate\Support\Collection;
 final class CentralFinanceGateASchoolScope
 {
     /** @var list<string> */
-    public const ACTIVE_CODES = ['MMBOWEN01', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632'];
+    public const ACTIVE_CODES = ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632'];
 
     /** @param list<string> $requestedCodes @return Collection<int, School> */
     public function resolve(array $requestedCodes = []): Collection

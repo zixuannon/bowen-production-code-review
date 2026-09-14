@@ -1,5 +1,16 @@
 # eSchool Finance V2 Roadmap
 
+## Bahan + Timecity Centralization setup — no cutover
+
+- [x] Production read-only tenant, identity, Finance, Student, and migration inventory
+- [x] Fresh verified backup and disposable Bahan/Timecity restore rehearsal
+- [x] Exact audited `MMBOWEN02` / `MMBOWEN03` mapping migration and fail-closed runner
+- [x] Canonical active-tenant registries, Gate A scope, Group Import V2.2, and regression coverage
+- [x] Disposable fresh MySQL mapping rehearsal
+- [ ] Production deployment and exact mapping migration require separate Human Gates
+- [ ] Formal School staff identities, Fund Account/allocation, opening-balance audit, and receivable cutoff
+- [ ] Centralization rehearsal and cutover remain stopped
+
 ## Operational UX & Identity — local candidate
 
 - [x] Group Finance Import Template V2.2 validations and clean lookup data

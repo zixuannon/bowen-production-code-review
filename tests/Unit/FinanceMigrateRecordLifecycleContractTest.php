@@ -17,7 +17,7 @@ class FinanceMigrateRecordLifecycleContractTest extends TestCase
             '2026_09_01_000002_add_deleted_at_to_fees_class_types',
         ], FinanceMigrateRecordLifecycle::MIGRATIONS);
         self::assertSame([
-            'MMBOWEN01', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632',
+            'MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632',
         ], array_keys(FinanceMigrateRecordLifecycle::PRODUCTION_TENANTS));
         self::assertArrayNotHasKey('SCH20261', FinanceMigrateRecordLifecycle::PRODUCTION_TENANTS);
     }

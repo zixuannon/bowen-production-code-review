@@ -149,6 +149,32 @@ plus a captured zero-write preflight; never substitute broad `migrate` or
 `migrate:school`. The canonical identity migration is forward-only; preserve its
 audit history and use an audited forward fix rather than rollback.
 
+### Bahan + Timecity canonical School Code targeted runner
+
+`centralization:migrate-school-codes` is the only candidate runner for the
+Bahan and Timecity mapping. Its default invocation is a zero-write preflight:
+
+```sh
+php artisan centralization:migrate-school-codes
+```
+
+It accepts no tenant/database input and can apply only central migration
+`2026_09_14_000002_canonicalize_bahan_timecity_school_codes`. The exact audited
+mapping is Bahan `SCH202616 -> MMBOWEN02` bound to
+`eschool_saas_17_bahan`, and Timecity `SCH202619 -> MMBOWEN03` bound to
+`eschool_saas_19_timecitys`. The old codes become history only and are not
+runtime/login aliases.
+
+Before `--execute`, require a fresh verified backup, complete identity-schema
+and migration-history checks, exact School/database ownership, no canonical or
+history conflict, and an eligible sequence state. Any mismatch must return a
+non-zero exit with zero write. Because candidate runtime registries already use
+the canonical codes, execute this exact migration from the prepared immutable
+candidate release immediately before the atomic switch, then verify both rows,
+both audit records, sequence `next_number >= 4`, and old-code login rejection.
+Never substitute broad `migrate`, `migrate:school`, rollback, or manual SQL
+replacement. Production execution and deployment are separate Human Gates.
+
 ### Finance P2/P3 targeted runner
 
 `finance:p2-p3-migration-safety` is the only approved runner for the P2/P3

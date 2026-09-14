@@ -51,7 +51,7 @@ class CentralFinanceStudentProfileSyncTest extends TestCase
         $this->tenantSchema($this->schoolBDatabase);
         DB::connection('mysql')->table('schools')->insert([
             ['id' => 1, 'name' => 'Central QA School A', 'code' => 'MMBOWEN01', 'database_name' => $this->schoolADatabase, 'installed' => true, 'status' => 'active'],
-            ['id' => 2, 'name' => 'Central QA School B', 'code' => 'SCH202616', 'database_name' => $this->schoolBDatabase, 'installed' => true, 'status' => 'active'],
+            ['id' => 2, 'name' => 'Central QA School B', 'code' => 'MMBOWEN02', 'database_name' => $this->schoolBDatabase, 'installed' => true, 'status' => 'active'],
         ]);
         $this->seedTenant($this->schoolADatabase, 11, '11111111-1111-4111-8111-111111111111', 'A-001', 'Ada', 'School A', '2026-08-20 09:00:00');
         $this->seedTenant($this->schoolBDatabase, 11, '22222222-2222-4222-8222-222222222222', 'B-001', 'Ben', 'School B', '2026-08-20 09:00:00');
@@ -160,7 +160,7 @@ class CentralFinanceStudentProfileSyncTest extends TestCase
     public function test_gate_a_student_runner_defaults_to_read_only_reconciliation(): void
     {
         $before = $this->centralHash();
-        $this->artisan('central-finance:student-profile-sync', ['--school-code' => ['MMBOWEN01', 'SCH202616']])
+        $this->artisan('central-finance:student-profile-sync', ['--school-code' => ['MMBOWEN01', 'MMBOWEN02']])
             ->assertSuccessful();
         $this->assertSame($before, $this->centralHash());
         $this->artisan('central-finance:student-profile-sync', ['--school-code' => ['MMBOWEN01'], '--backfill' => true])

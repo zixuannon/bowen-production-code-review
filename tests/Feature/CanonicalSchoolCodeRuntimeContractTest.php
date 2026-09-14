@@ -11,7 +11,10 @@ final class CanonicalSchoolCodeRuntimeContractTest extends TestCase
     public function test_deprecated_zixuan_code_is_absent_from_runtime_identity_paths(): void
     {
         $roots = ['app', 'config', 'routes', 'resources', 'scripts', 'qa'];
-        $allowed = [base_path('app/Console/Commands/MigrateOperationalIdentitySchema.php')];
+        $allowed = [
+            base_path('app/Console/Commands/MigrateOperationalIdentitySchema.php'),
+            base_path('app/Console/Commands/MigrateBahanTimecitySchoolCodes.php'),
+        ];
         $violations = [];
 
         foreach ($roots as $root) {

@@ -21,7 +21,7 @@ class StudentFeeAssignmentMigrationRunnerTest extends TestCase
         $this->mysql = config('database.connections.mysql');
         $this->school = config('database.connections.school');
         $central = $this->database();
-        $this->trusted = ['MMBOWEN01'=>$this->database(),'SCH202616'=>$this->database(),'SCH202619'=>$this->database()];
+        $this->trusted = ['MMBOWEN01'=>$this->database(),'MMBOWEN02'=>$this->database(),'MMBOWEN03'=>$this->database()];
         $sqlite = static fn (string $database): array => ['driver'=>'sqlite','database'=>$database,'prefix'=>'','foreign_key_constraints'=>true];
         Config::set('database.connections.mysql', $sqlite($central));
         Config::set('database.connections.school', $sqlite($this->trusted['MMBOWEN01']));
@@ -48,7 +48,7 @@ class StudentFeeAssignmentMigrationRunnerTest extends TestCase
 
     public function test_fixed_allowlist_is_exact_and_demo_is_excluded(): void
     {
-        $this->assertSame(['MMBOWEN01','SCH202616','SCH202619','SCH202620','SCH202621','SCH202631','SCH202632'], array_keys(MigrateStudentFeeAssignmentSchema::PRODUCTION_TENANTS));
+        $this->assertSame(['MMBOWEN01','MMBOWEN02','MMBOWEN03','SCH202620','SCH202621','SCH202631','SCH202632'], array_keys(MigrateStudentFeeAssignmentSchema::PRODUCTION_TENANTS));
         $this->assertArrayNotHasKey('SCH20261', MigrateStudentFeeAssignmentSchema::PRODUCTION_TENANTS);
         $this->assertSame([
             '2026_08_27_000001_create_student_fee_assignment_tables',
@@ -68,13 +68,13 @@ class StudentFeeAssignmentMigrationRunnerTest extends TestCase
 
     public function test_remaining_schools_are_refused_until_canary_is_schema_and_history_verified(): void
     {
-        $this->artisan('finance:migrate-student-fee-assignments', ['--tenant'=>['SCH202616','SCH202619'],'--execute'=>true])->assertExitCode(1);
-        $this->assertFalse($this->complete($this->trusted['SCH202616']));
+        $this->artisan('finance:migrate-student-fee-assignments', ['--tenant'=>['MMBOWEN02','MMBOWEN03'],'--execute'=>true])->assertExitCode(1);
+        $this->assertFalse($this->complete($this->trusted['MMBOWEN02']));
         $this->artisan('finance:migrate-student-fee-assignments', ['--tenant'=>['MMBOWEN01'],'--execute'=>true])->assertExitCode(0);
         $this->assertTrue($this->complete($this->trusted['MMBOWEN01']));
         $this->assertSame(MigrateStudentFeeAssignmentSchema::MIGRATIONS, $this->migrations($this->trusted['MMBOWEN01']));
-        $this->artisan('finance:migrate-student-fee-assignments', ['--tenant'=>['SCH202616','SCH202619'],'--execute'=>true])->assertExitCode(0);
-        foreach (['SCH202616','SCH202619'] as $code) $this->assertTrue($this->complete($this->trusted[$code]));
+        $this->artisan('finance:migrate-student-fee-assignments', ['--tenant'=>['MMBOWEN02','MMBOWEN03'],'--execute'=>true])->assertExitCode(0);
+        foreach (['MMBOWEN02','MMBOWEN03'] as $code) $this->assertTrue($this->complete($this->trusted[$code]));
     }
 
     public function test_partial_state_fails_closed_without_writing(): void

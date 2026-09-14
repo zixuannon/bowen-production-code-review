@@ -29,7 +29,7 @@ class EnsureFinanceMulticurrencyColumns extends Command
         $all = $this->option('all');
 
         if (!$schoolCode && !$all) {
-            $this->error('请使用 --school_code=SCH202619 或 --all');
+            $this->error('请使用 canonical School Code（例如 --school_code=MMBOWEN03）或 --all');
             return 1;
         }
 

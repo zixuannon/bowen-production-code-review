@@ -23,8 +23,8 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
         $central = $this->database();
         $this->trusted = [
             'MMBOWEN01' => $this->database(),
-            'SCH202616' => $this->database(),
-            'SCH202619' => $this->database(),
+            'MMBOWEN02' => $this->database(),
+            'MMBOWEN03' => $this->database(),
         ];
         $sqlite = static fn (string $database): array => [
             'driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true,
@@ -65,7 +65,7 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
     public function test_runner_has_the_fixed_non_demo_allowlist_and_exact_migration(): void
     {
         $this->assertSame(
-            ['MMBOWEN01', 'SCH202616', 'SCH202619', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632'],
+            ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03', 'SCH202620', 'SCH202621', 'SCH202631', 'SCH202632'],
             array_keys(FinanceMigrateCurrencyHistory::PRODUCTION_TENANTS),
         );
         $this->assertArrayNotHasKey('SCH20261', FinanceMigrateCurrencyHistory::PRODUCTION_TENANTS);
@@ -86,9 +86,9 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
     public function test_execute_is_canary_first_then_exact_remaining_tenants(): void
     {
         $this->artisan('finance:migrate-currency-history', [
-            '--tenant' => ['SCH202616', 'SCH202619'], '--execute' => true,
+            '--tenant' => ['MMBOWEN02', 'MMBOWEN03'], '--execute' => true,
         ])->assertExitCode(1);
-        $this->assertFalse($this->complete($this->trusted['SCH202616']));
+        $this->assertFalse($this->complete($this->trusted['MMBOWEN02']));
 
         $this->artisan('finance:migrate-currency-history', [
             '--tenant' => ['MMBOWEN01'], '--execute' => true,
@@ -96,10 +96,10 @@ final class FinanceCurrencyHistoryMigrationRunnerTest extends TestCase
         $this->assertTrue($this->complete($this->trusted['MMBOWEN01']));
 
         $this->artisan('finance:migrate-currency-history', [
-            '--tenant' => ['SCH202616', 'SCH202619'], '--execute' => true,
+            '--tenant' => ['MMBOWEN02', 'MMBOWEN03'], '--execute' => true,
         ])->assertExitCode(0);
-        $this->assertTrue($this->complete($this->trusted['SCH202616']));
-        $this->assertTrue($this->complete($this->trusted['SCH202619']));
+        $this->assertTrue($this->complete($this->trusted['MMBOWEN02']));
+        $this->assertTrue($this->complete($this->trusted['MMBOWEN03']));
     }
 
     public function test_partial_schema_fails_closed_without_recording_migration(): void

@@ -25,8 +25,8 @@ class FinanceMigrateP31P32 extends Command
     private const PRODUCTION_TENANTS = [
         'SCH20261' => 'eschool_saas_1_demo',
         'MMBOWEN01' => 'eschool_saas_15_zixuan',
-        'SCH202616' => 'eschool_saas_17_bahan',
-        'SCH202619' => 'eschool_saas_19_timecitys',
+        'MMBOWEN02' => 'eschool_saas_17_bahan',
+        'MMBOWEN03' => 'eschool_saas_19_timecitys',
         'SCH202620' => 'eschool_saas_20_',
         'SCH202621' => 'eschool_saas_21_',
         'SCH202631' => 'eschool_saas_31_zixuanyang',
