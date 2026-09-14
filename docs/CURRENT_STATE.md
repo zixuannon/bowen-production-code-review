@@ -16,6 +16,13 @@ Finance V2
 
 ## Central Finance cutover control UI — local candidate / no cutover
 
+- The initial Production deployment used
+  `bba6c8e7491b4c55df8b309ab151e34c414e49f9`. During authenticated release
+  QA, the unrelated profile page exposed a legacy date double-formatting 500
+  for a Central user. The immediate descendant follow-up formats the canonical
+  raw DOB value once and includes a regression contract before final browser
+  QA.
+
 - Branch `codex/central-cutover-ui` starts exactly from active Production
   source `056454940f3a359cfea234747491b45f0309f336`. It adds one dedicated
   Central control-plane page for selecting an authorized Finance Group School,

@@ -70,7 +70,7 @@
                                     @endphp
                                 @else
                                     @php
-                                        $dob = Carbon\Carbon::createFromFormat($originalDateFormat, $userData->dob)->format('d-m-Y');
+                                        $dob = Carbon\Carbon::parse($userData->getRawOriginal('dob'))->format('d-m-Y');
                                     @endphp
                                 @endif
                                 {!! Form::text('dob', $dob , ['required','placeholder' => __('dob'), 'class' => 'datepicker-popup-no-future form-control','required' => true]) !!}
