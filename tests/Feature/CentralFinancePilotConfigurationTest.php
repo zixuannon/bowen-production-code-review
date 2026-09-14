@@ -95,7 +95,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
     public function test_ready_to_central_requires_signed_opening_and_assigned_head_finance_without_ledger_write(): void
     {
         $cutover = app(CentralFinanceSchoolCutoverService::class);
-        try { $cutover->transition($this->headFinance, $this->zixuan, 'ready'); $this->fail('Incomplete configuration must not become ready.'); } catch (LogicException) {}
+        try { $cutover->transition($this->headFinance, $this->zixuan, 'ready', 'Readiness attempt'); $this->fail('Incomplete configuration must not become ready.'); } catch (LogicException) {}
 
         $account = app(CentralFinanceFundAccountAdministrationService::class)->createSchoolAccount($this->headFinance, $this->zixuan, [
             'account_code' => 'ZIX-CASH', 'account_name' => 'Zixuan Cash', 'currency' => 'MMK',
@@ -106,8 +106,8 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         $this->assertSame(1, CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->where(['fund_account_id' => $account->id, 'change_type' => 'initial'])->count());
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
 
-        $this->assertSame('ready', $cutover->transition($this->headFinance, $this->zixuan, 'ready')->status);
-        $this->assertSame('central', $cutover->transition($this->headFinance, $this->zixuan, 'central')->status);
+        $this->assertSame('ready', $cutover->transition($this->headFinance, $this->zixuan, 'ready', 'Readiness approved')->status);
+        $this->assertSame('central', $cutover->transition($this->headFinance, $this->zixuan, 'central', 'Cutover approved')->status);
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
     }
 

@@ -553,30 +553,6 @@ final class CentralFinanceWorkspaceController extends Controller
         return back()->with('success', __('Central Fund Account opening balance adjustment audited.'));
     }
 
-    public function changeCutoverState(Request $request): RedirectResponse
-    {
-        [$actor, $school] = $this->currentOperatingContext();
-        $status = $request->validate(['status' => ['required', Rule::in(['legacy', 'ready', 'central'])]])['status'];
-        $this->cutovers->transition($actor, $school, $status);
-        return back()->with('success', __('Central Finance cutover state updated.'));
-    }
-
-    public function setReceivableSyncEffectiveAt(Request $request): RedirectResponse
-    {
-        [$actor, $school] = $this->currentOperatingContext();
-        $data = $request->validate([
-            'receivable_sync_effective_at' => ['required', 'date'],
-            'receivable_sync_effective_reason' => ['required', 'string', 'max:2000'],
-        ]);
-        $this->cutovers->setReceivableSyncEffectiveAt(
-            $actor,
-            $school,
-            CentralFinanceSchoolCutoverService::parseReceivableSyncEffectiveAt($data['receivable_sync_effective_at']),
-            $data['receivable_sync_effective_reason'],
-        );
-        return back()->with('success', __('Fresh Start receivable cutoff saved.'));
-    }
-
     public function collect(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();

@@ -27,6 +27,7 @@ final class CentralFinanceSchoolCutoverService
     public function __construct(
         private readonly CentralFinanceCutoverReadinessService $readiness,
         private readonly CentralFinanceConfigurationAuthorizationService $configurationAuthorization,
+        private readonly CentralFinanceDocumentAuditService $audits,
     ) {}
 
     public static function parseReceivableSyncEffectiveAt(string $value): CarbonImmutable
@@ -104,26 +105,42 @@ final class CentralFinanceSchoolCutoverService
         }
 
         $school = School::on('mysql')->findOrFail($requestedSchool->id);
-        $this->configurationAuthorization->assertHeadFinanceCanConfigureSchool($actor, $school);
+        $this->configurationAuthorization->assertCanConfigureCutover($actor, $school);
 
         return DB::connection('mysql')->transaction(function () use ($actor, $school, $effectiveAt, $reason): CentralFinanceSchoolCutover {
             $row = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $school->id)->lockForUpdate()->first();
             if ($row !== null && $row->status !== CentralFinanceSchoolCutover::LEGACY) {
                 throw new LogicException('The Fresh Start receivable cutoff is immutable after a School is marked ready.');
             }
+            if ($this->hasRealCentralFinancialActivity((int) $school->id)) {
+                throw new LogicException('The receivable cutoff is immutable after Central Finance activity exists.');
+            }
+            $before = $row === null ? null : $this->auditSnapshot($row);
             $row ??= new CentralFinanceSchoolCutover(['school_id' => $school->id, 'status' => CentralFinanceSchoolCutover::LEGACY]);
             $row->fill([
                 'receivable_sync_effective_at' => $effectiveAt,
                 'receivable_sync_effective_by' => $actor->id,
                 'receivable_sync_effective_reason' => trim($reason),
             ])->save();
+            $this->audits->record(
+                $actor,
+                $row,
+                'central_finance_school_cutover',
+                'cutoff_updated',
+                mb_substr(trim($reason), 0, 255),
+                $before,
+                $this->auditSnapshot($row),
+            );
 
             return $row->fresh();
         });
     }
 
-    public function transition(CentralFinanceUser $actor, School $requestedSchool, string $target): CentralFinanceSchoolCutover
+    public function transition(CentralFinanceUser $actor, School $requestedSchool, string $target, string $reason): CentralFinanceSchoolCutover
     {
+        if (trim($reason) === '') {
+            throw new InvalidArgumentException('A signed cutover transition reason is required.');
+        }
         if (!in_array($target, [CentralFinanceSchoolCutover::LEGACY, CentralFinanceSchoolCutover::READY, CentralFinanceSchoolCutover::CENTRAL], true)) {
             throw new InvalidArgumentException('The Central Finance cutover state is invalid.');
         }
@@ -132,13 +149,13 @@ final class CentralFinanceSchoolCutoverService
         }
 
         $school = School::on('mysql')->findOrFail($requestedSchool->id);
-        $this->configurationAuthorization->assertHeadFinanceCanConfigureSchool($actor, $school);
+        $this->configurationAuthorization->assertCanConfigureCutover($actor, $school);
 
-        return DB::connection('mysql')->transaction(function () use ($actor, $school, $target): CentralFinanceSchoolCutover {
+        return DB::connection('mysql')->transaction(function () use ($actor, $school, $target, $reason): CentralFinanceSchoolCutover {
             $row = CentralFinanceSchoolCutover::on('mysql')->where('school_id', $school->id)->lockForUpdate()->first();
             $current = $row?->status ?? CentralFinanceSchoolCutover::LEGACY;
             if ($current === $target) {
-                return $row ?? CentralFinanceSchoolCutover::on('mysql')->create(['school_id' => $school->id, 'status' => $target]);
+                throw new LogicException('The School is already in the requested Central Finance status.');
             }
             if ($current === CentralFinanceSchoolCutover::CENTRAL && $target === CentralFinanceSchoolCutover::LEGACY && $this->hasRealCentralFinancialActivity($school->id)) {
                 throw new LogicException('A School with Central Finance transactions cannot silently return to legacy Finance.');
@@ -153,6 +170,7 @@ final class CentralFinanceSchoolCutoverService
                 $this->readiness->assertReadyForCentral($school);
             }
 
+            $before = $row === null ? null : $this->auditSnapshot($row);
             $row ??= new CentralFinanceSchoolCutover(['school_id' => $school->id]);
             $row->status = $target;
             if ($target === CentralFinanceSchoolCutover::READY) {
@@ -162,6 +180,17 @@ final class CentralFinanceSchoolCutoverService
             $row->cutover_at = $target === CentralFinanceSchoolCutover::CENTRAL ? now() : null;
             $row->approved_by = $target === CentralFinanceSchoolCutover::CENTRAL ? $actor->id : null;
             $row->save();
+            $after = $this->auditSnapshot($row);
+            $after['transition_reason'] = trim($reason);
+            $this->audits->record(
+                $actor,
+                $row,
+                'central_finance_school_cutover',
+                'status_transitioned',
+                mb_substr(trim($reason), 0, 255),
+                $before,
+                $after,
+            );
 
             return $row->fresh();
         });
@@ -181,5 +210,21 @@ final class CentralFinanceSchoolCutoverService
         }
 
         return false;
+    }
+
+    /** @return array<string, mixed> */
+    private function auditSnapshot(CentralFinanceSchoolCutover $row): array
+    {
+        return [
+            'school_id' => (int) $row->school_id,
+            'status' => (string) $row->status,
+            'receivable_sync_effective_at' => $row->getRawOriginal('receivable_sync_effective_at'),
+            'receivable_sync_effective_by' => $row->receivable_sync_effective_by === null ? null : (int) $row->receivable_sync_effective_by,
+            'receivable_sync_effective_reason' => $row->receivable_sync_effective_reason,
+            'ready_by' => $row->ready_by === null ? null : (int) $row->ready_by,
+            'ready_at' => $row->getRawOriginal('ready_at'),
+            'cutover_at' => $row->getRawOriginal('cutover_at'),
+            'approved_by' => $row->approved_by === null ? null : (int) $row->approved_by,
+        ];
     }
 }

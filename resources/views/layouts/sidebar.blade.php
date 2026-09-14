@@ -148,7 +148,7 @@
                         </ul></details></li>
                     @if($centralCanConfigureAnySchool || $centralCanManageGroups)
                         <li class="nav-item">
-                            <details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.staff') || request()->routeIs('central-finance.accounts') && request('setup')) open @endif>
+                            <details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.staff','central-finance.cutover') || request()->routeIs('central-finance.accounts') && request('setup')) open @endif>
                                 <summary class="nav-link">{{ __('设置与开账') }} <i class="menu-arrow"></i></summary>
                                 <ul class="nav flex-column sub-menu">
                                     @if($centralCanConfigureAnySchool)
@@ -158,6 +158,7 @@
                                     @if($centralCanManageGroups)
                                         <li class="nav-item"><a class="nav-link" href="{{ route('finance-groups.index') }}">{{ __('Finance Groups') }}</a></li>
                                     @endif
+                                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.cutover') ? 'active' : '' }}" href="{{ route('central-finance.cutover') }}">{{ __('Centralization Cutover') }}</a></li>
                                 </ul>
                             </details>
                         </li>
@@ -165,6 +166,14 @@
                 </ul></div>
             </li>
             @endif
+        @endif
+        @if($centralCanManageGroups && !$hasCentralFinanceIdentity)
+            <li class="nav-item {{ request()->routeIs('central-finance.cutover') ? 'active' : '' }}">
+                <a class="nav-link {{ request()->routeIs('central-finance.cutover') ? 'active' : '' }}" href="{{ route('central-finance.cutover') }}" @if(request()->routeIs('central-finance.cutover')) aria-current="page" @endif>
+                    <i class="fa fa-shield menu-icon" aria-hidden="true"></i>
+                    <span class="menu-title">{{ __('Centralization Cutover') }}</span>
+                </a>
+            </li>
         @endif
         {{-- XIAOBAILONG-INTEGRATION: keep this teacher workspace entry during deployments. --}}
         @if (config('xiaobailong.enabled') && Auth::check() && Auth::user()->hasRole('Teacher') && Auth::user()->can('xiaobailong-use'))

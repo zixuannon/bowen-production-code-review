@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CentralFinanceUser;
 use App\Models\CentralFinanceSchoolStaffIdentity;
+use App\Models\FinanceGroupSchool;
 use App\Models\FinanceGroupUser;
 use App\Models\School;
 use App\Models\User;
@@ -39,6 +40,36 @@ final class CentralFinanceConfigurationAuthorizationService
         }
 
         return $groupUser;
+    }
+
+    /**
+     * Cutover is a control-plane operation. A Central Super Admin may operate
+     * only on an active Finance Group member; Head Finance still needs both
+     * explicit School and Group operating scopes.
+     */
+    public function assertCanConfigureCutover(CentralFinanceUser $actor, School $school): void
+    {
+        $actor = CentralFinanceUser::on('mysql')->findOrFail($actor->id);
+        $roleIdentity = User::on('mysql')->findOrFail($actor->id);
+        $isCentralSuperAdmin = $actor->getRawOriginal('school_id') === null
+            && Schema::connection('mysql')->hasTable('roles')
+            && Schema::connection('mysql')->hasTable('model_has_roles')
+            && $roleIdentity->hasRole('Super Admin');
+
+        if ($isCentralSuperAdmin) {
+            $isActiveGroupSchool = FinanceGroupSchool::query()
+                ->where('school_id', $school->id)
+                ->where('status', 'active')
+                ->whereHas('group', static fn ($query) => $query->where('status', 'active'))
+                ->exists();
+            if (!$isActiveGroupSchool) {
+                throw new AuthorizationException('The School is not an active member of an active Finance Group.');
+            }
+
+            return;
+        }
+
+        $this->assertHeadFinanceCanConfigureSchool($actor, $school);
     }
 
     public function isHeadFinanceOperatingForSchool(CentralFinanceUser $actor, School $school, int $groupId): bool

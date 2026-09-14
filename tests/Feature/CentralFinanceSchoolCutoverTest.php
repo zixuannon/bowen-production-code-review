@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\CentralFinanceUser;
+use App\Models\CentralFinanceDocumentAudit;
 use App\Models\User;
+use App\Http\Controllers\CentralFinanceCutoverController;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceSchoolFinanceNavigationService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -77,11 +79,11 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         // Central registry key; only the trusted current tenant connection
         // determines which School's cutover state applies.
         Config::set('database.connections.school.database', 'local_zixuan');
-        $cutovers->transition($this->headFinance, $zixuan, 'ready');
+        $cutovers->transition($this->headFinance, $zixuan, 'ready', 'Readiness approved');
         $this->assertFalse($cutovers->allowsCentralWrites(1));
         $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(999));
         $this->assertSame('legacy', $cutovers->statusForSchool(2));
-        $cutovers->transition($this->headFinance, $zixuan, 'central');
+        $cutovers->transition($this->headFinance, $zixuan, 'central', 'Cutover approved');
 
         $this->assertTrue($cutovers->allowsCentralWrites(1));
         $this->assertFalse($cutovers->allowsCentralWrites(2));
@@ -94,8 +96,8 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $cutovers = app(CentralFinanceSchoolCutoverService::class);
         $school = School::on('mysql')->findOrFail(1);
         Config::set('database.connections.school.database', 'local_zixuan');
-        $cutovers->transition($this->headFinance, $school, 'ready');
-        $cutovers->transition($this->headFinance, $school, 'central');
+        $cutovers->transition($this->headFinance, $school, 'ready', 'Readiness approved');
+        $cutovers->transition($this->headFinance, $school, 'central', 'Cutover approved');
         Config::set('database.connections.school.database', 'local_timecity');
         $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(2));
         $this->assertSame('legacy', $cutovers->statusForSchool(2));
@@ -111,8 +113,8 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         Config::set('database.connections.school.database', 'local_zixuan');
         $this->assertFalse($navigation->usesCentralFinanceDailyWorkspace());
 
-        $cutovers->transition($this->headFinance, $zixuan, 'ready');
-        $cutovers->transition($this->headFinance, $zixuan, 'central');
+        $cutovers->transition($this->headFinance, $zixuan, 'ready', 'Readiness approved');
+        $cutovers->transition($this->headFinance, $zixuan, 'central', 'Cutover approved');
         $this->assertTrue($navigation->usesCentralFinanceDailyWorkspace());
 
         Config::set('database.connections.school.database', 'local_timecity');
@@ -135,15 +137,108 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
     {
         $cutovers = app(CentralFinanceSchoolCutoverService::class);
         $school = School::on('mysql')->findOrFail(1);
-        $cutovers->transition($this->headFinance, $school, 'ready');
-        $cutovers->transition($this->headFinance, $school, 'central');
-        $this->assertSame('legacy', $cutovers->transition($this->headFinance, $school, 'legacy')->status);
+        $cutovers->transition($this->headFinance, $school, 'ready', 'Readiness approved');
+        $cutovers->transition($this->headFinance, $school, 'central', 'Cutover approved');
+        $this->assertSame('legacy', $cutovers->transition($this->headFinance, $school, 'legacy', 'Controlled rehearsal rollback')->status);
 
-        $cutovers->transition($this->headFinance, $school, 'ready');
-        $cutovers->transition($this->headFinance, $school, 'central');
+        $cutovers->transition($this->headFinance, $school, 'ready', 'Readiness approved again');
+        $cutovers->transition($this->headFinance, $school, 'central', 'Cutover approved again');
         DB::connection('mysql')->table('central_finance_ledger_entries')->insert(['entry_uuid'=>(string) Str::uuid(),'school_id'=>1,'fund_account_id'=>1,'entry_date'=>'2026-08-21','occurred_at'=>now(),'source_type'=>'test','source_id'=>'real-1','source_line'=>'main','transaction_type'=>'operating_income','currency'=>'MMK','money_in'=>1,'money_out'=>0,'operating_income'=>1,'operating_expense'=>0,'created_at'=>now(),'updated_at'=>now()]);
         $this->expectException(LogicException::class);
-        $cutovers->transition($this->headFinance, $school, 'legacy');
+        $cutovers->transition($this->headFinance, $school, 'legacy', 'Unsafe rollback attempt');
+    }
+
+    public function test_cutover_ui_rejects_unauthorized_and_wrong_school_scope(): void
+    {
+        $tenantActor = User::on('mysql')->findOrFail(101);
+        $this->withoutMiddleware()->actingAs($tenantActor)
+            ->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(1))
+            ->assertForbidden();
+
+        $this->actingAs(User::on('mysql')->findOrFail(100))
+            ->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(2, 'MMBOWEN03'))
+            ->assertForbidden();
+    }
+
+    public function test_cutover_ui_fails_closed_for_invalid_datetime_missing_reason_and_confirmation(): void
+    {
+        $this->withoutMiddleware()->actingAs(User::on('mysql')->findOrFail(100));
+        $original = DB::connection('mysql')->table('central_finance_school_cutovers')->where('school_id', 1)->value('receivable_sync_effective_at');
+
+        $this->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(1, 'MMBOWEN01', [
+            'receivable_sync_effective_at' => 'not-a-datetime',
+        ]))->assertSessionHasErrors('receivable_sync_effective_at');
+        $this->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(1, 'MMBOWEN01', [
+            'receivable_sync_effective_reason' => '',
+        ]))->assertSessionHasErrors('receivable_sync_effective_reason');
+        $this->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(1, 'WRONG-CODE'))
+            ->assertSessionHasErrors('confirm_school_code');
+
+        $this->assertSame($original, DB::connection('mysql')->table('central_finance_school_cutovers')->where('school_id', 1)->value('receivable_sync_effective_at'));
+        $this->assertSame(0, CentralFinanceDocumentAudit::on('mysql')->where('document_type', 'central_finance_school_cutover')->count());
+    }
+
+    public function test_valid_cutoff_setup_uses_yangon_time_and_writes_only_append_only_audit(): void
+    {
+        $this->withoutMiddleware()->actingAs(User::on('mysql')->findOrFail(100));
+        $financeCounts = $this->financialWriteCounts();
+
+        $this->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(1))
+            ->assertRedirect(route('central-finance.cutover', ['school_id' => 1]));
+
+        $row = DB::connection('mysql')->table('central_finance_school_cutovers')->where('school_id', 1)->first();
+        $this->assertSame('2026-10-01 09:30:00', (string) $row->receivable_sync_effective_at);
+        $this->assertSame(100, (int) $row->receivable_sync_effective_by);
+        $audit = CentralFinanceDocumentAudit::on('mysql')->where('document_type', 'central_finance_school_cutover')->sole();
+        $this->assertSame('cutoff_updated', $audit->action);
+        $this->assertSame('Approved Timecity/Bahan rehearsal boundary', $audit->reason);
+        $this->assertSame('2026-10-01 09:30:00', $audit->after_values['receivable_sync_effective_at']);
+        $this->assertSame($financeCounts, $this->financialWriteCounts());
+
+        $view = app(CentralFinanceCutoverController::class)->show(new \Illuminate\Http\Request(['school_id' => 1]));
+        $this->assertSame('central-finance.cutover', $view->name());
+        $this->assertSame('Asia/Yangon', $view->getData()['timezone']);
+        $this->assertSame('legacy', $view->getData()['cutoverStatus']);
+    }
+
+    public function test_central_super_admin_can_configure_only_an_active_group_school(): void
+    {
+        DB::connection('mysql')->table('users')->insert(['id'=>102,'school_id'=>null,'central_finance_principal_type'=>'central_user','first_name'=>'Super','last_name'=>'Admin','created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('roles')->insert(['id'=>2,'name'=>'Super Admin','guard_name'=>'web','created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('model_has_roles')->insert(['role_id'=>2,'model_type'=>User::class,'model_id'=>102]);
+
+        $this->withoutMiddleware()->actingAs(User::on('mysql')->findOrFail(102))
+            ->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(1))
+            ->assertRedirect(route('central-finance.cutover', ['school_id' => 1]));
+
+        $this->post(route('central-finance.cutover-receivable-effective-at'), $this->cutoffPayload(2, 'MMBOWEN03'))
+            ->assertForbidden();
+    }
+
+    public function test_status_transition_requires_confirmation_reason_and_audits_the_change(): void
+    {
+        $this->withoutMiddleware()->actingAs(User::on('mysql')->findOrFail(100));
+        $payload = [
+            'school_id' => 1,
+            'status' => 'ready',
+            'reason' => 'Readiness checklist formally approved',
+            'confirm_school_code' => 'MMBOWEN01',
+            'confirmed' => '1',
+        ];
+
+        $this->post(route('central-finance.cutover-state'), array_replace($payload, ['reason' => '']))
+            ->assertSessionHasErrors('reason');
+        $this->post(route('central-finance.cutover-state'), $payload)
+            ->assertRedirect(route('central-finance.cutover', ['school_id' => 1]));
+
+        $this->assertDatabaseHas('central_finance_school_cutovers', ['school_id' => 1, 'status' => 'ready'], 'mysql');
+        $this->assertDatabaseHas('central_finance_document_audits', [
+            'school_id' => 1,
+            'document_type' => 'central_finance_school_cutover',
+            'action' => 'status_transitioned',
+            'actor_id' => 100,
+            'reason' => 'Readiness checklist formally approved',
+        ], 'mysql');
     }
 
     public function test_cutover_migration_is_additive_and_reversible(): void
@@ -154,6 +249,26 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $migration->up();
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_school_cutovers'));
         $this->assertTrue(Schema::connection('mysql')->hasTable('schools'));
+    }
+
+    /** @param array<string, mixed> $overrides @return array<string, mixed> */
+    private function cutoffPayload(int $schoolId, string $schoolCode = 'MMBOWEN01', array $overrides = []): array
+    {
+        return array_replace([
+            'school_id' => $schoolId,
+            'receivable_sync_effective_at' => '2026-10-01T09:30',
+            'receivable_sync_effective_reason' => 'Approved Timecity/Bahan rehearsal boundary',
+            'confirm_school_code' => $schoolCode,
+            'confirmed' => '1',
+        ], $overrides);
+    }
+
+    /** @return array<string, int> */
+    private function financialWriteCounts(): array
+    {
+        return collect(['central_finance_payments', 'central_finance_receipts', 'central_finance_ledger_entries'])
+            ->mapWithKeys(static fn (string $table): array => [$table => DB::connection('mysql')->table($table)->count()])
+            ->all();
     }
 
     public function test_fresh_start_cutoff_migration_is_additive_and_reversible(): void
@@ -178,7 +293,7 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         ]);
 
         $this->expectException(LogicException::class);
-        $cutovers->transition($this->headFinance, $school, 'ready');
+        $cutovers->transition($this->headFinance, $school, 'ready', 'Readiness approved');
     }
 
     public function test_explicit_fresh_start_receivable_cutoff_is_audited_and_freezes_after_ready(): void
@@ -187,7 +302,7 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $school = School::on('mysql')->findOrFail(1);
         $row = $cutovers->setReceivableSyncEffectiveAt($this->headFinance, $school, \Carbon\CarbonImmutable::parse('2026-08-21 00:00:00'), 'Approved Fresh Start boundary');
         $this->assertSame(100, (int) $row->receivable_sync_effective_by);
-        $this->assertSame('ready', $cutovers->transition($this->headFinance, $school, 'ready')->status);
+        $this->assertSame('ready', $cutovers->transition($this->headFinance, $school, 'ready', 'Readiness approved')->status);
         $this->expectException(LogicException::class);
         $cutovers->setReceivableSyncEffectiveAt($this->headFinance, $school, \Carbon\CarbonImmutable::parse('2026-08-22 00:00:00'), 'Unsafe late change');
     }

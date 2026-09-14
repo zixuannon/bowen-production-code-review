@@ -796,4 +796,6 @@
     "The server validates School identity, Import Reference, class, and session before generating Student Code.": "The server validates School identity, Import Reference, class, and session before generating Student Code.",
     "Import Reference is required.": "Import Reference is required.",
     "Duplicate Import Reference in the import file or School.": "Duplicate Import Reference in the import file or School."
+    ,"cutoff_updated": "Receivable cutoff updated"
+    ,"status_transitioned": "Central Finance status transitioned"
 }

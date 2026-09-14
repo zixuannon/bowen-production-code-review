@@ -7,6 +7,7 @@ use App\Http\Controllers\FinanceGroupHqAccountController;
 use App\Http\Controllers\GroupFinanceController;
 use App\Http\Controllers\FinanceOperatingWorkspaceController;
 use App\Http\Controllers\CentralFinanceWorkspaceController;
+use App\Http\Controllers\CentralFinanceCutoverController;
 use App\Http\Controllers\CentralFinanceStudentCollectionController;
 
 use App\Http\Controllers\AddonController;
@@ -1279,8 +1280,9 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/fund-accounts/{fundAccount}/assignments', [CentralFinanceWorkspaceController::class, 'syncFundAccountAssignments'])->name('central-finance.accounts.assignments');
     Route::put('central-finance/fund-accounts/{fundAccount}/school-allocations', [CentralFinanceWorkspaceController::class, 'syncFundAccountSchoolAllocations'])->name('central-finance.accounts.school-allocations');
     Route::post('central-finance/fund-accounts/{fundAccount}/opening-adjustments', [CentralFinanceWorkspaceController::class, 'adjustFundAccountOpeningBalance'])->name('central-finance.accounts.opening-adjustments');
-    Route::post('central-finance/cutover-state', [CentralFinanceWorkspaceController::class, 'changeCutoverState'])->name('central-finance.cutover-state');
-    Route::post('central-finance/cutover-receivable-effective-at', [CentralFinanceWorkspaceController::class, 'setReceivableSyncEffectiveAt'])->name('central-finance.cutover-receivable-effective-at');
+    Route::get('central-finance/cutover', [CentralFinanceCutoverController::class, 'show'])->name('central-finance.cutover');
+    Route::post('central-finance/cutover-state', [CentralFinanceCutoverController::class, 'updateStatus'])->name('central-finance.cutover-state');
+    Route::post('central-finance/cutover-receivable-effective-at', [CentralFinanceCutoverController::class, 'updateCutoff'])->name('central-finance.cutover-receivable-effective-at');
     Route::get('central-finance/staff', [CentralFinanceWorkspaceController::class, 'staff'])->name('central-finance.staff');
     Route::get('central-finance/categories', [CentralFinanceWorkspaceController::class, 'categories'])->name('central-finance.categories');
     Route::get('central-finance/audits', [CentralFinanceWorkspaceController::class, 'audits'])->name('central-finance.audits');

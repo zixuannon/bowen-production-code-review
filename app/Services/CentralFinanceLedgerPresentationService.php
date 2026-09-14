@@ -125,6 +125,7 @@ final class CentralFinanceLedgerPresentationService
             'central_finance_fund_handover', 'fund_handover' => __('Fund Handover'),
             'central_finance_hq_funding_request', 'hq_funding' => __('HQ / School Funding'),
             'central_finance_import_batch', 'import_batch' => __('Import Batch'),
+            'central_finance_school_cutover' => __('School Centralization Cutover'),
             default => __('Unknown source (:source)', ['source' => str($documentType)->replace(['_', '-'], ' ')->title()->toString()]),
         };
     }

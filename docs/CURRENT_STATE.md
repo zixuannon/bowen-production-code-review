@@ -14,6 +14,37 @@ Last updated: 2026-09-14
 
 Finance V2
 
+## Central Finance cutover control UI — local candidate / no cutover
+
+- Branch `codex/central-cutover-ui` starts exactly from active Production
+  source `056454940f3a359cfea234747491b45f0309f336`. It adds one dedicated
+  Central control-plane page for selecting an authorized Finance Group School,
+  viewing `Legacy / Ready / Central`, and configuring the receivable cutoff in
+  the fixed `Asia/Yangon` business timezone. No migration or Production write
+  is part of this candidate.
+- Both cutoff saves and status transitions require a non-empty audit reason,
+  an explicit confirmation checkbox, the selected canonical School Code, and
+  a second browser confirmation. Cutoff and transition changes run under the
+  existing row lock and append before/after records to the immutable Central
+  Finance audit log. The page does not create Staff, Fund Accounts,
+  Categories, Fees, Payments, Receipts, or Ledger entries.
+- A Central Super Admin may control only a School that is an active member of
+  an active Finance Group. Head Finance continues to require explicit Central
+  School operate scope plus matching active Group operate scope. School staff,
+  tenant identities, and cross-School direct URLs fail with 403.
+- Cutoff edits stop after Ready/Central or after any real Central financial
+  activity exists. A Central-to-Legacy transition remains blocked once any
+  Central Payment, Expense, Other Income, Transfer, Handover, Funding, or
+  Ledger history exists; permitted rehearsal transitions require a reason and
+  remain audited.
+- Focused authorization, validation, timezone, no-financial-write, audit, and
+  rollback tests pass. Authenticated local Playwright passes at 1280 and 390 px
+  with no page-level overflow, console error, or unauthorized School-staff
+  access. Full regression passes 762 tests / 6,199 assertions with three
+  expected opt-in skips and existing PHP 8.5/PHPUnit deprecations only.
+- No cutover, schema migration, Production deployment, or Production data
+  change has been performed.
+
 ## Bahan + Timecity Centralization setup — local candidate / no cutover
 
 - Branch `codex/timecity-bahan-centralization-setup` starts exactly from
