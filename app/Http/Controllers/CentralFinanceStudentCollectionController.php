@@ -9,6 +9,7 @@ use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
 use App\Services\CentralFinanceCurrencySummaryService;
+use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceOptionalFeeAssignmentService;
 use App\Services\CentralFinancePaymentService;
 use App\Services\CentralFinanceReceiptViewModelFactory;
@@ -40,23 +41,30 @@ final class CentralFinanceStudentCollectionController extends Controller
         private readonly CentralFinanceCurrencySummaryService $currencySummaries,
         private readonly CentralFinanceReceiptViewModelFactory $receiptViewModels,
         private readonly CentralFinanceOptionalFeeAssignmentService $optionalFees,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     public function collection(Request $request): View
     {
         $actor = $this->actor();
-        $school = $this->workspace->currentSchool($actor);
-        $schools = $this->workspace->accessibleSchools($actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
+        $school = $this->workspace->currentSchool($actor, $includeQaTest);
+        $schools = $this->workspace->accessibleSchools($actor, $includeQaTest);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
         if ($school === null) {
-            return view('central-finance.student-collection.index', compact('school', 'schools', 'schoolFinanceFacade'));
+            return view('central-finance.student-collection.index', compact('school', 'schools', 'schoolFinanceFacade', 'includeQaTest', 'canIncludeQaTest'));
         }
 
         $search = trim((string) $request->query('search', ''));
         $class = trim((string) $request->query('class', ''));
-        $profiles = CentralFinanceStudentProfile::on('mysql')
-            ->with('receivables')
-            ->where('school_id', $school->id)
+        $profilesQuery = CentralFinanceStudentProfile::on('mysql')
+            ->with(['receivables' => function ($query) use ($includeQaTest): void {
+                $this->dataIsolation->apply($query, 'receivable', $includeQaTest);
+            }])
+            ->where('school_id', $school->id);
+        $this->dataIsolation->apply($profilesQuery, 'student_profile', $includeQaTest);
+        $profiles = $profilesQuery
             ->when($class !== '', fn ($query) => $query->where('class_name', $class))
             ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
                 $nested->where('student_name', 'like', "%{$search}%")
@@ -68,14 +76,18 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->orderBy('student_name')
             ->paginate(20)
             ->withQueryString();
-        $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
-        $classes = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)
-            ->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
+        $profiles->getCollection()->each(function (CentralFinanceStudentProfile $profile): void {
+            $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
+            $profile->setAttribute('production_eligible', $this->dataIsolation->isProduction('student_profile', (int) $profile->id));
+        });
+        $classesQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
+        $this->dataIsolation->apply($classesQuery, 'student_profile', $includeQaTest);
+        $classes = $classesQuery->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
         $canCollect = $this->canCollect($actor, $school->id);
         $canSubmitPending = $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
 
-        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'canSubmitPending', 'cutoverStatus', 'schoolFinanceFacade'));
+        return view('central-finance.student-collection.index', compact('school', 'schools', 'profiles', 'classes', 'search', 'class', 'canCollect', 'canSubmitPending', 'cutoverStatus', 'schoolFinanceFacade', 'includeQaTest', 'canIncludeQaTest'));
     }
 
     public function show(int $profile): View
@@ -90,8 +102,9 @@ final class CentralFinanceStudentCollectionController extends Controller
         // actor's current, explicitly selected School.
         $currentSchool = $this->workspace->currentSchool($actor);
         $isCurrentSchool = $currentSchool !== null && (int) $currentSchool->id === (int) $school->id;
-        $canCollect = $isCurrentSchool && $this->canCollect($actor, $school->id);
-        $canSubmitPending = $isCurrentSchool && $this->canSubmitPending($actor, $school->id);
+        $productionEligible = $this->dataIsolation->isProduction('student_profile', (int) $profile->id);
+        $canCollect = $productionEligible && $isCurrentSchool && $this->canCollect($actor, $school->id);
+        $canSubmitPending = $productionEligible && $isCurrentSchool && $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
         $optionalItems = collect();
@@ -204,6 +217,7 @@ final class CentralFinanceStudentCollectionController extends Controller
     {
         $actor = $this->actor();
         $school = $this->workspace->requireOperatingSchool($actor);
+        $this->dataIsolation->assertProduction('school', (int) $school->id);
         $this->workspace->assertHeadFinance($actor);
         $this->cutovers->assertCentralWritesAllowed($school->id);
         return [$actor, $school];
@@ -218,20 +232,24 @@ final class CentralFinanceStudentCollectionController extends Controller
 
     private function profileForSchool(int $profileId, int $schoolId): CentralFinanceStudentProfile
     {
-        return CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId)->findOrFail($profileId);
+        $query = CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId);
+        $this->dataIsolation->apply($query, 'student_profile');
+        return $query->findOrFail($profileId);
     }
 
     private function collectableReceivable(int $receivableId, CentralFinanceStudentProfile $profile): CentralFinanceReceivable
     {
-        return CentralFinanceReceivable::on('mysql')->where('school_id', $profile->school_id)
+        $query = CentralFinanceReceivable::on('mysql')->where('school_id', $profile->school_id)
             ->where('student_profile_id', $profile->id)
-            ->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])
-            ->findOrFail($receivableId);
+            ->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
+        $this->dataIsolation->apply($query, 'receivable');
+        return $query->findOrFail($receivableId);
     }
 
     private function canCollect(CentralFinanceUser $actor, int $schoolId): bool
     {
         try {
+            $this->dataIsolation->assertProduction('school', $schoolId);
             $this->workspace->assertCanOperateSchool($actor, $schoolId);
             $this->workspace->assertHeadFinance($actor);
             return $this->cutovers->allowsCentralWrites($schoolId);
@@ -243,6 +261,7 @@ final class CentralFinanceStudentCollectionController extends Controller
     private function canSubmitPending(CentralFinanceUser $actor, int $schoolId): bool
     {
         try {
+            $this->dataIsolation->assertProduction('school', $schoolId);
             $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
             return $this->cutovers->allowsCentralWrites($schoolId);
         } catch (AuthorizationException) {
@@ -256,6 +275,7 @@ final class CentralFinanceStudentCollectionController extends Controller
         $actor = $this->actor();
         $school = $this->workspace->currentSchool($actor);
         abort_unless($school !== null, 403);
+        $this->dataIsolation->assertProduction('school', (int) $school->id);
         try {
             $this->workspace->assertCanOperateSchool($actor, $school->id);
             $this->workspace->assertHeadFinance($actor);

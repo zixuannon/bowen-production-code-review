@@ -14,6 +14,37 @@ Last updated: 2026-09-14
 
 Finance V2
 
+## Go-live QA/Test data isolation — local candidate / no Production data change
+
+- Branch `codex/go-live-data-isolation` starts exactly from Production source
+  `4c88e46981619e57abf9cc56955ebd10dcdc5f3e`. It adds canonical
+  `Production / QA-Test / Archived` metadata without renaming, rewriting, or
+  deleting any master, workflow, or financial record.
+- Central Finance dashboards, reports, totals, Fund Accounts, Categories,
+  student/receivable views, pending collections, collection handovers, import
+  batches, and Group Import V2.2 lookups exclude QA/Test and archived records
+  by default. A QA/Test School classification is inherited by its dependent
+  read models, while shared Fund Accounts retain their explicit Group and
+  School-allocation boundaries.
+- Only central Super Admin or Head Finance identities may request the audited
+  `Include QA/Test` history view. School-scoped Accountant/May and Front Desk
+  identities retain their existing tenant/role boundary and receive clean
+  empty/default views rather than broader access.
+- Classification updates require existing Central School/Group scope, an
+  audit reason, and append an immutable before/after audit record. QA/Test and
+  archived records are read-only in Production workflows; direct write URLs
+  fail closed. Existing Payment, Receipt, Ledger, posted operating documents,
+  transfers, and confirmed handovers remain append-only and queryable through
+  the authorized history/detail surface.
+- The additive central metadata schema is available only through the exact-path
+  `finance:migrate-data-isolation` runner. Partial or mismatched schema fails
+  closed. Disposable fresh MySQL migration rehearsal passes, and no Production
+  migration or Production data mutation has occurred.
+- Focused isolation, role/scope, no-write, Group Import/Excel, audit, and
+  migration-runner regressions pass. Full regression passes 774 tests / 6,265
+  assertions with four expected opt-in skips and existing PHP 8.5/PHPUnit
+  deprecation notices only.
+
 ## Central Finance cutover control UI — local candidate / no cutover
 
 - The initial Production deployment used

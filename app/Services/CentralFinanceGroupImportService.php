@@ -45,6 +45,7 @@ final class CentralFinanceGroupImportService
         private readonly FinanceGroupScopeService $groups,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
         private readonly CentralFinanceOperatingDocumentService $documents,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     /** @return Collection<int, FinanceGroup> */
@@ -100,12 +101,13 @@ final class CentralFinanceGroupImportService
             ->values()
             ->all();
 
-        $schools = School::on('mysql')
+        $schoolsQuery = School::on('mysql')
             ->whereIn('id', $memberSchoolIds)
             ->where('installed', true)
             ->whereIn('status', ['1', 'active'])
-            ->orderBy('code')
-            ->get(['id', 'code', 'name'])
+            ->orderBy('code');
+        $this->dataIsolation->apply($schoolsQuery, 'school');
+        $schools = $schoolsQuery->get(['id', 'code', 'name'])
             ->filter(function (School $school) use ($actor): bool {
                 if (!$this->isFormalTemplateLookup($school->code, $school->name)) {
                     return false;
@@ -121,7 +123,7 @@ final class CentralFinanceGroupImportService
             ->values();
 
         $schoolCodes = $schools->mapWithKeys(static fn (School $school): array => [(int) $school->id => strtoupper(trim((string) $school->code))]);
-        $accounts = CentralFinanceFundAccount::on('mysql')->active()
+        $accountsQuery = CentralFinanceFundAccount::on('mysql')->active()
             ->where(function ($query) use ($group, $schoolCodes): void {
                 $query->where(function ($schoolOwned) use ($schoolCodes): void {
                     $schoolOwned->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)->where(function ($available) use ($schoolCodes): void {
@@ -131,8 +133,9 @@ final class CentralFinanceGroupImportService
                 })
                     ->orWhere(fn ($hqOwned) => $hqOwned->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->where('group_id', $group->id));
             })
-            ->orderBy('account_code')
-            ->get()
+            ->orderBy('account_code');
+        $this->dataIsolation->apply($accountsQuery, 'fund_account');
+        $accounts = $accountsQuery->get()
             ->filter(function (CentralFinanceFundAccount $account) use ($actor): bool {
                 if (!$this->isFormalTemplateLookup($account->account_code, $account->account_name)) {
                     return false;
@@ -155,13 +158,14 @@ final class CentralFinanceGroupImportService
             ->values()
             ->all();
 
-        $categories = CentralFinanceCategory::on('mysql')
+        $categoriesQuery = CentralFinanceCategory::on('mysql')
             ->whereIn('school_id', $schoolCodes->keys())
             ->where('is_active', true)
             ->orderBy('school_id')
             ->orderBy('type')
-            ->orderBy('category_code')
-            ->get(['school_id', 'type', 'category_code', 'name'])
+            ->orderBy('category_code');
+        $this->dataIsolation->apply($categoriesQuery, 'category');
+        $categories = $categoriesQuery->get(['school_id', 'type', 'category_code', 'name'])
             ->filter(fn (CentralFinanceCategory $category): bool => $this->isFormalTemplateLookup($category->category_code, $category->name))
             ->map(static fn (CentralFinanceCategory $category): array => [
                 'school_code' => $schoolCodes->get((int) $category->school_id),
@@ -210,6 +214,7 @@ final class CentralFinanceGroupImportService
         try {
             return DB::connection('mysql')->transaction(function () use ($actor, $token): CentralFinanceGroupImportBatch {
                 $batch = CentralFinanceGroupImportBatch::on('mysql')->where('token', $token)->lockForUpdate()->firstOrFail();
+                $this->dataIsolation->assertProduction('group_import_batch', (int) $batch->id);
                 if ($batch->status !== 'previewed' || $batch->error_rows > 0 || $batch->conflict_rows > 0) {
                     throw new InvalidArgumentException('This Group Import preview is not eligible for confirmation.');
                 }
@@ -406,6 +411,7 @@ final class CentralFinanceGroupImportService
         if ($data['school_code'] === '' || $schools->count() !== 1) return $error('UNKNOWN_SCHOOL_CODE', 'School Code must exactly identify one registered School.');
         $school = $schools->sole(); $data['school_id'] = (int) $school->id;
         if (!$school->installed || !in_array((string) $school->status, ['1', 'active'], true)) return $error('SCHOOL_INACTIVE', 'The routed School is inactive or not installed.');
+        if (!$this->dataIsolation->isProduction('school', (int) $school->id)) return $error('QA_TEST_SCHOOL', 'QA/Test or archived Schools cannot be used for Production Group Import.');
         if ($data['school_label'] === '' || !in_array(mb_strtolower($data['school_label']), [mb_strtolower($school->name), mb_strtolower($school->code)], true)) return $error('SCHOOL_LABEL_MISMATCH', '校区 must match the routed School display name or code.');
         try { $this->workspace->assertCanOperateSchool($actor, (int) $school->id); } catch (AuthorizationException) { return $error('SCHOOL_SCOPE_DENIED', 'The actor has no Central Finance operating scope for this School.'); }
         if (!$this->groups->canAccessSchool($groupUser, (int) $school->id, 'operate_finance')) return $error('GROUP_SCOPE_DENIED', 'The active Finance Group does not grant operate_finance for this School.');
@@ -418,12 +424,14 @@ final class CentralFinanceGroupImportService
         try { CarbonImmutable::parse((string) $data['transaction_date'], 'Asia/Yangon'); CentralFinanceCurrency::assertCanonical($data['currency']); } catch (\Throwable) { return $error('DATE_OR_CURRENCY_INVALID', '日期 or Currency is invalid.'); }
         $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->first();
         if (!$account || $data['fund_account_code'] !== $account->account_code) return $error('FUND_ACCOUNT_UNKNOWN', 'Fund Account Code must be an exact active canonical account code.');
+        if (!$this->dataIsolation->isProduction('fund_account', (int) $account->id)) return $error('QA_TEST_FUND_ACCOUNT', 'QA/Test or archived Fund Accounts cannot be used for Production Group Import.');
         if ($data['fund_account_type'] !== $account->account_type || $data['account_owner'] !== $account->owner_type) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Type or Account Owner does not match the canonical Fund Account.');
         if (($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && !$this->accountAvailability->isAccountAvailableForSchool($account, (int) $school->id)) || ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && (int) $account->group_id !== (int) $groupUser->group_id)) return $error('FUND_ACCOUNT_SCOPE_MISMATCH', 'Fund Account is not available for the routed School or active Finance Group HQ.');
         try { $this->accountScopes->assertCanOperate($actor, $account); } catch (AuthorizationException) { return $error('FUND_ACCOUNT_SCOPE_DENIED', 'Fund Account is not authorized for operation by this actor.'); }
         if (!CentralFinanceCurrency::same($data['currency'], $account->currency)) return $error('CURRENCY_MISMATCH', 'Currency must match the canonical Fund Account currency.');
         $category = CentralFinanceCategory::on('mysql')->where(['school_id' => $school->id, 'type' => $data['document_type'] === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME, 'category_code' => $data['category_code'], 'is_active' => true])->first();
         if (!$category) return $error('CATEGORY_UNKNOWN', 'Category Code must exactly identify an active Category for the routed School and document type.');
+        if (!$this->dataIsolation->isProduction('category', (int) $category->id)) return $error('QA_TEST_CATEGORY', 'QA/Test or archived Categories cannot be used for Production Group Import.');
         $data['fund_account_id'] = (int) $account->id; $data['category_id'] = (int) $category->id; $data['amount'] = (float) ($data['document_type'] === 'expense' ? $data['expense'] : $data['income']);
         $data['school_code'] = (string) $school->code;
         $key = 'group-import-v2:'.$school->id.':'.$data['document_type'].':'.$data['reference_no']; $data['idempotency_key'] = $key;

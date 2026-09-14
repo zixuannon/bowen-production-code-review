@@ -8,6 +8,7 @@ use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Services\CentralFinancePendingCollectionConfirmationService;
 use App\Services\CentralFinancePendingCollectionService;
+use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceWorkspaceService;
 use App\Services\FinanceOperatingContextService;
 use Carbon\CarbonImmutable;
@@ -22,21 +23,25 @@ final class CentralFinancePendingCollectionController extends Controller
 {
     private const ATTEMPTS_SESSION_KEY = 'central_finance_pending_collection_attempts';
 
-    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinancePendingCollectionService $pending, private readonly CentralFinancePendingCollectionConfirmationService $confirmation, private readonly FinanceOperatingContextService $operatingContext) {}
+    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinancePendingCollectionService $pending, private readonly CentralFinancePendingCollectionConfirmationService $confirmation, private readonly FinanceOperatingContextService $operatingContext, private readonly CentralFinanceDataIsolationService $dataIsolation) {}
 
-    public function frontDeskIndex(): View
+    public function frontDeskIndex(Request $request): View
     {
         $actor = $this->workspace->actor(Auth::user());
-        $school = $this->workspace->currentSchool($actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
+        $school = $this->workspace->currentSchool($actor, $includeQaTest);
         if ($school === null) {
             $school = $this->operatingContext->currentSchool(Auth::user());
             if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
         }
         abort_unless($school !== null, 403);
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
-        $pending = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable'])
-            ->where(['school_id' => $school->id, 'collected_by' => $actor->id])->latest('submitted_at')->paginate(20);
-        return view('central-finance.pending-collections.front-desk-index', compact('school', 'pending'));
+        $pendingQuery = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable'])
+            ->where(['school_id' => $school->id, 'collected_by' => $actor->id]);
+        $this->dataIsolation->apply($pendingQuery, 'pending_collection', $includeQaTest);
+        $pending = $pendingQuery->latest('submitted_at')->paginate(20)->withQueryString();
+        return view('central-finance.pending-collections.front-desk-index', compact('school', 'pending', 'includeQaTest', 'canIncludeQaTest'));
     }
 
     public function review(int $profile, int $receivable): View
@@ -49,8 +54,12 @@ final class CentralFinancePendingCollectionController extends Controller
         }
         abort_unless($school !== null, 403);
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
-        $profile = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)->findOrFail($profile);
-        $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])->findOrFail($receivable);
+        $profileQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
+        $this->dataIsolation->apply($profileQuery, 'student_profile');
+        $profile = $profileQuery->findOrFail($profile);
+        $receivableQuery = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
+        $this->dataIsolation->apply($receivableQuery, 'receivable');
+        $receivable = $receivableQuery->findOrFail($receivable);
         $accounts = $this->workspace->readableAccounts($actor, $school->id)->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
         $attemptUuid = (string) Str::uuid();
         session()->put(self::ATTEMPTS_SESSION_KEY.'.'.$attemptUuid, [
@@ -62,6 +71,8 @@ final class CentralFinancePendingCollectionController extends Controller
     public function submit(Request $request, int $profile, int $receivable): RedirectResponse
     {
         $actor = $this->workspace->actor(Auth::user());
+        $this->dataIsolation->assertProduction('student_profile', $profile);
+        $this->dataIsolation->assertProduction('receivable', $receivable);
         $data = $request->validate(['pending_attempt_uuid' => ['required', 'uuid'], 'amount' => ['required', 'numeric', 'gt:0'], 'payment_method' => ['required', 'string', 'max:40'], 'payment_reference' => ['nullable', 'string', 'max:100'], 'intended_fund_account_id' => ['nullable', 'integer'], 'note' => ['nullable', 'string', 'max:2000']]);
         $attempt = session()->get(self::ATTEMPTS_SESSION_KEY.'.'.$data['pending_attempt_uuid']);
         abort_unless(is_array($attempt) && (int) ($attempt['actor_id'] ?? 0) === $actor->id && (int) ($attempt['profile_id'] ?? 0) === $profile && (int) ($attempt['receivable_id'] ?? 0) === $receivable, 403);
@@ -69,21 +80,28 @@ final class CentralFinancePendingCollectionController extends Controller
         return redirect()->route('central-finance.pending-collections.front-desk.index')->with('success', __('Pending collection submitted: :no. This is not an official receipt.', ['no' => $pending->acknowledgement_no]));
     }
 
-    public function headFinanceIndex(): View
+    public function headFinanceIndex(Request $request): View
     {
         $actor = $this->workspace->actor(Auth::user());
         $this->workspace->assertHeadFinance($actor);
-        $school = $this->workspace->currentSchool($actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
+        $school = $this->workspace->currentSchool($actor, $includeQaTest);
         if ($school === null) {
             $school = $this->operatingContext->currentSchool(Auth::user());
             if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
         }
         abort_unless($school !== null, 403);
         $this->workspace->assertHeadFinance($actor);
-        $pending = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable', 'intendedFundAccount'])
-            ->where('school_id', $school->id)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])->latest('submitted_at')->paginate(30);
-        $accounts = $this->workspace->accessibleAccounts($actor, $school->id);
-        return view('central-finance.pending-collections.head-finance-index', compact('school', 'pending', 'accounts'));
+        $pendingQuery = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable', 'intendedFundAccount'])
+            ->where('school_id', $school->id)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
+        $this->dataIsolation->apply($pendingQuery, 'pending_collection', $includeQaTest);
+        $pending = $pendingQuery->latest('submitted_at')->paginate(30)->withQueryString();
+        $pending->getCollection()->each(fn (CentralFinancePendingCollection $row) => $row->setAttribute(
+            'production_eligible', $this->dataIsolation->isProduction('pending_collection', (int) $row->id)
+        ));
+        $accounts = $this->workspace->accessibleAccounts($actor, $school->id, $includeQaTest);
+        return view('central-finance.pending-collections.head-finance-index', compact('school', 'pending', 'accounts', 'includeQaTest', 'canIncludeQaTest'));
     }
 
     public function hold(Request $request, CentralFinancePendingCollection $pending): RedirectResponse { return $this->reviewAction($request, $pending, 'hold'); }
@@ -93,6 +111,7 @@ final class CentralFinancePendingCollectionController extends Controller
     {
         $actor = $this->workspace->actor(Auth::user());
         $this->workspace->assertHeadFinance($actor);
+        $this->dataIsolation->assertProduction('pending_collection', (int) $pending->id);
         $data = $request->validate(['fund_account_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:2000']]);
         $account = CentralFinanceFundAccount::on('mysql')->findOrFail((int) $data['fund_account_id']);
         $this->confirmation->confirm($actor, $pending->id, $account, CarbonImmutable::now(), $data['reason']);
@@ -103,6 +122,7 @@ final class CentralFinancePendingCollectionController extends Controller
     {
         $actor = $this->workspace->actor(Auth::user());
         $this->workspace->assertHeadFinance($actor);
+        $this->dataIsolation->assertProduction('pending_collection', (int) $pending->id);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $action === 'hold' ? $this->pending->hold($actor, $pending->id, $data['reason']) : $this->pending->reject($actor, $pending->id, $data['reason']);
         return back()->with('success', __('Pending collection updated.'));

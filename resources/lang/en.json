@@ -798,4 +798,11 @@
     "Duplicate Import Reference in the import file or School.": "Duplicate Import Reference in the import file or School."
     ,"cutoff_updated": "Receivable cutoff updated"
     ,"status_transitioned": "Central Finance status transitioned"
+    ,"Finance data visibility": "Finance data visibility"
+    ,"Production data": "Production data"
+    ,"QA/Test and archived records are excluded from totals and operating choices by default.": "QA/Test and archived records are excluded from totals and operating choices by default."
+    ,"Include QA/Test history": "Include QA/Test history"
+    ,"QA/Test history is visible in this read view. It remains excluded from normal operating selectors.": "QA/Test history is visible in this read view. It remains excluded from normal operating selectors."
+    ,"Data classification updated; financial history was not changed.": "Data classification updated; financial history was not changed."
+    ,"Read-only QA/Test history": "Read-only QA/Test history"
 }

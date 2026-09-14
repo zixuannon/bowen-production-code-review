@@ -1289,6 +1289,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/audits/export/{format}', [CentralFinanceWorkspaceController::class, 'exportAudits'])->whereIn('format', ['csv','xlsx'])->name('central-finance.audits.export');
     Route::post('central-finance/categories', [CentralFinanceWorkspaceController::class, 'createCategory'])->name('central-finance.categories.store');
     Route::post('central-finance/categories/{category}/toggle', [CentralFinanceWorkspaceController::class, 'toggleCategory'])->name('central-finance.categories.toggle');
+    Route::post('central-finance/data-classification', [\App\Http\Controllers\CentralFinanceDataClassificationController::class, 'update'])->name('central-finance.data-classification.update');
     Route::get('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfers'])->name('central-finance.transfers');
     Route::post('central-finance/transfers', [CentralFinanceWorkspaceController::class, 'transfer'])->name('central-finance.transfers.store');
     Route::post('central-finance/transfers/{transfer}/reverse', [CentralFinanceWorkspaceController::class, 'reverseTransfer'])->name('central-finance.transfers.reverse');

@@ -3,7 +3,7 @@
 @section('content')
 @php($summary = $batch?->school_summary ?? [])
 @php($previewReady = $batch && in_array($batch->status, ['previewed', 'completed'], true))
-@php($confirmReady = $batch && $batch->status === 'previewed' && $batch->error_rows === 0 && $batch->conflict_rows === 0)
+@php($confirmReady = $batch && ($batch->production_eligible ?? true) && $batch->status === 'previewed' && $batch->error_rows === 0 && $batch->conflict_rows === 0)
 <div class="central-finance-page">
     @include('central-finance.partials.foundation-styles')
 
@@ -14,6 +14,8 @@
             <p class="cf-page-header__description">{{ __('Validate a multi-School workbook before confirmation. Preview never creates financial documents.') }}</p>
         </div>
     </div>
+
+    @include('central-finance.partials.data-visibility-toggle')
 
     <ol class="ui-stepper" aria-label="{{ __('Import progress') }}">
         <li class="ui-stepper__item is-complete"><span class="ui-stepper__number">1</span>{{ __('Download template') }}</li>

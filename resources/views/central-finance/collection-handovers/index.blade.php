@@ -2,6 +2,7 @@
 @section('content')
 <div class="container-fluid py-3 central-finance-page">
 @include('central-finance.partials.foundation-styles')
+@include('central-finance.partials.data-visibility-toggle')
 <div class="card"><div class="card-body">
     <p class="text-uppercase text-muted mb-1">{{ $isHeadFinance ? __('Central Finance') : __('School Finance') }} · {{ $school->name }}</p>
     <h3>{{ __('Collection Handover Batches') }}</h3>
@@ -12,7 +13,7 @@
         <div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
     @endif
 
-    @unless($isHeadFinance)
+    @if(!$isHeadFinance && $productionSchool)
     <form method="POST" action="{{ route('central-finance.collection-handovers.store') }}" class="row g-2">@csrf
         <div class="col-md-2"><label>{{ __('Channel') }}</label><select name="payment_channel" class="form-control" required><option>Cash</option><option>Bank Transfer</option><option>QR / Wallet</option></select></div>
         <div class="col-md-1"><label>{{ __('Currency') }}</label><input name="currency" class="form-control" value="MMK" maxlength="3" required></div>
@@ -21,7 +22,7 @@
         <div class="col-md-2"><label>{{ __('Idempotency key') }}</label><input name="idempotency_key" class="form-control" required></div>
         <div class="col-md-2 align-self-end"><button class="btn btn-primary">{{ __('Create draft') }}</button></div>
     </form>
-    @endunless
+    @endif
 
     <p class="ui-table-scroll-hint mt-4"><i class="fa fa-arrows-h" aria-hidden="true"></i> {{ __('Swipe horizontally to review every handover field.') }}</p>
     <div class="table-responsive ui-responsive-list-wrap mt-4"><table class="table cf-data-table ui-responsive-list ui-mobile-cards">
@@ -46,13 +47,13 @@
                             <strong>{{ $item->pendingCollection?->acknowledgement_no }}</strong>
                             · {{ $item->pendingCollection?->studentProfile?->student_name }}
                             · {{ number_format((float) $item->expected_amount_snapshot, 2) }} {{ $item->currency_snapshot }}
-                            @if(!$isHeadFinance && $batch->status === 'draft')
+                            @if($batch->production_eligible && !$isHeadFinance && $batch->status === 'draft')
                                 <form method="POST" action="{{ route('central-finance.collection-handovers.items.remove', [$batch, $item]) }}" class="d-inline">@csrf<button class="btn btn-sm btn-outline-danger ml-1">{{ __('Remove') }}</button></form>
                             @endif
                         </div>
                     @endforeach
 
-                    @if(!$isHeadFinance && $batch->status === 'draft')
+                    @if($batch->production_eligible && !$isHeadFinance && $batch->status === 'draft')
                         @php($candidates = $eligiblePending->filter(fn($row) => strtoupper((string) $row->currency) === strtoupper((string) $batch->currency) && (string) $row->payment_method === (string) $batch->payment_channel))
                         <form method="POST" action="{{ route('central-finance.collection-handovers.items.store', $batch) }}" class="mb-2">@csrf
                             <label>{{ __('Add submitted collection') }}</label>
@@ -63,7 +64,7 @@
                         <form method="POST" action="{{ route('central-finance.collection-handovers.cancel', $batch) }}" class="mt-2">@csrf<input class="form-control" name="reason" placeholder="{{ __('Cancellation reason') }}" required maxlength="2000"><button class="btn btn-sm btn-outline-danger mt-1">{{ __('Cancel') }}</button></form>
                     @endif
 
-                    @if($isHeadFinance && in_array($batch->status, ['submitted', 'held'], true))
+                    @if($batch->production_eligible && $isHeadFinance && in_array($batch->status, ['submitted', 'held'], true))
                         @if($batch->status === 'submitted')
                         <form method="POST" action="{{ route('central-finance.collection-handovers.confirm', $batch) }}" class="mb-2">@csrf
                             <label>{{ __('Actual Fund Account') }}</label>
@@ -76,6 +77,7 @@
                         <form method="POST" action="{{ route('central-finance.collection-handovers.hold', $batch) }}" class="mb-2">@csrf<input class="form-control" name="reason" placeholder="{{ __('Hold reason') }}" required maxlength="2000"><button class="btn btn-sm btn-outline-warning mt-1">{{ __('Hold') }}</button></form>
                         <form method="POST" action="{{ route('central-finance.collection-handovers.reject', $batch) }}">@csrf<input class="form-control" name="reason" placeholder="{{ __('Rejection reason') }}" required maxlength="2000"><button class="btn btn-sm btn-outline-danger mt-1">{{ __('Reject') }}</button></form>
                     @endif
+                    @if(!$batch->production_eligible)<span class="badge badge-secondary">{{ __('Read-only QA/Test history') }}</span>@endif
                 </div></details>
             </td>
         </tr>

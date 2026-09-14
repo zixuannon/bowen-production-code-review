@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CentralFinanceCategory;
+use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundAccountSchoolAllocation;
@@ -14,6 +15,7 @@ use App\Models\FinanceGroupUser;
 use App\Exports\CentralFinanceGroupImportTemplateV2Export;
 use App\Services\CentralFinanceGroupImportService;
 use App\Services\CentralFinanceFundAccountAdministrationService;
+use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
@@ -102,6 +104,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             '2026_09_02_000002_add_category_codes_for_group_finance_import.php',
             '2026_09_02_000003_create_central_finance_group_import_previews.php',
             '2026_09_02_000004_add_group_import_confirm_links.php',
+            '2026_09_14_000003_create_central_finance_data_classifications.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -222,6 +225,15 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $testCategory->update(['name' => 'Test Income']);
         $previewCategory = $this->category(1, CentralFinanceCategory::INCOME, 'CATEGORY-0EA183FE-360');
         $previewCategory->update(['name' => 'SFA P1 Preview Income']);
+        $metadataOnlyAccount = $this->account('HIDDEN-CASH', 'Legacy acceptance account', 1);
+        DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
+            'fund_account_id'=>$metadataOnlyAccount->id, 'user_id'=>$this->head->id,
+            'can_view'=>true, 'can_operate'=>true, 'created_at'=>now(), 'updated_at'=>now(),
+        ]);
+        $metadataOnlyCategory = $this->category(1, CentralFinanceCategory::INCOME, 'HIDDEN-INCOME');
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        $isolation->classify($this->head, 1, 'fund_account', $metadataOnlyAccount->id, CentralFinanceDataClassification::QA_TEST, 'Historical acceptance master.');
+        $isolation->classify($this->head, 1, 'category', $metadataOnlyCategory->id, CentralFinanceDataClassification::QA_TEST, 'Historical acceptance master.');
 
         $lookups = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
 
@@ -231,8 +243,38 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertNotContains('CENTRAL-PROD-UAT-EXPENSE', array_column($lookups['categories'], 'category_code'));
         $this->assertNotContains($testCategory->category_code, array_column($lookups['categories'], 'category_code'));
         $this->assertNotContains($previewCategory->category_code, array_column($lookups['categories'], 'category_code'));
+        $this->assertNotContains($metadataOnlyAccount->account_code, array_column($lookups['accounts'], 'code'));
+        $this->assertNotContains($metadataOnlyCategory->category_code, array_column($lookups['categories'], 'category_code'));
         $this->assertContains($this->zixuanAccount->account_code, array_column($lookups['accounts'], 'code'));
         $this->assertContains($this->zixuanIncome->category_code, array_column($lookups['categories'], 'category_code'));
+    }
+
+    public function test_classified_qa_school_and_batch_cannot_enter_group_import_financial_writes(): void
+    {
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        $isolation->classify($this->head, 1, 'school', 1, CentralFinanceDataClassification::QA_TEST, 'Approved QA School');
+
+        $qaSchoolBatch = $this->preview([
+            $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-QA-SCHOOL', 25, 0),
+        ]);
+        $this->assertSame(1, $qaSchoolBatch->error_rows);
+        $this->assertSame('QA_TEST_SCHOOL', $qaSchoolBatch->rows()->firstOrFail()->error_code);
+
+        $productionBatch = $this->preview([
+            $this->row('SCH-TIM', 'Times QA', $this->timesAccount, $this->timesExpense, 'GI-QA-BATCH', 0, 25),
+        ]);
+        $isolation->classify($this->head, 2, 'group_import_batch', (int) $productionBatch->id, CentralFinanceDataClassification::QA_TEST, 'Historical QA import batch');
+
+        try {
+            app(CentralFinanceGroupImportService::class)->confirm($this->head, $productionBatch->token);
+            $this->fail('A QA-classified Group Import batch must be read-only.');
+        } catch (AuthorizationException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
+        $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
     }
 
     public function test_v21_saved_workbook_previews_two_school_expense_and_other_income_without_formula_blank_rows(): void

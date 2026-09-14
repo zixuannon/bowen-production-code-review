@@ -35,6 +35,8 @@
         @if($school && $canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.exit') }}">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}"><button class="btn btn-sm btn-outline-secondary">{{ __('返回全部校区') }}</button></form>@endif
     </x-central-finance.page-header>
 
+    @include('central-finance.partials.data-visibility-toggle')
+
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
     @if(!$school)<div class="alert alert-info">{{ __('All Schools shows consolidated Central Finance only. Select an authorized School to create or resolve financial documents.') }}</div>@endif

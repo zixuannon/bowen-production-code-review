@@ -7,6 +7,7 @@ use App\Models\CentralFinanceGroupImportBatch;
 use App\Models\CentralFinanceGroupImportPreviewRow;
 use App\Models\FinanceGroup;
 use App\Services\CentralFinanceGroupImportService;
+use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceWorkspaceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,20 +19,25 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 /** Group Finance Import V2: Preview followed by audited whole-file confirmation. */
 final class CentralFinanceGroupImportController extends Controller
 {
-    public function __construct(private readonly CentralFinanceGroupImportService $imports, private readonly CentralFinanceWorkspaceService $workspace) {}
+    public function __construct(private readonly CentralFinanceGroupImportService $imports, private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinanceDataIsolationService $dataIsolation) {}
 
     public function workspace(Request $request): View
     {
         $actor = $this->actor();
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
         $groups = $this->imports->authorizedGroups($actor);
         abort_if($groups->isEmpty(), 403);
         $batch = null;
         if ($request->filled('batch')) {
-            $batch = CentralFinanceGroupImportBatch::on('mysql')->with('confirmedBy')->where('token', $request->string('batch')->toString())->where('uploaded_by', $actor->id)->firstOrFail();
+            $batchQuery = CentralFinanceGroupImportBatch::on('mysql')->with('confirmedBy')->where('token', $request->string('batch')->toString())->where('uploaded_by', $actor->id);
+            $this->dataIsolation->apply($batchQuery, 'group_import_batch', $includeQaTest);
+            $batch = $batchQuery->firstOrFail();
             abort_unless($groups->pluck('id')->contains($batch->finance_group_id), 403);
+            $batch->setAttribute('production_eligible', $this->dataIsolation->isProduction('group_import_batch', (int) $batch->id));
             $batch->setRelation('rows', $batch->rows()->orderBy('row_number')->paginate(50)->withQueryString());
         }
-        return view('central-finance.group-import.index', compact('groups', 'batch'));
+        return view('central-finance.group-import.index', compact('groups', 'batch', 'includeQaTest', 'canIncludeQaTest'));
     }
 
     public function template(Request $request): BinaryFileResponse

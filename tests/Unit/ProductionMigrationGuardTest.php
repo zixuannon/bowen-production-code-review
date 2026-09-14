@@ -69,6 +69,24 @@ class ProductionMigrationGuardTest extends TestCase
         );
     }
 
+    public function test_data_isolation_runner_is_exact_path_allowlisted(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $path = database_path('migrations/2026_09_14_000003_create_central_finance_data_classifications.php');
+
+        $guard->assertAllowed('migrate', 'finance:migrate-data-isolation', [$path], true, true);
+        $this->addToAssertionCount(1);
+
+        $this->expectException(RuntimeException::class);
+        $guard->assertAllowed(
+            'migrate',
+            'finance:migrate-data-isolation',
+            [database_path('migrations')],
+            true,
+            true,
+        );
+    }
+
     public function test_guard_does_not_change_local_or_test_migration_behavior(): void
     {
         (new ProductionMigrationGuard())->assertAllowed('migrate', 'migrate', [], false, false);

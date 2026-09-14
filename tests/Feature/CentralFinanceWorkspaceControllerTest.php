@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\CentralFinanceWorkspaceController;
+use App\Http\Controllers\CentralFinanceDataClassificationController;
 use App\Models\CentralFinanceCategory;
+use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceUser;
 use App\Models\User;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Services\CentralFinanceDataIsolationService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -49,7 +52,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         ]);
         Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
         Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
-        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_09_14_000003_create_central_finance_data_classifications.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
         DB::connection('mysql')->table('system_settings')->insert(['name' => 'date_format', 'data' => 'd-m-Y', 'type' => 'text']);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null],['id'=>400,'first_name'=>'School','last_name'=>'Staff','email'=>'staff@example.test','school_id'=>1]]);
@@ -465,6 +468,37 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame(['ZIX-CASH'], $mayZixuan->getData()['accounts']->pluck('account_code')->all());
     }
 
+    public function test_shared_fund_account_classification_uses_group_scope_without_inventing_an_owning_school(): void
+    {
+        $hq = CentralFinanceFundAccount::on('mysql')->create([
+            'account_uuid' => (string) Str::uuid(), 'group_id' => 1,
+            'account_code' => 'HQ-SHARED', 'account_name' => 'HQ Shared',
+            'owner_type' => CentralFinanceFundAccount::OWNER_HQ,
+            'school_id' => null, 'currency' => 'MMK', 'opening_balance' => 0,
+            'is_active' => true,
+        ]);
+        $isolation = app(CentralFinanceDataIsolationService::class);
+
+        $this->assertFalse($isolation->isProduction('fund_account', 999999));
+        $this->assertTrue($isolation->isProduction('fund_account', $hq->id));
+        $isolation->classify(
+            $this->head,
+            1,
+            'fund_account',
+            $hq->id,
+            CentralFinanceDataClassification::QA_TEST,
+            'Shared account retained only for QA history.',
+        );
+
+        $this->assertFalse($isolation->isProduction('fund_account', $hq->id));
+        $this->assertDatabaseHas('central_finance_data_classifications', [
+            'school_id' => 1,
+            'subject_type' => 'fund_account',
+            'subject_id' => $hq->id,
+            'classification' => CentralFinanceDataClassification::QA_TEST,
+        ], 'mysql');
+    }
+
     public function test_student_fee_selector_uses_only_current_school_profiles_and_open_receivables(): void
     {
         $now = now();
@@ -549,7 +583,145 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame(['Legacy open tuition'], $view->getData()['paymentReceivables']->pluck('description')->all());
     }
 
+    public function test_qa_school_is_excluded_from_default_dashboard_reports_and_accounts_but_authorized_history_remains_visible(): void
+    {
+        $this->grantHeadFinanceRole();
+        foreach ([[$this->zixuan, 125, 'QA-LEDGER'], [$this->timecity, 40, 'PROD-LEDGER']] as [$account, $amount, $source]) {
+            CentralFinanceLedgerEntry::on('mysql')->create([
+                'entry_uuid'=>(string) Str::uuid(), 'school_id'=>$account->school_id,
+                'fund_account_id'=>$account->id, 'entry_date'=>'2026-09-14', 'occurred_at'=>now(),
+                'source_type'=>'data_isolation_test', 'source_id'=>$source, 'source_line'=>'1',
+                'reference_no'=>$source, 'transaction_type'=>'operating_income', 'currency'=>'MMK',
+                'money_in'=>$amount, 'money_out'=>0, 'operating_income'=>$amount,
+                'operating_expense'=>0, 'memo'=>'immutable fixture', 'created_by'=>$this->head->id,
+            ]);
+        }
+        $beforeLedger = CentralFinanceLedgerEntry::on('mysql')->count();
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        $isolation->classify($this->head, 1, 'school', 1, CentralFinanceDataClassification::QA_TEST, 'Zixuan remains the approved QA School.');
+
+        $this->actingAs($this->head);
+        $default = app(CentralFinanceWorkspaceController::class)->reports(new Request());
+        $this->assertSame([2], $default->getData()['schools']->pluck('id')->all());
+        $this->assertSame(['TIM-CASH'], $default->getData()['accounts']->pluck('account_code')->all());
+        $this->assertSame(40.0, $default->getData()['currencyTotals']['MMK']['money_in']);
+        $this->assertFalse($default->getData()['includeQaTest']);
+
+        $withHistory = app(CentralFinanceWorkspaceController::class)->reports(new Request(['include_qa_test'=>1]));
+        $this->assertSame([2, 1], $withHistory->getData()['schools']->pluck('id')->all());
+        $this->assertSame(165.0, $withHistory->getData()['currencyTotals']['MMK']['money_in']);
+        $this->assertTrue($withHistory->getData()['includeQaTest']);
+        $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
+        try {
+            CentralFinanceLedgerEntry::on('mysql')->where('reference_no', 'QA-LEDGER')->firstOrFail()->delete();
+            $this->fail('Canonical QA financial history must remain append-only.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('append-only', $exception->getMessage());
+        }
+        $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
+        $this->assertDatabaseHas('central_finance_data_classification_audits', [
+            'school_id'=>1, 'subject_type'=>'school', 'subject_id'=>1,
+            'before_classification'=>null, 'after_classification'=>'qa_test', 'actor_id'=>$this->head->id,
+        ], 'mysql');
+    }
+
+    public function test_direct_qa_master_and_student_rows_are_hidden_without_changing_production_rows(): void
+    {
+        $this->grantHeadFinanceRole();
+        $now = now();
+        $productionCategory = CentralFinanceCategory::on('mysql')->create(['school_id'=>2,'type'=>'income','name'=>'Production Tuition','is_active'=>true]);
+        $qaCategory = CentralFinanceCategory::on('mysql')->create(['school_id'=>2,'type'=>'income','name'=>'Preview Tuition','is_active'=>true]);
+        DB::connection('mysql')->table('central_finance_student_profiles')->insert([
+            ['id'=>501,'school_id'=>2,'tenant_student_id'=>501,'source_uuid'=>(string)Str::uuid(),'student_name'=>'Production Student','admission_no'=>'000001','enrollment_status'=>'active','last_synced_at'=>$now,'created_at'=>$now,'updated_at'=>$now],
+            ['id'=>502,'school_id'=>2,'tenant_student_id'=>502,'source_uuid'=>(string)Str::uuid(),'student_name'=>'QA Student','admission_no'=>'QA-1','enrollment_status'=>'active','last_synced_at'=>$now,'created_at'=>$now,'updated_at'=>$now],
+        ]);
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        $isolation->classify($this->head, 2, 'category', $qaCategory->id, CentralFinanceDataClassification::QA_TEST, 'Preview-only category.');
+        $isolation->classify($this->head, 2, 'student_profile', 502, CentralFinanceDataClassification::ARCHIVED, 'Archived QA student.');
+
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 2);
+        $default = app(CentralFinanceWorkspaceController::class)->receivables(new Request());
+        $this->assertSame([$productionCategory->id], $default->getData()['categories']->pluck('id')->all());
+        $this->assertSame([501], $default->getData()['profiles']->pluck('id')->all());
+
+        $withHistory = app(CentralFinanceWorkspaceController::class)->receivables(new Request(['include_qa_test'=>1]));
+        $this->assertEqualsCanonicalizing([$productionCategory->id, $qaCategory->id], $withHistory->getData()['categories']->pluck('id')->all());
+        $this->assertEqualsCanonicalizing([501, 502], $withHistory->getData()['profiles']->pluck('id')->all());
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_student_profiles')->whereIn('id',[501,502])->count());
+    }
+
+    public function test_school_finance_identity_cannot_enable_the_qa_history_view(): void
+    {
+        $this->actingAs($this->zixuanAccountant);
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceWorkspaceController::class)->dashboard(new Request(['include_qa_test'=>1]));
+    }
+
+    public function test_classification_is_head_finance_only_audited_and_does_not_change_financial_rows(): void
+    {
+        $this->grantHeadFinanceRole();
+        $category = CentralFinanceCategory::on('mysql')->where(['school_id'=>1,'type'=>'expense'])->firstOrFail();
+        $beforeLedger = CentralFinanceLedgerEntry::on('mysql')->count();
+
+        $this->actingAs($this->head);
+        $response = app(CentralFinanceDataClassificationController::class)->update(new Request([
+            'school_id'=>1, 'subject_type'=>'category', 'subject_id'=>$category->id,
+            'classification'=>'qa_test', 'reason'=>'UAT-only configuration',
+        ]));
+
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertDatabaseHas('central_finance_data_classifications', [
+            'school_id'=>1, 'subject_type'=>'category', 'subject_id'=>$category->id,
+            'classification'=>'qa_test', 'classified_by'=>$this->head->id,
+        ], 'mysql');
+        $this->assertDatabaseHas('central_finance_data_classification_audits', [
+            'subject_type'=>'category', 'subject_id'=>$category->id,
+            'after_classification'=>'qa_test', 'actor_id'=>$this->head->id,
+        ], 'mysql');
+        $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
+
+        $this->actingAs($this->zixuanAccountant);
+        $this->expectException(AuthorizationException::class);
+        app(CentralFinanceDataClassificationController::class)->update(new Request([
+            'school_id'=>1, 'subject_type'=>'category', 'subject_id'=>$category->id,
+            'classification'=>'production', 'reason'=>'Unauthorized reclassification',
+        ]));
+    }
+
+    public function test_qa_master_records_cannot_be_reused_by_direct_finance_write_urls(): void
+    {
+        $this->grantHeadFinanceRole();
+        $category = CentralFinanceCategory::on('mysql')->where(['school_id'=>1,'type'=>'expense'])->firstOrFail();
+        app(CentralFinanceDataIsolationService::class)->classify(
+            $this->head, 1, 'category', (int) $category->id,
+            CentralFinanceDataClassification::QA_TEST, 'QA-only category'
+        );
+        $beforeExpenses = DB::connection('mysql')->table('central_finance_expenses')->count();
+        $beforeLedger = CentralFinanceLedgerEntry::on('mysql')->count();
+
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        try {
+            app(CentralFinanceWorkspaceController::class)->expense(new Request([
+                'category_id'=>$category->id, 'fund_account_id'=>$this->zixuan->id,
+                'amount'=>25, 'payment_method'=>'Cash', 'reference_no'=>'QA-DIRECT-WRITE',
+            ]));
+            $this->fail('A classified QA category must not be reusable through a direct write URL.');
+        } catch (AuthorizationException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertSame($beforeExpenses, DB::connection('mysql')->table('central_finance_expenses')->count());
+        $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
+    }
+
     private function account(string $code,string $name,int $school): CentralFinanceFundAccount { return CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>'school','school_id'=>$school,'currency'=>'MMK','opening_balance'=>100,'is_active'=>true]); }
+    private function grantHeadFinanceRole(): void
+    {
+        $roleId = DB::connection('mysql')->table('roles')->insertGetId(['name'=>'Head Finance','guard_name'=>'web','created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('model_has_roles')->insert(['role_id'=>$roleId,'model_type'=>User::class,'model_id'=>$this->head->id]);
+    }
     private function grantAccount(CentralFinanceUser $u,CentralFinanceFundAccount $a): void { DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>$a->id,'user_id'=>$u->id,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]); }
     private function grantSchool(CentralFinanceUser $u,int $school,bool $head): void { DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>$u->id,'school_id'=>$school,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>$head,'can_confirm_funding'=>$head,'created_at'=>now(),'updated_at'=>now()]); }
 }

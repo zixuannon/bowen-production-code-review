@@ -2947,4 +2947,11 @@
     ,"status_transitioned": "已切换中央财务状态"
     ,"Import Reference is required.": "必须填写导入参考号。"
     ,"Duplicate Import Reference in the import file or School.": "导入文件或本校已有重复的导入参考号。"
+    ,"Finance data visibility": "财务数据可见范围"
+    ,"Production data": "正式数据"
+    ,"QA/Test and archived records are excluded from totals and operating choices by default.": "默认从汇总与正式操作选项中排除 QA/Test 和已归档记录。"
+    ,"Include QA/Test history": "包含 QA/Test 历史"
+    ,"QA/Test history is visible in this read view. It remains excluded from normal operating selectors.": "当前只读视图已显示 QA/Test 历史；正式操作选项仍不会使用这些数据。"
+    ,"Data classification updated; financial history was not changed.": "数据分类已更新；财务历史未被修改。"
+    ,"Read-only QA/Test history": "只读 QA/Test 历史"
 }

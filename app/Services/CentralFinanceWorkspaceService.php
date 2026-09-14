@@ -28,6 +28,7 @@ final class CentralFinanceWorkspaceService
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly FinanceGroupScopeService $groups,
         private readonly CentralFinanceSchoolStaffIdentityService $staffIdentities,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     public function actor(User $authenticated): CentralFinanceUser
@@ -44,14 +45,14 @@ final class CentralFinanceWorkspaceService
             || ($type === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE && !$this->staffIdentities->isActivePrincipal($actor))
             || !in_array($type, ['central_user', CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE], true)
             || $this->groupUsers($actor)->isEmpty()
-            || $this->accessibleSchools($actor)->isEmpty()) {
+            || $this->accessibleSchools($actor, true)->isEmpty()) {
             throw new AuthorizationException('A Central Finance identity is required.');
         }
         return $actor;
     }
 
     /** @return Collection<int, School> */
-    public function accessibleSchools(CentralFinanceUser $actor): Collection
+    public function accessibleSchools(CentralFinanceUser $actor, bool $includeQaTest = false): Collection
     {
         // A Central Finance school scope is necessary but deliberately not
         // sufficient. The School must also be reachable through an active
@@ -68,8 +69,10 @@ final class CentralFinanceWorkspaceService
             ->unique()
             ->values();
 
-        return School::on('mysql')->whereIn('id', $scopeSchoolIds->intersect($groupSchoolIds)->values())
-            ->orderBy('name')->get(['id', 'name', 'code']);
+        $query = School::on('mysql')->whereIn('id', $scopeSchoolIds->intersect($groupSchoolIds)->values());
+        $this->dataIsolation->apply($query, 'school', $includeQaTest);
+
+        return $query->orderBy('name')->get(['id', 'name', 'code']);
     }
 
     public function enterSchool(CentralFinanceUser $actor, int $schoolId): School
@@ -82,7 +85,7 @@ final class CentralFinanceWorkspaceService
     /** Resolve a School only through the existing Central + Group read boundary. */
     public function assertCanViewSchool(CentralFinanceUser $actor, int $schoolId): School
     {
-        $school = $this->accessibleSchools($actor)->firstWhere('id', $schoolId);
+        $school = $this->accessibleSchools($actor, true)->firstWhere('id', $schoolId);
         if ($school === null) {
             throw new AuthorizationException('The Central Finance actor cannot view this School.');
         }
@@ -95,10 +98,10 @@ final class CentralFinanceWorkspaceService
         Session::forget(self::SESSION_SCHOOL_KEY);
     }
 
-    public function currentSchool(CentralFinanceUser $actor): ?School
+    public function currentSchool(CentralFinanceUser $actor, bool $includeQaTest = false): ?School
     {
         $schoolId = Session::get(self::SESSION_SCHOOL_KEY);
-        $schools = $this->accessibleSchools($actor);
+        $schools = $this->accessibleSchools($actor, $includeQaTest);
         if (is_int($schoolId) || ctype_digit((string) $schoolId)) {
             $school = $schools->firstWhere('id', (int) $schoolId);
             if ($school !== null) {
@@ -110,6 +113,17 @@ final class CentralFinanceWorkspaceService
         // central All Schools identity. It must therefore fail closed when its
         // scoped School is ambiguous and otherwise default to its only School.
         if ($this->isSchoolStaffPrincipal($actor)) {
+            // A single-School staff identity still needs its School as the
+            // tenancy/scope label when that School is classified QA/Test.
+            // Its records remain excluded by the classification query layer;
+            // returning the School here avoids turning a clean empty state
+            // into an authorization error for Front Desk or School Finance.
+            if (!$includeQaTest && $schools->isEmpty()) {
+                $allScopedSchools = $this->accessibleSchools($actor, true);
+                if ($allScopedSchools->count() === 1) {
+                    return $allScopedSchools->sole();
+                }
+            }
             if ($schools->count() !== 1) {
                 throw new AuthorizationException('A School Staff Finance identity requires exactly one authorized School.');
             }
@@ -164,7 +178,7 @@ final class CentralFinanceWorkspaceService
      */
     public function assertCanOperateSchool(CentralFinanceUser $actor, int $schoolId): School
     {
-        $school = $this->accessibleSchools($actor)->firstWhere('id', $schoolId);
+        $school = $this->accessibleSchools($actor, true)->firstWhere('id', $schoolId);
         if ($school === null) {
             throw new AuthorizationException('The Central Finance actor cannot operate this School.');
         }
@@ -178,16 +192,17 @@ final class CentralFinanceWorkspaceService
     /** A Front Desk collection submission is deliberately narrower than Finance operation. */
     public function assertCanSubmitCollectionsSchool(CentralFinanceUser $actor, int $schoolId): School
     {
-        $school = $this->accessibleSchools($actor)->firstWhere('id', $schoolId);
+        $school = $this->accessibleSchools($actor, true)->firstWhere('id', $schoolId);
         if ($school === null) throw new AuthorizationException('The Central Finance actor cannot access this School.');
         $this->schools->assertCanSubmitCollections($actor, $school->id);
         return $school;
     }
 
     /** @return Collection<int, CentralFinanceFundAccount> */
-    public function accessibleAccounts(CentralFinanceUser $actor, ?int $schoolId = null): Collection
+    public function accessibleAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {
         $query = $this->accounts->visibleAccounts($actor)->active()->orderBy('account_name');
+        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
         if ($schoolId !== null) {
             $query->where(function (Builder $accounts) use ($schoolId): void {
                 $this->availability->scopeAccountsForSchool($accounts, $schoolId)
@@ -205,10 +220,11 @@ final class CentralFinanceWorkspaceService
      *
      * @return Collection<int, CentralFinanceFundAccount>
      */
-    public function readableAccounts(CentralFinanceUser $actor, ?int $schoolId = null): Collection
+    public function readableAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {
-        $schools = $this->accessibleSchools($actor);
+        $schools = $this->accessibleSchools($actor, $includeQaTest);
         $query = CentralFinanceFundAccount::on('mysql')->orderBy('account_name');
+        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
 
         if ($this->isSchoolStaffPrincipal($actor)) {
             $schoolIds = $schools->pluck('id');

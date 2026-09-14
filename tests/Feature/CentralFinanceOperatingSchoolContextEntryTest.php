@@ -24,7 +24,7 @@ final class CentralFinanceOperatingSchoolContextEntryTest extends TestCase
         $source = file_get_contents(base_path('app/Http/Controllers/CentralFinanceCollectionHandoverController.php'));
 
         $this->assertIsString($source);
-        $this->assertStringContainsString("\$this->workspace->currentSchool(\$actor)", $source);
+        $this->assertStringContainsString("\$this->workspace->currentSchool(\$actor, \$includeQaTest)", $source);
         $this->assertStringContainsString("route('central-finance.dashboard'", $source);
         $this->assertStringContainsString("'return_to' => route('central-finance.collection-handovers.index')", $source);
         $this->assertStringNotContainsString("request('school_id')", $source);
