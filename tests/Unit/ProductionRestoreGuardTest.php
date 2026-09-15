@@ -55,6 +55,8 @@ class ProductionRestoreGuardTest extends TestCase
             "--\tAn unmatched quote ' in a comment\nUSE `eschool_saas_15_zixuan`;\n",
             str_repeat('X', 8190)."-- ' chunk boundary comment\nUSE `eschool_saas_15_zixuan`;\n' close quote\n",
             "/*!40101 USE `eschool_saas_15_zixuan` */;\n",
+            "/*M!999999\\- enable the sandbox mode */ \nUSE `eschool_saas_15_zixuan`;\n",
+            "/*/ USE `eschool_saas_15_zixuan`;\n",
             "CREATE DATABASE eschool_saas_15_zixuan;\n",
             "CREATE\nDATABASE eschool_saas_15_zixuan;\n",
             "DROP DATABASE eschool_saas_15_zixuan;\n",
@@ -104,6 +106,22 @@ class ProductionRestoreGuardTest extends TestCase
         } finally {
             unlink($plain);
             unlink($gzip);
+        }
+    }
+
+    public function test_mariadb_sandbox_comment_at_chunk_boundary_does_not_expose_quoted_history(): void
+    {
+        $sql = "/*M!999999\\- enable the sandbox mode */ \n"
+            ."-- MariaDB dump\n"
+            ."CREATE TABLE `fee_import_batches` (`last_error` text);\n"
+            ."INSERT INTO `fee_import_batches` VALUES ('".str_repeat('x', 20000)
+            ."Duplicate key constraint fails (`eschool_saas_15_zixuan`.`fees_paids`)');\n";
+        $path = $this->sqlFile($sql);
+        try {
+            $this->guard->assertSqlFile($path, ['eschool_saas_15_zixuan']);
+            $this->addToAssertionCount(1);
+        } finally {
+            unlink($path);
         }
     }
 

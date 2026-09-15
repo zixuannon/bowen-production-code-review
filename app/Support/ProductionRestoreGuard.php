@@ -60,6 +60,7 @@ final class ProductionRestoreGuard
             $escaped = false;
             $inLineComment = false;
             $inBlockComment = false;
+            $blockLastStar = false;
             $lexerPending = '';
             while (($sql = $compressed ? gzgets($handle, 8192) : fgets($handle, 8192)) !== false) {
                 $chunk++;
@@ -69,12 +70,12 @@ final class ProductionRestoreGuard
                 $lexerPending = substr($combined, -3);
                 if ($processable !== '') {
                     $structuralWindow = substr($structuralWindow, -256)
-                        .$this->maskSingleQuotedValues($processable, $inQuotedValue, $escaped, $inLineComment, $inBlockComment);
+                        .$this->maskSingleQuotedValues($processable, $inQuotedValue, $escaped, $inLineComment, $inBlockComment, $blockLastStar);
                 }
                 $this->assertSafeWindow($window, $structuralWindow, $protectedDatabases, $chunk);
             }
             $structuralWindow = substr($structuralWindow, -256)
-                .$this->maskSingleQuotedValues($lexerPending, $inQuotedValue, $escaped, $inLineComment, $inBlockComment);
+                .$this->maskSingleQuotedValues($lexerPending, $inQuotedValue, $escaped, $inLineComment, $inBlockComment, $blockLastStar);
             $this->assertSafeWindow($window, $structuralWindow, $protectedDatabases, $chunk + 1);
             if ($compressed && !gzeof($handle)) {
                 throw new RuntimeException('Compressed restore SQL is truncated or unreadable.');
@@ -111,6 +112,7 @@ final class ProductionRestoreGuard
         bool &$escaped,
         bool &$inLineComment,
         bool &$inBlockComment,
+        bool &$blockLastStar,
     ): string
     {
         $masked = '';
@@ -124,11 +126,10 @@ final class ProductionRestoreGuard
                 }
             } elseif ($inBlockComment) {
                 $masked .= $char;
-                if ($char === '*' && $index + 1 < $length && $sql[$index + 1] === '/') {
-                    $masked .= '/';
-                    $index++;
+                if ($blockLastStar && $char === '/') {
                     $inBlockComment = false;
                 }
+                $blockLastStar = $inBlockComment && $char === '*';
             } elseif ($inValue) {
                 if ($escaped) {
                     $escaped = false;
@@ -150,7 +151,9 @@ final class ProductionRestoreGuard
             } elseif ($char === '/' && substr($sql, $index, 2) === '/*'
                 && substr($sql, $index, 3) !== '/*!') {
                 $inBlockComment = true;
-                $masked .= $char;
+                $blockLastStar = false;
+                $masked .= '/*';
+                $index++;
             } elseif ($char === "'") {
                 $inValue = true;
                 $masked .= ' ';

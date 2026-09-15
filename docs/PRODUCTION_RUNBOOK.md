@@ -96,6 +96,18 @@ separately approved and deployed. Compare disposable rows read-only, then
 seek human approval for a minimal audited forward-fix. Never restore the
 disposable result wholesale to an active tenant.
 
+The deployed `d1061d2` scanner still rejects the latest real Zixuan archive:
+the MariaDB sandbox `/*M!... */` closing delimiter crosses its chunk buffer.
+The local boundary-state fix must pass a separate approved immutable release
+and real-archive positive control before any routine SQL import. Laravel's
+database identity currently has global `ALL PRIVILEGES`; do not treat the
+read-only preflight as an enforced disposable-only importer. Any routine
+restore/import tooling must use a dedicated database identity restricted to
+the specific nonregistered disposable DB, require a documented human approval
+reference, append a tamper-evident operation log, and reject active/registered
+targets before opening the SQL stream. Root/direct SQL is break-glass only,
+never a daily restore path; require separate human approval and audit.
+
 Production MariaDB was observed with `log_bin=OFF` and `sync_binlog=0` on
 2026-09-15. PITR cannot be claimed from the current logical backup. At a
 separate `SERVER CONFIG CHANGE REQUIRED` gate, review off-host binlog
@@ -103,9 +115,10 @@ archival, disk growth and retention, configure a persistent log-bin path with
 ROW format and crash-safe sync, restart the actual aaPanel MariaDB service in
 a maintenance window, and verify `SHOW VARIABLES`/`SHOW BINARY LOGS`. Take a
 new full backup *after* activation with its binlog coordinates, then rehearse
-one point-in-time replay into a disposable DB. Do not resume cleanup until
-the Tencent account-side snapshot search and these protection gates are
-resolved.
+one point-in-time replay into a disposable DB. This is mandatory before the
+first real Production school data. A cloud snapshot search may remain
+UNVERIFIED without blocking exclusively QA/Test cleanup once the restore
+guard and routine disposable-only importer are independently verified.
 
 ## Public upload execution boundary
 

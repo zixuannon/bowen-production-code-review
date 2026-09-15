@@ -23,6 +23,24 @@
   local regression pass. A temporary upload to test the local scanner against
   the real Production archive was rejected by Production safety review, so
   real-archive acceptance for the follow-up remains pending explicit approval.
+- Follow-up `d1061d2` was deployed from `188712d5` without a migration on
+  2026-09-15. It still false-positively rejects the latest real backup and
+  the safe disposable control because a closing `*/` split by the scanner's
+  chunk buffer leaves it inside a block comment. A local-only incremental
+  comment-state fix and boundary exploit/regression tests pass the complete
+  784-test suite; Production real-backup acceptance and a separate release
+  approval remain pending. Active/missing database targets still fail closed.
+- A second fresh nine-database logical backup exists at Production
+  `/root/backups/final_quality_gate_followup_20260915T052828Z_7e4432`;
+  all nine SHA-256 and gzip checks pass. The old/new SQL row tuple checksums
+  of 16 Central Finance and Zixuan Finance/Student/Staff tables match 16/16
+  after normalizing MariaDB dump line layout. No restored/imported SQL ran.
+- The Laravel database user has global `ALL PRIVILEGES` and `GRANT OPTION`;
+  the preflight cannot technically stop a privileged raw client import.
+  Routine disposable-only restore therefore needs an independently restricted
+  importer/database identity and approval/audit gate. No exact scheduled
+  direct-restore script was found; root break-glass remains privileged and
+  must not become a routine workflow.
 - A fresh verified nine-application-database Production backup was captured
   before release at `/root/backups/zixuan-protection-20260915-Gfew2ngV`.
   All nine SHA-256/gzip checks pass, Zixuan has 121 CREATE TABLE entries, and
@@ -32,8 +50,11 @@
   account-side independent snapshots remain UNVERIFIED without CAM access.
   MariaDB `log_bin=OFF` and `sync_binlog=0` remain unchanged; the user has
   explicitly paused binlog configuration/restart pending a maintenance window.
-- Do not resume QA data cleanup, Bahan/Timecity cutover, or go-live acceptance
-  until cloud-snapshot verification and restore/PITR protection are resolved.
+- Cloud snapshots remain UNVERIFIED but do not by themselves block cleanup
+  of exclusively QA/Test data. Do not resume cleanup until the real-backup
+  guard false positive and privileged routine-import bypass are closed.
+  Binlog/PITR is mandatory before first real Production data; no MariaDB
+  restart or binlog change is approved in this incident-minimum round.
 
 Last updated: 2026-09-15
 
