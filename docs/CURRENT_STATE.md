@@ -1,5 +1,23 @@
 # eSchool Current State
 
+## Bowen school header branding — local candidate, not deployed
+
+- Current Production source is `115186ea7aec7c849340490249f78b88294c3929`.
+  Zixuan `MMBOWEN01`, Bahan `MMBOWEN02`, and Timecity `MMBOWEN03` retain
+  central `schools.logo` references, but the three referenced image files are
+  absent from persistent shared public storage. All three tenant horizontal
+  logo settings are empty; Zixuan's vertical setting also references a missing
+  shared file. The pre-go-live reset protected school/settings rows by count;
+  there is no evidence establishing when logo files disappeared.
+- This independent local branch uses any existing school custom logo first,
+  then the packaged Bowen School master image for the three trusted canonical
+  codes and for global Bowen administrators. External schools keep their own
+  images or the eSchool default. Both HTML and browser error fallback use the
+  same brand image, and square Bowen artwork retains its proportions.
+- No Production school data, persistent shared storage, Finance behavior, or
+  cutover status was changed. Production browser acceptance and deployment
+  remain subject to a separate explicit approval.
+
 ## Zixuan data-integrity incident — cleanup/cutover/go-live paused
 
 - On 2026-09-15 the Zixuan tenant was inadvertently restored to a 03:31 UTC

@@ -37,20 +37,35 @@
             return \Illuminate\Support\Facades\Storage::disk('public')->url($relativePath);
         };
 
-        $horizontalPath = $schoolSettings['horizontal_logo'] ?? null;
-        $verticalPath = $schoolSettings['vertical_logo'] ?? null;
-        $horizontalLogo = $resolveLogoUrl($horizontalPath ?: ($systemSettings['horizontal_logo'] ?? null), '/assets/horizontal-logo2.svg');
-        $verticalLogo = $resolveLogoUrl($verticalPath ?: ($systemSettings['vertical_logo'] ?? null), '/assets/vertical-logo.svg');
+        // Resolve the school exclusively from the authenticated, server-side identity.
+        // School settings and schools.logo both represent optional custom branding;
+        // old /storage references may outlive their files in persistent shared storage.
+        $schoolId = Auth::user()->getRawOriginal('school_id');
+        $brandSchool = $schoolId
+            ? \App\Models\School::on('mysql')->whereKey($schoolId)->first(['code', 'logo'])
+            : null;
+        [$horizontalFallback, $verticalFallback] = \App\Support\SchoolBranding::logoFallbacks(
+            $brandSchool?->getRawOriginal('code'),
+            (bool) $schoolId
+        );
+        $schoolLogo = $brandSchool?->getRawOriginal('logo');
+        $horizontalPath = ($schoolSettings['horizontal_logo'] ?? null) ?: $schoolLogo;
+        $verticalPath = ($schoolSettings['vertical_logo'] ?? null) ?: $schoolLogo;
+        // Do not use system-wide SaaS branding for Bowen schools with no usable
+        // custom image. Resolve missing paths here, before any browser 404.
+        $isBowenBrand = $horizontalFallback === '/assets/bowen-school/bowen-logo.jpg';
+        $horizontalLogo = $resolveLogoUrl($horizontalPath ?: ($isBowenBrand ? null : ($systemSettings['horizontal_logo'] ?? null)), $horizontalFallback);
+        $verticalLogo = $resolveLogoUrl($verticalPath ?: ($isBowenBrand ? null : ($systemSettings['vertical_logo'] ?? null)), $verticalFallback);
         $profileImage = $resolveLogoUrl(Auth::user()->getRawOriginal('image'), '/assets/no_image_available.jpg');
     @endphp
     <div class="text-center navbar-brand-wrapper d-flex align-items-center justify-content-center">
         <a class="navbar-brand brand-logo" href="{{ URL::to('/dashboard') }}" aria-label="{{ __('Dashboard') }}">
-            <img src="{{ $horizontalLogo }}" alt="" data-custom-image="{{ asset('/assets/horizontal-logo2.svg') }}" class="custom-default-image"
-                 onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/horizontal-logo2.svg') }}';">
+            <img src="{{ $horizontalLogo }}" alt="" data-custom-image="{{ asset($horizontalFallback) }}" class="custom-default-image {{ $isBowenBrand ? 'bowen-brand-logo' : '' }}"
+                 onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset($horizontalFallback) }}';">
         </a>
         <a class="navbar-brand brand-logo-mini" href="{{ URL::to('/dashboard') }}" aria-label="{{ __('Dashboard') }}">
-            <img src="{{ $verticalLogo }}" alt="" data-custom-image="{{ asset('/assets/vertical-logo.svg') }}" class="custom-default-image"
-                 onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset('/assets/vertical-logo.svg') }}';">
+            <img src="{{ $verticalLogo }}" alt="" data-custom-image="{{ asset($verticalFallback) }}" class="custom-default-image {{ $isBowenBrand ? 'bowen-brand-logo' : '' }}"
+                 onerror="this.onerror=null;this.setAttribute('data-error-handled','true');this.src='{{ asset($verticalFallback) }}';">
         </a>
     </div>
     <div class="navbar-menu-wrapper d-flex align-items-stretch">

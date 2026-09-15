@@ -66,6 +66,10 @@
 {{--</script>--}}
 <script src="{{url('/js/lang')}}"></script>
 <style>
+    /* The Bowen master artwork is square; keep its proportions in both header sizes. */
+    .navbar .navbar-brand-wrapper .navbar-brand img.bowen-brand-logo {
+        object-fit: contain;
+    }
     :root {
         --theme-color: <?=$systemSettings['theme_color']??"#22577A" ?>;
     }
