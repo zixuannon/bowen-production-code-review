@@ -87,8 +87,9 @@ unregistered `eschool_incident_disposable_*` database, then run the read-only
 `incident:restore-preflight /absolute/resolved/archive.sql.gz
 --target=eschool_incident_disposable_*` from the reviewed release. A non-zero
 exit blocks the import. It verifies the central School registry, target
-existence/emptiness, and scans the whole SQL for `USE`, database DDL, binlog
-disabling, and explicit references to protected databases. This preflight
+existence/emptiness, and scans executable SQL (rather than quoted historical
+row values) for `USE`, database DDL, binlog disabling, and explicit references
+to protected databases. This preflight
 does not import or authorize any SQL; raw client imports bypass it and are
 prohibited until an enforced import wrapper/server permission policy is
 separately approved and deployed. Compare disposable rows read-only, then

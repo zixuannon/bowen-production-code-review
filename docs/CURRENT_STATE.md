@@ -11,13 +11,31 @@
   `/root/backups/zixuan_incident_closure_20260915T042628Z`; it is a recovery
   point, not proof of pre-incident completeness.
 - This isolated local branch adds a zero-write restore preflight that rejects
-  active/nonempty targets and database-switching SQL. It is not deployed and
-  does not control raw privileged client imports. MariaDB `log_bin=OFF` remains
-  a separate Production server-config/restart Human Gate.
+  active/nonempty targets and database-switching SQL. Commit `188712d5` is
+  deployed to Production as an immutable descendant of active source
+  `965226200`; it does not control raw privileged client imports. Deployed QA
+  rejects the old `USE` archive, active and missing targets with non-zero exit,
+  and accepts a harmless archive against an empty unregistered disposable DB.
+  The real current Zixuan backup is incorrectly rejected because historical
+  quoted values include a protected database/table name and permission names
+  containing `-use`. A local-only lexical fix masks quoted SQL values before
+  directive/reference checks; it is not pushed or deployed. Targeted and full
+  local regression pass. A temporary upload to test the local scanner against
+  the real Production archive was rejected by Production safety review, so
+  real-archive acceptance for the follow-up remains pending explicit approval.
+- A fresh verified nine-application-database Production backup was captured
+  before release at `/root/backups/zixuan-protection-20260915-Gfew2ngV`.
+  All nine SHA-256/gzip checks pass, Zixuan has 121 CREATE TABLE entries, and
+  the 16 Central canonical Finance + Zixuan Finance/Student/Staff full-row
+  hashes match before release, after release, and after guard QA.
+- Tencent CVM `ins-ayvwj3ms` in `ap-singapore` uses the 120 GB `vda` disk;
+  account-side independent snapshots remain UNVERIFIED without CAM access.
+  MariaDB `log_bin=OFF` and `sync_binlog=0` remain unchanged; the user has
+  explicitly paused binlog configuration/restart pending a maintenance window.
 - Do not resume QA data cleanup, Bahan/Timecity cutover, or go-live acceptance
   until cloud-snapshot verification and restore/PITR protection are resolved.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Active production target
 

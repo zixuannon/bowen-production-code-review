@@ -51,6 +51,9 @@ class ProductionRestoreGuardTest extends TestCase
     {
         foreach ([
             "USE `eschool_saas_15_zixuan`;\n",
+            "-- An unmatched quote ' in a comment\nUSE `eschool_saas_15_zixuan`;\n",
+            "--\tAn unmatched quote ' in a comment\nUSE `eschool_saas_15_zixuan`;\n",
+            str_repeat('X', 8190)."-- ' chunk boundary comment\nUSE `eschool_saas_15_zixuan`;\n' close quote\n",
             "/*!40101 USE `eschool_saas_15_zixuan` */;\n",
             "CREATE DATABASE eschool_saas_15_zixuan;\n",
             "CREATE\nDATABASE eschool_saas_15_zixuan;\n",
@@ -88,7 +91,9 @@ class ProductionRestoreGuardTest extends TestCase
 
     public function test_safe_plain_and_gzip_dumps_pass_without_writing_to_a_database(): void
     {
-        $sql = "CREATE TABLE `students` (`id` bigint PRIMARY KEY);\nINSERT INTO `students` VALUES (1);\n";
+        $sql = "CREATE TABLE `students` (`id` bigint PRIMARY KEY);\n"
+            ."INSERT INTO `students` VALUES (1,'Duplicate entry in `eschool_saas_15_zixuan`.`fees_paids`');\n"
+            ."INSERT INTO `permissions` VALUES (1,'central-finance-use');\n";
         $plain = $this->sqlFile($sql);
         $gzip = $this->sqlFile(gzencode($sql)).'.gz';
         rename(substr($gzip, 0, -3), $gzip);
