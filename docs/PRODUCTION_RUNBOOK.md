@@ -74,6 +74,38 @@ tenant registry allowlist, and exact single-file migration paths are encoded in
 `ProductionMigrationGuard`. Do not bypass that guard from an updater, restore
 flow, Tinker, scheduler, or nested Artisan call.
 
+## Zixuan incident restore and PITR gate
+
+After the 2026-09-15 Zixuan restore incident, cleanup/cutover/go-live remain
+paused. Never pipe a SQL archive directly to an active central or tenant DB,
+even when its command line names a disposable target: `USE`, database-level
+DDL, or qualified SQL can switch or write elsewhere. Do not repeat a full
+tenant restore to investigate a data difference.
+
+For a separately approved *disposable* restore, create a new, empty,
+unregistered `eschool_incident_disposable_*` database, then run the read-only
+`incident:restore-preflight /absolute/resolved/archive.sql.gz
+--target=eschool_incident_disposable_*` from the reviewed release. A non-zero
+exit blocks the import. It verifies the central School registry, target
+existence/emptiness, and scans the whole SQL for `USE`, database DDL, binlog
+disabling, and explicit references to protected databases. This preflight
+does not import or authorize any SQL; raw client imports bypass it and are
+prohibited until an enforced import wrapper/server permission policy is
+separately approved and deployed. Compare disposable rows read-only, then
+seek human approval for a minimal audited forward-fix. Never restore the
+disposable result wholesale to an active tenant.
+
+Production MariaDB was observed with `log_bin=OFF` and `sync_binlog=0` on
+2026-09-15. PITR cannot be claimed from the current logical backup. At a
+separate `SERVER CONFIG CHANGE REQUIRED` gate, review off-host binlog
+archival, disk growth and retention, configure a persistent log-bin path with
+ROW format and crash-safe sync, restart the actual aaPanel MariaDB service in
+a maintenance window, and verify `SHOW VARIABLES`/`SHOW BINARY LOGS`. Take a
+new full backup *after* activation with its binlog coordinates, then rehearse
+one point-in-time replay into a disposable DB. Do not resume cleanup until
+the Tencent account-side snapshot search and these protection gates are
+resolved.
+
 ## Public upload execution boundary
 
 Every production vhost must include

@@ -1,5 +1,22 @@
 # eSchool Current State
 
+## Zixuan data-integrity incident — cleanup/cutover/go-live paused
+
+- On 2026-09-15 the Zixuan tenant was inadvertently restored to a 03:31 UTC
+  dump at approximately 03:54 UTC. No MariaDB binlog was enabled. Read-only
+  reconciliation found no additional *provable* lost row beyond the known QA
+  lifecycle states, but cannot rule out unlogged transient writes or a cloud
+  account-side snapshot not yet accessible for inspection.
+- A fresh, verified 121-table InnoDB Zixuan backup exists at Production
+  `/root/backups/zixuan_incident_closure_20260915T042628Z`; it is a recovery
+  point, not proof of pre-incident completeness.
+- This isolated local branch adds a zero-write restore preflight that rejects
+  active/nonempty targets and database-switching SQL. It is not deployed and
+  does not control raw privileged client imports. MariaDB `log_bin=OFF` remains
+  a separate Production server-config/restart Human Gate.
+- Do not resume QA data cleanup, Bahan/Timecity cutover, or go-live acceptance
+  until cloud-snapshot verification and restore/PITR protection are resolved.
+
 Last updated: 2026-09-14
 
 ## Active production target
