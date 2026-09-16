@@ -77,7 +77,11 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Bowen QA', 'code' => 'BOWEN_QA', 'status' => 'active']);
         app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
         $service = app(CentralFinanceSchoolStaffIdentityService::class);
-        $principal = $service->grantSchoolAccountant($group, 1, 7);
+        $availableBefore = $service->availableStaff($group)->firstWhere('tenant_user_id', 7);
+        $this->assertTrue($availableBefore->eligible_accountant);
+        $this->assertFalse($availableBefore->eligible_principal);
+        $this->assertFalse($availableBefore->identity_linked);
+        $principal = $service->grantSchoolAccountant($group, 1, 7, 'Approved Zixuan accountant onboarding', 900);
 
         $tenantUuid = DB::connection('school')->table('users')->where('id', 7)->value('central_finance_source_uuid');
         $identity = CentralFinanceSchoolStaffIdentity::on('mysql')->sole();
@@ -85,6 +89,20 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertSame($tenantUuid, $identity->tenant_user_uuid);
         $this->assertNotSame(7, $identity->central_user_id);
         $this->assertSame([$principal->id], DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id', 1)->where('can_view', true)->pluck('user_id')->all());
+        $accountantScope = DB::connection('mysql')->table('central_finance_user_school_scopes')
+            ->where(['user_id' => $principal->id, 'school_id' => 1])->sole();
+        $this->assertTrue((bool) $accountantScope->can_operate);
+        $this->assertFalse((bool) $accountantScope->can_submit_collections);
+        $availableAfter = $service->availableStaff($group)->firstWhere('tenant_user_id', 7);
+        $this->assertTrue($availableAfter->identity_linked);
+        $this->assertDatabaseHas('central_finance_document_audits', [
+            'school_id' => 1,
+            'document_type' => 'central_finance_staff_onboarding',
+            'document_id' => $principal->id,
+            'action' => 'school_accountant_granted',
+            'actor_id' => 900,
+            'reason' => 'Approved Zixuan accountant onboarding',
+        ], 'mysql');
         $this->assertSame([1], app(CentralFinanceWorkspaceService::class)->accessibleSchools($principal)->pluck('id')->all());
         // A real School Login retains this tenant session key. Central
         // principal resolution must still query the central directory.

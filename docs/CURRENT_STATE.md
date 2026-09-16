@@ -1,5 +1,38 @@
 # eSchool Current State
 
+## Timecity Finance Staff onboarding — local candidate
+
+- Production `354b6ca9f6f3369d869d59ca6ceb83c1fc42747f` has no formal
+  School-facing onboarding UI for the canonical `School Accountant`,
+  `Front Desk / Admissions & Collection`, and `Principal` tenant roles.
+  Timecity therefore currently exposes only its older tenant roles; May Myat
+  Mon has the tenant role `财务部门` and a stable Staff UUID, but no
+  Central Staff identity link or School scope. The Finance Group rejection is
+  the intended fail-closed result because the required canonical tenant role
+  is absent.
+- Branch `codex/timecity-finance-staff-onboarding` adds a School Admin-only,
+  own-School onboarding page at `Staff Management -> Staff -> Finance Staff
+  Onboarding`. It assigns one or more fixed identity roles without replacing
+  existing roles, creates missing permission-free canonical roles on demand,
+  and writes an append-only tenant audit with reason and before/after roles.
+- The existing Super Admin Finance Group step remains separate. Its selectors
+  now show only Staff with the matching tenant role, show link state, require
+  an audit reason, and audit Central identity/scope before and after. Principal
+  remains read-only, Front Desk receives only explicit Pending Collection
+  submission scope, and Student tuition collection continues to require Head
+  Finance; assigning School Accountant never grants tuition collection.
+- Staff create/edit remains multi-role, and the edit modal now preserves every
+  assigned role rather than selecting only the first. No route boundary,
+  Finance calculation, schema, migration, or Production data was changed.
+- Targeted onboarding/security regression passes 24 tests / 97 assertions;
+  localization/UI contracts pass 18 tests / 2,798 assertions. Authenticated
+  local browser acceptance passes at desktop and 390 px with no page-level
+  overflow or target-page console error, and non-School-Admin direct access is
+  denied. Full regression passes 797 tests / 6,392 assertions with four
+  expected opt-in skips.
+
+Last updated: 2026-09-16
+
 ## School staff create duplicate-submit feedback — local candidate
 
 - Production `373ba3d0b6f3f3703e656f6cb01b0821896e1c7e` accepts Bahan's

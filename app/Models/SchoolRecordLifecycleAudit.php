@@ -15,6 +15,7 @@ final class SchoolRecordLifecycleAudit extends Model
     public const REACTIVATE = 'reactivate';
     public const WITHDRAW = 'withdraw';
     public const ARCHIVE = 'archive';
+    public const ASSIGN_ROLE = 'assign_role';
 
     public $timestamps = false;
 

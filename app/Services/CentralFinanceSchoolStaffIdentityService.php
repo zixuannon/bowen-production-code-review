@@ -49,14 +49,39 @@ final class CentralFinanceSchoolStaffIdentityService
                         ->whereNull('users.deleted_at')
                         ->orderBy('users.first_name');
                     $this->dataIsolation->applyTenant($query, 'staff', (int) $school->id, false, 'users.id');
-                    return $query
-                        ->get(['users.id as tenant_user_id', 'users.first_name', 'users.last_name', 'users.email'])
-                        ->map(fn ($staff) => (object) [
+                    $staff = $query->get([
+                        'users.id as tenant_user_id', 'users.first_name', 'users.last_name',
+                        'users.email', 'users.central_finance_source_uuid',
+                    ]);
+                    $roles = DB::connection('school')->table('model_has_roles as assignments')
+                        ->join('roles', 'roles.id', '=', 'assignments.role_id')
+                        ->where('assignments.model_type', User::class)
+                        ->whereIn('assignments.model_id', $staff->pluck('tenant_user_id'))
+                        ->get(['assignments.model_id', 'roles.name'])
+                        ->groupBy('model_id')
+                        ->map(fn (Collection $rows) => $rows->pluck('name')->values()->all());
+                    $linked = CentralFinanceSchoolStaffIdentity::on('mysql')
+                        ->where('school_id', $school->id)
+                        ->where('status', 'active')
+                        ->whereIn('tenant_user_uuid', $staff->pluck('central_finance_source_uuid')->filter())
+                        ->pluck('tenant_user_uuid')
+                        ->flip();
+
+                    return $staff->map(function ($staff) use ($school, $roles, $linked): object {
+                        $roleNames = $roles->get($staff->tenant_user_id, []);
+
+                        return (object) [
                             'school_id' => (int) $school->id,
                             'tenant_user_id' => (int) $staff->tenant_user_id,
                             'name' => trim($staff->first_name.' '.$staff->last_name),
                             'email' => $staff->email,
-                        ]);
+                            'role_names' => $roleNames,
+                            'eligible_accountant' => $this->hasAnyRole($roleNames, self::ACCOUNTANT_ROLE_NAMES),
+                            'eligible_principal' => $this->hasAnyRole($roleNames, self::PRINCIPAL_ROLE_NAMES),
+                            'eligible_front_desk' => $this->hasAnyRole($roleNames, self::FRONT_DESK_ROLE_NAMES),
+                            'identity_linked' => $linked->has((string) $staff->central_finance_source_uuid),
+                        ];
+                    });
                 });
             })->values();
     }
@@ -65,9 +90,9 @@ final class CentralFinanceSchoolStaffIdentityService
      * A tenant numeric user ID is accepted only as a server-side selection
      * handle. The durable Central mapping always stores a stable tenant UUID.
      */
-    public function grantSchoolAccountant(FinanceGroup $group, int $schoolId, int $tenantUserId): CentralFinanceUser
+    public function grantSchoolAccountant(FinanceGroup $group, int $schoolId, int $tenantUserId, string $reason = 'School Accountant Central Finance onboarding', ?int $actorId = null): CentralFinanceUser
     {
-        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, true);
+        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, true, false, 'school_accountant_granted', $reason, $actorId);
     }
 
     /**
@@ -75,15 +100,15 @@ final class CentralFinanceSchoolStaffIdentityService
      * School. Tenant role membership and Central scope stay deliberately
      * separate: both are required, and neither is inferred from the other.
      */
-    public function grantSchoolPrincipal(FinanceGroup $group, int $schoolId, int $tenantUserId): CentralFinanceUser
+    public function grantSchoolPrincipal(FinanceGroup $group, int $schoolId, int $tenantUserId, string $reason = 'Principal read-only Central Finance onboarding', ?int $actorId = null): CentralFinanceUser
     {
-        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false);
+        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false, false, 'principal_read_only_granted', $reason, $actorId);
     }
 
     /** A Front Desk identity may submit Pending Collections, never operate Finance generally. */
-    public function grantSchoolFrontDesk(FinanceGroup $group, int $schoolId, int $tenantUserId): CentralFinanceUser
+    public function grantSchoolFrontDesk(FinanceGroup $group, int $schoolId, int $tenantUserId, string $reason = 'Front Desk pending-collection onboarding', ?int $actorId = null): CentralFinanceUser
     {
-        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false, true);
+        return $this->grantSchoolStaffFinanceAccess($group, $schoolId, $tenantUserId, false, true, 'front_desk_collection_granted', $reason, $actorId);
     }
 
     /** Provision (or locate) the tenant login for an existing Central staff identity. */
@@ -165,7 +190,16 @@ final class CentralFinanceSchoolStaffIdentityService
         return $tenantId;
     }
 
-    private function grantSchoolStaffFinanceAccess(FinanceGroup $group, int $schoolId, int $tenantUserId, bool $requestedOperate, bool $requestedCollectionSubmit = false): CentralFinanceUser
+    private function grantSchoolStaffFinanceAccess(
+        FinanceGroup $group,
+        int $schoolId,
+        int $tenantUserId,
+        bool $requestedOperate,
+        bool $requestedCollectionSubmit,
+        string $auditAction,
+        string $reason,
+        ?int $actorId,
+    ): CentralFinanceUser
     {
         $school = School::on('mysql')->whereKey($schoolId)->firstOrFail();
         if (!$group->schools()->where(['school_id' => $school->id, 'status' => 'active'])->exists()) {
@@ -207,8 +241,14 @@ final class CentralFinanceSchoolStaffIdentityService
         // role by itself must never silently escalate the Central scope.
         $canOperate = $requestedOperate;
 
-        return DB::connection('mysql')->transaction(function () use ($group, $school, $staff, $canOperate, $requestedCollectionSubmit): CentralFinanceUser {
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw ValidationException::withMessages(['reason' => [__('An audit reason is required.')]]);
+        }
+
+        return DB::connection('mysql')->transaction(function () use ($group, $school, $staff, $canOperate, $requestedCollectionSubmit, $auditAction, $reason, $actorId): CentralFinanceUser {
             $identity = CentralFinanceSchoolStaffIdentity::on('mysql')->where(['school_id' => $school->id, 'tenant_user_uuid' => $staff->central_finance_source_uuid])->lockForUpdate()->first();
+            $identityBefore = $identity?->only(['id', 'central_user_id', 'status']);
             if ($identity) {
                 $principal = CentralFinanceUser::on('mysql')->findOrFail($identity->central_user_id);
                 $identity->update(['status' => 'active']);
@@ -220,7 +260,7 @@ final class CentralFinanceSchoolStaffIdentityService
                     'status' => 0,
                 ]);
                 $principal->forceFill(['central_finance_principal_type' => self::PRINCIPAL_TYPE])->save();
-                CentralFinanceSchoolStaffIdentity::on('mysql')->create([
+                $identity = CentralFinanceSchoolStaffIdentity::on('mysql')->create([
                     'identity_uuid' => (string) Str::uuid(), 'school_id' => $school->id,
                     'tenant_user_uuid' => $staff->central_finance_source_uuid,
                     'central_user_id' => $principal->id, 'status' => 'active',
@@ -239,10 +279,32 @@ final class CentralFinanceSchoolStaffIdentityService
             if (Schema::connection('mysql')->hasColumn('central_finance_user_school_scopes', 'can_submit_collections')) {
                 $scopeValues['can_submit_collections'] = $requestedCollectionSubmit;
             }
+            $scopeBefore = DB::connection('mysql')->table('central_finance_user_school_scopes')
+                ->where(['user_id' => $principal->id, 'school_id' => $school->id])->first();
             DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
                 ['user_id' => $principal->id, 'school_id' => $school->id],
                 $scopeValues
             );
+            $scopeAfter = DB::connection('mysql')->table('central_finance_user_school_scopes')
+                ->where(['user_id' => $principal->id, 'school_id' => $school->id])->first();
+            CentralFinanceDocumentAudit::on('mysql')->create([
+                'school_id' => $school->id,
+                'document_type' => 'central_finance_staff_onboarding',
+                'document_id' => $principal->id,
+                'action' => $auditAction,
+                'actor_id' => $actorId ?: $principal->id,
+                'reason' => $reason,
+                'before_values' => [
+                    'identity' => $identityBefore,
+                    'scope' => $scopeBefore ? (array) $scopeBefore : null,
+                ],
+                'after_values' => [
+                    'identity' => ['id' => $identity->id, 'central_user_id' => $principal->id, 'status' => 'active'],
+                    'scope' => $scopeAfter ? (array) $scopeAfter : null,
+                    'tenant_user_id' => (int) $staff->id,
+                    'tenant_roles' => $staff->role_names,
+                ],
+            ]);
             return $principal;
         });
     }

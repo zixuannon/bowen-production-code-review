@@ -1591,7 +1591,7 @@ window.staffEvents = {
         }
 
         $('#edit_school_id').val(row.support_school_id).trigger('change');
-        $('#edit_role_id').val(row.roles[0].id);
+        $('#edit_role_id').val((row.roles || []).map(role => role.id)).trigger('change');
         $('#edit_staff_image').attr('src', row.image);
         $('.edit-dob').val(moment(row.dob_org, 'YYYY-MM-DD').format('DD-MM-YYYY'));
         

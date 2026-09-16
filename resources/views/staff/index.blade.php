@@ -10,6 +10,9 @@
             <h3 class="page-title">
                 {{ __('Manage Staff') }}
             </h3>
+            @if(Auth::user()?->school_id && Auth::user()?->hasRole('School Admin') && Auth::user()?->can('staff-edit'))
+                <a class="btn btn-sm btn-outline-primary" href="{{ route('staff.finance-onboarding.index') }}">{{ __('Finance Staff Onboarding') }}</a>
+            @endif
         </div>
         <div class="row">
             <div class="col-md-12 grid-margin stretch-card">

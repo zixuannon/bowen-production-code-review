@@ -4,6 +4,7 @@ use App\Http\Controllers\FinanceGroupController;
 use App\Http\Controllers\FinanceGroupReportController;
 use App\Http\Controllers\FinanceGroupTransferController;
 use App\Http\Controllers\FinanceGroupHqAccountController;
+use App\Http\Controllers\StaffRoleOnboardingController;
 use App\Http\Controllers\GroupFinanceController;
 use App\Http\Controllers\FinanceOperatingWorkspaceController;
 use App\Http\Controllers\CentralFinanceWorkspaceController;
@@ -452,6 +453,8 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::resource('roles', RoleController::class);
 
         Route::group(['prefix' => 'staff'], static function () {
+            Route::get('finance-onboarding', [StaffRoleOnboardingController::class, 'index'])->name('staff.finance-onboarding.index');
+            Route::post('finance-onboarding', [StaffRoleOnboardingController::class, 'store'])->name('staff.finance-onboarding.store');
             Route::get('id-card', [StaffController::class, 'staff_id_card'])->name('staff.id-card');
             Route::get('id-card-list', [StaffController::class, 'staff_id_card_list'])->name('staff.show.all');
             Route::post('generate-id-card', [StaffController::class, 'generate_staff_id_card']);

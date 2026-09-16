@@ -179,29 +179,29 @@ class FinanceGroupController extends Controller
     public function storeSchoolStaffAccountant(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
         $this->assertCentralSuperAdmin();
-        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
-        $this->staffIdentities->grantSchoolAccountant($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id']);
-        return redirect()->route('finance-groups.index')->with('success', __('School Staff granted Accountant Finance access.'));
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:255']]);
+        $this->staffIdentities->grantSchoolAccountant($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id'], $data['reason'], Auth::id());
+        return redirect()->to(route('finance-groups.show', $financeGroup).'#staff')->with('success', __('School Staff granted Accountant Finance access.'));
     }
 
     /** Grant a trusted School Principal a read-only Central Finance scope. */
     public function storeSchoolStaffPrincipal(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
         $this->assertCentralSuperAdmin();
-        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
-        $this->staffIdentities->grantSchoolPrincipal($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id']);
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:255']]);
+        $this->staffIdentities->grantSchoolPrincipal($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id'], $data['reason'], Auth::id());
 
-        return redirect()->route('finance-groups.index')->with('success', __('School Principal granted read-only Finance access.'));
+        return redirect()->to(route('finance-groups.show', $financeGroup).'#staff')->with('success', __('School Principal granted read-only Finance access.'));
     }
 
     /** Grant a trusted School Front Desk user pending-collection access only. */
     public function storeSchoolStaffFrontDesk(Request $request, FinanceGroup $financeGroup): RedirectResponse
     {
         $this->assertCentralSuperAdmin();
-        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer']]);
-        $this->staffIdentities->grantSchoolFrontDesk($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id']);
+        $data = $request->validate(['school_id' => ['required', 'integer'], 'tenant_user_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:255']]);
+        $this->staffIdentities->grantSchoolFrontDesk($financeGroup, (int) $data['school_id'], (int) $data['tenant_user_id'], $data['reason'], Auth::id());
 
-        return redirect()->route('finance-groups.index')->with('success', __('School Front Desk granted pending collection access.'));
+        return redirect()->to(route('finance-groups.show', $financeGroup).'#staff')->with('success', __('School Front Desk granted pending collection access.'));
     }
 
     public function provisionSchoolStaffFrontDesk(Request $request, FinanceGroup $financeGroup): RedirectResponse

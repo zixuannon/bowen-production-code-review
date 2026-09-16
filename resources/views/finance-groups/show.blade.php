@@ -29,31 +29,39 @@
         <section id="staff" class="card mb-4"><div class="card-body">
             <h4 class="card-title">{{ __('Central Finance Staff') }}</h4>
             <p class="text-muted">{{ __('Super Admin explicitly configures access and never receives Finance authority automatically.') }}</p>
+            @php
+                $accountantStaff = $schoolStaff->where('eligible_accountant', true);
+                $principalStaff = $schoolStaff->where('eligible_principal', true);
+                $frontDeskStaff = $schoolStaff->where('eligible_front_desk', true);
+            @endphp
             <div class="row">
                 <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.central-school-scopes.store', $group) }}">@csrf
                     <h5>{{ __('Head Finance') }}</h5><input type="hidden" name="grant_type" value="head_finance_all">
                     <div class="form-group"><label>{{ __('Central User') }}</label><select class="form-control" name="central_user_id" required><option value="">{{ __('Select Head Finance') }}</option>@foreach($centralUsers->filter(fn($user) => $user->hasRole('Head Finance')) as $user)<option value="{{ $user->id }}">{{ $user->full_name }} {{ $user->email ? '('.$user->email.')' : '' }}</option>@endforeach</select></div>
                     <button class="btn btn-theme" type="submit">{{ __('Authorize All Group Schools') }}</button>
                 </form></div>
-                <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.school-staff-accountants.store', $group) }}">@csrf
+                <div class="col-lg-6"><form class="border rounded p-3 mb-3 staff-role-grant-form" method="POST" action="{{ route('finance-groups.school-staff-accountants.store', $group) }}">@csrf
                     <h5>{{ __('School Accountant') }}</h5>
                     <p class="small text-muted">{{ __('Grant an existing School Staff login Central Finance access. The saved mapping uses a stable Staff UUID, never a tenant user ID.') }}</p>
                     <div class="form-group"><label>{{ __('School') }}</label><select class="form-control" name="school_id" required><option value="">{{ __('Select School') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
-                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select School Staff') }}</option>@foreach($schoolStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}</option>@endforeach</select></div>
+                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select School Staff') }}</option>@foreach($accountantStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}{{ $staff->identity_linked ? ' · '.__('Linked') : '' }}</option>@endforeach</select><small class="form-text text-muted">{{ __('Only Staff already assigned School Accountant, Accountant, or Cashier in that School are eligible.') }}</small></div>
+                    <div class="form-group"><label>{{ __('Audit reason') }}</label><input class="form-control" name="reason" maxlength="255" required></div>
                     <button class="btn btn-outline-primary" type="submit">{{ __('Grant Accountant Finance Access') }}</button>
                 </form></div>
-                <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.school-staff-principals.store', $group) }}">@csrf
+                <div class="col-lg-6"><form class="border rounded p-3 mb-3 staff-role-grant-form" method="POST" action="{{ route('finance-groups.school-staff-principals.store', $group) }}">@csrf
                     <h5>{{ __('Principal') }}</h5>
                     <p class="small text-muted">{{ __('Grant an existing School Principal read-only Central Finance access. School roles and Central Finance scopes remain separate.') }}</p>
                     <div class="form-group"><label>{{ __('School') }}</label><select class="form-control" name="school_id" required><option value="">{{ __('Select School') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
-                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select Principal') }}</option>@foreach($schoolStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}</option>@endforeach</select></div>
+                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select Principal') }}</option>@foreach($principalStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}{{ $staff->identity_linked ? ' · '.__('Linked') : '' }}</option>@endforeach</select><small class="form-text text-muted">{{ __('Only Staff already assigned Principal in that School are eligible.') }}</small></div>
+                    <div class="form-group"><label>{{ __('Audit reason') }}</label><input class="form-control" name="reason" maxlength="255" required></div>
                     <button class="btn btn-outline-primary" type="submit">{{ __('Grant Principal Read-only Access') }}</button>
                 </form></div>
-                <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.school-staff-front-desks.store', $group) }}">@csrf
+                <div class="col-lg-6"><form class="border rounded p-3 mb-3 staff-role-grant-form" method="POST" action="{{ route('finance-groups.school-staff-front-desks.store', $group) }}">@csrf
                     <h5>{{ __('Front Desk / Admissions & Collection') }}</h5>
                     <p class="small text-muted">{{ __('Grant pending-collection access only. This role cannot create Payments, Receipts, or Ledger entries.') }}</p>
                     <div class="form-group"><label>{{ __('School') }}</label><select class="form-control" name="school_id" required><option value="">{{ __('Select School') }}</option>@foreach($group->schools->where('status','active') as $member)<option value="{{ $member->school_id }}">{{ $member->school?->name }}</option>@endforeach</select></div>
-                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select Front Desk Staff') }}</option>@foreach($schoolStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}</option>@endforeach</select></div>
+                    <div class="form-group"><label>{{ __('Existing School Staff') }}</label><select class="form-control" name="tenant_user_id" required><option value="">{{ __('Select Front Desk Staff') }}</option>@foreach($frontDeskStaff as $staff)<option value="{{ $staff->tenant_user_id }}" data-school-id="{{ $staff->school_id }}">{{ $staff->name }}{{ $staff->email ? ' · '.$staff->email : '' }}{{ $staff->identity_linked ? ' · '.__('Linked') : '' }}</option>@endforeach</select><small class="form-text text-muted">{{ __('Only Staff already assigned Front Desk / Admissions & Collection in that School are eligible.') }}</small></div>
+                    <div class="form-group"><label>{{ __('Audit reason') }}</label><input class="form-control" name="reason" maxlength="255" required></div>
                     <button class="btn btn-outline-primary" type="submit">{{ __('Grant Pending Collection Access') }}</button>
                 </form></div>
                 <div class="col-lg-6"><form class="border rounded p-3 mb-3" method="POST" action="{{ route('finance-groups.school-staff-front-desks.provision', $group) }}">@csrf
@@ -99,4 +107,25 @@
         </div></section>
     </div>
     <x-central-finance.lifecycle-confirmation />
+@endsection
+
+@section('script')
+<script>
+document.querySelectorAll('.staff-role-grant-form').forEach(function (form) {
+    const school = form.querySelector('select[name="school_id"]');
+    const staff = form.querySelector('select[name="tenant_user_id"]');
+    if (!school || !staff) return;
+    const options = Array.from(staff.querySelectorAll('option[data-school-id]'));
+    const filter = function () {
+        staff.value = '';
+        options.forEach(function (option) {
+            const matches = school.value !== '' && option.dataset.schoolId === school.value;
+            option.hidden = !matches;
+            option.disabled = !matches;
+        });
+    };
+    school.addEventListener('change', filter);
+    filter();
+});
+</script>
 @endsection

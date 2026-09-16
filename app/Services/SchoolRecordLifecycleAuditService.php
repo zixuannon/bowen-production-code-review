@@ -23,6 +23,7 @@ final class SchoolRecordLifecycleAuditService
             SchoolRecordLifecycleAudit::REACTIVATE,
             SchoolRecordLifecycleAudit::WITHDRAW,
             SchoolRecordLifecycleAudit::ARCHIVE,
+            SchoolRecordLifecycleAudit::ASSIGN_ROLE,
         ], true)) {
             throw ValidationException::withMessages(['action' => [__('The lifecycle action is invalid.')]]);
         }
@@ -45,7 +46,9 @@ final class SchoolRecordLifecycleAuditService
     private function subjectType(Model $subject): string
     {
         return match ($subject::class) {
-            User::class => $subject->hasRole('Teacher') ? 'teacher' : 'student',
+            User::class => $subject->hasRole('Teacher')
+                ? 'teacher'
+                : ($subject->staff()->exists() ? 'staff' : 'student'),
             \App\Models\Fee::class => 'fee',
             \App\Models\FeesType::class => 'fees_type',
             \App\Models\FeesClassType::class => 'fees_class_type',
