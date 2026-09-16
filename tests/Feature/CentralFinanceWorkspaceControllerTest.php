@@ -12,6 +12,9 @@ use App\Models\CentralFinanceUser;
 use App\Models\User;
 use App\Services\CentralFinanceWorkspaceService;
 use App\Services\CentralFinanceDataIsolationService;
+use App\Services\CentralFinanceFundHandoverService;
+use App\Services\CentralFinanceInternalTransferService;
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -52,7 +55,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         ]);
         Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
         Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
-        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_09_14_000003_create_central_finance_data_classifications.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_09_01_000003_add_central_finance_transfer_reversal_links.php','2026_09_14_000003_create_central_finance_data_classifications.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
         DB::connection('mysql')->table('system_settings')->insert(['name' => 'date_format', 'data' => 'd-m-Y', 'type' => 'text']);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null],['id'=>400,'first_name'=>'School','last_name'=>'Staff','email'=>'staff@example.test','school_id'=>1]]);
@@ -89,6 +92,71 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $view=app(CentralFinanceWorkspaceController::class)->dashboard();
         $this->assertSame('central-finance.workspace',$view->name()); $this->assertNull($view->getData()['school']);
         $this->expectException(AuthorizationException::class); $workspace->enterSchool($this->zixuanAccountant,2);
+    }
+
+    public function test_transfer_and_handover_pages_hide_write_choices_until_a_central_school_is_selected(): void
+    {
+        $this->actingAs($this->head);
+        $controller = app(CentralFinanceWorkspaceController::class);
+
+        $allSchoolsTransfer = $controller->transfers(new Request());
+        $allSchoolsHtml = $allSchoolsTransfer->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('Account choices stay hidden until a School is selected.', $allSchoolsHtml);
+        $this->assertStringNotContainsString('name="source_account_id"', $allSchoolsHtml);
+        $this->assertStringNotContainsString('name="destination_account_id"', $allSchoolsHtml);
+
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $schoolTransferHtml = $controller->transfers(new Request())->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('name="source_account_id"', $schoolTransferHtml);
+        $this->assertStringContainsString('name="reason"', $schoolTransferHtml);
+        $this->assertStringContainsString('data-lifecycle-confirm', $schoolTransferHtml);
+        $this->assertStringContainsString('Review and confirm', $schoolTransferHtml);
+
+        $handover = $controller->handovers(new Request());
+        $this->assertSame([$this->zixuanAccountant->id], $handover->getData()['schoolUsers']->pluck('id')->all());
+        $this->assertSame(
+            [$this->head->id, $this->zixuanAccountant->id],
+            $handover->getData()['handoverDestinationUserIds']->get($this->zixuan->id)->sort()->values()->all(),
+        );
+        $handoverHtml = $handover->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('name="receiver_user_id"', $handoverHtml);
+        $this->assertStringContainsString('data-operating-user-ids="100,200"', $handoverHtml);
+        $this->assertStringNotContainsString('value="'.$this->head->id.'">Head Finance', $handoverHtml);
+    }
+
+    public function test_all_schools_transfer_and_handover_history_is_consolidated_and_participant_actions_are_scoped(): void
+    {
+        $this->actingAs($this->head);
+        $destination = $this->account('ZIX-RESERVE', 'Zixuan Reserve', 1);
+        $this->grantAccount($this->head, $destination);
+        $this->grantAccount($this->zixuanAccountant, $destination);
+        $at = CarbonImmutable::parse('2026-09-16 10:00:00', 'Asia/Yangon');
+
+        $transfer = app(CentralFinanceInternalTransferService::class)->transfer(
+            $this->head, 1, $this->zixuan, $destination, 10, $at,
+            'WORKSPACE-DIRECT-1', 'Move cash to reserve', 'WORKSPACE-DIRECT-REF'
+        );
+        $handover = app(CentralFinanceFundHandoverService::class)->request(
+            $this->head, $this->zixuanAccountant, 1, $this->zixuan, $destination, 5, $at,
+            'WORKSPACE-HANDOVER-1', 'WORKSPACE-HANDOVER-REF'
+        );
+
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+        $controller = app(CentralFinanceWorkspaceController::class);
+        $transferView = $controller->transfers(new Request());
+        $this->assertSame([$transfer->id], $transferView->getData()['transfers']->pluck('id')->all());
+        $transferHtml = $transferView->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('WORKSPACE-DIRECT-REF', $transferHtml);
+        $this->assertStringContainsString('Zixuan Cash', $transferHtml);
+        $this->assertStringContainsString('Zixuan Reserve', $transferHtml);
+
+        $handoverView = $controller->handovers(new Request());
+        $this->assertSame([$handover->id], $handoverView->getData()['handovers']->pluck('id')->all());
+        $handoverHtml = $handoverView->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('WORKSPACE-HANDOVER-REF', $handoverHtml);
+        $this->assertStringContainsString('Head Finance', $handoverHtml);
+        $this->assertStringContainsString('Zixuan Accountant', $handoverHtml);
+        $this->assertStringContainsString('No action', $handoverHtml);
     }
 
     public function test_school_accountant_can_only_enter_own_school_and_central_expense_never_writes_tenant_data(): void

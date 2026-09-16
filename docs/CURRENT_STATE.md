@@ -1,5 +1,33 @@
 # eSchool Current State
 
+## Head Finance Bank Transfer / Fund Handover safety — local candidate
+
+- Production baseline `fb1cec85699549b9e37b8e57fa6b14e8a5933350`
+  rendered Fund Account choices in the All Schools read model, posted a direct
+  Bank Transfer without an audit reason or application confirmation, allowed a
+  Fund Handover sender to select themselves as receiver, and exposed pending
+  action controls more broadly than the sender/receiver lifecycle permits.
+- Branch `codex/head-finance-transfer-handover-fix` keeps All Schools read-only
+  and hides every write-account choice until an authorized Central School is
+  selected. Direct Bank Transfer now requires an audit reason, records it in
+  the immutable document audit, and uses the shared confirmation modal with
+  the selected accounts and amount before the immediate paired Ledger write.
+- Fund Handover now excludes the current actor from eligible receivers and
+  rejects sender-equals-receiver server-side before any write. Only the
+  designated receiver sees Confirm/Reject and only the sender sees Cancel;
+  service authorization remains authoritative. All authorized-school history
+  now shows School, account direction, participants, amount, currency, date,
+  status, and safe empty states without granting cross-School operation.
+- No schema or migration change is included. Targeted Finance/localization
+  regression passes 68 tests / 2,134 assertions. Full regression passes 811
+  tests / 6,499 assertions
+  with four expected opt-in skips and existing PHP 8.5/PHPUnit deprecation
+  notices only. Local authenticated Playwright passes the All Schools Transfer
+  and Handover pages at 1440 px and 390 px with no console/page error or
+  page-level overflow.
+
+Last updated: 2026-09-16
+
 ## Global Finance Staff onboarding role provisioning — local candidate
 
 - Production baseline `d79d07ad94e216543d60ea34913df00cf10b399e`

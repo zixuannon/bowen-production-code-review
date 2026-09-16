@@ -75,8 +75,8 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
     public function test_direct_bank_transfer_is_directional_once_and_has_no_operating_effect(): void
     {
         $service=app(CentralFinanceInternalTransferService::class);
-        $first=$service->transfer($this->head,1,$this->zixuanA,$this->zixuanB,250,$this->at(),'ZIX-DIRECT-1','ZIX-DIRECT-REF');
-        $retry=$service->transfer($this->head,1,$this->zixuanA,$this->zixuanB,250,$this->at(),'ZIX-DIRECT-1','ZIX-DIRECT-REF');
+        $first=$service->transfer($this->head,1,$this->zixuanA,$this->zixuanB,250,$this->at(),'ZIX-DIRECT-1','Move cash to the receiving account','ZIX-DIRECT-REF');
+        $retry=$service->transfer($this->head,1,$this->zixuanA,$this->zixuanB,250,$this->at(),'ZIX-DIRECT-1','Move cash to the receiving account','ZIX-DIRECT-REF');
         $this->assertSame($first->id,$retry->id); $this->assertSame(750.0,$this->balance($this->zixuanA)); $this->assertSame(250.0,$this->balance($this->zixuanB));
         $this->assertSame(1,CentralFinanceInternalTransfer::on('mysql')->count()); $this->assertSame(2,DB::connection('mysql')->table('central_finance_ledger_entries')->count());
         $totals=app(CentralFinanceFundAccountBalanceService::class)->totalsForSchool(1); $this->assertSame(250.0,$totals['money_in']); $this->assertSame(250.0,$totals['money_out']); $this->assertSame(0.0,$totals['operating_income']); $this->assertSame(0.0,$totals['operating_expense']); $this->assertSame(0.0,$totals['operating_net']);
@@ -88,12 +88,14 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         $this->assertSame('Zixuan A · ZIX-A', $legs['source']->transfer_source_account_label);
         $this->assertSame('Zixuan B · ZIX-B', $legs['source']->transfer_destination_account_label);
         $this->assertNull($legs['source']->funding_leg);
+        $this->assertSame('Move cash to the receiving account', DB::connection('mysql')->table('central_finance_document_audits')
+            ->where('document_type', 'internal_transfer')->where('document_id', $first->id)->where('action', 'confirmed')->value('reason'));
     }
 
     public function test_direct_bank_transfer_reversal_is_append_only_exactly_once_and_restores_both_balances(): void
     {
         $service = app(CentralFinanceInternalTransferService::class);
-        $original = $service->transfer($this->head, 1, $this->zixuanA, $this->zixuanB, 250, $this->at(), 'ZIX-DIRECT-REVERSE', 'ZIX-REV-REF');
+        $original = $service->transfer($this->head, 1, $this->zixuanA, $this->zixuanB, 250, $this->at(), 'ZIX-DIRECT-REVERSE', 'Original authorized movement', 'ZIX-REV-REF');
         $reversal = $service->reverse($this->head, $original->id, 'Duplicate bank movement', $this->at()->addMinute(), ['direct_bank_transfer']);
 
         $this->assertSame($original->id, (int) $reversal->reversal_of_transfer_id);
@@ -139,6 +141,23 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         $this->assertSame(CentralFinanceFundHandover::REJECTED,$rejected->fresh()->status); $this->assertSame(CentralFinanceFundHandover::CANCELLED,$cancelled->fresh()->status); $this->assertSame(0,CentralFinanceInternalTransfer::on('mysql')->count()); $this->assertSame(0,DB::connection('mysql')->table('central_finance_ledger_entries')->count());
     }
 
+    public function test_handover_rejects_self_receiver_without_any_write(): void
+    {
+        $service = app(CentralFinanceFundHandoverService::class);
+
+        try {
+            $service->request($this->head, $this->head, 1, $this->zixuanA, $this->zixuanB, 25, $this->at(), 'ZIX-HAND-SELF');
+            $this->fail('A custody handover must not allow the sender to receive their own request.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertSame('A Fund Handover requires a different designated receiver.', $exception->getMessage());
+        }
+
+        $this->assertSame(0, CentralFinanceFundHandover::on('mysql')->count());
+        $this->assertSame(0, CentralFinanceInternalTransfer::on('mysql')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_document_audits')->count());
+    }
+
     public function test_hq_to_school_and_school_to_hq_funding_are_pending_neutral_and_head_confirmed(): void
     {
         $service=app(CentralFinanceHqFundingService::class);
@@ -164,13 +183,14 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
     {
         $direct=app(CentralFinanceInternalTransferService::class);
         foreach ([
-            fn()=> $direct->transfer($this->head,1,$this->zixuanA,$this->timecityA,1,$this->at(),'CROSS-1'),
-            fn()=> $direct->transfer($this->head,1,$this->zixuanA,$this->zixuanA,1,$this->at(),'SAME-1'),
-            fn()=> $direct->transfer($this->zixuanAccountant,1,$this->zixuanA,$this->zixuanB,1001,$this->at(),'LOW-1'),
-            fn()=> $direct->transfer($this->zixuanAccountant,2,$this->timecityA,$this->timecityB,1,$this->at(),'FORGED-1'),
+            fn()=> $direct->transfer($this->head,1,$this->zixuanA,$this->zixuanB,1,$this->at(),'NO-REASON',''),
+            fn()=> $direct->transfer($this->head,1,$this->zixuanA,$this->timecityA,1,$this->at(),'CROSS-1','Cross-school attempt'),
+            fn()=> $direct->transfer($this->head,1,$this->zixuanA,$this->zixuanA,1,$this->at(),'SAME-1','Same-account attempt'),
+            fn()=> $direct->transfer($this->zixuanAccountant,1,$this->zixuanA,$this->zixuanB,1001,$this->at(),'LOW-1','Insufficient balance attempt'),
+            fn()=> $direct->transfer($this->zixuanAccountant,2,$this->timecityA,$this->timecityB,1,$this->at(),'FORGED-1','Forged school attempt'),
         ] as $attempt) { try { $attempt(); $this->fail('Forged or unsafe transfer accepted.'); } catch (InvalidArgumentException|AuthorizationException|RuntimeException) { $this->assertSame(0,CentralFinanceInternalTransfer::on('mysql')->count()); } }
         $this->timecityA->update(['is_active'=>false]);
-        try { $direct->transfer($this->head,2,$this->timecityA,$this->timecityB,1,$this->at(),'INACTIVE-1'); $this->fail('Inactive source accepted.'); } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) { $this->assertSame(0,DB::connection('mysql')->table('central_finance_ledger_entries')->count()); }
+        try { $direct->transfer($this->head,2,$this->timecityA,$this->timecityB,1,$this->at(),'INACTIVE-1','Inactive source attempt'); $this->fail('Inactive source accepted.'); } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) { $this->assertSame(0,DB::connection('mysql')->table('central_finance_ledger_entries')->count()); }
     }
 
     public function test_transfer_document_schema_is_additive_and_reversible(): void

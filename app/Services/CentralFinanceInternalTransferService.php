@@ -19,11 +19,11 @@ final class CentralFinanceInternalTransferService
         private readonly CentralFinanceDocumentAuditService $audits,
     ) {}
 
-    public function transfer(CentralFinanceUser $actor, int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination, float $amount, CarbonImmutable $occurredAt, string $idempotencyReference, ?string $referenceNo = null): CentralFinanceInternalTransfer
+    public function transfer(CentralFinanceUser $actor, int $schoolId, CentralFinanceFundAccount $source, CentralFinanceFundAccount $destination, float $amount, CarbonImmutable $occurredAt, string $idempotencyReference, string $reason, ?string $referenceNo = null): CentralFinanceInternalTransfer
     {
         app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
-        $this->assertInput($amount, $idempotencyReference, $referenceNo);
-        return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $referenceNo): CentralFinanceInternalTransfer {
+        $this->assertInput($amount, $idempotencyReference, $reason, $referenceNo);
+        return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $reason, $referenceNo): CentralFinanceInternalTransfer {
             $this->schools->assertCanOperate($actor, $schoolId);
             $this->accounts->assertCanOperate($actor, $source);
             $this->accounts->assertCanOperate($actor, $destination);
@@ -41,7 +41,7 @@ final class CentralFinanceInternalTransferService
                 'status' => 'confirmed', 'created_by' => $actor->id, 'confirmed_by' => $actor->id, 'confirmed_at' => $occurredAt,
             ]);
             $this->ledger->recordInternalTransfer($actor, $source, $destination, $schoolId, 'central_internal_transfer', $transfer->transfer_uuid, $amount, $occurredAt, $referenceNo);
-            $this->audits->record($actor, $transfer, 'internal_transfer', 'confirmed', null, null, $this->snapshot($transfer));
+            $this->audits->record($actor, $transfer, 'internal_transfer', 'confirmed', $reason, null, $this->snapshot($transfer));
             return $transfer;
         });
     }
@@ -114,10 +114,12 @@ final class CentralFinanceInternalTransferService
         }
     }
 
-    private function assertInput(float $amount, string $idempotencyReference, ?string &$referenceNo): void
+    private function assertInput(float $amount, string $idempotencyReference, string &$reason, ?string &$referenceNo): void
     {
+        $reason = trim($reason);
         $referenceNo = $referenceNo === null ? null : trim($referenceNo);
         if ($amount <= 0 || !is_finite($amount) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference)
+            || $reason === '' || mb_strlen($reason) > 255
             || ($referenceNo !== null && $referenceNo !== '' && !preg_match('/^[A-Za-z0-9_.:-]{1,100}$/', $referenceNo))) {
             throw new InvalidArgumentException('Central Bank Transfer input is invalid.');
         }

@@ -10,6 +10,8 @@
 @section('content')
 @php($operation = in_array(request('operation'), ['expense', 'income', 'reimbursement'], true) ? request('operation') : 'expense')
 @php($showWriteForm = !$school || $canOperate)
+@php($showScopedFinanceWriteForm = $school && $canOperate)
+@php($hasEligibleHandoverReceiver = $page !== 'handovers' || $schoolUsers->isNotEmpty())
 @php($translateImportErrors = fn (array $errors): string => implode('; ', array_map(static fn ($error): string => __((string) $error), $errors)))
 @php($writeDisabled = !$school)
 @php($writeAvailabilityMessage = __('Select an authorized School before recording a Central Finance transaction.'))
@@ -178,34 +180,73 @@
 
             @if(in_array($page,['transfers','handovers','funding'],true))
                 @php($heading = $page === 'transfers' ? __('银行转账') : ($page === 'handovers' ? __('资金交接') : __('总部拨款')))
-                <div class="card central-finance-form-card mb-3"><div class="card-body"><h5>{{ $heading }}</h5>@if($showWriteForm)@if($writeDisabled)<p class="text-muted mb-3">{{ $writeAvailabilityMessage }}</p>@endif<form method="POST" action="{{ route('central-finance.'.$page.'.store') }}">@csrf<fieldset @disabled($writeDisabled)>
-                    @if($page === 'handovers')<div class="form-group"><label>{{ __('Receiver') }}</label><select name="receiver_user_id" class="form-control" required><option value="">{{ __('Receiver') }}</option>@foreach($schoolUsers as $u)<option value="{{ $u->id }}">{{ $u->first_name }} {{ $u->last_name }}</option>@endforeach</select></div>@endif
-                    <p class="small text-muted">{{ __('目前仅支持同币种资金移动，跨币种兑换尚未启用。') }}</p><div class="form-group"><label>{{ __('Source Account') }}</label><select name="source_account_id" class="form-control central-transfer-source" required><option value="">{{ __('Source Account') }}</option>@foreach($operationAccounts as $account)@include('central-finance.partials.fund-account-option',['account'=>$account])@endforeach</select></div><div class="form-group"><label>{{ __('Destination Account') }}</label><select name="destination_account_id" class="form-control central-transfer-destination" required disabled><option value="">{{ __('Select a source account first') }}</option>@foreach($operationAccounts as $account)@include('central-finance.partials.fund-account-option',['account'=>$account])@endforeach</select><small class="form-text text-muted central-transfer-empty d-none">{{ __('No authorized active same-currency destination account is available.') }}</small></div><div class="form-row"><div class="form-group col-md-6"><input name="amount" type="number" step="0.01" min="0.01" class="form-control" placeholder="{{ __('Amount') }}" required></div><div class="form-group col-md-6"><input name="reference_no" class="form-control" placeholder="{{ __('Reference') }}"></div></div><button class="btn btn-theme">{{ __('Submit') }}</button>
-                </fieldset></form>@endif</div></div>
+                <div class="card central-finance-form-card mb-3"><div class="card-body"><h5>{{ $heading }}</h5>
+                    @if(!$school)
+                        <div class="cf-empty-state text-left">{{ $writeAvailabilityMessage }} {{ __('Account choices stay hidden until a School is selected.') }}</div>
+                    @elseif(!$canOperate)
+                        <div class="cf-empty-state text-left">{{ $cutoverStatus !== 'central' ? __('This action becomes available only after the approved Central Finance cutover.') : __('You can view this School, but you do not have Central Finance operating authority.') }}</div>
+                    @elseif(!$hasEligibleHandoverReceiver)
+                        <div class="alert alert-warning mb-0">{{ __('No eligible receiver is available. Assign a different active School finance operator and Fund Account access first.') }}</div>
+                    @elseif($showScopedFinanceWriteForm)
+                        @if($page === 'transfers')
+                            <div class="alert alert-warning py-2 px-3 small">{{ __('A Bank Transfer posts immediately and creates paired Ledger entries. Review both accounts, amount, and audit reason before confirming.') }}</div>
+                        @elseif($page === 'handovers')
+                            <div class="alert alert-info py-2 px-3 small">{{ __('A Fund Handover remains pending and does not change balances or Ledger entries until the designated receiver confirms it.') }}</div>
+                        @endif
+                        <form method="POST" action="{{ route('central-finance.'.$page.'.store') }}"
+                            @if($page === 'transfers')
+                                data-lifecycle-confirm
+                                data-lifecycle-confirm-label="{{ __('Confirm Bank Transfer') }}"
+                                data-lifecycle-object="{{ __('Bank Transfer') }}"
+                                data-lifecycle-current-status="{{ __('Not posted') }}"
+                                data-lifecycle-result="{{ __('Immediately creates a confirmed Transfer and paired Ledger entries.') }}"
+                            @endif>
+                            @csrf
+                            @if($page === 'handovers')<div class="form-group"><label>{{ __('Receiver') }}</label><select name="receiver_user_id" class="form-control" required><option value="">{{ __('Receiver') }}</option>@foreach($schoolUsers as $u)<option value="{{ $u->id }}">{{ trim($u->first_name.' '.$u->last_name) ?: $u->email }}</option>@endforeach</select></div>@endif
+                            <p class="small text-muted">{{ __('目前仅支持同币种资金移动，跨币种兑换尚未启用。') }}</p>
+                            <div class="form-group"><label>{{ __('Source Account') }}</label><select name="source_account_id" class="form-control central-transfer-source" required><option value="">{{ __('Source Account') }}</option>@foreach($operationAccounts as $account)@include('central-finance.partials.fund-account-option',['account'=>$account,'authorizedUserIds'=>$page === 'handovers' ? $handoverDestinationUserIds->get($account->id, collect())->implode(',') : null])@endforeach</select></div>
+                            <div class="form-group"><label>{{ __('Destination Account') }}</label><select name="destination_account_id" class="form-control central-transfer-destination" required disabled><option value="">{{ __('Select a source account first') }}</option>@foreach($operationAccounts as $account)@include('central-finance.partials.fund-account-option',['account'=>$account,'authorizedUserIds'=>$page === 'handovers' ? $handoverDestinationUserIds->get($account->id, collect())->implode(',') : null])@endforeach</select><small class="form-text text-muted central-transfer-empty d-none">{{ __('No authorized active same-currency destination account is available.') }}</small></div>
+                            <div class="form-row"><div class="form-group col-md-6"><label>{{ __('Amount') }}</label><input name="amount" type="number" step="0.01" min="0.01" class="form-control" placeholder="{{ __('Amount') }}" required></div><div class="form-group col-md-6"><label>{{ __('Reference') }}</label><input name="reference_no" class="form-control" placeholder="{{ __('Reference') }}"></div></div>
+                            @if($page === 'transfers')<div class="form-group"><label>{{ __('Audit reason') }}</label><textarea name="reason" class="form-control" rows="2" maxlength="255" required placeholder="{{ __('Why is this Bank Transfer required?') }}"></textarea></div>@endif
+                            <button class="btn btn-theme">{{ $page === 'transfers' ? __('Review and confirm') : ($page === 'handovers' ? __('Request Handover') : __('Submit')) }}</button>
+                        </form>
+                    @endif
+                </div></div>
                 @if($page !== 'transfers')
                     @php($documents = $page === 'handovers' ? $handovers : $fundingRequests)
-                    <div class="card"><div class="card-body"><h5>{{ __('Recent requests') }}</h5><div class="table-responsive"><table class="table mb-0"><thead><tr><th>{{ __('Reference') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
-                        @foreach($documents as $document)
-                            <tr><td>{{ $document->reference_no }}</td><td>{{ number_format($document->amount,2) }}</td><td>{{ __($document->status) }}</td><td>
-                                @if($canOperate && $document->status === 'pending')
-                                    @php($routeParameter = $page === 'handovers' ? ['handover' => $document->id] : ['funding' => $document->id])
-                                    @foreach(['confirm'=>'Confirm','reject'=>'Reject','cancel'=>'Cancel'] as $action=>$label)
-                                        <form method="POST" action="{{ route('central-finance.'.$page.'.resolve', array_merge($routeParameter, ['action' => $action])) }}" class="d-inline" @if($action !== 'confirm') data-lifecycle-confirm data-lifecycle-object="{{ $document->reference_no }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $accounts->firstWhere('id', $document->source_account_id)?->account_name ?: '—' }} → {{ $accounts->firstWhere('id', $document->destination_account_id)?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Pending') }}" data-lifecycle-result="{{ __($action === 'reject' ? 'Rejected' : 'Cancelled') }} · {{ __('No Ledger entry will be created') }}" @endif>@csrf
+                    <div class="card"><div class="card-body"><h5>{{ __('Recent requests') }}</h5><div class="table-responsive"><table class="table mb-0"><thead><tr>@if(!$school)<th>{{ __('School') }}</th>@endif<th>{{ __('Date') }}</th><th>{{ __('Reference') }}</th>@if($page === 'handovers')<th>{{ __('Sender / Receiver') }}</th><th>{{ __('Source / destination') }}</th>@endif<th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
+                        @forelse($documents as $document)
+                            @php($routeParameter = $page === 'handovers' ? ['handover' => $document->id] : ['funding' => $document->id])
+                            <tr>@if(!$school)<td>{{ $schoolNames[$document->school_id] ?? '—' }}</td>@endif<td>{{ $document->handover_date?->format('Y-m-d') ?? $document->request_date?->format('Y-m-d') ?? '—' }}</td><td>{{ $document->reference_no ?: '—' }}</td>@if($page === 'handovers')<td>{{ $document->sender?->full_name ?: '—' }} → {{ $document->receiver?->full_name ?: '—' }}</td><td>{{ $document->sourceAccount?->account_name ?: '—' }} → {{ $document->destinationAccount?->account_name ?: '—' }}</td>@endif<td>{{ number_format($document->amount,2) }} {{ $document->currency }}</td><td>{{ __($document->status) }}</td><td>
+                                @if($page === 'handovers' && $canOperate && $document->status === 'pending' && (int) $document->receiver_user_id === (int) $actor->id)
+                                    @foreach(['confirm'=>'Confirm','reject'=>'Reject'] as $action=>$label)
+                                        <form method="POST" action="{{ route('central-finance.'.$page.'.resolve', array_merge($routeParameter, ['action' => $action])) }}" class="d-inline" @if($action !== 'confirm') data-lifecycle-confirm data-lifecycle-object="{{ $document->reference_no }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $document->sourceAccount?->account_name ?: '—' }} → {{ $document->destinationAccount?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Pending') }}" data-lifecycle-result="{{ __('Rejected') }} · {{ __('No Ledger entry will be created') }}" @endif>@csrf
                                             @if($action !== 'confirm')<input name="reason" class="form-control form-control-sm d-inline-block" style="width:12rem" placeholder="{{ __('Reason') }}" required>@endif
                                             <button class="btn btn-sm btn-outline-secondary">{{ __($label) }}</button>
                                         </form>
                                     @endforeach
                                 @endif
+                                @if($page === 'handovers' && $canOperate && $document->status === 'pending' && (int) $document->sender_user_id === (int) $actor->id)
+                                    <form method="POST" action="{{ route('central-finance.'.$page.'.resolve', array_merge($routeParameter, ['action' => 'cancel'])) }}" class="d-inline" data-lifecycle-confirm data-lifecycle-object="{{ $document->reference_no }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $document->sourceAccount?->account_name ?: '—' }} → {{ $document->destinationAccount?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Pending') }}" data-lifecycle-result="{{ __('Cancelled') }} · {{ __('No Ledger entry will be created') }}">@csrf<input name="reason" class="form-control form-control-sm d-inline-block" style="width:12rem" placeholder="{{ __('Reason') }}" required><button class="btn btn-sm btn-outline-secondary">{{ __('Cancel') }}</button></form>
+                                @endif
+                                @if($page === 'funding' && $canOperate && $document->status === 'pending')
+                                    @foreach(['confirm'=>'Confirm','reject'=>'Reject','cancel'=>'Cancel'] as $action=>$label)
+                                        <form method="POST" action="{{ route('central-finance.funding.resolve', array_merge($routeParameter, ['action' => $action])) }}" class="d-inline" @if($action !== 'confirm') data-lifecycle-confirm data-lifecycle-object="{{ $document->reference_no }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $accounts->firstWhere('id', $document->source_account_id)?->account_name ?: '—' }} → {{ $accounts->firstWhere('id', $document->destination_account_id)?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Pending') }}" data-lifecycle-result="{{ __($action === 'reject' ? 'Rejected' : 'Cancelled') }} · {{ __('No Ledger entry will be created') }}" @endif>@csrf @if($action !== 'confirm')<input name="reason" class="form-control form-control-sm d-inline-block" style="width:12rem" placeholder="{{ __('Reason') }}" required>@endif<button class="btn btn-sm btn-outline-secondary">{{ __($label) }}</button></form>
+                                    @endforeach
+                                @endif
                                 @if($canOperate && $document->status === 'confirmed' && !$document->reversal_internal_transfer_id)
                                     <form method="POST" action="{{ route('central-finance.'.$page.'.reverse', $routeParameter ?? ($page === 'handovers' ? ['handover' => $document->id] : ['funding' => $document->id])) }}" class="d-inline" data-lifecycle-confirm data-lifecycle-object="{{ $document->reference_no ?: $heading }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $accounts->firstWhere('id', $document->source_account_id)?->account_name ?: '—' }} → {{ $accounts->firstWhere('id', $document->destination_account_id)?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Confirmed') }}" data-lifecycle-result="{{ __('Creates one append-only paired reversal') }}">@csrf<input name="reason" class="form-control form-control-sm d-inline-block" style="width:12rem" placeholder="{{ __('Reversal reason') }}" required><button class="btn btn-sm btn-warning">{{ __('Reverse') }}</button></form>
                                 @endif
+                                @if(!$canOperate || ($page === 'handovers' && $document->status === 'pending' && (int) $document->receiver_user_id !== (int) $actor->id && (int) $document->sender_user_id !== (int) $actor->id) || !in_array($document->status, ['pending','confirmed'], true))<span class="text-muted">{{ __('No action') }}</span>@endif
                             </td></tr>
-                        @endforeach
+                        @empty
+                            <tr><td colspan="{{ !$school ? ($page === 'handovers' ? 8 : 6) : ($page === 'handovers' ? 7 : 5) }}"><div class="cf-empty-state">{{ $page === 'handovers' ? __('No Fund Handover requests.') : __('No funding requests.') }}</div></td></tr>
+                        @endforelse
                     </tbody></table></div></div></div>
                 @endif
                 @if($page === 'transfers')
                     @php($documents = $transfers)
-                    <div class="card"><div class="card-body"><h5>{{ __('Transfer records') }}</h5><div class="table-responsive"><table class="table mb-0"><thead><tr><th>{{ __('Reference') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>@foreach($documents as $document)<tr><td>{{ $document->reference_no ?: $document->transfer_uuid }}</td><td>{{ number_format($document->amount,2) }} {{ $document->currency }}</td><td>{{ $document->reversalTransfer ? __('Confirmed · Reversed') : __('Confirmed') }}</td><td>@if($canOperate && !$document->reversalTransfer)<form method="POST" action="{{ route('central-finance.transfers.reverse', $document->id) }}" class="d-inline" data-lifecycle-confirm data-lifecycle-modal-reason="true" data-lifecycle-confirm-label="{{ __('Confirm Reversal') }}" data-lifecycle-object="{{ $document->reference_no ?: $document->transfer_uuid }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $accounts->firstWhere('id', $document->source_account_id)?->account_name ?: '—' }} → {{ $accounts->firstWhere('id', $document->destination_account_id)?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Confirmed') }}" data-lifecycle-result="{{ __('Reversed · a reverse Transfer and paired Ledger entries will be created; the original record remains.') }}">@csrf<button type="button" class="btn btn-sm btn-warning" data-lifecycle-open>{{ __('Reverse') }}</button></form>@endif</td></tr>@endforeach</tbody></table></div></div></div>
+                    <div class="card"><div class="card-body"><h5>{{ __('Transfer records') }}</h5><div class="table-responsive"><table class="table mb-0"><thead><tr>@if(!$school)<th>{{ __('School') }}</th>@endif<th>{{ __('Date') }}</th><th>{{ __('Reference') }}</th><th>{{ __('Source / destination') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>@forelse($documents as $document)<tr>@if(!$school)<td>{{ $schoolNames[$document->school_id] ?? '—' }}</td>@endif<td>{{ $document->transfer_date?->format('Y-m-d') ?: '—' }}</td><td>{{ $document->reference_no ?: $document->transfer_uuid }}</td><td>{{ $document->sourceAccount?->account_name ?: '—' }} → {{ $document->destinationAccount?->account_name ?: '—' }}</td><td>{{ number_format($document->amount,2) }} {{ $document->currency }}</td><td>{{ $document->reversalTransfer ? __('Confirmed · Reversed') : __('Confirmed') }}</td><td>@if($canOperate && !$document->reversalTransfer)<form method="POST" action="{{ route('central-finance.transfers.reverse', $document->id) }}" class="d-inline" data-lifecycle-confirm data-lifecycle-modal-reason="true" data-lifecycle-confirm-label="{{ __('Confirm Reversal') }}" data-lifecycle-object="{{ $document->reference_no ?: $document->transfer_uuid }}" data-lifecycle-amount="{{ number_format($document->amount, 2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $document->sourceAccount?->account_name ?: '—' }} → {{ $document->destinationAccount?->account_name ?: '—' }}" data-lifecycle-current-status="{{ __('Confirmed') }}" data-lifecycle-result="{{ __('Reversed · a reverse Transfer and paired Ledger entries will be created; the original record remains.') }}">@csrf<button type="button" class="btn btn-sm btn-warning" data-lifecycle-open>{{ __('Reverse') }}</button></form>@else<span class="text-muted">{{ __('No action') }}</span>@endif</td></tr>@empty<tr><td colspan="{{ $school ? 6 : 7 }}"><div class="cf-empty-state">{{ __('No Bank Transfer records.') }}</div></td></tr>@endforelse</tbody></table></div></div></div>
                 @endif
             @endif
 
@@ -313,7 +354,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const form = source.closest('form');
         const destination = form?.querySelector('.central-transfer-destination');
         const empty = form?.querySelector('.central-transfer-empty');
+        const amount = form?.querySelector('[name="amount"]');
+        const receiver = form?.querySelector('[name="receiver_user_id"]');
         if (!destination) return;
+        const updateConfirmation = function () {
+            if (!form?.hasAttribute('data-lifecycle-confirm')) return;
+            const sourceText = source.value ? source.options[source.selectedIndex]?.textContent.trim() : '';
+            const destinationText = destination.value ? destination.options[destination.selectedIndex]?.textContent.trim() : '';
+            const currency = source.options[source.selectedIndex]?.dataset.currency || '';
+            form.dataset.lifecycleSourceDestination = sourceText && destinationText ? sourceText + ' → ' + destinationText : '';
+            form.dataset.lifecycleAmount = amount?.value ? amount.value + (currency ? ' ' + currency : '') : '';
+        };
         const sync = function () {
             const sourceOption = source.options[source.selectedIndex];
             const sourceCurrency = sourceOption?.dataset.currency || '';
@@ -325,6 +376,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     allowed = allowed && option.dataset.ownerType !== sourceOption.dataset.ownerType;
                 } else {
                     allowed = allowed && option.dataset.ownerType === 'school' && sourceOption.dataset.ownerType === 'school' && option.dataset.schoolId === sourceOption.dataset.schoolId;
+                    if (operation === 'handovers') {
+                        const authorizedUsers = (option.dataset.operatingUserIds || '').split(',').filter(Boolean);
+                        allowed = allowed && receiver?.value !== '' && authorizedUsers.includes(receiver.value);
+                    }
                 }
                 option.hidden = !allowed;
                 option.disabled = !allowed;
@@ -333,8 +388,12 @@ document.addEventListener('DOMContentLoaded', function () {
             destination.value = '';
             destination.disabled = count === 0;
             empty?.classList.toggle('d-none', count > 0 || sourceCurrency === '');
+            updateConfirmation();
         };
         source.addEventListener('change', sync);
+        receiver?.addEventListener('change', sync);
+        destination.addEventListener('change', updateConfirmation);
+        amount?.addEventListener('input', updateConfirmation);
         sync();
     });
 });

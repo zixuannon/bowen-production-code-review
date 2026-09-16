@@ -27,6 +27,9 @@ final class CentralFinanceFundHandoverService
     {
         app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);
         $this->assertInput($amount, $idempotencyReference, $referenceNo);
+        if ((int) $sender->id === (int) $receiver->id) {
+            throw new InvalidArgumentException('A Fund Handover requires a different designated receiver.');
+        }
         return DB::connection('mysql')->transaction(function () use ($sender, $receiver, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $referenceNo): CentralFinanceFundHandover {
             $this->schools->assertCanOperate($sender, $schoolId);
             $this->schools->assertCanOperate($receiver, $schoolId);

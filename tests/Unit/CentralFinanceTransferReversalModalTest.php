@@ -11,7 +11,8 @@ class CentralFinanceTransferReversalModalTest extends TestCase
         $workspace = $this->contents('resources/views/central-finance/workspace.blade.php');
         $component = $this->contents('resources/views/components/central-finance/lifecycle-confirmation.blade.php');
 
-        $transferWorkspace = substr($workspace, (int) strpos($workspace, "@if(\$page === 'transfers')"));
+        $transferRecordsStart = "@if(\$page === 'transfers')\n                    @php(\$documents = \$transfers)";
+        $transferWorkspace = substr($workspace, (int) strpos($workspace, $transferRecordsStart));
 
         self::assertStringContainsString("route('central-finance.transfers.reverse'", $transferWorkspace);
         self::assertStringContainsString('data-lifecycle-modal-reason="true"', $transferWorkspace);

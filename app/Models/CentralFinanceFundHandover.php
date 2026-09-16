@@ -34,4 +34,8 @@ class CentralFinanceFundHandover extends Model
     }
 
     public function reversalInternalTransfer(): BelongsTo { return $this->belongsTo(CentralFinanceInternalTransfer::class, 'reversal_internal_transfer_id'); }
+    public function sender(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'sender_user_id'); }
+    public function receiver(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'receiver_user_id'); }
+    public function sourceAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'source_account_id'); }
+    public function destinationAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'destination_account_id'); }
 }

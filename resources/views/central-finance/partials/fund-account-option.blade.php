@@ -3,4 +3,5 @@
     data-owner-type="{{ $account->owner_type }}"
     data-account-type="{{ $account->account_type }}"
     data-school-id="{{ $account->school_id }}"
+    @isset($authorizedUserIds) data-operating-user-ids="{{ $authorizedUserIds }}" @endisset
     data-status="{{ $account->status }}">{{ app(\App\Services\CentralFinanceFundAccountDisplayService::class)->label($account, $schools ?? []) }}</option>
