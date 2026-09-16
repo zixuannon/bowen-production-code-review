@@ -1,5 +1,33 @@
 # eSchool Current State
 
+## Global Finance Staff onboarding role provisioning — local candidate
+
+- Production baseline `d79d07ad94e216543d60ea34913df00cf10b399e`
+  exposes the School Admin onboarding UI globally, but only Zixuan currently
+  has the permission-free Front Desk definition and only Timecity has the
+  permission-free School Accountant definition. The other canonical role
+  definitions are absent across the seven active installed tenants. The
+  inactive Demo registry row is not an operational tenant and its tenant
+  database has no matching School row.
+- Branch `codex/global-finance-onboarding-provisioning` adds a dynamic,
+  registry-driven two-pass command for all active installed tenants. It
+  validates every School/database mapping and every existing canonical role
+  before the first write, reuses permission-free same-name roles without
+  changing their metadata, and creates only missing Principal, School
+  Accountant, and Front Desk definitions. Repeated execution is idempotent.
+- New-School setup now calls the same provisioner after tenant schema and
+  standard permissions exist. Provisioning never assigns a user or
+  permission, never changes existing custom roles, and never grants Central
+  Finance scope; that remains the explicit audited Super Admin Finance Group
+  step. Structured logs record School, tenant database, source, per-role
+  created/reused state, and the no-scope guarantee.
+- Targeted onboarding, tenant-isolation, Central identity, and fail-closed
+  tests pass 30 tests / 150 assertions. Full regression passes 808 tests /
+  6,433 assertions with four expected opt-in skips and existing PHP 8.5 /
+  PHPUnit deprecation notices only.
+
+Last updated: 2026-09-16
+
 ## Finance Staff onboarding checkbox visibility — local candidate
 
 - Production `4b857adc9440d774b66eb80b0039fd32bc550f06` renders the three

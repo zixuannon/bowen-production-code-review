@@ -257,9 +257,15 @@ class SchoolDataService
         // Phase 4: Optional default HR role (convenience, not required)
         $this->createHrRole($school);
 
-        // Front Desk is a tenant role only. Central Finance capability is
-        // granted separately through the Finance Groups scope workflow.
-        $this->createFrontDeskRole($school);
+        // These are tenant identity definitions only. No user assignment,
+        // permission, or Central Finance scope is granted here; the latter
+        // remains an explicit Super Admin action in Finance Groups.
+        app(TenantFinanceOnboardingRoleProvisioner::class)->provision(
+            (int) $school->id,
+            (string) $school->code,
+            (string) $school->database_name,
+            'new_school_setup',
+        );
     }
 
     public function defaultRoles($school)
