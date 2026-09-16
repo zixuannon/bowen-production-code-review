@@ -1,5 +1,21 @@
 # eSchool Current State
 
+## Timecity School Admin staff-role assignment — local candidate
+
+- Production `e8987e505e2b3bb30e8e389952e1e8b5f2d792fd` rejects Timecity
+  School Admin staff create/update requests with `Invalid staff role assignment`
+  even when the selected custom role belongs to Timecity. The tenant form does
+  not submit a target `school_id`, while the shared role guard incorrectly
+  treated that empty request list as the actor's allowed School scope.
+- The local fix derives the allowed School from the authenticated School Admin
+  identity for tenant requests. Central administrators continue to require the
+  explicit target School selection. Cross-School roles, Teacher, and other
+  non-assignable system roles remain rejected with 403.
+- Focused Staff/image, Central identity, Finance staff-boundary, and go-live
+  isolation regression passes 53 tests / 177 assertions. Full regression passes
+  793 tests / 6,349 assertions with four expected skips and existing PHP
+  8.5/PHPUnit deprecation notices only. No Production data or code was changed.
+
 ## Bowen school header branding — local candidate, not deployed
 
 - Current Production source is `115186ea7aec7c849340490249f78b88294c3929`.

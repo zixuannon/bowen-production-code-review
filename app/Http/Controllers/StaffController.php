@@ -235,7 +235,12 @@ class StaffController extends Controller
 
             $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
             $roles = (Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes())->whereIn('id', $roleIds)->get();
-            $this->assertAssignableStaffRoles($roles, $roleIds->count(), $request->input('school_id', []));
+            $this->assertAssignableStaffRoles(
+                $roles,
+                $roleIds->count(),
+                $request->input('school_id', []),
+                Auth::user()->school_id ? (int) Auth::user()->school_id : null
+            );
             $assignedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($schoolId) => (int) $schoolId)->unique()->values();
             $isFrontDesk = $roles->contains(fn ($role) => $role->name === 'Front Desk / Admissions & Collection');
 
@@ -588,7 +593,12 @@ class StaffController extends Controller
             DB::beginTransaction();
             $roleIds = collect($request->input('role_ids', $request->filled('role_id') ? [$request->role_id] : []))->unique()->values();
             $roles = (Auth::user()->school_id ? Role::query() : Role::withoutGlobalScopes())->whereIn('id', $roleIds)->get();
-            $this->assertAssignableStaffRoles($roles, $roleIds->count(), $request->input('school_id', []));
+            $this->assertAssignableStaffRoles(
+                $roles,
+                $roleIds->count(),
+                $request->input('school_id', []),
+                Auth::user()->school_id ? (int) Auth::user()->school_id : null
+            );
             $assignedSchoolIds = collect($request->input('school_id', []))->filter()->map(fn ($schoolId) => (int) $schoolId)->unique()->values();
             $isFrontDesk = $roles->contains(fn ($role) => $role->name === 'Front Desk / Admissions & Collection');
             $data = $request->except('school_id', 'role_ids');
@@ -1178,15 +1188,27 @@ class StaffController extends Controller
      * Restrict onboarding to assignable tenant staff roles. Central Finance
      * capabilities remain a separate explicit Finance Groups grant.
      */
-    private function assertAssignableStaffRoles($roles, int $expectedCount, $assignedSchoolIds = []): void
+    private function assertAssignableStaffRoles(
+        $roles,
+        int $expectedCount,
+        $assignedSchoolIds = [],
+        ?int $authenticatedSchoolId = null
+    ): void
     {
-        $assignedSchoolIds = collect((array) $assignedSchoolIds)->filter()->map(fn ($id) => (int) $id);
-        abort_if($roles->count() !== $expectedCount || $roles->contains(function ($role) use ($assignedSchoolIds): bool {
+        $allowedSchoolIds = $authenticatedSchoolId !== null
+            ? collect([$authenticatedSchoolId])
+            : collect((array) $assignedSchoolIds)->filter()->map(fn ($id) => (int) $id);
+
+        $invalidAssignment = $roles->count() !== $expectedCount || $roles->contains(function ($role) use ($allowedSchoolIds): bool {
             if ($role->name === 'Teacher' || ($role->custom_role != 1 && $role->name !== 'Front Desk / Admissions & Collection')) {
                 return true;
             }
 
-            return $role->school_id !== null && !$assignedSchoolIds->contains((int) $role->school_id);
-        }), 403, 'Invalid staff role assignment.');
+            return $role->school_id !== null && !$allowedSchoolIds->contains((int) $role->school_id);
+        });
+
+        if ($invalidAssignment) {
+            throw new \Symfony\Component\HttpKernel\Exception\HttpException(403, 'Invalid staff role assignment.');
+        }
     }
 }
