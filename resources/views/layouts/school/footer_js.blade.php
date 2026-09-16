@@ -139,26 +139,6 @@
 </script>
 
 <script>
-    $(document).ready(function() {
-        $('#create-form').on('submit', function (e) {
-            e.preventDefault();
-            let formElement = $(this);
-            let submitButtonElement = $(this).find(':submit');
-            let url = $(this).attr('action');
-            let data = new FormData(this);
-
-            function successCallback() {
-                setTimeout(function () {
-                    window.location.reload();
-                }, 1000)
-            }
-
-            formAjaxRequest('POST', url, data, formElement, submitButtonElement, successCallback);
-        })
-    });
-</script>
-
-<script>
     // Logo
     var nav_logo = "{{ $schoolSettings['horizontal_logo'] ?? '' }}";
     if (nav_logo == null || nav_logo == '') {

@@ -1,5 +1,28 @@
 # eSchool Current State
 
+## School staff create duplicate-submit feedback — local candidate
+
+- Production `373ba3d0b6f3f3703e656f6cb01b0821896e1c7e` accepts Bahan's
+  School-owned custom Finance role. The reported Bahan attempt did create one
+  active tenant User/Staff row with that role, but the browser displayed an
+  error because the School layout and the shared JavaScript asset both bound a
+  submit handler to `#create-form`. One click could therefore send the same
+  create request twice; the first request committed and the replay failed the
+  unique-email validation.
+- Branch `codex/staff-single-submit-fix` removes only the redundant School
+  layout handler and retains the canonical shared handler used for validation,
+  success/error feedback, form reset, and table refresh. No route, permission,
+  Staff business rule, subscription rule, schema, or Production data is
+  changed by the candidate.
+- A static regression contract verifies that School create forms have one
+  canonical submit binding. Local Playwright intercepts the Staff endpoint and
+  proves one valid click produces exactly one POST. Targeted Staff/role/upload
+  regression passes 38 tests (107 assertions; two existing PHP 8.5
+  deprecations), and full regression passes 788 tests / 6,353 assertions with
+  four expected skips and two existing deprecation-classified tests.
+
+Last updated: 2026-09-16
+
 ## Timecity School Admin staff-role assignment — local candidate
 
 - Production `e8987e505e2b3bb30e8e389952e1e8b5f2d792fd` rejects Timecity
