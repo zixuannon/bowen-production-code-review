@@ -1,5 +1,24 @@
 # eSchool Current State
 
+## Finance Staff onboarding checkbox visibility — local candidate
+
+- Production `4b857adc9440d774b66eb80b0039fd32bc550f06` renders the three
+  onboarding role inputs as transparent theme checkboxes, but the generated
+  visual helper is not adjacent to the input. The helper selector therefore
+  never draws a checkbox even though clicking the role copy changes the hidden
+  value.
+- Branch `codex/finance-onboarding-checkbox-fix` places the theme helper
+  immediately after each role input and gives every input an explicit label
+  association. School Admins can visibly select one role or any intentional
+  combination; no role, permission, scope, Finance service, schema, or
+  Production data behavior changes.
+- Focused onboarding and Central identity/scope regression passes 20 tests /
+  109 assertions. The full suite passes in memory-bounded processes: 787 tests
+  / 6,395 assertions with four expected opt-in skips and existing PHP 8.5
+  deprecation notices only.
+
+Last updated: 2026-09-16
+
 ## Timecity Finance Staff onboarding — local candidate
 
 - Production `354b6ca9f6f3369d869d59ca6ceb83c1fc42747f` has no formal

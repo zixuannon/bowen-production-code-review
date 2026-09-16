@@ -41,10 +41,13 @@
                 <legend class="h6">{{ __('Approved tenant roles') }} *</legend>
                 @foreach($roleDescriptions as $role => $description)
                     <div class="form-check mb-3">
-                        <label class="form-check-label">
-                            <input class="form-check-input" type="checkbox" name="roles[]" value="{{ $role }}" @checked(in_array($role, old('roles', []), true))>
-                            <strong>{{ __($role) }}</strong><br>
-                            <span class="text-muted">{{ __($description) }}</span>
+                        <label class="form-check-label" for="onboarding-role-{{ $loop->index }}">
+                            <input id="onboarding-role-{{ $loop->index }}" class="form-check-input" type="checkbox" name="roles[]" value="{{ $role }}" @checked(in_array($role, old('roles', []), true))>
+                            <i class="input-helper" aria-hidden="true"></i>
+                            <span class="d-block">
+                                <strong>{{ __($role) }}</strong><br>
+                                <span class="text-muted">{{ __($description) }}</span>
+                            </span>
                         </label>
                     </div>
                 @endforeach
