@@ -58,6 +58,9 @@ final class ProductionMigrationGuard
         'centralization:migrate-school-codes' => [
             'database/migrations/2026_09_14_000002_canonicalize_bahan_timecity_school_codes.php',
         ],
+        'centralization:migrate-kindergarten-school-code' => [
+            'database/migrations/2026_09_18_000003_canonicalize_kindergarten_school_code.php',
+        ],
         'finance:migrate-data-isolation' => [
             'database/migrations/2026_09_14_000003_create_central_finance_data_classifications.php',
         ],

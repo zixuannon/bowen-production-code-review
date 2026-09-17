@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\MigrateBahanTimecitySchoolCodes;
+use App\Console\Commands\MigrateKindergartenSchoolCode;
 use App\Models\User;
 use App\Services\SchoolCodeService;
 use App\Services\StudentImportV2Service;
@@ -47,6 +48,7 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
             ['id' => 15, 'name' => 'Zixuan', 'code' => 'SCH202615', 'database_name' => 'eschool_saas_15_zixuan', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 17, 'name' => 'Bahan', 'code' => 'SCH202616', 'database_name' => 'eschool_saas_17_bahan', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 19, 'name' => 'Timecity', 'code' => 'SCH202619', 'database_name' => 'eschool_saas_19_timecitys', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 20, 'name' => 'Kindergarten', 'code' => 'SCH202620', 'database_name' => 'eschool_saas_20_', 'created_at' => now(), 'updated_at' => now()],
         ]);
         (require database_path('migrations/2026_09_11_000001_finalize_school_code_identity.php'))->up();
         DB::connection('mysql')->table('migrations')->insert([
@@ -102,6 +104,28 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
         $this->assertDatabaseMissing('migrations', ['migration' => MigrateBahanTimecitySchoolCodes::CENTRAL_MIGRATION], 'mysql');
     }
 
+    public function test_kindergarten_runner_is_exact_idempotent_and_refuses_a_code_collision(): void
+    {
+        (require database_path('migrations/'.MigrateBahanTimecitySchoolCodes::CENTRAL_MIGRATION.'.php'))->up();
+        $this->artisan('centralization:migrate-kindergarten-school-code')
+            ->expectsOutput('kindergarten_school_code_mapping=eligible')
+            ->assertExitCode(0);
+        $this->artisan('centralization:migrate-kindergarten-school-code', ['--execute' => true])
+            ->expectsOutput('kindergarten_school_code_mapping=eligible')
+            ->assertExitCode(0);
+
+        $this->assertSame('MMBOWEN04', $this->code(20));
+        $this->assertSame(20, app(SchoolCodeService::class)->resolveCanonical('mmbowen04')?->id);
+        $this->assertNull(app(SchoolCodeService::class)->resolveCanonical('SCH202620'));
+        $this->assertSame(5, (int) DB::connection('mysql')->table('school_code_sequences')->where('prefix', 'MMBOWEN')->value('next_number'));
+        $this->assertDatabaseHas('school_code_history', ['school_id' => 20, 'legacy_code' => 'SCH202620', 'canonical_code' => 'MMBOWEN04'], 'mysql');
+        $this->artisan('centralization:migrate-kindergarten-school-code')
+            ->expectsOutput('kindergarten_school_code_mapping=complete')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('migrations', ['migration' => MigrateKindergartenSchoolCode::CENTRAL_MIGRATION], 'mysql');
+    }
+
     public function test_partial_history_is_rejected_and_forward_rollback_is_refused(): void
     {
         DB::connection('mysql')->table('school_code_history')->insert([
@@ -122,7 +146,7 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
     public function test_soft_deleted_canonical_code_conflict_fails_before_any_write(): void
     {
         DB::connection('mysql')->table('schools')->insert([
-            'id' => 20,
+            'id' => 21,
             'name' => 'Deleted conflicting identity',
             'code' => 'MMBOWEN02',
             'database_name' => 'deleted_conflict',
@@ -152,16 +176,18 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
         $this->assertStringNotContainsString('LEDGER', strtoupper($source));
     }
 
-    public function test_student_import_v2_accepts_only_the_three_approved_canonical_schools(): void
+    public function test_student_import_v2_accepts_the_four_approved_canonical_schools(): void
     {
         (require database_path('migrations/'.MigrateBahanTimecitySchoolCodes::CENTRAL_MIGRATION.'.php'))->up();
-        Config::set('student_import_v2.enabled_school_codes', ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03']);
+        (require database_path('migrations/'.MigrateKindergartenSchoolCode::CENTRAL_MIGRATION.'.php'))->up();
+        Config::set('student_import_v2.enabled_school_codes', ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03', 'MMBOWEN04']);
         $service = app(StudentImportV2Service::class);
 
         foreach ([
             15 => 'eschool_saas_15_zixuan',
             17 => 'eschool_saas_17_bahan',
             19 => 'eschool_saas_19_timecitys',
+            20 => 'eschool_saas_20_',
         ] as $schoolId => $database) {
             session(['school_database_name' => $database]);
             $actor = (new User())->forceFill(['school_id' => $schoolId]);
@@ -169,9 +195,9 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
         }
 
         DB::connection('mysql')->table('schools')->insert([
-            'id' => 20,
+            'id' => 21,
             'name' => 'Unapproved School',
-            'code' => 'MMBOWEN04',
+            'code' => 'MMBOWEN99',
             'database_name' => 'eschool_saas_20_unapproved',
             'created_at' => now(),
             'updated_at' => now(),
@@ -179,7 +205,7 @@ final class BahanTimecitySchoolCodeMigrationTest extends TestCase
         session(['school_database_name' => 'eschool_saas_20_unapproved']);
 
         $this->expectException(AuthorizationException::class);
-        $service->assertPilot((new User())->forceFill(['school_id' => 20]));
+        $service->assertPilot((new User())->forceFill(['school_id' => 21]));
     }
 
     private function code(int $schoolId): string

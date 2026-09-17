@@ -69,6 +69,14 @@ class ProductionMigrationGuardTest extends TestCase
         );
     }
 
+    public function test_kindergarten_school_code_runner_is_exact_path_allowlisted(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $path = database_path('migrations/2026_09_18_000003_canonicalize_kindergarten_school_code.php');
+        $guard->assertAllowed('migrate', 'centralization:migrate-kindergarten-school-code', [$path], true, true);
+        $this->addToAssertionCount(1);
+    }
+
     public function test_data_isolation_runner_is_exact_path_allowlisted(): void
     {
         $guard = new ProductionMigrationGuard();
