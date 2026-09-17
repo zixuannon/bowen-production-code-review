@@ -55,8 +55,8 @@ final class CentralFinanceLedgerService
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount($amount);
-        $this->scope->assertCanOperate($actor, $source);
-        $this->scope->assertCanOperate($actor, $destination);
+        $this->scope->assertCanOperate($actor, $source, $schoolId);
+        $this->scope->assertCanOperate($actor, $destination, $schoolId);
         return DB::connection('mysql')->transaction(function () use ($actor, $source, $destination, $schoolId, $sourceType, $sourceId, $amount, $occurredAt, $referenceNo): array {
             $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($source->id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($destination->id);
@@ -90,8 +90,8 @@ final class CentralFinanceLedgerService
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount($amount);
-        $this->scope->assertCanOperate($sourceActor, $source);
-        $this->scope->assertCanOperate($destinationActor, $destination);
+        $this->scope->assertCanOperate($sourceActor, $source, $schoolId);
+        $this->scope->assertCanOperate($destinationActor, $destination, $schoolId);
 
         return DB::connection('mysql')->transaction(function () use ($sourceActor, $destinationActor, $source, $destination, $schoolId, $sourceType, $sourceId, $amount, $occurredAt, $referenceNo): array {
             $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($source->id);
@@ -119,7 +119,7 @@ final class CentralFinanceLedgerService
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount($amount);
-        $this->scope->assertCanOperate($actor, $account);
+        $this->scope->assertCanOperate($actor, $account, $schoolId);
         $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($account->id);
         $this->assertSchoolAttribution($schoolId, $account);
 
@@ -134,7 +134,7 @@ final class CentralFinanceLedgerService
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount(max($moneyIn, $moneyOut));
-        $this->scope->assertCanOperate($actor, $account);
+        $this->scope->assertCanOperate($actor, $account, $schoolId);
         $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($account->id);
         $this->assertSchoolAttribution($schoolId, $account);
 

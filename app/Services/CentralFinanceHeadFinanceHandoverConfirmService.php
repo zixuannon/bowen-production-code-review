@@ -56,7 +56,7 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
     {
         if (!$account->exists || !$account->getRawOriginal('is_active')) throw new InvalidArgumentException('Fund Account is not active.');
         $this->availability->assertAccountAvailableForSchool($account, (int) $batch->school_id);
-        $this->accountScopes->assertCanOperate($actor, $account);
+        $this->accountScopes->assertCanOperate($actor, $account, (int) $batch->school_id);
         if (strtoupper((string) $account->currency) !== strtoupper((string) $batch->currency)) throw new InvalidArgumentException('Fund Account is outside the handover currency.');
     }
 }

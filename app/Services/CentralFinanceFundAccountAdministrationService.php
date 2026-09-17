@@ -45,7 +45,7 @@ final class CentralFinanceFundAccountAdministrationService
         $this->assertOpening($attributes['opening_balance'], $attributes['opening_reason']);
         $this->assertCentralGroupCustodian($groupId, $attributes['custodian_user_id'] ?? null);
 
-        return DB::connection('mysql')->transaction(function () use ($actor, $groupUser, $attributes, $assigneeIds): CentralFinanceFundAccount {
+        return DB::connection('mysql')->transaction(function () use ($actor, $groupUser, $attributes): CentralFinanceFundAccount {
             $account = CentralFinanceFundAccount::on('mysql')->create([
                 'account_uuid' => (string) Str::uuid(), 'group_id' => $groupUser->group_id,
                 'school_id' => null, 'owner_type' => CentralFinanceFundAccount::OWNER_HQ,
@@ -64,7 +64,9 @@ final class CentralFinanceFundAccountAdministrationService
                 'effective_date' => $attributes['opening_balance_date'], 'reason' => trim($attributes['opening_reason']),
                 'created_by' => $actor->id,
             ]);
-            $this->syncAssignmentsLocked($actor, null, $account, (int) $groupUser->group_id, $assigneeIds);
+            // Normal Group accounts derive runtime authorization from the
+            // account allocation + School/Group scopes. Do not manufacture a
+            // redundant account-user matrix for every newly created account.
             $this->audit(null, $account, $actor, 'created', trim($attributes['opening_reason']), [], [
                 'account_code' => $account->account_code,
                 'account_type' => $account->account_type,

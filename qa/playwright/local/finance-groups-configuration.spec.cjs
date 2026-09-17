@@ -40,7 +40,8 @@ test('Finance Groups uses a compact home and a separated manage workspace', asyn
         await expect(page.getByRole('heading', { name: 'Central Finance Staff', exact: true })).toBeVisible();
         await expect(page.getByRole('heading', { name: 'Advanced / Legacy', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Authorize All Group Schools', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toBeVisible();
+        const accountantCard = page.getByRole('heading', { name: 'School Accountant', exact: true }).locator('xpath=parent::div');
+        await expect(accountantCard).toContainText(/Finance Access Active|Grant Accountant Finance Access|No eligible School Accountant Staff are available/);
         await expect(page.locator('th').filter({ hasText: /Role|角色/ })).toBeVisible();
         const legacy = page.getByText('Legacy / Transition tenant identity mapping', { exact: true });
         await expect(legacy).toBeVisible();

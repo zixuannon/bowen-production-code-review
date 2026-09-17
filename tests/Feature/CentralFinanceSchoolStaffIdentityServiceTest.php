@@ -95,6 +95,8 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         $this->assertFalse((bool) $accountantScope->can_submit_collections);
         $availableAfter = $service->availableStaff($group)->firstWhere('tenant_user_id', 7);
         $this->assertTrue($availableAfter->identity_linked);
+        $this->assertSame($principal->id, $availableAfter->central_user_id);
+        $this->assertTrue($availableAfter->finance_access_active);
         $this->assertDatabaseHas('central_finance_document_audits', [
             'school_id' => 1,
             'document_type' => 'central_finance_staff_onboarding',

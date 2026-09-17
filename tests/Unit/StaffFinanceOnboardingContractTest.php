@@ -50,6 +50,10 @@ final class StaffFinanceOnboardingContractTest extends TestCase
         $this->assertStringContainsString("where('eligible_accountant', true)", $view);
         $this->assertStringContainsString("where('eligible_principal', true)", $view);
         $this->assertStringContainsString("where('eligible_front_desk', true)", $view);
+        $this->assertStringContainsString("where('finance_access_active', true)", $view);
+        $this->assertStringContainsString("where('finance_access_active', false)", $view);
+        $this->assertStringContainsString("__('Finance Access Active')", $view);
+        $this->assertStringContainsString("__('Manage / Revoke')", $view);
         $this->assertSame(3, substr_count($view, "{{ __('Audit reason') }}"));
         $this->assertSame(3, substr_count($controller, "'reason' => ['required', 'string', 'max:255']"));
     }

@@ -221,6 +221,22 @@ both audit records, sequence `next_number >= 4`, and old-code login rejection.
 Never substitute broad `migrate`, `migrate:school`, rollback, or manual SQL
 replacement. Production execution and deployment are separate Human Gates.
 
+### Central Finance canonical Fund Account authorization
+
+Normal Central/Group Fund Account use is authorized only by the intersection
+of an active account, active School allocation, active Central School scope,
+active Finance Group membership/scope, and (for School staff) an active
+Central-to-tenant staff identity. Every runtime check must receive the exact
+transaction School ID. `central_finance_fund_account_users` is retained for
+legacy compatibility/audit only: it must not grant access, satisfy Cutover
+readiness, or be populated as a normal accountant-by-account matrix.
+
+An unallocated Group Account may be visible only to an explicitly authorized
+Head Finance user in the account-management control plane so that its first
+allocation can be configured. It must remain unavailable to payments,
+imports, transfers, handovers, operating documents, and Ledger writes until
+the canonical predicate passes.
+
 ### Central Fund Account V2 targeted migration and conversion
 
 `finance:migrate-fund-account-v2` is the only approved runner for

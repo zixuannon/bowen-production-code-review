@@ -1,5 +1,36 @@
 # eSchool Current State
 
+## Central Finance account authorization unification — local candidate
+
+- Production `607ddddc12638ecaa9b72282a913da31b7a874f9` is the local
+  baseline. Branch `codex/central-finance-authorization-unification` removes
+  the legacy `central_finance_fund_account_users` row from normal Fund Account
+  runtime and Cutover authorization.
+- The canonical read/write predicate is now one active Fund Account, one
+  active School allocation, one active staff finance identity (for School
+  staff), one active Central School scope, and one active Finance Group scope.
+  Every payment, import, operating document, transfer, handover, refund, and
+  Ledger path supplies the explicit transaction School ID. A direct legacy
+  account-user row cannot grant School Admin or cross-School access.
+- Cutover readiness accepts an allocated Central account plus an active School
+  Accountant finance identity with operate scope. Finance Group onboarding
+  displays already-authorized accountants as `Finance Access Active` with a
+  Manage/Revoke link; only inactive/ungranted staff appear in the Grant form.
+  Legacy account-user records remain read-only compatibility/audit data and
+  are not created for new normal Group accounts.
+- The Head Finance control plane can still manage a newly created Group
+  Account before its first School allocation, while every transaction use
+  remains fail-closed until an allocation exists. No schema, migration,
+  Ledger, or historical Finance data change is included.
+- Targeted and expanded Central Finance regression passes 196 tests / 2,997
+  assertions. Full regression passes all 142 test files in isolated processes:
+  823 tests / 6,595 assertions, with only the repository's existing
+  PHP/PHPUnit deprecation notices. Authenticated local Playwright passes the
+  Finance Group management workspace, authorization-state rendering, and
+  390 px overflow check.
+
+Last updated: 2026-09-17
+
 ## Central Fund Account V2.1 allocation cleanup — local candidate
 
 - Production `93aef0a78dc0c23f7f122e16894d08bbc96ae5e3` is the baseline.

@@ -29,7 +29,7 @@ final class CentralFinanceHqFundingService
         $this->assertInput($amount, $idempotencyReference, $referenceNo);
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $referenceNo): CentralFinanceHqFundingRequest {
             $this->schools->assertCanOperate($actor, $schoolId);
-            $this->accounts->assertCanOperate($actor, $source);
+            $this->accounts->assertCanOperate($actor, $source, $schoolId);
             $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($source->id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($destination->id);
             $direction = $this->direction($schoolId, $source, $destination);
@@ -57,8 +57,8 @@ final class CentralFinanceHqFundingService
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $funding->school_id);
             $source = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($funding->source_account_id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($funding->destination_account_id);
-            $this->accounts->assertCanOperate($headFinance, $source);
-            $this->accounts->assertCanOperate($headFinance, $destination);
+            $this->accounts->assertCanOperate($headFinance, $source, (int) $funding->school_id);
+            $this->accounts->assertCanOperate($headFinance, $destination, (int) $funding->school_id);
             $this->direction($funding->school_id, $source, $destination);
             $transfer = CentralFinanceInternalTransfer::on('mysql')->create([
                 'school_id' => $funding->school_id, 'source_account_id' => $source->id, 'destination_account_id' => $destination->id,
@@ -101,7 +101,7 @@ final class CentralFinanceHqFundingService
             if ($funding->status !== CentralFinanceHqFundingRequest::PENDING) throw new InvalidArgumentException('Only a pending HQ funding request can be resolved.');
             if ($mustConfirmFunding) $this->schools->assertCanConfirmFunding($actor, $funding->school_id);
             elseif ((int) $funding->requested_by !== $actor->id) throw new AuthorizationException('Only the requester can cancel this HQ funding request.');
-            else { $this->schools->assertCanOperate($actor, $funding->school_id); $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->active()->findOrFail($funding->source_account_id)); }
+            else { $this->schools->assertCanOperate($actor, $funding->school_id); $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->active()->findOrFail($funding->source_account_id), (int) $funding->school_id); }
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $funding->school_id);
             $before = $this->snapshot($funding);
             $funding->status = $status; $funding->resolved_by = $actor->id; $funding->resolved_at = $occurredAt; $funding->resolution_reason = trim($reason); $funding->save();

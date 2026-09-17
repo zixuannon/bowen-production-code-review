@@ -123,7 +123,7 @@ final class CentralFinanceExpenseImportService
 
         try {
             $account = $this->account((int) $data['school_id'], $data);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, (int) $data['school_id']);
             if (!CentralFinanceCurrency::same((string) $data['currency'], (string) $account->currency)) $errors[] = 'Currency must match the Central Fund Account.';
             if ($account->owner_type !== $data['account_type']) $errors[] = 'Account Type does not match the Central Fund Account.';
             $this->category((int) $data['school_id'], $data);

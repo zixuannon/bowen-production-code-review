@@ -133,22 +133,14 @@ final class CentralFinanceGroupImportService
                 ->orderBy('account_code');
             $this->dataIsolation->apply($accountsQuery, 'fund_account');
             $accounts = $accountsQuery->get()
-                ->filter(function (CentralFinanceFundAccount $account) use ($actor): bool {
-                    if (!$this->isFormalTemplateLookup($account->account_code, $account->account_name)) {
-                        return false;
-                    }
-
-                    try {
-                        $this->accountScopes->assertCanOperate($actor, $account);
-                        return true;
-                    } catch (AuthorizationException) {
-                        return false;
-                    }
-                })
-                ->flatMap(function (CentralFinanceFundAccount $account) use ($schoolCodes): array {
+                ->filter(fn (CentralFinanceFundAccount $account): bool => $this->isFormalTemplateLookup($account->account_code, $account->account_name))
+                ->flatMap(function (CentralFinanceFundAccount $account) use ($actor, $schoolCodes): array {
                     $base = ['code' => $account->account_code, 'name' => $account->account_name,
                         'account_type' => $account->account_type, 'owner_type' => $account->owner_type, 'currency' => $account->currency];
-                    return $schoolCodes->keys()->filter(fn ($schoolId) => $this->accountAvailability->isAccountAvailableForSchool($account, (int) $schoolId))
+                    return $schoolCodes->keys()->filter(function ($schoolId) use ($actor, $account): bool {
+                        if (!$this->accountAvailability->isAccountAvailableForSchool($account, (int) $schoolId)) return false;
+                        return $this->accountScopes->canOperate($actor, $account, (int) $schoolId);
+                    })
                         ->map(fn ($schoolId) => $base + ['school_code' => $schoolCodes->get($schoolId)])->values()->all();
                 })
                 ->values()
@@ -424,7 +416,7 @@ final class CentralFinanceGroupImportService
         if (!$this->dataIsolation->isProduction('fund_account', (int) $account->id)) return $error('QA_TEST_FUND_ACCOUNT', 'QA/Test or archived Fund Accounts cannot be used for Production Group Import.');
         if ($data['fund_account_type'] !== $account->account_type || $data['account_owner'] !== $account->owner_type) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Type or Account Owner does not match the canonical Fund Account.');
         if ((int) $account->group_id !== (int) $groupUser->group_id || !$this->accountAvailability->isAccountAvailableForSchool($account, (int) $school->id)) return $error('FUND_ACCOUNT_SCOPE_MISMATCH', 'Fund Account requires an active allocation to the routed School in this Finance Group.');
-        try { $this->accountScopes->assertCanOperate($actor, $account); } catch (AuthorizationException) { return $error('FUND_ACCOUNT_SCOPE_DENIED', 'Fund Account is not authorized for operation by this actor.'); }
+        try { $this->accountScopes->assertCanOperate($actor, $account, (int) $school->id); } catch (AuthorizationException) { return $error('FUND_ACCOUNT_SCOPE_DENIED', 'Fund Account is not authorized for operation by this actor.'); }
         if (!CentralFinanceCurrency::same($data['currency'], $account->currency)) return $error('CURRENCY_MISMATCH', 'Currency must match the canonical Fund Account currency.');
         $category = CentralFinanceCategory::on('mysql')->where(['school_id' => $school->id, 'type' => $data['document_type'] === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME, 'category_code' => $data['category_code'], 'is_active' => true])->first();
         if (!$category) return $error('CATEGORY_UNKNOWN', 'Category Code must exactly identify an active Category for the routed School and document type.');

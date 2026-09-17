@@ -143,12 +143,12 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $handover = $controller->handovers(new Request());
         $this->assertSame([$this->zixuanAccountant->id], $handover->getData()['schoolUsers']->pluck('id')->all());
         $this->assertSame(
-            [$this->head->id, $this->zixuanAccountant->id],
+            [$this->zixuanAccountant->id],
             $handover->getData()['handoverDestinationUserIds']->get($this->zixuan->id)->sort()->values()->all(),
         );
         $handoverHtml = $handover->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
         $this->assertStringContainsString('name="receiver_user_id"', $handoverHtml);
-        $this->assertStringContainsString('data-operating-user-ids="100,200"', $handoverHtml);
+        $this->assertStringContainsString('data-operating-user-ids="200"', $handoverHtml);
         $this->assertStringNotContainsString('value="'.$this->head->id.'">Head Finance', $handoverHtml);
     }
 

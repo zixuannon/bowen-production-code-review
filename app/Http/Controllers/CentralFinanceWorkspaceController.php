@@ -22,6 +22,7 @@ use App\Models\CentralFinanceUser;
 use App\Models\School;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundAccountSchoolAvailabilityService;
+use App\Services\CentralFinanceFundAccountScopeService;
 use App\Services\CentralFinanceLedgerPresentationService;
 use App\Services\CentralFinanceFundAccountAdministrationService;
 use App\Services\CentralFinanceConfigurationAuthorizationService;
@@ -72,6 +73,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceFundAccountBalanceService $balances,
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $accountAvailability,
+        private readonly CentralFinanceFundAccountScopeService $accountScopes,
         private readonly CentralFinancePaymentService $payments,
         private readonly CentralFinancePaymentRefundService $refunds,
         private readonly CentralFinanceReceivableAdjustmentService $receivableAdjustments,
@@ -1026,20 +1028,6 @@ final class CentralFinanceWorkspaceController extends Controller
                 })->sortBy('category')->values();
         }
         $canOperate=false; if($school){try{$this->workspace->requireOperatingSchool($actor);$canOperate=$this->dataIsolation->isProduction('school',(int)$school->id)&&$this->cutovers->allowsCentralWrites($school->id);}catch(AuthorizationException){$canOperate=false;}}
-        $handoverDestinationUserIds = collect();
-        if ($page === 'handovers' && $schoolId && $operationAccounts->isNotEmpty()) {
-            $handoverDestinationUserIds = \Illuminate\Support\Facades\DB::connection('mysql')
-                ->table('central_finance_fund_account_users as account_users')
-                ->join('central_finance_user_school_scopes as school_scopes', 'school_scopes.user_id', '=', 'account_users.user_id')
-                ->whereIn('account_users.fund_account_id', $operationAccounts->pluck('id'))
-                ->where('school_scopes.school_id', $schoolId)
-                ->where('school_scopes.can_operate', true)
-                ->where('account_users.can_view', true)
-                ->where('account_users.can_operate', true)
-                ->get(['account_users.fund_account_id', 'account_users.user_id'])
-                ->groupBy('fund_account_id')
-                ->map(fn ($assignments) => $assignments->pluck('user_id')->map(fn ($id) => (int) $id)->unique()->values());
-        }
         $schoolUsersQuery = $schoolId ? CentralFinanceUser::on('mysql')->whereIn('id',
             \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes as scopes')
                 ->join('finance_group_users as group_users', 'group_users.central_user_id', '=', 'scopes.user_id')
@@ -1055,11 +1043,19 @@ final class CentralFinanceWorkspaceController extends Controller
                 ->where('group_schools.status', 'active')
                 ->pluck('scopes.user_id')->unique()
         ) : null;
-        if ($schoolUsersQuery && $page === 'handovers') {
-            $schoolUsersQuery->whereIn('id', $handoverDestinationUserIds->flatten()->unique()->values());
-        }
         if ($schoolUsersQuery) $this->dataIsolation->applyCentralStaffUsers($schoolUsersQuery, (int) $schoolId, $includeQaTest);
         $schoolUsers = $schoolUsersQuery ? $schoolUsersQuery->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']) : collect();
+        $handoverDestinationUserIds = collect();
+        if ($page === 'handovers' && $schoolId && $operationAccounts->isNotEmpty()) {
+            $handoverDestinationUserIds = $operationAccounts->mapWithKeys(fn (CentralFinanceFundAccount $account): array => [
+                $account->id => $schoolUsers
+                    ->filter(fn (CentralFinanceUser $candidate): bool => $this->accountScopes->canOperate($candidate, $account, (int) $schoolId))
+                    ->pluck('id')
+                    ->values(),
+            ]);
+            $eligibleHandoverUserIds = $handoverDestinationUserIds->flatten()->unique();
+            $schoolUsers = $schoolUsers->whereIn('id', $eligibleHandoverUserIds)->values();
+        }
         $configurableGroups = $this->configuration->configurableGroups($actor);
         $canConfigureAccounts = $configurableGroups->isNotEmpty();
         $canConfigureSchool = false;
@@ -1579,15 +1575,21 @@ final class CentralFinanceWorkspaceController extends Controller
     /** @return \Illuminate\Support\Collection<int,CentralFinanceFundAccount> */
     private function viewableFundAccounts(CentralFinanceUser $actor, ?int $schoolId, bool $includeQaTest = false): \Illuminate\Support\Collection
     {
-        if ($this->workspace->isSchoolStaffPrincipal($actor)) {
-            return $this->workspace->readableAccounts($actor, $schoolId, $includeQaTest);
+        $accounts = $this->workspace->readableAccounts($actor, $schoolId, $includeQaTest);
+        $configurableGroupIds = $this->configuration->configurableGroups($actor)->pluck('id');
+        if ($configurableGroupIds->isEmpty()) {
+            return $accounts;
         }
 
-        $query = CentralFinanceFundAccount::on('mysql')->whereHas('authorizedUsers', fn ($users) => $users->where('users.id', $actor->id)->where('central_finance_fund_account_users.can_view', true));
-        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
-        if ($schoolId !== null) {
-            $this->accountAvailability->scopeAccountsForSchool($query, $schoolId);
-        }
-        return $query->orderBy('account_name')->get();
+        // Group-account configuration must remain reachable before the first
+        // School allocation is created. This is a control-plane read only;
+        // transaction use still goes through the canonical School allocation
+        // and Finance-scope predicate.
+        $managedQuery = CentralFinanceFundAccount::on('mysql')
+            ->whereIn('group_id', $configurableGroupIds)
+            ->orderBy('account_name');
+        $this->dataIsolation->apply($managedQuery, 'fund_account', $includeQaTest);
+
+        return $accounts->merge($managedQuery->get())->unique('id')->sortBy('account_name')->values();
     }
 }

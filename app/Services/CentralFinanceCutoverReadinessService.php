@@ -7,6 +7,7 @@ use App\Models\CentralFinanceFundAccountOpeningBalanceAudit;
 use App\Models\CentralFinanceSchoolStaffIdentity;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroupSchool;
+use App\Models\FinanceGroupUser;
 use App\Models\School;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -18,6 +19,7 @@ final class CentralFinanceCutoverReadinessService
     public function __construct(
         private readonly CentralFinanceConfigurationAuthorizationService $authorization,
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $accountAvailability,
+        private readonly CentralFinanceFundAccountScopeService $accountScopes,
         private readonly CentralFinanceStudentProfileSyncService $studentProfiles,
         private readonly CentralFinanceReceivableSyncService $receivables,
     ) {}
@@ -59,20 +61,29 @@ final class CentralFinanceCutoverReadinessService
             if (!$initial || !$latest || (float) $latest->new_opening_balance !== (float) $account->opening_balance) {
                 $openingBalancesValid = false;
             }
-            $assignedIds = DB::connection('mysql')->table('central_finance_fund_account_users')
-                ->where('fund_account_id', $account->id)->where('can_view', true)->where('can_operate', true)->pluck('user_id');
-            foreach (CentralFinanceUser::on('mysql')->whereIn('id', $assignedIds)->get() as $actor) {
-                if ($this->authorization->isHeadFinanceOperatingForSchool($actor, $school, (int) $account->group_id)) {
-                    $headIsAssigned = true;
-                }
-                if ($this->isActiveSchoolAccountant($actor, $school)) {
-                    $accountantIsAssigned = true;
-                }
+        }
+        $groupUserIds = FinanceGroupUser::on('mysql')->whereIn('group_id', $groupIds)->where('status', 'active')->pluck('central_user_id');
+        foreach (CentralFinanceUser::on('mysql')->whereIn('id', $groupUserIds)->get() as $actor) {
+            if (!$headIsAssigned && $accounts->contains(fn (CentralFinanceFundAccount $account): bool =>
+                $this->authorization->isHeadFinanceOperatingForSchool($actor, $school, (int) $account->group_id)
+                && $this->accountScopes->canOperate($actor, $account, (int) $school->id))) {
+                $headIsAssigned = true;
+            }
+        }
+        $accountantIds = Schema::connection('mysql')->hasTable('central_finance_school_staff_identities')
+            ? CentralFinanceSchoolStaffIdentity::on('mysql')->where(['school_id' => $school->id, 'status' => 'active'])->pluck('central_user_id')
+            : collect();
+        foreach (CentralFinanceUser::on('mysql')->whereIn('id', $accountantIds)->get() as $actor) {
+            if ($this->isActiveSchoolAccountant($actor, $school)
+                && $accounts->contains(fn (CentralFinanceFundAccount $account): bool =>
+                    $this->accountScopes->canOperate($actor, $account, (int) $school->id))) {
+                $accountantIsAssigned = true;
+                break;
             }
         }
         $checks[] = $this->check('opening_balances', 'Opening Balance audit', $openingBalancesValid, 'Every active Fund Account needs a signed initial opening-balance audit matching its configured balance.');
-        $checks[] = $this->check('head_finance', 'Central Head Finance', $headIsAssigned, 'An authorized Head Finance user must have operate scope and an assigned Fund Account.');
-        $checks[] = $this->check('school_accountant', 'School Accountant', $accountantIsAssigned, 'An active School Accountant identity with an assigned Fund Account is required.');
+        $checks[] = $this->check('head_finance', 'Central Head Finance', $headIsAssigned, 'An authorized Head Finance user must have active Group and School operate scope.');
+        $checks[] = $this->check('school_accountant', 'School Accountant', $accountantIsAssigned, 'An active School Accountant finance identity with School operate scope is required.');
 
         foreach ($this->syncChecks($school) as $check) {
             $checks[] = $check;

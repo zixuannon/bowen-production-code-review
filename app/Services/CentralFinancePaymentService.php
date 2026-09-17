@@ -17,7 +17,7 @@ final class CentralFinancePaymentService {
         if ($amount<=0 || !is_finite($amount) || !preg_match('/^[A-Za-z0-9 _.-]{2,40}$/',$method) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/',$idempotencyReference)) throw new InvalidArgumentException('Central payment input is invalid.');
         return DB::connection('mysql')->transaction(function() use($actor,$receivableId,$account,$amount,$method,$paidAt,$idempotencyReference,$paymentReference,$note): array {
             $r=CentralFinanceReceivable::on('mysql')->lockForUpdate()->findOrFail($receivableId);
-            $this->schools->assertCanOperate($actor,$r->school_id); $this->accounts->assertCanOperate($actor,$account);
+            $this->schools->assertCanOperate($actor,$r->school_id); $this->accounts->assertCanOperate($actor,$account,(int) $r->school_id);
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $r->school_id);
             if (!in_array($r->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true)) {
                 throw new InvalidArgumentException('Only an open or partially paid Central receivable can collect a payment.');

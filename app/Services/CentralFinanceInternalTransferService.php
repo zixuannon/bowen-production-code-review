@@ -26,8 +26,8 @@ final class CentralFinanceInternalTransferService
         $this->assertInput($amount, $idempotencyReference, $reason, $referenceNo);
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $reason, $referenceNo): CentralFinanceInternalTransfer {
             $this->schools->assertCanOperate($actor, $schoolId);
-            $this->accounts->assertCanOperate($actor, $source);
-            $this->accounts->assertCanOperate($actor, $destination);
+            $this->accounts->assertCanOperate($actor, $source, $schoolId);
+            $this->accounts->assertCanOperate($actor, $destination, $schoolId);
             $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($source->id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($destination->id);
             $this->assertSameOperatingSchool($schoolId, $source, $destination);
@@ -72,8 +72,8 @@ final class CentralFinanceInternalTransferService
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $original->school_id);
             $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($original->destination_account_id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($original->source_account_id);
-            $this->accounts->assertCanOperate($actor, $source);
-            $this->accounts->assertCanOperate($actor, $destination);
+            $this->accounts->assertCanOperate($actor, $source, (int) $original->school_id);
+            $this->accounts->assertCanOperate($actor, $destination, (int) $original->school_id);
             if ($source->id === $destination->id || strtoupper($source->currency) !== strtoupper($destination->currency) || strtoupper($source->currency) !== strtoupper($original->currency)) {
                 throw new InvalidArgumentException('The canonical transfer can no longer be safely reversed.');
             }

@@ -47,17 +47,18 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         DB::connection('mysql')->table('finance_groups')->insert(['id'=>1,'name'=>'QA Group','code'=>'QA','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('finance_group_schools')->insert(['group_id'=>1,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('finance_group_users')->insert(['id'=>1,'group_id'=>1,'central_user_id'=>100,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+        DB::connection('mysql')->table('finance_group_users')->insert(['id'=>2,'group_id'=>1,'central_user_id'=>101,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('finance_group_user_scopes')->insert([
-            ['group_user_id'=>1,'scope_type'=>'GROUP','scope_key'=>'group','capability'=>'view_reports','status'=>'active','created_at'=>now(),'updated_at'=>now()],
-            ['group_user_id'=>1,'scope_type'=>'GROUP','scope_key'=>'group','capability'=>'operate_finance','status'=>'active','created_at'=>now(),'updated_at'=>now()],
+            ['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','scope_key'=>'group','capability'=>'view_reports','status'=>'active','created_at'=>now(),'updated_at'=>now()],
+            ['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','scope_key'=>'group','capability'=>'operate_finance','status'=>'active','created_at'=>now(),'updated_at'=>now()],
+            ['group_user_id'=>2,'school_id'=>1,'scope_type'=>'SCHOOL','scope_key'=>'school:1','capability'=>'view_reports','status'=>'active','created_at'=>now(),'updated_at'=>now()],
+            ['group_user_id'=>2,'school_id'=>1,'scope_type'=>'SCHOOL','scope_key'=>'school:1','capability'=>'operate_finance','status'=>'active','created_at'=>now(),'updated_at'=>now()],
         ]);
         DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>100,'school_id'=>1,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>false,'can_confirm_funding'=>false,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>101,'school_id'=>1,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>false,'can_confirm_funding'=>false,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_accounts')->insert(['id'=>1,'account_uuid'=>'11111111-1111-4111-8111-111111111111','group_id'=>1,'school_id'=>1,'owner_type'=>'school','account_code'=>'ZIX-CASH','account_name'=>'Zixuan Cash','currency'=>'MMK','opening_balance'=>0,'is_active'=>true,'created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert(['fund_account_id'=>1,'school_id'=>1,'opening_allocation_amount'=>0,'effective_from'=>'2026-08-21','status'=>'active','is_active'=>true,'assigned_by'=>100,'assignment_reason'=>'Explicit readiness allocation','created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_fund_account_opening_balance_audits')->insert(['fund_account_id'=>1,'change_type'=>'initial','new_opening_balance'=>0,'effective_date'=>'2026-08-21','reason'=>'Signed zero opening','created_by'=>100,'created_at'=>now(),'updated_at'=>now()]);
-        DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>100,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
-        DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>1,'user_id'=>101,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]);
         $this->schoolStaffUuid = (string) Str::uuid();
         DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>(string) Str::uuid(),'school_id'=>1,'tenant_user_uuid'=>$this->schoolStaffUuid,'central_user_id'=>101,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
         DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
@@ -90,6 +91,17 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $this->assertFalse($cutovers->allowsCentralWrites(2));
         $this->expectException(AuthorizationException::class);
         $cutovers->assertTenantFinanceWritesAllowed($this->tenantActor(999));
+    }
+
+    public function test_allocation_and_active_finance_identity_satisfy_readiness_without_direct_account_user_binding(): void
+    {
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_fund_account_users')->count());
+        $checks = collect(app(\App\Services\CentralFinanceCutoverReadinessService::class)
+            ->checklist(School::on('mysql')->findOrFail(1)))->keyBy('key');
+
+        $this->assertSame('pass', $checks->get('fund_accounts')['status']);
+        $this->assertSame('pass', $checks->get('head_finance')['status']);
+        $this->assertSame('pass', $checks->get('school_accountant')['status']);
     }
 
     public function test_timecity_legacy_tenant_writes_remain_allowed_after_zixuan_cutover(): void

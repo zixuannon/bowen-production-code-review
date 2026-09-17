@@ -25,7 +25,6 @@ final class CentralFinanceWorkspaceService
     public function __construct(
         private readonly CentralFinanceSchoolScopeService $schools,
         private readonly CentralFinanceFundAccountScopeService $accounts,
-        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly FinanceGroupScopeService $groups,
         private readonly CentralFinanceSchoolStaffIdentityService $staffIdentities,
         private readonly CentralFinanceDataIsolationService $dataIsolation,
@@ -201,11 +200,8 @@ final class CentralFinanceWorkspaceService
     /** @return Collection<int, CentralFinanceFundAccount> */
     public function accessibleAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {
-        $query = $this->accounts->visibleAccounts($actor)->active()->orderBy('account_name');
+        $query = $this->accounts->visibleAccounts($actor, $schoolId, true)->active()->orderBy('account_name');
         $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
-        if ($schoolId !== null) {
-            $this->availability->scopeAccountsForSchool($query, $schoolId);
-        }
         return $query->get();
     }
 
@@ -219,30 +215,8 @@ final class CentralFinanceWorkspaceService
      */
     public function readableAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {
-        $schools = $this->accessibleSchools($actor, $includeQaTest);
-        $query = CentralFinanceFundAccount::on('mysql')->orderBy('account_name');
+        $query = $this->accounts->visibleAccounts($actor, $schoolId, false)->orderBy('account_name');
         $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
-
-        if ($this->isSchoolStaffPrincipal($actor)) {
-            $schoolIds = $schools->pluck('id');
-            if ($this->availability->allocationSchemaAvailable()) {
-                $query->whereHas('schoolAllocations', fn ($allocations) => $allocations
-                    ->whereIn('school_id', $schoolIds)->effective());
-            } else $query->whereRaw('1 = 0');
-        } else {
-            $groupIds = $this->groupUsers($actor)->pluck('group_id');
-            $query->whereIn('group_id', $groupIds)
-                ->when($this->availability->allocationSchemaAvailable(), fn ($scoped) => $scoped
-                    ->whereHas('schoolAllocations', fn ($allocations) => $allocations
-                        ->whereIn('school_id', $schools->pluck('id'))->effective()), fn ($scoped) => $scoped->whereRaw('1 = 0'));
-        }
-
-        if ($schoolId !== null) {
-            // A selected School is a strict allocation/read context. The
-            // account-level physical balance is visible, while every Ledger
-            // and reporting query remains filtered by the selected School.
-            $this->availability->scopeAccountsForSchool($query, $schoolId);
-        }
 
         return $query->get();
     }

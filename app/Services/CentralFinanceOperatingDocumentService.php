@@ -35,7 +35,7 @@ final class CentralFinanceOperatingDocumentService
 
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $description, $reimbursedBy): CentralFinanceExpense {
             $this->schools->assertCanOperate($actor, $schoolId);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, $schoolId);
             $key = $this->key('expense', $schoolId, $idempotencyReference);
             $existing = CentralFinanceExpense::on('mysql')->where('idempotency_key', $key)->first();
             if ($existing) {
@@ -69,7 +69,7 @@ final class CentralFinanceOperatingDocumentService
 
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $payer, $description): CentralFinanceOtherIncome {
             $this->schools->assertCanOperate($actor, $schoolId);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, $schoolId);
             $key = $this->key('other_income', $schoolId, $idempotencyReference);
             $existing = CentralFinanceOtherIncome::on('mysql')->where('idempotency_key', $key)->first();
             if ($existing) {
@@ -107,7 +107,7 @@ final class CentralFinanceOperatingDocumentService
         return DB::connection('mysql')->transaction(function () use ($actor, $expenseId, $changes, $reason): CentralFinanceExpense {
             $expense = CentralFinanceExpense::on('mysql')->lockForUpdate()->findOrFail($expenseId);
             $this->schools->assertCanOperate($actor, $expense->school_id);
-            $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($expense->fund_account_id));
+            $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($expense->fund_account_id), (int) $expense->school_id);
             $before = $this->snapshot($expense);
             if (array_key_exists('category_id', $changes)) {
                 $this->category($expense->school_id, (int) $changes['category_id'], CentralFinanceCategory::EXPENSE);
@@ -142,7 +142,7 @@ final class CentralFinanceOperatingDocumentService
         return DB::connection('mysql')->transaction(function () use ($actor, $incomeId, $changes, $reason): CentralFinanceOtherIncome {
             $income = CentralFinanceOtherIncome::on('mysql')->lockForUpdate()->findOrFail($incomeId);
             $this->schools->assertCanOperate($actor, $income->school_id);
-            $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($income->fund_account_id));
+            $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($income->fund_account_id), (int) $income->school_id);
             $before = $this->snapshot($income);
             if (array_key_exists('category_id', $changes)) {
                 $this->category($income->school_id, (int) $changes['category_id'], CentralFinanceCategory::INCOME);
@@ -189,7 +189,7 @@ final class CentralFinanceOperatingDocumentService
                 return $document;
             }
             $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($document->fund_account_id);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, (int) $document->school_id);
             $before = $this->snapshot($document);
             if ($type === 'expense') {
                 $this->ledger->reverseOperatingExpense($actor, $account, $document->school_id, 'central_expense_void', $document->expense_uuid, (float) $document->amount, $occurredAt, $document->reference_no);

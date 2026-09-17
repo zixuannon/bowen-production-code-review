@@ -53,6 +53,7 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
             $table->id(), $table->string('first_name')->nullable(), $table->string('last_name')->nullable(), $table->softDeletes(), $table->timestamps(),
         ]);
         foreach ([
+            '2026_08_18_000001_create_finance_group_scope_tables.php',
             '2026_08_20_000003_create_central_finance_student_sync_tables.php',
             '2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php',
             '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
@@ -72,6 +73,14 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
         DB::connection('mysql')->table('users')->insert([
             ['id' => 100, 'first_name' => 'Head', 'last_name' => 'Finance', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 200, 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('finance_groups')->insert([
+            'id' => 1, 'code' => 'BOWEN-QA', 'name' => 'Bowen QA Group', 'status' => 'active',
+            'reporting_currency' => 'MMK', 'fiscal_year_start_month' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('finance_group_schools')->insert([
+            ['group_id' => 1, 'school_id' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['group_id' => 1, 'school_id' => 2, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
             ['school_id' => 1, 'status' => 'central', 'cutover_at' => now(), 'created_at' => now(), 'updated_at' => now()],
@@ -219,14 +228,14 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
         try {
             $service->createExpense($this->head, 1, $this->timecityExpense->id, $this->zixuanAccount, 10, 'Cash', $this->at(), 'FORGED-2');
             $this->fail('Cross-school category must be rejected.');
-        } catch (ModelNotFoundException) {
+        } catch (ModelNotFoundException|AuthorizationException) {
             $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
         }
         $this->zixuanAccount->update(['is_active' => false]);
         try {
             $service->createExpense($this->head, 1, $this->zixuanExpense->id, $this->zixuanAccount, 10, 'Cash', $this->at(), 'FORGED-3');
             $this->fail('Inactive account must be rejected.');
-        } catch (ModelNotFoundException) {
+        } catch (ModelNotFoundException|AuthorizationException) {
             $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
             $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
         }
@@ -293,6 +302,19 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
         DB::connection('mysql')->table('central_finance_user_school_scopes')->insert([
             'user_id' => $user->id, 'school_id' => $schoolId, 'can_view' => true,
             'can_operate' => true, 'can_approve_reimbursements' => $canApprove,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $groupUserId = DB::connection('mysql')->table('finance_group_users')
+            ->where('group_id', 1)->where('central_user_id', $user->id)->value('id');
+        if ($groupUserId === null) {
+            $groupUserId = DB::connection('mysql')->table('finance_group_users')->insertGetId([
+                'group_id' => 1, 'central_user_id' => $user->id, 'status' => 'active',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id' => $groupUserId, 'school_id' => $schoolId, 'scope_type' => 'SCHOOL',
+            'capability' => 'operate_finance', 'scope_key' => 'school:'.$schoolId, 'status' => 'active',
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }

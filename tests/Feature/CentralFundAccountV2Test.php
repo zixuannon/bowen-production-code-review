@@ -157,6 +157,8 @@ final class CentralFundAccountV2Test extends TestCase
         }
         $this->assertFalse($availability->isAccountAvailableForSchool($account, 4));
 
+        $this->assertTrue(app(\App\Services\CentralFinanceFundAccountScopeService::class)->canOperate($this->head, $account, 3));
+
         app(CentralFinanceLedgerService::class)->recordOperatingIncome(
             $this->head, $account, 3, 'other_income', 'TIMECITY-500', 500,
             CarbonImmutable::parse('2026-09-17 10:00:00', 'Asia/Yangon'), 'TIMECITY-500'
@@ -185,7 +187,7 @@ final class CentralFundAccountV2Test extends TestCase
                 CarbonImmutable::parse('2026-09-17 11:00:00', 'Asia/Yangon')
             );
             $this->fail('An unallocated School must not use a Central Fund Account.');
-        } catch (InvalidArgumentException) {
+        } catch (InvalidArgumentException|AuthorizationException) {
             $this->assertSame(1, CentralFinanceLedgerEntry::on('mysql')->count());
         }
     }
@@ -210,6 +212,76 @@ final class CentralFundAccountV2Test extends TestCase
             $principal, $account, 1, 'other_income', 'PRINCIPAL-WRITE', 1,
             CarbonImmutable::parse('2026-09-17 12:00:00', 'Asia/Yangon')
         );
+    }
+
+    public function test_school_accountant_uses_only_allocated_accounts_in_its_own_school_without_legacy_user_pivot(): void
+    {
+        DB::connection('mysql')->table('users')->insert([
+            'id' => 202, 'school_id' => 1, 'central_finance_principal_type' => 'school_staff_identity',
+            'first_name' => 'Bahan', 'last_name' => 'Accountant', 'email' => 'bahan.accountant@example.test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert([
+            'identity_uuid' => (string) Str::uuid(), 'school_id' => 1, 'tenant_user_uuid' => (string) Str::uuid(),
+            'central_user_id' => 202, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->insert([
+            'user_id' => 202, 'school_id' => 1, 'can_view' => true, 'can_operate' => true,
+            'can_approve_reimbursements' => false, 'can_confirm_funding' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $groupUserId = DB::connection('mysql')->table('finance_group_users')->insertGetId([
+            'group_id' => $this->group->id, 'central_user_id' => 202, 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach (['view_reports', 'operate_finance'] as $capability) {
+            DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+                'group_user_id' => $groupUserId, 'school_id' => 1, 'scope_type' => 'SCHOOL',
+                'scope_key' => 'school:1', 'capability' => $capability, 'status' => 'active',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $shared = $this->centralAccount('BAHAN-SHARED');
+        $this->allocate($shared, 1);
+        $this->allocate($shared, 2);
+        $unallocated = $this->centralAccount('BAHAN-DENIED');
+        $this->allocate($unallocated, 2);
+        $accountant = CentralFinanceUser::on('mysql')->findOrFail(202);
+        $scope = app(\App\Services\CentralFinanceFundAccountScopeService::class);
+
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_fund_account_users')->where('user_id', 202)->count());
+        $this->assertTrue($scope->canOperate($accountant, $shared, 1));
+        $this->assertFalse($scope->canOperate($accountant, $shared, 2));
+        $this->assertFalse($scope->canOperate($accountant, $unallocated, 1));
+        $this->assertTrue($scope->canOperate($this->head, $shared, 2));
+
+        DB::connection('mysql')->table('users')->insert([
+            'id' => 203, 'school_id' => 1, 'central_finance_principal_type' => 'central_user',
+            'first_name' => 'School', 'last_name' => 'Admin', 'email' => 'admin@example.test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
+            'fund_account_id' => $shared->id, 'user_id' => 203, 'can_view' => true, 'can_operate' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->insert([
+            'user_id' => 203, 'school_id' => 1, 'can_view' => true, 'can_operate' => true,
+            'can_approve_reimbursements' => false, 'can_confirm_funding' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $schoolAdminGroupUserId = DB::connection('mysql')->table('finance_group_users')->insertGetId([
+            'group_id' => $this->group->id, 'central_user_id' => 203, 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id' => $schoolAdminGroupUserId, 'school_id' => 1, 'scope_type' => 'SCHOOL',
+            'scope_key' => 'school:1', 'capability' => 'operate_finance', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $schoolAdmin = CentralFinanceUser::on('mysql')->findOrFail(203);
+        $this->assertFalse($scope->canView($schoolAdmin, $shared, 1));
+        $this->assertFalse($scope->canOperate($schoolAdmin, $shared, 1));
     }
 
     public function test_reviewed_b_and_m_account_conversion_is_idempotent_auditable_and_financially_immutable(): void

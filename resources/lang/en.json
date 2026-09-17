@@ -378,8 +378,10 @@
     "Every active Fund Account needs a signed initial opening-balance audit matching its configured balance.": "Every active Fund Account needs a signed initial opening-balance audit matching its configured balance.",
     "Central Head Finance": "Central Head Finance",
     "An authorized Head Finance user must have operate scope and an assigned Fund Account.": "An authorized Head Finance user must have operate scope and an assigned Fund Account.",
+    "An authorized Head Finance user must have active Group and School operate scope.": "An authorized Head Finance user must have active Group and School operate scope.",
     "School Accountant": "School Accountant",
     "An active School Accountant identity with an assigned Fund Account is required.": "An active School Accountant identity with an assigned Fund Account is required.",
+    "An active School Accountant finance identity with School operate scope is required.": "An active School Accountant finance identity with School operate scope is required.",
     "Central Finance core services": "Central Finance core services",
     "Central Finance schema is incomplete: :tables.": "Central Finance schema is incomplete: :tables.",
     "Set an explicit approved cutover-effective datetime before Central Receivable readiness.": "Set an explicit approved cutover-effective datetime before Central Receivable readiness.",
@@ -851,4 +853,10 @@
     ,"School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries.": "School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries."
     ,"Account Opening Balance / Adjustment": "Account Opening Balance / Adjustment"
     ,"Each School allocation requires a valid School.": "Each School allocation requires a valid School."
+    ,"Finance Access Active": "Finance Access Active"
+    ,"Manage / Revoke": "Manage / Revoke"
+    ,"All eligible School Accountants already have active Finance access.": "All eligible School Accountants already have active Finance access."
+    ,"No eligible School Accountant Staff are available.": "No eligible School Accountant Staff are available."
+    ,"Legacy explicit account-user records": "Legacy explicit account-user records"
+    ,"Compatibility and audit only. Normal Fund Account access is authorized by active School allocation, staff identity, and School/Group Finance scope.": "Compatibility and audit only. Normal Fund Account access is authorized by active School allocation, staff identity, and School/Group Finance scope."
 }

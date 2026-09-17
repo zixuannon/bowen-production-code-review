@@ -2567,8 +2567,10 @@
     "Every active Fund Account needs a signed initial opening-balance audit matching its configured balance.": "每个启用的资金账户都需要与其配置余额一致的已签署期初余额审计记录。",
     "Central Head Finance": "中央总部财务",
     "An authorized Head Finance user must have operate scope and an assigned Fund Account.": "已授权的总部财务必须具有操作范围并已分配资金账户。",
+    "An authorized Head Finance user must have active Group and School operate scope.": "已授权的总部财务必须具有有效的集团与校区操作范围。",
     "School Accountant": "校区财务",
     "An active School Accountant identity with an assigned Fund Account is required.": "需要一个已启用、并已分配资金账户的校区财务身份。",
+    "An active School Accountant finance identity with School operate scope is required.": "需要一个已启用且具备校区操作范围的校区财务身份。",
     "Central Finance core services": "中央财务核心服务",
     "Central Finance schema is incomplete: :tables.": "中央财务数据库结构不完整：:tables。",
     "Set an explicit approved cutover-effective datetime before Central Receivable readiness.": "请在中央应收准备就绪前设置明确且已批准的启用生效日期时间。",
@@ -3016,4 +3018,10 @@
     ,"School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries.": "校区分配仅授予访问权限。实体余额始终按账户计算，本校区活动仅来自归属该校区的账本流水。"
     ,"Account Opening Balance / Adjustment": "账户期初余额／调整"
     ,"Each School allocation requires a valid School.": "每项校区分配都必须指定有效校区。"
+    ,"Finance Access Active": "财务权限已启用"
+    ,"Manage / Revoke": "管理／撤销"
+    ,"All eligible School Accountants already have active Finance access.": "所有符合条件的校区财务均已启用财务权限。"
+    ,"No eligible School Accountant Staff are available.": "暂无符合条件的校区财务员工。"
+    ,"Legacy explicit account-user records": "旧版账户用户记录"
+    ,"Compatibility and audit only. Normal Fund Account access is authorized by active School allocation, staff identity, and School/Group Finance scope.": "仅用于兼容与审计。普通资金账户权限由有效校区分配、员工财务身份及校区／集团财务范围共同授权。"
 }

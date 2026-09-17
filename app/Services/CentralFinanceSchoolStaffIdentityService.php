@@ -37,12 +37,53 @@ final class CentralFinanceSchoolStaffIdentityService
     /** @return Collection<int, object> Existing tenant Staff, resolved only through the trusted registry. */
     public function availableStaff(FinanceGroup $group): Collection
     {
+        $schoolIds = $group->schools()->where('status', 'active')->pluck('school_id');
+        $linkedIdentities = CentralFinanceSchoolStaffIdentity::on('mysql')
+            ->whereIn('school_id', $schoolIds)->where('status', 'active')->get()
+            ->keyBy(fn (CentralFinanceSchoolStaffIdentity $identity): string => $identity->school_id.':'.$identity->tenant_user_uuid);
+        $today = now()->toDateString();
+        $activeFinanceAccess = DB::connection('mysql')->table('central_finance_school_staff_identities as identities')
+            ->join('finance_groups as groups', function ($join) use ($group): void {
+                $join->where('groups.id', '=', $group->id)
+                    ->where('groups.status', '=', 'active');
+            })
+            ->join('central_finance_user_school_scopes as school_scopes', function ($join): void {
+                $join->on('school_scopes.user_id', '=', 'identities.central_user_id')
+                    ->on('school_scopes.school_id', '=', 'identities.school_id');
+            })
+            ->join('finance_group_users as group_users', function ($join) use ($group): void {
+                $join->on('group_users.central_user_id', '=', 'identities.central_user_id')
+                    ->where('group_users.group_id', '=', $group->id)
+                    ->where('group_users.status', '=', 'active');
+            })
+            ->join('finance_group_schools as group_schools', function ($join) use ($group): void {
+                $join->on('group_schools.school_id', '=', 'identities.school_id')
+                    ->where('group_schools.group_id', '=', $group->id)
+                    ->where('group_schools.status', '=', 'active');
+            })
+            ->join('finance_group_user_scopes as group_scopes', function ($join): void {
+                $join->on('group_scopes.group_user_id', '=', 'group_users.id')
+                    ->where('group_scopes.capability', '=', 'operate_finance')
+                    ->where('group_scopes.status', '=', 'active');
+            })
+            ->where('identities.status', 'active')
+            ->where('school_scopes.can_view', true)->where('school_scopes.can_operate', true)
+            ->where(fn ($query) => $query->whereNull('group_schools.active_from')->orWhereDate('group_schools.active_from', '<=', $today))
+            ->where(fn ($query) => $query->whereNull('group_schools.active_to')->orWhereDate('group_schools.active_to', '>=', $today))
+            ->where(fn ($query) => $query->whereNull('group_scopes.active_from')->orWhereDate('group_scopes.active_from', '<=', $today))
+            ->where(fn ($query) => $query->whereNull('group_scopes.active_to')->orWhereDate('group_scopes.active_to', '>=', $today))
+            ->where(fn ($query) => $query->where('group_scopes.scope_type', 'GROUP')
+                ->orWhere(fn ($schoolScope) => $schoolScope->where('group_scopes.scope_type', 'SCHOOL')
+                    ->whereColumn('group_scopes.school_id', 'identities.school_id')))
+            ->get(['identities.school_id', 'identities.tenant_user_uuid', 'identities.central_user_id'])
+            ->keyBy(fn ($row): string => $row->school_id.':'.$row->tenant_user_uuid);
+
         return $group->schools()->where('status', 'active')->with('school')->get()
-            ->flatMap(function ($member): Collection {
+            ->flatMap(function ($member) use ($linkedIdentities, $activeFinanceAccess): Collection {
                 $school = $member->school;
                 if (!$school) return collect();
 
-                return $this->inSchool($school, function () use ($school): Collection {
+                return $this->inSchool($school, function () use ($school, $linkedIdentities, $activeFinanceAccess): Collection {
                     $query = DB::connection('school')->table('users')
                         ->join('staffs', 'staffs.user_id', '=', 'users.id')
                         ->where('users.school_id', $school->id)
@@ -60,15 +101,10 @@ final class CentralFinanceSchoolStaffIdentityService
                         ->get(['assignments.model_id', 'roles.name'])
                         ->groupBy('model_id')
                         ->map(fn (Collection $rows) => $rows->pluck('name')->values()->all());
-                    $linked = CentralFinanceSchoolStaffIdentity::on('mysql')
-                        ->where('school_id', $school->id)
-                        ->where('status', 'active')
-                        ->whereIn('tenant_user_uuid', $staff->pluck('central_finance_source_uuid')->filter())
-                        ->pluck('tenant_user_uuid')
-                        ->flip();
-
-                    return $staff->map(function ($staff) use ($school, $roles, $linked): object {
+                    return $staff->map(function ($staff) use ($school, $roles, $linkedIdentities, $activeFinanceAccess): object {
                         $roleNames = $roles->get($staff->tenant_user_id, []);
+                        $identityKey = $school->id.':'.$staff->central_finance_source_uuid;
+                        $identity = $linkedIdentities->get($identityKey);
 
                         return (object) [
                             'school_id' => (int) $school->id,
@@ -79,7 +115,9 @@ final class CentralFinanceSchoolStaffIdentityService
                             'eligible_accountant' => $this->hasAnyRole($roleNames, self::ACCOUNTANT_ROLE_NAMES),
                             'eligible_principal' => $this->hasAnyRole($roleNames, self::PRINCIPAL_ROLE_NAMES),
                             'eligible_front_desk' => $this->hasAnyRole($roleNames, self::FRONT_DESK_ROLE_NAMES),
-                            'identity_linked' => $linked->has((string) $staff->central_finance_source_uuid),
+                            'identity_linked' => $identity !== null,
+                            'central_user_id' => $identity?->central_user_id,
+                            'finance_access_active' => $activeFinanceAccess->has($identityKey),
                         ];
                     });
                 });

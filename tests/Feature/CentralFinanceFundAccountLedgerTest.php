@@ -53,23 +53,51 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         });
         Schema::connection('mysql')->create('users', function (Blueprint $table): void {
             $table->id();
+            $table->unsignedBigInteger('school_id')->nullable();
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
             $table->string('email')->nullable();
             $table->softDeletes();
             $table->timestamps();
         });
+        (require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php'))->up();
         (require database_path('migrations/2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php'))->up();
+        (require database_path('migrations/2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php'))->up();
         (require database_path('migrations/2026_09_03_000001_create_central_finance_fund_account_school_allocations.php'))->up();
         (require database_path('migrations/2026_08_21_000005_create_central_finance_school_cutovers.php'))->up();
+        (require database_path('migrations/2026_08_24_000002_create_central_finance_school_staff_identities.php'))->up();
 
         DB::connection('mysql')->table('schools')->insert([
             ['id' => 1, 'name' => 'Zixuan QA', 'code' => 'CF_ZIXUAN', 'database_name' => 'central-test-a', 'created_at' => now(), 'updated_at' => now()],
             ['id' => 2, 'name' => 'Timecity QA', 'code' => 'CF_TIMECITY', 'database_name' => 'central-test-b', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::connection('mysql')->table('users')->insert([
-            ['id' => 100, 'first_name' => 'Head', 'last_name' => 'Finance', 'email' => 'head@example.test', 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 200, 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'email' => 'zixuan@example.test', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 100, 'school_id' => null, 'central_finance_principal_type' => 'central_user', 'first_name' => 'Head', 'last_name' => 'Finance', 'email' => 'head@example.test', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 200, 'school_id' => 1, 'central_finance_principal_type' => 'school_staff_identity', 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'email' => 'zixuan@example.test', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('finance_groups')->insert(['id' => 1, 'name' => 'Bowen Group', 'code' => 'BOWEN', 'status' => 'active', 'reporting_currency' => 'MMK', 'fiscal_year_start_month' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('mysql')->table('finance_group_schools')->insert([
+            ['group_id' => 1, 'school_id' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['group_id' => 1, 'school_id' => 2, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('finance_group_users')->insert([
+            ['id' => 1, 'group_id' => 1, 'central_user_id' => 100, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'group_id' => 1, 'central_user_id' => 200, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            ['group_user_id' => 1, 'school_id' => null, 'scope_type' => 'GROUP', 'scope_key' => 'group', 'capability' => 'view_reports', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['group_user_id' => 1, 'school_id' => null, 'scope_type' => 'GROUP', 'scope_key' => 'group', 'capability' => 'operate_finance', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['group_user_id' => 2, 'school_id' => 1, 'scope_type' => 'SCHOOL', 'scope_key' => 'school:1', 'capability' => 'view_reports', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+            ['group_user_id' => 2, 'school_id' => 1, 'scope_type' => 'SCHOOL', 'scope_key' => 'school:1', 'capability' => 'operate_finance', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->insert([
+            ['user_id' => 100, 'school_id' => 1, 'can_view' => true, 'can_operate' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['user_id' => 100, 'school_id' => 2, 'can_view' => true, 'can_operate' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['user_id' => 200, 'school_id' => 1, 'can_view' => true, 'can_operate' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::connection('mysql')->table('central_finance_school_staff_identities')->insert([
+            'identity_uuid' => (string) Str::uuid(), 'school_id' => 1, 'tenant_user_uuid' => (string) Str::uuid(),
+            'central_user_id' => 200, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
             ['school_id' => 1, 'status' => 'central', 'cutover_at' => now(), 'created_at' => now(), 'updated_at' => now()],
@@ -83,10 +111,6 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         $this->timecity = $this->account('CF-TIM-MMK', 'Timecity Cash', CentralFinanceFundAccount::OWNER_SCHOOL, 2, 100);
         $this->allocate($this->hq, 1, 0);
 
-        $this->grant($this->headFinance, $this->hq);
-        $this->grant($this->headFinance, $this->zixuan);
-        $this->grant($this->headFinance, $this->timecity);
-        $this->grant($this->zixuanAccountant, $this->zixuan);
     }
 
     protected function tearDown(): void
@@ -147,9 +171,9 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
     {
         $unassignedHead = CentralFinanceUser::on('mysql')->create(['first_name' => 'Unassigned', 'last_name' => 'Head']);
         $scope = app(CentralFinanceFundAccountScopeService::class);
-        $this->assertSame(['CF-ZIX-MMK'], $scope->visibleAccounts($this->zixuanAccountant)->orderBy('account_code')->pluck('account_code')->all());
+        $this->assertSame(['CF-HQ-MMK', 'CF-ZIX-MMK'], $scope->visibleAccounts($this->zixuanAccountant, 1, true)->orderBy('account_code')->pluck('account_code')->all());
         $this->expectException(AuthorizationException::class);
-        $scope->assertCanOperate($unassignedHead, $this->hq);
+        $scope->assertCanOperate($unassignedHead, $this->hq, 1);
     }
 
     public function test_ledger_entries_are_append_only_after_canonical_recording(): void
@@ -171,7 +195,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         try {
             $ledger->recordInternalTransfer($this->headFinance, $this->zixuan, $this->timecity, 1, 'internal_transfer', 'CROSS-001', 10, $at);
             $this->fail('Cross-School transfer attribution should be rejected.');
-        } catch (InvalidArgumentException) {
+        } catch (InvalidArgumentException|AuthorizationException) {
             $this->assertSame($before, CentralFinanceLedgerEntry::on('mysql')->count());
         }
 
@@ -186,7 +210,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         try {
             $ledger->recordOperatingIncome($this->headFinance, $this->timecity, 2, 'student_payment', 'PAY-INACTIVE', 10, $at);
             $this->fail('Inactive Fund Account should be rejected.');
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException|AuthorizationException) {
             $this->assertSame($before, CentralFinanceLedgerEntry::on('mysql')->count());
         }
     }
@@ -330,15 +354,6 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
             'is_active' => true,
             'assigned_by' => null,
             'assignment_reason' => 'Explicit test allocation.',
-        ]);
-    }
-
-    private function grant(CentralFinanceUser $user, CentralFinanceFundAccount $account): void
-    {
-        DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
-            'fund_account_id' => $account->id, 'user_id' => $user->id,
-            'can_view' => true, 'can_operate' => true,
-            'created_at' => now(), 'updated_at' => now(),
         ]);
     }
 

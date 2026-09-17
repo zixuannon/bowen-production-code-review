@@ -158,7 +158,7 @@ final class CentralFinancePaymentImportService
                 $errors[] = 'Payment exceeds the outstanding receivable amount.';
             }
             $account = $this->account($schoolId, $data);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, $schoolId);
             if (!CentralFinanceCurrency::same((string) $data['currency'], (string) $account->currency)
                 || !CentralFinanceCurrency::same((string) $data['currency'], (string) $receivable->currency)) $errors[] = 'Currency must match both the Fund Account and receivable.';
         } catch (AuthorizationException) {

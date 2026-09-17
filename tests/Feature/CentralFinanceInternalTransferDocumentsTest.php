@@ -45,6 +45,7 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         Schema::connection('mysql')->create('schools', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->softDeletes(), $t->timestamps()]);
         Schema::connection('mysql')->create('users', fn (Blueprint $t) => [$t->id(), $t->string('first_name')->nullable(), $t->string('last_name')->nullable(), $t->softDeletes(), $t->timestamps()]);
         foreach ([
+            '2026_08_18_000001_create_finance_group_scope_tables.php',
             '2026_08_20_000003_create_central_finance_student_sync_tables.php',
             '2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php',
             '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
@@ -60,6 +61,13 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         ]);
         DB::connection('mysql')->table('users')->insert([
             ['id'=>100,'first_name'=>'Head','last_name'=>'Finance','created_at'=>now(),'updated_at'=>now()], ['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','created_at'=>now(),'updated_at'=>now()], ['id'=>300,'first_name'=>'Timecity','last_name'=>'Accountant','created_at'=>now(),'updated_at'=>now()],
+        ]);
+        DB::connection('mysql')->table('finance_groups')->insert([
+            'id'=>1,'code'=>'BOWEN-QA','name'=>'Bowen QA Group','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now(),
+        ]);
+        DB::connection('mysql')->table('finance_group_schools')->insert([
+            ['group_id'=>1,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()],
+            ['group_id'=>1,'school_id'=>2,'status'=>'active','created_at'=>now(),'updated_at'=>now()],
         ]);
         DB::connection('mysql')->table('central_finance_school_cutovers')->insert([
             ['school_id'=>1,'status'=>'central','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()], ['school_id'=>2,'status'=>'central','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()],
@@ -192,7 +200,7 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
             fn()=> $direct->transfer($this->zixuanAccountant,2,$this->timecityA,$this->timecityB,1,$this->at(),'FORGED-1','Forged school attempt'),
         ] as $attempt) { try { $attempt(); $this->fail('Forged or unsafe transfer accepted.'); } catch (InvalidArgumentException|AuthorizationException|RuntimeException) { $this->assertSame(0,CentralFinanceInternalTransfer::on('mysql')->count()); } }
         $this->timecityA->update(['is_active'=>false]);
-        try { $direct->transfer($this->head,2,$this->timecityA,$this->timecityB,1,$this->at(),'INACTIVE-1','Inactive source attempt'); $this->fail('Inactive source accepted.'); } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) { $this->assertSame(0,DB::connection('mysql')->table('central_finance_ledger_entries')->count()); }
+        try { $direct->transfer($this->head,2,$this->timecityA,$this->timecityB,1,$this->at(),'INACTIVE-1','Inactive source attempt'); $this->fail('Inactive source accepted.'); } catch (\Illuminate\Database\Eloquent\ModelNotFoundException|AuthorizationException) { $this->assertSame(0,DB::connection('mysql')->table('central_finance_ledger_entries')->count()); }
     }
 
     public function test_transfer_document_schema_is_additive_and_reversible(): void
@@ -217,7 +225,26 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         ]);
     }
     private function grantAccount(CentralFinanceUser $user,CentralFinanceFundAccount $account): void { DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>$account->id,'user_id'=>$user->id,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]); }
-    private function grantSchool(CentralFinanceUser $user,int $school,bool $funding): void { DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>$user->id,'school_id'=>$school,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>$funding,'can_confirm_funding'=>$funding,'created_at'=>now(),'updated_at'=>now()]); }
+    private function grantSchool(CentralFinanceUser $user,int $school,bool $funding): void
+    {
+        DB::connection('mysql')->table('central_finance_user_school_scopes')->insert([
+            'user_id'=>$user->id,'school_id'=>$school,'can_view'=>true,'can_operate'=>true,
+            'can_approve_reimbursements'=>$funding,'can_confirm_funding'=>$funding,
+            'created_at'=>now(),'updated_at'=>now(),
+        ]);
+        $groupUserId = DB::connection('mysql')->table('finance_group_users')
+            ->where('group_id', 1)->where('central_user_id', $user->id)->value('id');
+        if ($groupUserId === null) {
+            $groupUserId = DB::connection('mysql')->table('finance_group_users')->insertGetId([
+                'group_id'=>1,'central_user_id'=>$user->id,'status'=>'active','created_at'=>now(),'updated_at'=>now(),
+            ]);
+        }
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id'=>$groupUserId,'school_id'=>$school,'scope_type'=>'SCHOOL',
+            'capability'=>'operate_finance','scope_key'=>'school:'.$school,'status'=>'active',
+            'created_at'=>now(),'updated_at'=>now(),
+        ]);
+    }
     private function balance(CentralFinanceFundAccount $account): float { return app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account); }
     private function at(): CarbonImmutable { return CarbonImmutable::parse('2026-08-21 15:00:00','Asia/Yangon'); }
 }

@@ -34,8 +34,8 @@ final class CentralFinanceFundHandoverService
         return DB::connection('mysql')->transaction(function () use ($sender, $receiver, $schoolId, $source, $destination, $amount, $occurredAt, $idempotencyReference, $referenceNo): CentralFinanceFundHandover {
             $this->schools->assertCanOperate($sender, $schoolId);
             $this->schools->assertCanOperate($receiver, $schoolId);
-            $this->accounts->assertCanOperate($sender, $source);
-            $this->accounts->assertCanOperate($receiver, $destination);
+            $this->accounts->assertCanOperate($sender, $source, $schoolId);
+            $this->accounts->assertCanOperate($receiver, $destination, $schoolId);
             $source = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($source->id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($destination->id);
             $this->assertSameSchool($schoolId, $source, $destination);
@@ -64,10 +64,10 @@ final class CentralFinanceFundHandoverService
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $handover->school_id);
             $source = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($handover->source_account_id);
             $destination = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($handover->destination_account_id);
-            $this->accounts->assertCanOperate($receiver, $destination);
+            $this->accounts->assertCanOperate($receiver, $destination, (int) $handover->school_id);
             $sender = CentralFinanceUser::on('mysql')->findOrFail($handover->sender_user_id);
             $this->schools->assertCanOperate($sender, $handover->school_id);
-            $this->accounts->assertCanOperate($sender, $source);
+            $this->accounts->assertCanOperate($sender, $source, (int) $handover->school_id);
             $this->assertSameSchool($handover->school_id, $source, $destination);
             $transfer = CentralFinanceInternalTransfer::on('mysql')->create([
                 'school_id' => $handover->school_id, 'source_account_id' => $source->id, 'destination_account_id' => $destination->id,
@@ -125,7 +125,7 @@ final class CentralFinanceFundHandoverService
             $this->schools->assertCanOperate($actor, $handover->school_id);
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $handover->school_id);
             $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($receiver ? $handover->destination_account_id : $handover->source_account_id);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, (int) $handover->school_id);
             $before = $this->snapshot($handover);
             $handover->status = $status; $handover->resolved_by = $actor->id; $handover->resolved_at = $occurredAt; $handover->resolution_reason = trim($reason); $handover->save();
             $this->audits->record($actor, $handover, 'fund_handover', $status, trim($reason), $before, $this->snapshot($handover));

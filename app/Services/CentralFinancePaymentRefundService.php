@@ -26,7 +26,7 @@ final class CentralFinancePaymentRefundService
             $this->schools->assertCanOperate($actor, (int) $payment->school_id);
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $payment->school_id);
             $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
-            $this->accounts->assertCanOperate($actor, $account);
+            $this->accounts->assertCanOperate($actor, $account, (int) $payment->school_id);
             if ((int) $account->id !== (int) $payment->fund_account_id || strtoupper($account->currency) !== strtoupper($payment->currency)) throw new InvalidArgumentException('A Central payment refund must use the original active Fund Account and currency.');
             $key = hash('sha256', $payment->school_id.'|'.$payment->id.'|'.$idempotencyReference);
             if ($existing = CentralFinancePaymentRefund::on('mysql')->where('idempotency_key', $key)->lockForUpdate()->first()) return $existing;

@@ -31,14 +31,14 @@
         </form>
     </div></div>
 
-    <div class="card mb-3"><div class="card-body">
-        <h5>{{ __('Authorized users') }}</h5>
-        <form method="POST" action="{{ route('central-finance.accounts.assignments', $accountReport->id) }}" data-lifecycle-confirm data-lifecycle-object="{{ $accountReport->account_name }}" data-lifecycle-current-status="{{ __('Authorized users') }}" data-lifecycle-result="{{ __('Fund Account access updates immediately') }}">@csrf
-            <div class="row">@forelse($accountAssignableUsers as $user)<div class="col-md-6 mb-2"><label class="border rounded d-block p-2 mb-0"><input type="checkbox" name="authorized_user_ids[]" value="{{ $user->id }}" @checked($accountReport->authorizedUsers->contains('id', $user->id))> {{ $user->full_name }} <small class="text-muted d-block">{{ $user->email }}</small></label></div>@empty<div class="col-12 text-muted">{{ __('Allocate this account to a School before assigning its School Accountant. Head Finance remains assigned automatically.') }}</div>@endforelse</div>
-            <div class="form-group mt-2"><label>{{ __('Scope change reason') }}</label><input name="reason" class="form-control" required></div>
-            <button class="btn btn-outline-primary">{{ __('Save scope') }}</button>
-        </form>
-    </div></div>
+    @if($accountReport->authorizedUsers->isNotEmpty())
+        <div class="card mb-3"><div class="card-body">
+            <details><summary>{{ __('Legacy explicit account-user records') }}</summary>
+                <p class="text-muted mt-3">{{ __('Compatibility and audit only. Normal Fund Account access is authorized by active School allocation, staff identity, and School/Group Finance scope.') }}</p>
+                <ul class="mb-0">@foreach($accountReport->authorizedUsers as $user)<li>{{ $user->full_name }}{{ $user->email ? ' · '.$user->email : '' }}</li>@endforeach</ul>
+            </details>
+        </div></div>
+    @endif
 
     <div class="card mb-3"><div class="card-body">
         <h5>{{ __('Allocated Schools') }}</h5>
