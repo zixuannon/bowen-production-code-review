@@ -150,6 +150,19 @@ final class LocalCentralFinanceStudentFeeQa extends Command
             'account_code' => self::ACCOUNT_CODE, 'account_name' => 'CFQA Student Fee HQ MMK',
             'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true,
         ]);
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert([
+            'fund_account_id' => $account->id,
+            'school_id' => $school->id,
+            'opening_allocation_amount' => 0,
+            'effective_from' => $now->toDateString(),
+            'effective_to' => null,
+            'status' => 'active',
+            'is_active' => true,
+            'assigned_by' => $actor->id,
+            'assignment_reason' => 'Local-only Central Finance Student Fee QA allocation.',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
         DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
             'fund_account_id' => $account->id, 'user_id' => $actor->id,
             'can_view' => true, 'can_operate' => true, 'created_at' => $now, 'updated_at' => $now,

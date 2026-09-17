@@ -81,6 +81,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         $this->hq = $this->account('CF-HQ-MMK', 'HQ Main Cash', CentralFinanceFundAccount::OWNER_HQ, null, 1000);
         $this->zixuan = $this->account('CF-ZIX-MMK', 'Zixuan Cash', CentralFinanceFundAccount::OWNER_SCHOOL, 1, 100);
         $this->timecity = $this->account('CF-TIM-MMK', 'Timecity Cash', CentralFinanceFundAccount::OWNER_SCHOOL, 2, 100);
+        $this->allocate($this->hq, 1, 0);
 
         $this->grant($this->headFinance, $this->hq);
         $this->grant($this->headFinance, $this->zixuan);
@@ -190,11 +191,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         }
     }
 
-    /**
-     * P0 shared-account characterization only. The direct inserts model
-     * already-canonical ledger facts that a future allocation pivot must read;
-     * they deliberately do not relax today's school-owned account writer.
-     */
+    /** Direct inserts model already-canonical Ledger facts for one physical account. */
     public function test_physical_fund_account_balance_is_counted_once_while_school_activity_stays_separate(): void
     {
         $this->seedSharedAccountLedger(1, 'SHARED-ZIX-001', 25);
@@ -225,8 +222,8 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
 
         $balances = app(CentralFinanceFundAccountBalanceService::class);
         $this->assertSame(125.0, $balances->currentBalance($this->zixuan));
-        $this->assertSame(100.0, $balances->schoolBalance($this->zixuan, 1));
-        $this->assertSame(25.0, $balances->schoolBalance($this->zixuan, 2));
+        $this->assertSame(0.0, $balances->schoolActivity($this->zixuan, 1)['net_movement']);
+        $this->assertSame(25.0, $balances->schoolActivity($this->zixuan, 2)['net_movement']);
         $this->assertSame(1, CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $this->zixuan->id)->where('school_id', 2)->count());
     }
 
@@ -300,6 +297,7 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
         $this->assertFalse(Schema::connection('mysql')->hasTable('bank_accounts'));
         $this->assertFalse(Schema::connection('mysql')->hasTable('expenses'));
 
+        (require database_path('migrations/2026_09_03_000001_create_central_finance_fund_account_school_allocations.php'))->down();
         (require database_path('migrations/2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php'))->down();
         $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_ledger_entries'));
         $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_fund_accounts'));
@@ -307,12 +305,31 @@ class CentralFinanceFundAccountLedgerTest extends TestCase
 
     private function account(string $code, string $name, string $ownerType, ?int $schoolId, float $openingBalance): CentralFinanceFundAccount
     {
-        return CentralFinanceFundAccount::on('mysql')->create([
+        $account = CentralFinanceFundAccount::on('mysql')->create([
             'account_uuid' => (string) Str::uuid(), 'group_id' => 1,
             'school_id' => $schoolId, 'owner_type' => $ownerType,
             'account_code' => $code, 'account_name' => $name,
             'currency' => 'MMK', 'opening_balance' => $openingBalance,
             'is_active' => true,
+        ]);
+        if ($schoolId !== null) {
+            $this->allocate($account, $schoolId, $openingBalance);
+        }
+
+        return $account;
+    }
+
+    private function allocate(CentralFinanceFundAccount $account, int $schoolId, float $openingAmount): void
+    {
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+            'fund_account_id' => $account->id,
+            'school_id' => $schoolId,
+            'opening_allocation_amount' => $openingAmount,
+            'effective_from' => '2026-08-01',
+            'status' => 'active',
+            'is_active' => true,
+            'assigned_by' => null,
+            'assignment_reason' => 'Explicit test allocation.',
         ]);
     }
 

@@ -92,8 +92,9 @@ class CentralFinanceFundAccount extends Model
     }
 
     /**
-     * School availability is additive.  school_id remains the legacy original
-     * owner for compatibility and never replaces document/ledger attribution.
+     * School availability is always explicit. New physical accounts are Group
+     * owned (`owner_type=hq`, `school_id=NULL`); school_id exists only for
+     * legacy provenance until the audited V2 ownership conversion runs.
      */
     public function schoolAllocations(): HasMany
     {

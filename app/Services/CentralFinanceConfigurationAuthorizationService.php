@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CentralFinanceUser;
 use App\Models\CentralFinanceSchoolStaffIdentity;
+use App\Models\FinanceGroup;
 use App\Models\FinanceGroupSchool;
 use App\Models\FinanceGroupUser;
 use App\Models\School;
@@ -40,6 +41,62 @@ final class CentralFinanceConfigurationAuthorizationService
         }
 
         return $groupUser;
+    }
+
+    /**
+     * Group Fund Accounts are control-plane records and therefore do not need
+     * a selected School.  The actor still needs the explicit Group-level HQ
+     * account capability; a collection of School scopes is never enough.
+     */
+    public function assertHeadFinanceCanConfigureGroup(CentralFinanceUser $actor, int $groupId): FinanceGroupUser
+    {
+        $actor = CentralFinanceUser::on('mysql')->findOrFail($actor->id);
+        $roleIdentity = User::on('mysql')->findOrFail($actor->id);
+        if ($actor->getRawOriginal('school_id') !== null
+            || !Schema::connection('mysql')->hasTable('roles')
+            || !Schema::connection('mysql')->hasTable('model_has_roles')
+            || !$roleIdentity->hasRole('Head Finance')) {
+            throw new AuthorizationException('Only Central Head Finance can configure Group Fund Accounts.');
+        }
+
+        $group = FinanceGroup::on('mysql')->whereKey($groupId)->where('status', 'active')->first();
+        if ($group === null) {
+            throw new AuthorizationException('The requested Finance Group is not active.');
+        }
+
+        $groupUser = FinanceGroupUser::on('mysql')->where([
+            'group_id' => $groupId,
+            'central_user_id' => $actor->id,
+            'status' => 'active',
+        ])->first();
+        if ($groupUser === null || !$this->groups->canControlHqAccounts($groupUser)) {
+            throw new AuthorizationException('Head Finance lacks explicit Group Fund Account control.');
+        }
+
+        return $groupUser;
+    }
+
+    /** @return \Illuminate\Support\Collection<int, FinanceGroup> */
+    public function configurableGroups(CentralFinanceUser $actor): \Illuminate\Support\Collection
+    {
+        if ($actor->getRawOriginal('school_id') !== null
+            || !Schema::connection('mysql')->hasTable('roles')
+            || !Schema::connection('mysql')->hasTable('model_has_roles')
+            || !User::on('mysql')->findOrFail($actor->id)->hasRole('Head Finance')) {
+            return collect();
+        }
+
+        return FinanceGroupUser::on('mysql')
+            ->where('central_user_id', $actor->id)
+            ->where('status', 'active')
+            ->with('group')
+            ->get()
+            ->filter(fn (FinanceGroupUser $groupUser): bool => $groupUser->group !== null
+                && $groupUser->group->status === 'active'
+                && $this->groups->canControlHqAccounts($groupUser))
+            ->map(fn (FinanceGroupUser $groupUser): FinanceGroup => $groupUser->group)
+            ->unique('id')
+            ->values();
     }
 
     /**

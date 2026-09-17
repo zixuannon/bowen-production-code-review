@@ -17,6 +17,7 @@ final class CentralFinanceCutoverReadinessService
 {
     public function __construct(
         private readonly CentralFinanceConfigurationAuthorizationService $authorization,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $accountAvailability,
         private readonly CentralFinanceStudentProfileSyncService $studentProfiles,
         private readonly CentralFinanceReceivableSyncService $receivables,
     ) {}
@@ -35,10 +36,17 @@ final class CentralFinanceCutoverReadinessService
             ->whereHas('group', fn ($query) => $query->where('status', 'active'))->pluck('group_id');
         $checks[] = $this->check('group_scope', 'Group and School scope', !$groupIds->isEmpty(), 'The School is not an active Finance Group member.');
 
-        $accounts = $groupIds->isEmpty() ? collect() : CentralFinanceFundAccount::on('mysql')->active()
-            ->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)->where('school_id', $school->id)
-            ->whereIn('group_id', $groupIds)->get();
-        $checks[] = $this->check('fund_accounts', 'Active Fund Accounts', !$accounts->isEmpty(), 'Create at least one active Central School Fund Account.');
+        // The allocation registry is the sole source of School availability.
+        // During a partial rollout, fail closed instead of falling back to the
+        // legacy owner school_id column or querying a missing relation table.
+        $accounts = ($groupIds->isEmpty() || !$this->accountAvailability->allocationSchemaAvailable())
+            ? collect()
+            : CentralFinanceFundAccount::on('mysql')->active()
+                ->whereIn('group_id', $groupIds)
+                ->whereHas('schoolAllocations', fn ($allocations) => $allocations
+                    ->where('school_id', $school->id)->effective())
+                ->get();
+        $checks[] = $this->check('fund_accounts', 'Active Central Fund Account allocation', !$accounts->isEmpty(), 'Allocate at least one active Central / Group Fund Account to this School.');
 
         $headIsAssigned = false;
         $accountantIsAssigned = false;

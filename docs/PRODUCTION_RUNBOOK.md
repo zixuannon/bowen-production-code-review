@@ -221,6 +221,33 @@ both audit records, sequence `next_number >= 4`, and old-code login rejection.
 Never substitute broad `migrate`, `migrate:school`, rollback, or manual SQL
 replacement. Production execution and deployment are separate Human Gates.
 
+### Central Fund Account V2 targeted migration and conversion
+
+`finance:migrate-fund-account-v2` is the only approved runner for
+`2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits`.
+The default invocation is read-only and must report exactly `eligible` or
+`complete`:
+
+```sh
+php artisan finance:migrate-fund-account-v2
+```
+
+After a fresh verified Central backup and a separate Production migration
+approval, run the exact `--execute` form only from the prepared immutable
+release. The runner must reject migration-history/schema mismatch and partial
+state with a non-zero exit and zero schema write. Never substitute generic
+`migrate`, broad rollback, or manual SQL.
+
+Existing Group-account conversion is a separate data Human Gate. First run
+`php artisan finance:convert-fund-account-v2` without `--execute`; the
+preflight targets only `B-0001` and `M-0001`, requires every historical Ledger
+School to have an active allocation, and records the account IDs, opening
+balances, allocation set, and Ledger checksum. Only after explicit approval
+may `--execute --actor=<central-user-id> --reason='<audited reason>'` run from
+the immutable release. It changes ownership metadata only, preserves IDs and
+all Ledger/opening data, verifies the checksum in-transaction, and is
+idempotent. Never convert an unreviewed code or infer missing allocations.
+
 ### Finance P2/P3 targeted runner
 
 `finance:p2-p3-migration-safety` is the only approved runner for the P2/P3

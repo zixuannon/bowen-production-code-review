@@ -16,7 +16,8 @@ final class SchoolFinanceFacadeContractTest extends TestCase
         $this->assertStringContainsString('return $this->isSchoolStaffPrincipal($actor);', $workspace);
         $this->assertStringContainsString('requireOperatingSchool($actor)', $controller);
         $this->assertStringContainsString('readableAccounts($actor,$school?->id,$includeQaTest)', $controller);
-        $this->assertStringContainsString('schoolBalance($account, $schoolId)', $controller);
+        $this->assertStringContainsString('currentBalance($accountReport)', $controller);
+        $this->assertStringContainsString('schoolActivity($accountReport, $schoolId)', $controller);
     }
 
     public function test_school_finance_navigation_hides_group_surfaces_without_changing_routes(): void

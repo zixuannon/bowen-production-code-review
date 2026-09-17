@@ -47,6 +47,33 @@ final class CentralFinanceFundAccountBalanceService
     }
 
     /**
+     * School attribution is an activity slice, never a second account balance.
+     * The physical balance remains currentBalance() and is identical for every
+     * School with an active allocation.
+     *
+     * @return array{money_in:float,money_out:float,income:float,expense:float,net_movement:float}
+     */
+    public function schoolActivity(CentralFinanceFundAccount $account, int $schoolId): array
+    {
+        $totals = CentralFinanceLedgerEntry::on('mysql')
+            ->where('fund_account_id', $account->id)
+            ->where('school_id', $schoolId)
+            ->selectRaw('COALESCE(SUM(money_in), 0) as money_in, COALESCE(SUM(money_out), 0) as money_out, COALESCE(SUM(operating_income), 0) as income, COALESCE(SUM(operating_expense), 0) as expense')
+            ->first();
+
+        $moneyIn = (float) $totals->money_in;
+        $moneyOut = (float) $totals->money_out;
+
+        return [
+            'money_in' => $moneyIn,
+            'money_out' => $moneyOut,
+            'income' => (float) $totals->income,
+            'expense' => (float) $totals->expense,
+            'net_movement' => round($moneyIn - $moneyOut, 4),
+        ];
+    }
+
+    /**
      * A scalar total is meaningful only for one original currency.  Callers
      * rendering multiple accounts must use totalsByCurrencyForSchool().
      *

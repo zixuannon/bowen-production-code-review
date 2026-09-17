@@ -129,6 +129,29 @@ class LocalFinanceGroupQa extends Command
         $scope->grantScope($schoolB,'operate_finance','SCHOOL',$b);
         $scope->bindTenantIdentity($schoolB, $b, $this->tenantUserId('GROUP_QA_SCHOOL_B', 'accountant@GROUP_QA_SCHOOL_B.test'));
 
+        // The Central workspace deliberately requires both Finance Group
+        // scope and its own School scope. Keep the fixed browser fixture true
+        // to that production boundary instead of relying on Group membership
+        // alone (which correctly fails closed).
+        foreach ([
+            [$hq->central_user_id, $a, true, true, true],
+            [$hq->central_user_id, $b, true, true, true],
+            [$schoolA->central_user_id, $a, true, false, false],
+            [$schoolB->central_user_id, $b, true, false, false],
+        ] as [$userId, $schoolId, $canOperate, $canApprove, $canConfirmFunding]) {
+            $central->table('central_finance_user_school_scopes')->updateOrInsert(
+                ['user_id' => $userId, 'school_id' => $schoolId],
+                [
+                    'can_view' => true,
+                    'can_operate' => $canOperate,
+                    'can_approve_reimbursements' => $canApprove,
+                    'can_confirm_funding' => $canConfirmFunding,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ],
+            );
+        }
+
         $hqAccount = FinanceGroupHqAccount::query()->create([
             'group_id' => $group->id,
             'account_name' => 'Group QA HQ Main Cash',

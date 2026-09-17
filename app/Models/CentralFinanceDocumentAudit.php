@@ -11,7 +11,7 @@ class CentralFinanceDocumentAudit extends Model
     protected $connection = 'mysql';
 
     protected $fillable = [
-        'audit_uuid', 'school_id', 'document_type', 'document_id', 'action',
+        'audit_uuid', 'school_id', 'group_id', 'document_type', 'document_id', 'action',
         'actor_id', 'reason', 'before_values', 'after_values',
     ];
 

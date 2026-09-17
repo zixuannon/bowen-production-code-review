@@ -1,5 +1,41 @@
 # eSchool Current State
 
+## Central Fund Account V2 — local candidate
+
+- Baseline `186b009035586c4c695c44ca78a840af68c7bbbf` is unchanged in
+  Production. Branch `codex/central-fund-account-v2` moves Fund Account
+  ownership to the Central/Group control plane: Head Finance can create an
+  `owner_type=hq`, `school_id=NULL` account without selecting a School, and
+  every School read/write path requires an explicit active allocation.
+- Physical balance is now one account-wide value (audited opening balance plus
+  every canonical Ledger effect exactly once). School pages separately show
+  `This School Activity`; Ledger/detail queries remain strictly `school_id`
+  scoped for Principal and School Accountant, while Head Finance retains the
+  authorized group-wide view. Principal access remains read-only.
+- Cutover readiness now accepts an active Central/Group account with an active
+  allocation to the School. It no longer requires a School-owned account.
+  Transfers, handovers, payments, operating documents, imports, account
+  selectors, and Group Import V2.2 all fail closed when allocation is absent.
+- The forward conversion is limited to audited account codes `B-0001` and
+  `M-0001`. It locks rows, requires all existing Ledger School IDs to have
+  active allocations, preserves account IDs/opening balances/Ledger rows,
+  records before/after plus Ledger checksum, and is idempotent. No conversion
+  or Production migration has been executed.
+- The exact central migration runner is
+  `finance:migrate-fund-account-v2`; the conversion preflight/runner is
+  `finance:convert-fund-account-v2`. Both default to read-only, and Production
+  execution is restricted to an immutable release path.
+- Targeted Finance/security regression passes 95 tests / 572 assertions;
+  localization passes 8 tests / 1,731 assertions; operating-document and
+  receivable regression passes 22 tests / 127 assertions. Full PHPUnit passes
+  819 tests / 6,570 assertions with four expected skips and existing
+  PHP/PHPUnit deprecation notices only. The exact migration was rehearsed on a
+  disposable MySQL database and verified idempotent. Authenticated Playwright
+  passes Central account creation, two-School allocation, account detail, and
+  390 px overflow/console checks in an isolated local database.
+
+Last updated: 2026-09-17
+
 ## Head Finance Bank Transfer / Fund Handover safety — local candidate
 
 - Production baseline `fb1cec85699549b9e37b8e57fa6b14e8a5933350`

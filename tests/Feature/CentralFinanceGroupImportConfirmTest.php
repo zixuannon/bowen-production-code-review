@@ -249,6 +249,44 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertContains($this->zixuanIncome->category_code, array_column($lookups['categories'], 'category_code'));
     }
 
+    public function test_group_owned_account_lookup_expands_only_to_explicitly_allocated_schools(): void
+    {
+        $account = CentralFinanceFundAccount::on('mysql')->create([
+            'account_uuid' => (string) Str::uuid(), 'group_id' => $this->group->id,
+            'school_id' => null, 'owner_type' => CentralFinanceFundAccount::OWNER_HQ,
+            'account_code' => 'BOWEN-SHARED', 'account_name' => 'Bowen Shared MMK',
+            'account_type' => CentralFinanceFundAccount::TYPE_BANK, 'currency' => 'MMK',
+            'opening_balance' => 0, 'is_active' => true, 'status' => CentralFinanceFundAccount::STATUS_ACTIVE,
+        ]);
+        DB::connection('mysql')->table('central_finance_fund_account_users')->insert([
+            'fund_account_id' => $account->id, 'user_id' => $this->head->id,
+            'can_view' => true, 'can_operate' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach ([1, 2] as $schoolId) {
+            CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+                'fund_account_id' => $account->id, 'school_id' => $schoolId,
+                'opening_allocation_amount' => 0, 'effective_from' => '2026-09-01',
+                'status' => CentralFinanceFundAccountSchoolAllocation::STATUS_ACTIVE,
+                'is_active' => true, 'assigned_by' => $this->head->id,
+                'assignment_reason' => 'Explicit shared-account lookup allocation',
+            ]);
+        }
+
+        $lookups = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
+        $rows = collect($lookups['accounts'])->where('code', 'BOWEN-SHARED')->values();
+
+        $this->assertSame(2, $rows->count());
+        $this->assertEqualsCanonicalizing(['SCH-ZIX', 'SCH-TIM'], $rows->pluck('school_code')->all());
+        $this->assertSame([CentralFinanceFundAccount::OWNER_HQ], $rows->pluck('owner_type')->unique()->values()->all());
+
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->where([
+            'fund_account_id' => $account->id, 'school_id' => 2,
+        ])->update(['status' => CentralFinanceFundAccountSchoolAllocation::STATUS_INACTIVE, 'is_active' => false]);
+        $rows = collect(app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group)['accounts'])
+            ->where('code', 'BOWEN-SHARED')->values();
+        $this->assertSame(['SCH-ZIX'], $rows->pluck('school_code')->all());
+    }
+
     public function test_classified_qa_school_and_batch_cannot_enter_group_import_financial_writes(): void
     {
         $isolation = app(CentralFinanceDataIsolationService::class);
@@ -547,7 +585,15 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
 
     private function account(string $code, string $name, int $schoolId): CentralFinanceFundAccount
     {
-        return CentralFinanceFundAccount::on('mysql')->create(['account_uuid' => (string) Str::uuid(), 'group_id' => $this->group->id, 'school_id' => $schoolId, 'owner_type' => 'school', 'account_code' => $code, 'account_name' => $name, 'account_type' => 'cash', 'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true, 'status' => 'active']);
+        $account = CentralFinanceFundAccount::on('mysql')->create(['account_uuid' => (string) Str::uuid(), 'group_id' => $this->group->id, 'school_id' => $schoolId, 'owner_type' => 'school', 'account_code' => $code, 'account_name' => $name, 'account_type' => 'cash', 'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true, 'status' => 'active']);
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+            'fund_account_id' => $account->id, 'school_id' => $schoolId,
+            'opening_allocation_amount' => 0, 'effective_from' => '2026-09-01',
+            'status' => 'active', 'is_active' => true, 'assigned_by' => $this->head?->id,
+            'assignment_reason' => 'Explicit Group Import test allocation.',
+        ]);
+
+        return $account;
     }
 
     private function category(int $schoolId, string $type, string $code): CentralFinanceCategory

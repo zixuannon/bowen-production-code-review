@@ -150,8 +150,8 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function manageFundAccount(Request $request, int $fundAccount): View
     {
-        [$actor, $school] = $this->currentOperatingContext();
-        $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $school);
+        [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
+        $this->configuration->assertHeadFinanceCanConfigureGroup($actor, (int) $account->group_id);
 
         return $this->render('account-manage', $request, $fundAccount);
     }
@@ -483,29 +483,26 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function createFundAccount(Request $request): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        $actor = $this->actor();
         $data = $request->validate([
+            'group_id' => ['required', 'integer', 'min:1'],
             'account_code' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9_.-]+$/'],
             'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', Rule::in(CentralFinanceCurrency::ALLOWED)],
-            'owner_type' => ['required', Rule::in([CentralFinanceFundAccount::OWNER_SCHOOL, CentralFinanceFundAccount::OWNER_HQ])],
             'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date'],
-            'opening_reason' => ['required', 'string', 'max:2000'], 'authorized_user_ids' => ['nullable', 'array'],
-            'authorized_user_ids.*' => ['integer', 'distinct'],
+            'opening_reason' => ['required', 'string', 'max:2000'],
             'account_type' => ['required', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])],
             'bank_name' => ['nullable', 'string', 'max:191'], 'masked_account_identifier' => ['nullable', 'string', 'max:80'],
             'custodian_user_id' => ['nullable', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'],
         ]);
-        if ($data['owner_type'] === CentralFinanceFundAccount::OWNER_HQ) {
-            $this->accountAdministration->createHqAccount($actor, $school, $data, $data['authorized_user_ids'] ?? []);
-        } else {
-            $this->accountAdministration->createSchoolAccount($actor, $school, $data, $data['authorized_user_ids'] ?? []);
-        }
-        return back()->with('success', __('Central Fund Account created with an audited opening balance.'));
+        $account = $this->accountAdministration->createGroupAccount($actor, (int) $data['group_id'], $data);
+
+        return redirect()->route('central-finance.accounts.manage', ['fundAccount' => $account->id])
+            ->with('success', __('Central / Group Fund Account created. Add explicit School allocations before use.'));
     }
 
     public function updateFundAccount(Request $request, int $fundAccount): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate([
             'account_name' => ['required', 'string', 'max:191'],
@@ -513,34 +510,34 @@ final class CentralFinanceWorkspaceController extends Controller
             'bank_name' => ['nullable', 'string', 'max:191'], 'masked_account_identifier' => ['nullable', 'string', 'max:80'],
             'custodian_user_id' => ['nullable', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'], 'reason' => ['nullable', 'string', 'max:2000'],
         ]);
-        $this->accountAdministration->updateMasterData($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data);
+        $this->accountAdministration->updateMasterData($actor, null, $account, $data);
         return back()->with('success', __('Central Fund Account master data updated.'));
     }
 
     public function changeFundAccountStatus(Request $request, int $fundAccount): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate([
             'status' => ['required', Rule::in([CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED])],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
-        $this->accountAdministration->changeStatus($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['status'], $data['reason']);
+        $this->accountAdministration->changeStatus($actor, null, $account, $data['status'], $data['reason']);
         return back()->with('success', __('Central Fund Account lifecycle status updated.'));
     }
 
     public function syncFundAccountAssignments(Request $request, int $fundAccount): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate(['authorized_user_ids' => ['nullable', 'array'], 'authorized_user_ids.*' => ['integer', 'distinct'], 'reason' => ['required', 'string', 'max:2000']]);
-        $this->accountAdministration->syncSchoolAssignments($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['authorized_user_ids'] ?? [], $data['reason']);
+        $this->accountAdministration->syncSchoolAssignments($actor, null, $account, $data['authorized_user_ids'] ?? [], $data['reason']);
         return back()->with('success', __('Central Fund Account assignments saved.'));
     }
 
     public function syncFundAccountSchoolAllocations(Request $request, int $fundAccount): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:2000'],
@@ -549,16 +546,16 @@ final class CentralFinanceWorkspaceController extends Controller
             'allocations.*.opening_allocation_amount' => ['required', 'numeric', 'min:0'],
             'allocations.*.is_active' => ['nullable', 'boolean'],
         ]);
-        $this->accountAdministration->syncSchoolAllocations($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), $data['allocations'], $data['reason']);
+        $this->accountAdministration->syncSchoolAllocations($actor, null, $account, $data['allocations'], $data['reason']);
         return back()->with('success', __('Central Fund Account School allocations saved.'));
     }
 
     public function adjustFundAccountOpeningBalance(Request $request, int $fundAccount): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate(['amount' => ['required', 'numeric', 'not_in:0'], 'effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000']]);
-        $this->accountAdministration->adjustOpeningBalance($actor, $school, CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccount), (float) $data['amount'], $data['effective_date'], $data['reason']);
+        $this->accountAdministration->adjustOpeningBalance($actor, null, $account, (float) $data['amount'], $data['effective_date'], $data['reason']);
         return back()->with('success', __('Central Fund Account opening balance adjustment audited.'));
     }
 
@@ -861,6 +858,17 @@ final class CentralFinanceWorkspaceController extends Controller
 
         return [$actor, $school];
     }
+
+    /** @return array{0: CentralFinanceUser, 1: CentralFinanceFundAccount} */
+    private function currentGroupAccountContext(int $fundAccountId): array
+    {
+        $actor = $this->actor();
+        $account = CentralFinanceFundAccount::on('mysql')->findOrFail($fundAccountId);
+        $this->configuration->assertHeadFinanceCanConfigureGroup($actor, (int) $account->group_id);
+
+        return [$actor, $account];
+    }
+
     /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */
     private function currentHeadFinanceOperatingContext(): array
     {
@@ -1022,14 +1030,14 @@ final class CentralFinanceWorkspaceController extends Controller
         $handoverDestinationUserIds = collect();
         if ($page === 'handovers' && $schoolId && $operationAccounts->isNotEmpty()) {
             $handoverDestinationUserIds = \Illuminate\Support\Facades\DB::connection('mysql')
-                ->table('central_finance_fund_account_users')
-                ->whereIn('fund_account_id', $operationAccounts
-                    ->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)
-                    ->where('school_id', $schoolId)
-                    ->pluck('id'))
-                ->where('can_view', true)
-                ->where('can_operate', true)
-                ->get(['fund_account_id', 'user_id'])
+                ->table('central_finance_fund_account_users as account_users')
+                ->join('central_finance_user_school_scopes as school_scopes', 'school_scopes.user_id', '=', 'account_users.user_id')
+                ->whereIn('account_users.fund_account_id', $operationAccounts->pluck('id'))
+                ->where('school_scopes.school_id', $schoolId)
+                ->where('school_scopes.can_operate', true)
+                ->where('account_users.can_view', true)
+                ->where('account_users.can_operate', true)
+                ->get(['account_users.fund_account_id', 'account_users.user_id'])
                 ->groupBy('fund_account_id')
                 ->map(fn ($assignments) => $assignments->pluck('user_id')->map(fn ($id) => (int) $id)->unique()->values());
         }
@@ -1053,7 +1061,17 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         if ($schoolUsersQuery) $this->dataIsolation->applyCentralStaffUsers($schoolUsersQuery, (int) $schoolId, $includeQaTest);
         $schoolUsers = $schoolUsersQuery ? $schoolUsersQuery->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'email']) : collect();
-        $canConfigureAccounts=false; if($school){try{app(\App\Services\CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureSchool($actor,$school);$canConfigureAccounts=true;}catch(AuthorizationException){$canConfigureAccounts=false;}}
+        $configurableGroups = $this->configuration->configurableGroups($actor);
+        $canConfigureAccounts = $configurableGroups->isNotEmpty();
+        $canConfigureSchool = false;
+        if ($school !== null) {
+            try {
+                $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $school);
+                $canConfigureSchool = true;
+            } catch (AuthorizationException) {
+                $canConfigureSchool = false;
+            }
+        }
         $receivableQuery = $schoolId ? CentralFinanceReceivable::on('mysql')->with('studentProfile')->where('school_id', $schoolId) : null;
         if ($receivableQuery) {
             $this->dataIsolation->apply($receivableQuery, 'receivable', $includeQaTest);
@@ -1114,19 +1132,47 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $ledgerCategories = $page === 'ledger' && method_exists($ledger, 'getCollection')
             ? $this->ledgerCategoryNames($ledger->getCollection()) : [];
-        $staffQuery=$schoolId && $canConfigureAccounts ? CentralFinanceUser::on('mysql')->whereIn('id', \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id',$schoolId)->where('can_view',true)->pluck('user_id'))->with(['authorizedFundAccounts' => fn ($query) => $query->where(function ($account) use ($schoolId) { $account->where('school_id',$schoolId)->orWhere('owner_type',CentralFinanceFundAccount::OWNER_HQ); })]) : null;
+        $staffQuery=$schoolId && $canConfigureSchool ? CentralFinanceUser::on('mysql')->whereIn('id', \Illuminate\Support\Facades\DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id',$schoolId)->where('can_view',true)->pluck('user_id'))->with(['authorizedFundAccounts' => fn ($query) => $query->whereHas('schoolAllocations', fn ($allocations) => $allocations->where('school_id', $schoolId)->effective())]) : null;
         if ($staffQuery) $this->dataIsolation->applyCentralStaffUsers($staffQuery, (int) $schoolId, $includeQaTest);
         $staff=$staffQuery ? $staffQuery->orderBy('first_name')->paginate(25, ['*'], 'staff_page')->withQueryString() : collect();
         $accountReport=null;
+        $allocationSchools=collect();
+        $accountAssignableUsers=collect();
         if ($requestedAccountId !== null) {
             $accountReport=$accounts->firstWhere('id',$requestedAccountId);
             abort_unless($accountReport !== null, 404);
             $accountRelations = ['custodian', 'authorizedUsers'];
             if ($this->accountAvailability->allocationSchemaAvailable()) $accountRelations[] = 'schoolAllocations';
             $accountReport->load($accountRelations);
-            $accountReport->setAttribute('current_balance', $schoolId
-                ? $this->balances->schoolBalance($accountReport, $schoolId)
-                : $this->balances->currentBalance($accountReport));
+            $accountReport->setAttribute('current_balance', $this->balances->currentBalance($accountReport));
+            $accountReport->setAttribute('school_activity', $schoolId
+                ? $this->balances->schoolActivity($accountReport, $schoolId)
+                : null);
+
+            $groupSchoolIds = \Illuminate\Support\Facades\DB::connection('mysql')
+                ->table('finance_group_schools')
+                ->where('group_id', $accountReport->group_id)
+                ->where('status', 'active')
+                ->pluck('school_id');
+            $allocationSchools = $schools->whereIn('id', $groupSchoolIds)->values();
+            $allocatedSchoolIds = $accountReport->relationLoaded('schoolAllocations')
+                ? $accountReport->schoolAllocations
+                    ->filter(fn ($allocation) => $allocation->is_active && $allocation->status === 'active')
+                    ->pluck('school_id')
+                : collect();
+            $eligibleUserIds = \Illuminate\Support\Facades\DB::connection('mysql')
+                ->table('central_finance_user_school_scopes as scopes')
+                ->join('finance_group_users as group_users', 'group_users.central_user_id', '=', 'scopes.user_id')
+                ->where('group_users.group_id', $accountReport->group_id)
+                ->where('group_users.status', 'active')
+                ->whereIn('scopes.school_id', $allocatedSchoolIds)
+                ->where('scopes.can_view', true)
+                ->where('scopes.can_operate', true)
+                ->pluck('scopes.user_id')
+                ->push($actor->id)
+                ->unique();
+            $accountAssignableUsers = CentralFinanceUser::on('mysql')->whereIn('id', $eligibleUserIds)
+                ->orderBy('first_name')->get(['id','school_id','first_name','last_name','email']);
         }
         $accountDirectory = null;
         if ($page === 'accounts') {
@@ -1142,7 +1188,10 @@ final class CentralFinanceWorkspaceController extends Controller
             if (!empty($filters['custodian_user_id'])) $directoryQuery->where('custodian_user_id', (int) $filters['custodian_user_id']);
             if (!empty($filters['account_search'])) $directoryQuery->where(fn ($query) => $query->where('account_code', 'like', '%'.$filters['account_search'].'%')->orWhere('account_name', 'like', '%'.$filters['account_search'].'%'));
             $accountDirectory = $directoryQuery->orderBy('account_code')->paginate(25, ['*'], 'accounts_page')->withQueryString();
-            $accountDirectory->getCollection()->each(fn (CentralFinanceFundAccount $account) => $account->setAttribute('current_balance', $schoolId ? $this->balances->schoolBalance($account, $schoolId) : $this->balances->currentBalance($account)));
+            $accountDirectory->getCollection()->each(function (CentralFinanceFundAccount $account) use ($schoolId): void {
+                $account->setAttribute('current_balance', $this->balances->currentBalance($account));
+                $account->setAttribute('school_activity', $schoolId ? $this->balances->schoolActivity($account, $schoolId) : null);
+            });
         }
         $statementEntries = null; $statementOpeningBalance = null; $statementTotals = null; $statementLedgerCategories = [];
         if (in_array($page, ['account-statement', 'account-statements'], true) && $accountReport) {
@@ -1184,7 +1233,7 @@ final class CentralFinanceWorkspaceController extends Controller
             $this->dataIsolation->apply($expenseImportBatchQuery, 'import_batch', $includeQaTest);
             $expenseImportBatch = $expenseImportBatchQuery->firstOrFail();
         }
-        $cutoverChecklist = $school && $canConfigureAccounts ? $this->cutoverReadiness->checklist($school) : collect();
+        $cutoverChecklist = $school && $canConfigureSchool ? $this->cutoverReadiness->checklist($school) : collect();
         $cutoverRecord = $schoolId ? CentralFinanceSchoolCutover::on('mysql')->where('school_id', $schoolId)->first() : null;
         $importBatches = collect();
         // Keep the Central Finance read shell renderable during an additive-schema rollout.
@@ -1250,7 +1299,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $fundingQuery=$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId):null;
         foreach ([[$expenseCategoryQuery,'category'],[$incomeCategoryQuery,'category']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->dataIsolation->apply($isolatedQuery,$subjectType);
         foreach ([[$expenseQuery,'expense'],[$incomeQuery,'other_income'],[$handoverQuery,'fund_handover'],[$fundingQuery,'hq_funding']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->dataIsolation->apply($isolatedQuery,$subjectType,$includeQaTest);
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'operationAccounts'=>$operationAccounts,'handoverDestinationUserIds'=>$handoverDestinationUserIds,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'currencyTotals'=>$currencyTotals,'reportSchoolComparison'=>$reportSchoolComparison,'reportTrend'=>$reportTrend,'reportCategoryAnalysis'=>$reportCategoryAnalysis,'receivableCurrencyTotals'=>$receivableCurrencyTotals,'filters'=>$filters,'includeQaTest'=>$includeQaTest,'canIncludeQaTest'=>$this->dataIsolation->canIncludeQaTest($actor),'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$expenseCategoryQuery?->get()??collect(),'incomeCategories'=>$incomeCategoryQuery?->get()??collect(),'expenses'=>$expenseQuery?->latest()->get()??collect(),'otherIncomes'=>$incomeQuery?->latest()->get()??collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$handoverQuery?->latest()->get()??collect(),'fundingRequests'=>$fundingQuery?->latest()->get()??collect()];
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'operationAccounts'=>$operationAccounts,'handoverDestinationUserIds'=>$handoverDestinationUserIds,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'canConfigureSchool'=>$canConfigureSchool,'configurableGroups'=>$configurableGroups,'allocationSchools'=>$allocationSchools,'accountAssignableUsers'=>$accountAssignableUsers,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'currencyTotals'=>$currencyTotals,'reportSchoolComparison'=>$reportSchoolComparison,'reportTrend'=>$reportTrend,'reportCategoryAnalysis'=>$reportCategoryAnalysis,'receivableCurrencyTotals'=>$receivableCurrencyTotals,'filters'=>$filters,'includeQaTest'=>$includeQaTest,'canIncludeQaTest'=>$this->dataIsolation->canIncludeQaTest($actor),'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$expenseCategoryQuery?->get()??collect(),'incomeCategories'=>$incomeCategoryQuery?->get()??collect(),'expenses'=>$expenseQuery?->latest()->get()??collect(),'otherIncomes'=>$incomeQuery?->latest()->get()??collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$handoverQuery?->latest()->get()??collect(),'fundingRequests'=>$fundingQuery?->latest()->get()??collect()];
         $data['schoolFinanceFacade'] = $schoolFinanceFacade;
         $transferQuery = null;
         if ($page === 'transfers') {
@@ -1392,7 +1441,10 @@ final class CentralFinanceWorkspaceController extends Controller
             $canonical->whereRaw('1 = 0');
         }
 
-        $openingBalance = $school ? $this->balances->schoolOpeningBalance($account, $school->id) : (float) $account->opening_balance;
+        // A School-scoped statement is an activity slice, not a second copy of
+        // the physical account balance. Its running movement therefore starts
+        // at zero; the account-wide statement retains the audited opening.
+        $openingBalance = $school ? 0.0 : (float) $account->opening_balance;
         if (!empty($filters['from'])) {
             $prior = (clone $canonical)->whereDate('entry_date', '<', $filters['from']);
             $openingBalance += (float) $prior->sum('money_in') - (float) $prior->sum('money_out');
@@ -1528,6 +1580,10 @@ final class CentralFinanceWorkspaceController extends Controller
     /** @return \Illuminate\Support\Collection<int,CentralFinanceFundAccount> */
     private function viewableFundAccounts(CentralFinanceUser $actor, ?int $schoolId, bool $includeQaTest = false): \Illuminate\Support\Collection
     {
+        if ($this->workspace->isSchoolStaffPrincipal($actor)) {
+            return $this->workspace->readableAccounts($actor, $schoolId, $includeQaTest);
+        }
+
         $query = CentralFinanceFundAccount::on('mysql')->whereHas('authorizedUsers', fn ($users) => $users->where('users.id', $actor->id)->where('central_finance_fund_account_users.can_view', true));
         $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
         if ($schoolId !== null) {

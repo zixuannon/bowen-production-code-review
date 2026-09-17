@@ -182,9 +182,7 @@ final class CentralFinanceLedgerService
         if ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && $account->school_id !== null) {
             throw new InvalidArgumentException('The Fund Account cannot be attributed to this School.');
         }
-        if ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL) {
-            $this->availability->assertAccountAvailableForSchool($account, $schoolId);
-        }
+        $this->availability->assertAccountAvailableForSchool($account, $schoolId);
     }
 
     private function assertSource(string $sourceType, string $sourceId): void

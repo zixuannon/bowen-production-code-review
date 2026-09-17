@@ -204,10 +204,7 @@ final class CentralFinanceWorkspaceService
         $query = $this->accounts->visibleAccounts($actor)->active()->orderBy('account_name');
         $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
         if ($schoolId !== null) {
-            $query->where(function (Builder $accounts) use ($schoolId): void {
-                $this->availability->scopeAccountsForSchool($accounts, $schoolId)
-                    ->orWhere('owner_type', CentralFinanceFundAccount::OWNER_HQ);
-            });
+            $this->availability->scopeAccountsForSchool($query, $schoolId);
         }
         return $query->get();
     }
@@ -229,26 +226,21 @@ final class CentralFinanceWorkspaceService
         if ($this->isSchoolStaffPrincipal($actor)) {
             $schoolIds = $schools->pluck('id');
             if ($this->availability->allocationSchemaAvailable()) {
-                $query->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)
-                    ->where(function ($accounts) use ($schoolIds): void {
-                        $accounts->whereIn('school_id', $schoolIds)
-                            ->orWhereHas('schoolAllocations', fn ($allocations) => $allocations->whereIn('school_id', $schoolIds)->effective());
-                    });
-            } else $query->whereIn('school_id', $schoolIds);
+                $query->whereHas('schoolAllocations', fn ($allocations) => $allocations
+                    ->whereIn('school_id', $schoolIds)->effective());
+            } else $query->whereRaw('1 = 0');
         } else {
             $groupIds = $this->groupUsers($actor)->pluck('group_id');
-            $query->where(function ($accounts) use ($schools, $groupIds): void {
-                $accounts->whereIn('school_id', $schools->pluck('id'))
-                    ->when($this->availability->allocationSchemaAvailable(), fn ($scoped) => $scoped->orWhereHas('schoolAllocations', fn ($allocations) => $allocations->whereIn('school_id', $schools->pluck('id'))->effective()))
-                    ->orWhere(fn ($hq) => $hq->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)->whereIn('group_id', $groupIds));
-            });
+            $query->whereIn('group_id', $groupIds)
+                ->when($this->availability->allocationSchemaAvailable(), fn ($scoped) => $scoped
+                    ->whereHas('schoolAllocations', fn ($allocations) => $allocations
+                        ->whereIn('school_id', $schools->pluck('id'))->effective()), fn ($scoped) => $scoped->whereRaw('1 = 0'));
         }
 
         if ($schoolId !== null) {
-            // A selected School is a strict read context. HQ accounts remain
-            // available to authorised Head Finance write flows through
-            // accessibleAccounts(), but must not inflate this School's
-            // dashboard, directory, statements, reports, or Standard Ledger.
+            // A selected School is a strict allocation/read context. The
+            // account-level physical balance is visible, while every Ledger
+            // and reporting query remains filtered by the selected School.
             $this->availability->scopeAccountsForSchool($query, $schoolId);
         }
 

@@ -20,25 +20,18 @@ final class CentralFinanceFundAccountSchoolAvailabilityService
 
     public function isAccountAvailableForSchool(CentralFinanceFundAccount $account, int $schoolId): bool
     {
-        if ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ) {
-            // Existing HQ ownership/group authorization remains enforced by
-            // callers; this helper only replaces the single-School account
-            // ownership check.
-            return $account->school_id === null;
-        }
-        if ($account->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL) {
+        if (!in_array($account->owner_type, [CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL], true)
+            || !$account->is_active
+            || (isset($account->status) && $account->status !== CentralFinanceFundAccount::STATUS_ACTIVE)
+            || !$this->allocationSchemaAvailable()) {
             return false;
         }
 
-        if ($this->allocationSchemaAvailable() && CentralFinanceFundAccountSchoolAllocation::on('mysql')
-            ->where('fund_account_id', $account->id)->where('school_id', $schoolId)->effective()->exists()) {
-            return true;
-        }
-
-        // Transitional fallback only.  The additive migration backfills every
-        // legacy school account, so this branch protects rollout ordering and
-        // old isolated fixtures without becoming a second ownership model.
-        return (int) $account->school_id === $schoolId;
+        return CentralFinanceFundAccountSchoolAllocation::on('mysql')
+            ->where('fund_account_id', $account->id)
+            ->where('school_id', $schoolId)
+            ->effective()
+            ->exists();
     }
 
     public function activeAllocation(CentralFinanceFundAccount $account, int $schoolId): ?CentralFinanceFundAccountSchoolAllocation
@@ -52,17 +45,12 @@ final class CentralFinanceFundAccountSchoolAvailabilityService
     public function scopeAccountsForSchool(Builder $query, int $schoolId): Builder
     {
         if (!$this->allocationSchemaAvailable()) {
-            return $query->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)->where('school_id', $schoolId);
+            return $query->whereRaw('1 = 0');
         }
-        return $query->where(function (Builder $accounts) use ($schoolId): void {
-            $accounts->where(function (Builder $schoolAccounts) use ($schoolId): void {
-                $schoolAccounts->where('owner_type', CentralFinanceFundAccount::OWNER_SCHOOL)
-                    ->where(function (Builder $ownership) use ($schoolId): void {
-                        $ownership->where('school_id', $schoolId)
-                            ->orWhereHas('schoolAllocations', fn (Builder $allocations) => $allocations->where('school_id', $schoolId)->effective());
-                    });
-            });
-        });
+
+        return $query->whereHas('schoolAllocations', fn (Builder $allocations) => $allocations
+            ->where('school_id', $schoolId)
+            ->effective());
     }
 
     public function allocationSchemaAvailable(): bool

@@ -15,6 +15,7 @@ final class CentralFinanceInternalTransferService
     public function __construct(
         private readonly CentralFinanceSchoolScopeService $schools,
         private readonly CentralFinanceFundAccountScopeService $accounts,
+        private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceLedgerService $ledger,
         private readonly CentralFinanceDocumentAuditService $audits,
     ) {}
@@ -108,9 +109,10 @@ final class CentralFinanceInternalTransferService
         if (strtoupper($source->currency) !== strtoupper($destination->currency)) {
             throw new InvalidArgumentException('目前仅支持同币种资金移动，跨币种兑换尚未启用。');
         }
-        if ($source->id === $destination->id || $source->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL || $destination->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL
-            || (int) $source->school_id !== $schoolId || (int) $destination->school_id !== $schoolId) {
-            throw new InvalidArgumentException('A direct Central Bank Transfer requires two distinct active accounts in the current School.');
+        if ($source->id === $destination->id
+            || !$this->availability->isAccountAvailableForSchool($source, $schoolId)
+            || !$this->availability->isAccountAvailableForSchool($destination, $schoolId)) {
+            throw new InvalidArgumentException('A direct Central Bank Transfer requires two distinct active accounts allocated to the current School.');
         }
     }
 

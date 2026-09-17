@@ -52,6 +52,7 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000003_create_central_finance_internal_transfer_documents.php',
             '2026_08_21_000005_create_central_finance_school_cutovers.php',
+            '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_09_01_000003_add_central_finance_transfer_reversal_links.php',
         ] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([
@@ -65,6 +66,7 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         ]);
         $this->head=CentralFinanceUser::on('mysql')->findOrFail(100); $this->zixuanAccountant=CentralFinanceUser::on('mysql')->findOrFail(200); $this->timecityAccountant=CentralFinanceUser::on('mysql')->findOrFail(300);
         $this->hq=$this->account('HQ-MAIN','HQ Main','hq',null,1000); $this->zixuanA=$this->account('ZIX-A','Zixuan A','school',1,1000); $this->zixuanB=$this->account('ZIX-B','Zixuan B','school',1,0); $this->timecityA=$this->account('TIM-A','Timecity A','school',2,1000); $this->timecityB=$this->account('TIM-B','Timecity B','school',2,0);
+        $this->allocate($this->hq, 1, 0);
         foreach([$this->hq,$this->zixuanA,$this->zixuanB,$this->timecityA,$this->timecityB] as $account) $this->grantAccount($this->head,$account);
         foreach([$this->zixuanA,$this->zixuanB] as $account) $this->grantAccount($this->zixuanAccountant,$account);
         foreach([$this->timecityA,$this->timecityB] as $account) $this->grantAccount($this->timecityAccountant,$account);
@@ -200,7 +202,20 @@ class CentralFinanceInternalTransferDocumentsTest extends TestCase
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_ledger_entries')); $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_expenses'));
     }
 
-    private function account(string $code,string $name,string $owner,?int $school,float $opening): CentralFinanceFundAccount { return CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>$owner,'school_id'=>$school,'currency'=>'MMK','opening_balance'=>$opening,'is_active'=>true]); }
+    private function account(string $code,string $name,string $owner,?int $school,float $opening): CentralFinanceFundAccount
+    {
+        $account = CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>$owner,'school_id'=>$school,'currency'=>'MMK','opening_balance'=>$opening,'is_active'=>true]);
+        if ($school !== null) $this->allocate($account, $school, $opening);
+        return $account;
+    }
+    private function allocate(CentralFinanceFundAccount $account, int $schoolId, float $opening): void
+    {
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert([
+            'fund_account_id'=>$account->id,'school_id'=>$schoolId,'opening_allocation_amount'=>$opening,
+            'effective_from'=>'2026-08-21','status'=>'active','is_active'=>true,'assigned_by'=>null,
+            'assignment_reason'=>'Explicit transfer fixture allocation.','created_at'=>now(),'updated_at'=>now(),
+        ]);
+    }
     private function grantAccount(CentralFinanceUser $user,CentralFinanceFundAccount $account): void { DB::connection('mysql')->table('central_finance_fund_account_users')->insert(['fund_account_id'=>$account->id,'user_id'=>$user->id,'can_view'=>true,'can_operate'=>true,'created_at'=>now(),'updated_at'=>now()]); }
     private function grantSchool(CentralFinanceUser $user,int $school,bool $funding): void { DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>$user->id,'school_id'=>$school,'can_view'=>true,'can_operate'=>true,'can_approve_reimbursements'=>$funding,'can_confirm_funding'=>$funding,'created_at'=>now(),'updated_at'=>now()]); }
     private function balance(CentralFinanceFundAccount $account): float { return app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account); }

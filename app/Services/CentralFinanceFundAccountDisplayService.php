@@ -16,7 +16,7 @@ final class CentralFinanceFundAccountDisplayService
             $schoolNames[(int) $school->id] = $school->name;
         }
         $owner = $account->owner_type === CentralFinanceFundAccount::OWNER_HQ
-            ? __('HQ')
+            ? __('Bowen Group / Central Finance')
             : ($schoolNames[(int) $account->school_id] ?? __('School'));
         $type = match ($account->account_type) {
             CentralFinanceFundAccount::TYPE_CASH => __('Cash'),
@@ -39,7 +39,7 @@ final class CentralFinanceFundAccountDisplayService
     {
         $label = $this->label($account, $schools);
         return [
-            'owner' => $account->owner_type === CentralFinanceFundAccount::OWNER_HQ ? 'HQ' : 'School',
+            'owner' => $account->owner_type === CentralFinanceFundAccount::OWNER_HQ ? 'Bowen Group / Central Finance' : 'School',
             'type' => $account->account_type,
             'status' => $account->status,
             'label' => $label,

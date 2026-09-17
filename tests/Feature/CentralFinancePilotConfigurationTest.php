@@ -8,6 +8,7 @@ use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Services\CentralFinanceFundAccountAdministrationService;
+use App\Services\CentralFinanceCutoverReadinessService;
 use App\Services\CentralFinanceSchoolCutoverService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
@@ -54,6 +55,8 @@ final class CentralFinancePilotConfigurationTest extends TestCase
             '2026_08_21_000006_create_central_finance_opening_balance_audits.php',
             '2026_08_24_000002_create_central_finance_school_staff_identities.php',
             '2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php',
+            '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
+            '2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -97,10 +100,17 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         $cutover = app(CentralFinanceSchoolCutoverService::class);
         try { $cutover->transition($this->headFinance, $this->zixuan, 'ready', 'Readiness attempt'); $this->fail('Incomplete configuration must not become ready.'); } catch (LogicException) {}
 
-        $account = app(CentralFinanceFundAccountAdministrationService::class)->createSchoolAccount($this->headFinance, $this->zixuan, [
-            'account_code' => 'ZIX-CASH', 'account_name' => 'Zixuan Cash', 'currency' => 'MMK',
+        $admin = app(CentralFinanceFundAccountAdministrationService::class);
+        $account = $admin->createGroupAccount($this->headFinance, FinanceGroup::on('mysql')->sole()->id, [
+            'account_code' => 'CENTRAL-CASH', 'account_name' => 'Bowen Central Cash', 'currency' => 'MMK',
             'opening_balance' => 50000000, 'opening_balance_date' => '2026-08-21', 'opening_reason' => 'Signed Zixuan cutover balance sheet',
-        ], [$this->accountant->id]);
+        ]);
+        $this->assertNull($account->school_id);
+        $this->assertSame(CentralFinanceFundAccount::OWNER_HQ, $account->owner_type);
+        $admin->syncSchoolAllocations($this->headFinance, null, $account, [[
+            'school_id' => $this->zixuan->id, 'opening_allocation_amount' => 50000000, 'is_active' => true,
+        ]], 'Approved allocation-only cutover prerequisite');
+        $admin->syncSchoolAssignments($this->headFinance, null, $account, [$this->accountant->id], 'Assign authorized School Accountant');
         $this->assertSame(50000000.0, (float) $account->opening_balance);
         $this->assertSame(2, DB::connection('mysql')->table('central_finance_fund_account_users')->where('fund_account_id', $account->id)->count());
         $this->assertSame(1, CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->where(['fund_account_id' => $account->id, 'change_type' => 'initial'])->count());
@@ -109,6 +119,17 @@ final class CentralFinancePilotConfigurationTest extends TestCase
         $this->assertSame('ready', $cutover->transition($this->headFinance, $this->zixuan, 'ready', 'Readiness approved')->status);
         $this->assertSame('central', $cutover->transition($this->headFinance, $this->zixuan, 'central', 'Cutover approved')->status);
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_cutover_readiness_fails_closed_when_allocation_registry_is_missing(): void
+    {
+        Schema::connection('mysql')->drop('central_finance_fund_account_school_allocations');
+
+        $check = collect(app(CentralFinanceCutoverReadinessService::class)->checklist($this->zixuan))
+            ->firstWhere('key', 'fund_accounts');
+
+        $this->assertSame('blocked', $check['status']);
+        $this->assertStringContainsString('Allocate at least one active Central', $check['reason']);
     }
 
     public function test_only_head_finance_can_create_or_adjust_and_adjustments_are_audited_without_income_or_ledger(): void

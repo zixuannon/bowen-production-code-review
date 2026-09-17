@@ -56,6 +56,7 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
             '2026_08_20_000003_create_central_finance_student_sync_tables.php',
             '2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php',
             '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
+            '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000005_create_central_finance_school_cutovers.php',
@@ -81,6 +82,8 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
         $this->hqAccount = $this->account('CF-HQ', 'HQ Bank', 'hq', null);
         $this->zixuanAccount = $this->account('CF-ZIX', 'Zixuan Cash', 'school', 1);
         $this->timecityAccount = $this->account('CF-TIM', 'Timecity Cash', 'school', 2);
+        $this->allocate($this->hqAccount, 1);
+        $this->allocate($this->hqAccount, 2);
         foreach ([$this->hqAccount, $this->zixuanAccount, $this->timecityAccount] as $account) {
             $this->grantAccount($this->head, $account);
         }
@@ -245,10 +248,30 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
 
     private function account(string $code, string $name, string $ownerType, ?int $schoolId): CentralFinanceFundAccount
     {
-        return CentralFinanceFundAccount::on('mysql')->create([
+        $account = CentralFinanceFundAccount::on('mysql')->create([
             'account_uuid' => (string) Str::uuid(), 'group_id' => 1,
             'account_code' => $code, 'account_name' => $name, 'owner_type' => $ownerType,
             'school_id' => $schoolId, 'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true,
+        ]);
+        if ($schoolId !== null) {
+            $this->allocate($account, $schoolId);
+        }
+
+        return $account;
+    }
+
+    private function allocate(CentralFinanceFundAccount $account, int $schoolId): void
+    {
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert([
+            'fund_account_id' => $account->id,
+            'school_id' => $schoolId,
+            'opening_allocation_amount' => 0,
+            'is_active' => true,
+            'status' => 'active',
+            'effective_from' => now()->subDay()->toDateString(),
+            'assignment_reason' => 'Central Fund Account V2 test allocation.',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 

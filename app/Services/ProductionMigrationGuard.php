@@ -61,6 +61,9 @@ final class ProductionMigrationGuard
         'finance:migrate-data-isolation' => [
             'database/migrations/2026_09_14_000003_create_central_finance_data_classifications.php',
         ],
+        'finance:migrate-fund-account-v2' => [
+            'database/migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
+        ],
     ];
 
     /**

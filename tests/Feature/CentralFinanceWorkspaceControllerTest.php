@@ -55,7 +55,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         ]);
         Schema::connection('mysql')->create('system_settings', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->text('data')->nullable(), $t->string('type')->default('text')]);
         Schema::connection('mysql')->create('languages', fn (Blueprint $t) => [$t->id(), $t->string('name'), $t->string('code')->nullable(), $t->string('file')->nullable(), $t->boolean('status')->default(true), $t->boolean('is_rtl')->default(false), $t->timestamps()]);
-        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_09_01_000003_add_central_finance_transfer_reversal_links.php','2026_09_14_000003_create_central_finance_data_classifications.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach(['2026_08_18_000001_create_finance_group_scope_tables.php','2026_08_20_000003_create_central_finance_student_sync_tables.php','2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php','2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php','2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php','2026_08_21_000002_create_central_finance_operating_documents.php','2026_08_21_000003_create_central_finance_internal_transfer_documents.php','2026_08_21_000005_create_central_finance_school_cutovers.php','2026_08_21_000006_create_central_finance_opening_balance_audits.php','2026_08_24_000001_create_central_finance_import_batches.php','2026_08_24_000002_create_central_finance_school_staff_identities.php','2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php','2026_09_01_000003_add_central_finance_transfer_reversal_links.php','2026_09_03_000001_create_central_finance_fund_account_school_allocations.php','2026_09_14_000003_create_central_finance_data_classifications.php','2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan','code'=>'ZIX','database_name'=>'not-a-tenant-connection'],['id'=>2,'name'=>'Timecity','code'=>'TIM','database_name'=>'not-a-tenant-connection']]);
         DB::connection('mysql')->table('system_settings')->insert(['name' => 'date_format', 'data' => 'd-m-Y', 'type' => 'text']);
         DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','email'=>'head@example.test','school_id'=>null],['id'=>200,'first_name'=>'Zixuan','last_name'=>'Accountant','email'=>'zix@example.test','school_id'=>null],['id'=>300,'first_name'=>'Super','last_name'=>'Admin','email'=>'super@example.test','school_id'=>null],['id'=>400,'first_name'=>'School','last_name'=>'Staff','email'=>'staff@example.test','school_id'=>1]]);
@@ -73,6 +73,12 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
                 ]);
             }
         }
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id' => $groupUsers[100], 'school_id' => null,
+            'scope_type' => 'GROUP', 'capability' => 'manage_hq_accounts',
+            'scope_key' => 'group', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->head=CentralFinanceUser::on('mysql')->findOrFail(100); $this->zixuanAccountant=CentralFinanceUser::on('mysql')->findOrFail(200);
         $this->zixuan=$this->account('ZIX-CASH','Zixuan Cash',1); $this->timecity=$this->account('TIM-CASH','Timecity Cash',2);
         $this->grantSchool($this->head,1,true);$this->grantSchool($this->head,2,true);$this->grantSchool($this->zixuanAccountant,1,false);
@@ -92,6 +98,28 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $view=app(CentralFinanceWorkspaceController::class)->dashboard();
         $this->assertSame('central-finance.workspace',$view->name()); $this->assertNull($view->getData()['school']);
         $this->expectException(AuthorizationException::class); $workspace->enterSchool($this->zixuanAccountant,2);
+    }
+
+    public function test_head_finance_creates_group_account_without_school_context_then_manages_allocations(): void
+    {
+        $this->grantHeadFinanceRole();
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+
+        $response = app(CentralFinanceWorkspaceController::class)->createFundAccount(new Request([
+            'group_id' => 1, 'account_code' => 'GROUP-BANK', 'account_name' => 'Bowen Group Bank',
+            'currency' => 'MMK', 'opening_balance' => 0, 'opening_balance_date' => '2026-09-17',
+            'opening_reason' => 'Approved group opening', 'account_type' => CentralFinanceFundAccount::TYPE_BANK,
+        ]));
+        $account = CentralFinanceFundAccount::on('mysql')->where('account_code', 'GROUP-BANK')->sole();
+
+        $this->assertNull($account->school_id);
+        $this->assertSame(CentralFinanceFundAccount::OWNER_HQ, $account->owner_type);
+        $this->assertSame(route('central-finance.accounts.manage', $account->id), $response->getTargetUrl());
+        $view = app(CentralFinanceWorkspaceController::class)->manageFundAccount(new Request(), $account->id);
+        $this->assertSame($account->id, $view->getData()['accountReport']->id);
+        $this->assertCount(0, $account->schoolAllocations);
+        $this->assertStringContainsString('Bowen Group / Central Finance', $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
     }
 
     public function test_transfer_and_handover_pages_hide_write_choices_until_a_central_school_is_selected(): void
@@ -498,6 +526,12 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
             'school_id' => null, 'currency' => 'MMK', 'opening_balance' => 0,
             'is_active' => true,
         ]);
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert([
+            'fund_account_id' => $hq->id, 'school_id' => 1, 'opening_allocation_amount' => 0,
+            'effective_from' => '2026-08-29', 'status' => 'active', 'is_active' => true,
+            'assigned_by' => $this->head->id, 'assignment_reason' => 'Explicit HQ allocation fixture.',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->grantAccount($this->head, $hq);
         foreach ([[$this->zixuan, 20], [$hq, 11]] as [$account, $amount]) {
             CentralFinanceLedgerEntry::on('mysql')->create([
@@ -519,13 +553,13 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
 
         $workspace->enterSchool($this->head, 1);
         $headZixuan = app(CentralFinanceWorkspaceController::class)->dashboard();
-        $this->assertSame(['ZIX-CASH'], $headZixuan->getData()['accounts']->pluck('account_code')->all());
-        $this->assertSame(20.0, $headZixuan->getData()['currencyTotals']['MMK']['money_in']);
+        $this->assertSame(['HQ-MMK', 'ZIX-CASH'], $headZixuan->getData()['accounts']->pluck('account_code')->sort()->values()->all());
+        $this->assertSame(31.0, $headZixuan->getData()['currencyTotals']['MMK']['money_in']);
         $this->assertSame(['HQ-MMK', 'ZIX-CASH'], $headZixuan->getData()['operationAccounts']->pluck('account_code')->sort()->values()->all());
         $directory = app(CentralFinanceWorkspaceController::class)->accounts(new Request());
-        $this->assertSame(['ZIX-CASH'], $directory->getData()['accountDirectory']->pluck('account_code')->all());
+        $this->assertSame(['HQ-MMK', 'ZIX-CASH'], $directory->getData()['accountDirectory']->pluck('account_code')->sort()->values()->all());
         $ledger = app(CentralFinanceWorkspaceController::class)->ledger(new Request());
-        $this->assertSame([$this->zixuan->id], $ledger->getData()['ledger']->pluck('fund_account_id')->unique()->values()->all());
+        $this->assertSame([$this->zixuan->id, $hq->id], $ledger->getData()['ledger']->pluck('fund_account_id')->unique()->sort()->values()->all());
         $reports = app(CentralFinanceWorkspaceController::class)->reports(new Request());
         $this->assertSame($headZixuan->getData()['currencyTotals'], $reports->getData()['currencyTotals']);
 
@@ -533,7 +567,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $workspace->enterSchool($this->zixuanAccountant, 1);
         $mayZixuan = app(CentralFinanceWorkspaceController::class)->dashboard();
         $this->assertSame($headZixuan->getData()['currencyTotals'], $mayZixuan->getData()['currencyTotals']);
-        $this->assertSame(['ZIX-CASH'], $mayZixuan->getData()['accounts']->pluck('account_code')->all());
+        $this->assertSame(['HQ-MMK', 'ZIX-CASH'], $mayZixuan->getData()['accounts']->pluck('account_code')->sort()->values()->all());
     }
 
     public function test_shared_fund_account_classification_uses_group_scope_without_inventing_an_owning_school(): void
@@ -788,7 +822,18 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
     }
 
-    private function account(string $code,string $name,int $school): CentralFinanceFundAccount { return CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>'school','school_id'=>$school,'currency'=>'MMK','opening_balance'=>100,'is_active'=>true]); }
+    private function account(string $code,string $name,int $school): CentralFinanceFundAccount
+    {
+        $account = CentralFinanceFundAccount::on('mysql')->create(['account_uuid'=>(string)Str::uuid(),'group_id'=>1,'account_code'=>$code,'account_name'=>$name,'owner_type'=>'school','school_id'=>$school,'currency'=>'MMK','opening_balance'=>100,'is_active'=>true]);
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert([
+            'fund_account_id'=>$account->id,'school_id'=>$school,'opening_allocation_amount'=>100,
+            'effective_from'=>'2026-08-20','status'=>'active','is_active'=>true,
+            'assigned_by'=>null,'assignment_reason'=>'Explicit workspace fixture allocation.',
+            'created_at'=>now(),'updated_at'=>now(),
+        ]);
+
+        return $account;
+    }
     private function grantHeadFinanceRole(): void
     {
         $roleId = DB::connection('mysql')->table('roles')->insertGetId(['name'=>'Head Finance','guard_name'=>'web','created_at'=>now(),'updated_at'=>now()]);

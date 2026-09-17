@@ -6,6 +6,7 @@ use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceFundAccountOpeningBalanceAudit;
 use App\Models\CentralFinanceDocumentAudit;
+use App\Models\CentralFinanceSchoolStaffIdentity;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use Illuminate\Support\Facades\DB;
@@ -30,8 +31,54 @@ final class CentralFinanceFundAccountAdministrationService
         return $this->createAccount($actor, $school, $attributes, $assigneeIds, CentralFinanceFundAccount::OWNER_HQ);
     }
 
+    /**
+     * Create a Central / Group-owned physical account without a selected
+     * School.  The account is intentionally unavailable for School writes
+     * until explicit allocation records are saved.
+     *
+     * @param array{account_code:string,account_name:string,currency:string,opening_balance:float|int|string,opening_balance_date:string,opening_reason:string,account_type?:string,bank_name?:?string,masked_account_identifier?:?string,custodian_user_id?:?int,notes?:?string} $attributes
+     * @param array<int,int> $assigneeIds
+     */
+    public function createGroupAccount(CentralFinanceUser $actor, int $groupId, array $attributes, array $assigneeIds = []): CentralFinanceFundAccount
+    {
+        $groupUser = $this->authorization->assertHeadFinanceCanConfigureGroup($actor, $groupId);
+        $this->assertOpening($attributes['opening_balance'], $attributes['opening_reason']);
+        $this->assertCentralGroupCustodian($groupId, $attributes['custodian_user_id'] ?? null);
+
+        return DB::connection('mysql')->transaction(function () use ($actor, $groupUser, $attributes, $assigneeIds): CentralFinanceFundAccount {
+            $account = CentralFinanceFundAccount::on('mysql')->create([
+                'account_uuid' => (string) Str::uuid(), 'group_id' => $groupUser->group_id,
+                'school_id' => null, 'owner_type' => CentralFinanceFundAccount::OWNER_HQ,
+                'account_code' => $attributes['account_code'], 'account_name' => $attributes['account_name'],
+                'currency' => $attributes['currency'], 'opening_balance' => $attributes['opening_balance'],
+                'is_active' => true, 'account_type' => $attributes['account_type'] ?? CentralFinanceFundAccount::TYPE_OTHER,
+                'bank_name' => $this->nullableTrim($attributes['bank_name'] ?? null),
+                'masked_account_identifier' => $this->nullableTrim($attributes['masked_account_identifier'] ?? null),
+                'custodian_user_id' => $attributes['custodian_user_id'] ?? null,
+                'status' => CentralFinanceFundAccount::STATUS_ACTIVE,
+                'notes' => $this->nullableTrim($attributes['notes'] ?? null),
+            ]);
+            CentralFinanceFundAccountOpeningBalanceAudit::on('mysql')->create([
+                'fund_account_id' => $account->id, 'change_type' => CentralFinanceFundAccountOpeningBalanceAudit::INITIAL,
+                'old_opening_balance' => null, 'new_opening_balance' => $attributes['opening_balance'],
+                'effective_date' => $attributes['opening_balance_date'], 'reason' => trim($attributes['opening_reason']),
+                'created_by' => $actor->id,
+            ]);
+            $this->syncAssignmentsLocked($actor, null, $account, (int) $groupUser->group_id, $assigneeIds);
+            $this->audit(null, $account, $actor, 'created', trim($attributes['opening_reason']), [], [
+                'account_code' => $account->account_code,
+                'account_type' => $account->account_type,
+                'owner_type' => $account->owner_type,
+                'group_id' => (int) $account->group_id,
+                'allocated_school_ids' => [],
+            ]);
+
+            return $account->fresh();
+        });
+    }
+
     /** @param array<int,int> $assigneeIds */
-    public function syncSchoolAssignments(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $assigneeIds, string $reason): void
+    public function syncSchoolAssignments(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $requestedAccount, array $assigneeIds, string $reason): void
     {
         if (trim($reason) === '') throw ValidationException::withMessages(['reason' => [__('A Fund Account scope reason is required.')]]);
         DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $assigneeIds, $reason): void {
@@ -53,15 +100,17 @@ final class CentralFinanceFundAccountAdministrationService
      *
      * @param array<int,array{school_id:int,opening_allocation_amount:float|int|string,is_active?:bool}> $allocations
      */
-    public function syncSchoolAllocations(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $allocations, string $reason): void
+    public function syncSchoolAllocations(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $requestedAccount, array $allocations, string $reason): void
     {
         if (trim($reason) === '') throw ValidationException::withMessages(['reason' => [__('A School allocation reason is required.')]]);
         DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $allocations, $reason): void {
             $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
-            if ($account->owner_type !== CentralFinanceFundAccount::OWNER_SCHOOL) {
-                throw new \Illuminate\Auth\Access\AuthorizationException('Only School-owned Fund Accounts can have School allocations.');
+            if (!in_array($account->owner_type, [CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL], true)) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('Only valid Central Fund Accounts can have School allocations.');
             }
-            $groupUser = $this->authorization->assertHeadFinanceCanConfigureSchool($actor, $school);
+            $groupUser = $school === null
+                ? $this->authorization->assertHeadFinanceCanConfigureGroup($actor, (int) $account->group_id)
+                : $this->authorization->assertHeadFinanceCanConfigureSchool($actor, $school);
             if ((int) $account->group_id !== (int) $groupUser->group_id) {
                 throw new \Illuminate\Auth\Access\AuthorizationException('The Fund Account is outside the configured Finance Group.');
             }
@@ -90,13 +139,12 @@ final class CentralFinanceFundAccountAdministrationService
                 if ($hasLedger && $current !== null && abs((float) $current->opening_allocation_amount - $row['amount']) > 0.0001) {
                     throw ValidationException::withMessages(['allocations' => [__('Opening allocation changes after Ledger history require the formal School Fund Reallocation workflow.')]]);
                 }
-                if ($hasLedger && $current !== null && (float) $current->opening_allocation_amount > 0 && !$row['active']) {
-                    throw ValidationException::withMessages(['allocations' => [__('A funded School allocation with Ledger history cannot be removed without formal reallocation.')]]);
+                $schoolHasLedger = $current !== null && $account->ledgerEntries()
+                    ->where('school_id', $schoolId)->exists();
+                if ($schoolHasLedger && (bool) $current->is_active && !$row['active']) {
+                    throw ValidationException::withMessages(['allocations' => [__('A School allocation with Ledger history cannot be removed without formal reallocation.')]]);
                 }
                 $candidate[$schoolId] = $row;
-            }
-            if (!$candidate->has((int) $account->school_id)) {
-                throw ValidationException::withMessages(['allocations' => [__('The legacy owner School allocation must remain present.')]]);
             }
             $total = $candidate->filter(fn ($row) => $row['active'])->sum('amount');
             if ($total > (float) $account->opening_balance + 0.0001) {
@@ -116,7 +164,7 @@ final class CentralFinanceFundAccountAdministrationService
         });
     }
 
-    public function adjustOpeningBalance(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, float $amount, string $effectiveDate, string $reason): void
+    public function adjustOpeningBalance(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $requestedAccount, float $amount, string $effectiveDate, string $reason): void
     {
         if (abs($amount) < 0.0001 || trim($reason) === '') {
             throw ValidationException::withMessages(['amount' => [__('Opening balance adjustment and reason are required.')]]);
@@ -140,7 +188,7 @@ final class CentralFinanceFundAccountAdministrationService
     }
 
     /** Metadata never changes a balance or creates a Ledger entry. */
-    public function updateMasterData(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, array $attributes): void
+    public function updateMasterData(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $requestedAccount, array $attributes): void
     {
         DB::connection('mysql')->transaction(function () use ($actor, $school, $requestedAccount, $attributes): void {
             $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
@@ -161,7 +209,7 @@ final class CentralFinanceFundAccountAdministrationService
     }
 
     /** Deactivation/archival preserves all history. Archive is impossible until the real balance is zero. */
-    public function changeStatus(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $requestedAccount, string $status, string $reason): void
+    public function changeStatus(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $requestedAccount, string $status, string $reason): void
     {
         if (!in_array($status, [CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED], true) || trim($reason) === '') {
             throw ValidationException::withMessages(['status' => [__('A valid Fund Account status and reason are required.')]]);
@@ -182,15 +230,53 @@ final class CentralFinanceFundAccountAdministrationService
     }
 
     /** @param array<int,int> $assigneeIds */
-    private function syncAssignmentsLocked(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $account, int $groupId, array $assigneeIds): void
+    private function syncAssignmentsLocked(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $account, int $groupId, array $assigneeIds): void
     {
         $ids = collect($assigneeIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->push($actor->id)->unique()->values();
         $assignments = [];
         foreach ($ids as $userId) {
-            $this->authorization->assertEligibleAssignee($groupId, $school, $userId, true);
+            if ($school !== null) {
+                $this->authorization->assertEligibleAssignee($groupId, $school, $userId, true);
+            } else {
+                $this->assertEligibleGroupAssignee($account, $groupId, $userId);
+            }
             $assignments[$userId] = ['can_view' => true, 'can_operate' => true, 'created_at' => now(), 'updated_at' => now()];
         }
         $account->authorizedUsers()->sync($assignments);
+    }
+
+    private function assertEligibleGroupAssignee(CentralFinanceFundAccount $account, int $groupId, int $userId): void
+    {
+        $user = CentralFinanceUser::on('mysql')->findOrFail($userId);
+        $principalType = $user->getRawOriginal('central_finance_principal_type') ?? 'central_user';
+        if ($principalType === 'central_user' && $user->getRawOriginal('school_id') === null) {
+            $this->authorization->assertHeadFinanceCanConfigureGroup($user, $groupId);
+            return;
+        }
+
+        $schoolIds = Schema::connection('mysql')->hasTable('central_finance_school_staff_identities')
+            ? CentralFinanceSchoolStaffIdentity::on('mysql')->where([
+                'central_user_id' => $userId, 'status' => 'active',
+            ])->pluck('school_id')->map(fn ($id) => (int) $id)->unique()->values()
+            : collect();
+        if ($schoolIds->isEmpty() && $user->getRawOriginal('school_id') !== null) {
+            $schoolIds = collect([(int) $user->getRawOriginal('school_id')]);
+        }
+        if ($schoolIds->count() !== 1) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('A School staff assignee requires exactly one active School identity.');
+        }
+        $schoolId = (int) $schoolIds->sole();
+        $allocation = CentralFinanceFundAccountSchoolAllocation::on('mysql')
+            ->where('fund_account_id', $account->id)
+            ->where('school_id', $schoolId)
+            ->effective()
+            ->exists();
+        if (!$allocation) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('A School staff assignee requires an active allocation for their School.');
+        }
+
+        $school = School::on('mysql')->findOrFail($schoolId);
+        $this->authorization->assertEligibleAssignee($groupId, $school, $userId, true);
     }
 
     private function assertOpening(mixed $balance, mixed $reason): void
@@ -244,33 +330,50 @@ final class CentralFinanceFundAccountAdministrationService
         });
     }
 
-    private function assertAccountInConfigurationScope(CentralFinanceFundAccount $account, School $school, int $groupId): void
+    private function assertAccountInConfigurationScope(CentralFinanceFundAccount $account, ?School $school, int $groupId): void
     {
         if ((int) $account->group_id !== $groupId
-            || ($account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== $school->id)
+            || ($school !== null && $account->owner_type === CentralFinanceFundAccount::OWNER_SCHOOL && (int) $account->school_id !== $school->id)
             || ($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && $account->school_id !== null)) {
             throw new \Illuminate\Auth\Access\AuthorizationException('The Fund Account is outside the current Central School configuration.');
         }
     }
 
-    private function groupUserForAccount(CentralFinanceUser $actor, School $school, CentralFinanceFundAccount $account): \App\Models\FinanceGroupUser
+    private function groupUserForAccount(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $account): \App\Models\FinanceGroupUser
     {
+        if ($school === null) {
+            return $this->authorization->assertHeadFinanceCanConfigureGroup($actor, (int) $account->group_id);
+        }
+
         return $account->owner_type === CentralFinanceFundAccount::OWNER_HQ
             ? $this->authorization->assertHeadFinanceCanConfigureHq($actor, $school)
             : $this->authorization->assertHeadFinanceCanConfigureSchool($actor, $school);
     }
 
-    private function assertCustodian(CentralFinanceFundAccount $account, School $school, ?int $custodianUserId): void
+    private function assertCustodian(CentralFinanceFundAccount $account, ?School $school, ?int $custodianUserId): void
     {
         if ($custodianUserId === null) return;
+        if ($school === null && $account->owner_type === CentralFinanceFundAccount::OWNER_HQ) {
+            $this->assertEligibleGroupAssignee($account, (int) $account->group_id, $custodianUserId);
+            return;
+        }
         $this->assertCustodianForCreate($school, $custodianUserId, (int) $account->group_id, $account->owner_type);
     }
 
-    private function assertCustodianForCreate(School $school, ?int $custodianUserId, int $groupId, string $ownerType): void
+    /** New group accounts may initially name only a Central Head Finance custodian. */
+    private function assertCentralGroupCustodian(int $groupId, ?int $custodianUserId): void
+    {
+        if ($custodianUserId === null) return;
+        $custodian = CentralFinanceUser::on('mysql')->findOrFail($custodianUserId);
+        $this->authorization->assertHeadFinanceCanConfigureGroup($custodian, $groupId);
+    }
+
+    private function assertCustodianForCreate(?School $school, ?int $custodianUserId, int $groupId, string $ownerType): void
     {
         if ($custodianUserId === null) return;
         $query = CentralFinanceUser::on('mysql')->whereKey($custodianUserId);
         if ($ownerType === CentralFinanceFundAccount::OWNER_SCHOOL) {
+            if ($school === null) throw new \Illuminate\Auth\Access\AuthorizationException('A School-owned Fund Account requires a School context.');
             $query->whereIn('id', DB::connection('mysql')->table('central_finance_user_school_scopes')->where('school_id', $school->id)->where('can_view', true)->pluck('user_id'));
         } else {
             $query->whereIn('id', DB::connection('mysql')->table('finance_group_users')->where('group_id', $groupId)->where('status', 'active')->pluck('central_user_id'));
@@ -284,12 +387,16 @@ final class CentralFinanceFundAccountAdministrationService
         return $value === '' ? null : $value;
     }
 
-    private function audit(School $school, CentralFinanceFundAccount $account, CentralFinanceUser $actor, string $action, ?string $reason, array $before, array $after): void
+    private function audit(?School $school, CentralFinanceFundAccount $account, CentralFinanceUser $actor, string $action, ?string $reason, array $before, array $after): void
     {
-        CentralFinanceDocumentAudit::on('mysql')->create([
-            'school_id' => $school->id, 'document_type' => 'fund_account', 'document_id' => $account->id,
+        $values = [
+            'school_id' => $school?->id, 'document_type' => 'fund_account', 'document_id' => $account->id,
             'action' => $action, 'actor_id' => $actor->id, 'reason' => $reason,
             'before_values' => $before, 'after_values' => $after,
-        ]);
+        ];
+        if (Schema::connection('mysql')->hasColumn('central_finance_document_audits', 'group_id')) {
+            $values['group_id'] = (int) $account->group_id;
+        }
+        CentralFinanceDocumentAudit::on('mysql')->create($values);
     }
 }
