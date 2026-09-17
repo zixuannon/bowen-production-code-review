@@ -60,10 +60,12 @@ test('Head Finance creates and allocates a shared Central Fund Account without S
 
         const allocationForm = page.locator('form[action$="/school-allocations"]');
         await expect(allocationForm).toBeVisible();
-        const schoolRows = allocationForm.locator('.form-row');
-        await expect(schoolRows).toHaveCount(2);
-        await schoolRows.nth(0).locator('input[type="checkbox"]').check();
-        await schoolRows.nth(1).locator('input[type="checkbox"]').check();
+        await expect(allocationForm.locator('input[name*="opening_allocation_amount"]')).toHaveCount(0);
+        await expect(allocationForm.getByText('School allocation grants access only.', { exact: false })).toBeVisible();
+        const schoolChoices = allocationForm.locator('input[type="checkbox"]');
+        await expect(schoolChoices).toHaveCount(2);
+        await schoolChoices.nth(0).check();
+        await schoolChoices.nth(1).check();
         await allocationForm.locator('input[name="reason"]').fill('Allocate shared physical account to both QA Schools');
         await allocationForm.evaluate(form => form.submit());
         await page.waitForLoadState('networkidle');

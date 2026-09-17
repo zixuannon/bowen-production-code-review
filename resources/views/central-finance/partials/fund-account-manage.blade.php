@@ -44,7 +44,8 @@
         <h5>{{ __('Allocated Schools') }}</h5>
         @if($accountReport->relationLoaded('schoolAllocations'))
             <form method="POST" action="{{ route('central-finance.accounts.school-allocations', $accountReport->id) }}" data-lifecycle-confirm data-lifecycle-object="{{ $accountReport->account_name }}" data-lifecycle-current-status="{{ __('School allocations') }}" data-lifecycle-result="{{ __('School availability updates immediately; it never moves Ledger history') }}">@csrf @method('PUT')
-                @foreach($allocationSchools as $allocationSchool)@php($allocation = $accountReport->schoolAllocations->firstWhere('school_id', $allocationSchool->id))<div class="form-row align-items-center mb-2"><div class="col-md-5"><input type="hidden" name="allocations[{{ $loop->index }}][school_id]" value="{{ $allocationSchool->id }}"><label class="mb-0"><input type="checkbox" name="allocations[{{ $loop->index }}][is_active]" value="1" @checked($allocation?->is_active)> {{ $allocationSchool->name }}</label></div><div class="col-md-7"><label class="sr-only">{{ __('Opening allocation') }}</label><input name="allocations[{{ $loop->index }}][opening_allocation_amount]" type="number" step="0.0001" min="0" class="form-control" value="{{ $allocation?->opening_allocation_amount ?? 0 }}" aria-label="{{ __('Opening allocation') }} · {{ $allocationSchool->name }}"></div></div>@endforeach
+                <p class="text-muted">{{ __('School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries.') }}</p>
+                @foreach($allocationSchools as $allocationSchool)@php($allocation = $accountReport->schoolAllocations->firstWhere('school_id', $allocationSchool->id))<div class="mb-2"><input type="hidden" name="allocations[{{ $loop->index }}][school_id]" value="{{ $allocationSchool->id }}"><label class="border rounded d-block p-2 mb-0"><input type="checkbox" name="allocations[{{ $loop->index }}][is_active]" value="1" @checked($allocation?->is_active)> {{ $allocationSchool->name }}</label></div>@endforeach
                 <div class="form-group"><label>{{ __('Allocation reason') }}</label><input name="reason" class="form-control" required></div><button class="btn btn-outline-primary">{{ __('Save School allocations') }}</button>
             </form>
         @else
@@ -53,7 +54,7 @@
     </div></div>
 
     <div class="card mb-3"><div class="card-body">
-        <h5>{{ __('Opening Allocation / Adjustment') }}</h5>
+        <h5>{{ __('Account Opening Balance / Adjustment') }}</h5>
         <p class="text-muted">{{ __('Adjustments append an audited opening-balance change; they do not create Ledger income or expense.') }}</p>
         <form method="POST" action="{{ route('central-finance.accounts.opening-adjustments', $accountReport->id) }}" data-lifecycle-confirm data-lifecycle-object="{{ $accountReport->account_name }} · {{ $accountReport->account_code }}" data-lifecycle-amount="{{ number_format($accountReport->opening_balance, 2) }} {{ $accountReport->currency }}" data-lifecycle-current-status="{{ __('Audited baseline') }}" data-lifecycle-result="{{ __('New append-only opening balance audit') }}">@csrf
             <div class="form-row"><div class="form-group col-md-3"><label>{{ __('Signed adjustment') }}</label><input name="amount" type="number" step="0.0001" class="form-control" required></div><div class="form-group col-md-3"><label>{{ __('Effective date') }}</label><input name="effective_date" type="date" class="form-control" required></div><div class="form-group col-md-6"><label>{{ __('Adjustment reason') }}</label><input name="reason" class="form-control" required></div></div>

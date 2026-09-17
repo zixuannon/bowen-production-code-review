@@ -3013,4 +3013,7 @@
     ,"Allocate this account to a School before assigning its School Accountant. Head Finance remains assigned automatically.": "请先将账户分配给校区，再分配该校区会计；财务负责人会自动保留。"
     ,"School allocation records are unavailable; this account cannot be used for School transactions.": "校区分配记录不可用；该账户不能用于任何校区交易。"
     ,"A School allocation with Ledger history cannot be removed without formal reallocation.": "已有账本历史的校区分配必须通过正式重分配流程处理，不能直接移除。"
+    ,"School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries.": "校区分配仅授予访问权限。实体余额始终按账户计算，本校区活动仅来自归属该校区的账本流水。"
+    ,"Account Opening Balance / Adjustment": "账户期初余额／调整"
+    ,"Each School allocation requires a valid School.": "每项校区分配都必须指定有效校区。"
 }

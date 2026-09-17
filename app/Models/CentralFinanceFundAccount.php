@@ -104,7 +104,7 @@ class CentralFinanceFundAccount extends Model
     public function assignedSchools(): BelongsToMany
     {
         return $this->belongsToMany(School::class, 'central_finance_fund_account_school_allocations', 'fund_account_id', 'school_id')
-            ->withPivot(['opening_allocation_amount', 'effective_from', 'effective_to', 'status', 'is_active', 'assigned_by', 'assignment_reason'])
+            ->withPivot(['effective_from', 'effective_to', 'status', 'is_active', 'assigned_by', 'assignment_reason'])
             ->withTimestamps();
     }
 }

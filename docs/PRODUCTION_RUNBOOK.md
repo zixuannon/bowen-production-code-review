@@ -243,10 +243,40 @@ Existing Group-account conversion is a separate data Human Gate. First run
 preflight targets only `B-0001` and `M-0001`, requires every historical Ledger
 School to have an active allocation, and records the account IDs, opening
 balances, allocation set, and Ledger checksum. Only after explicit approval
-may `--execute --actor=<central-user-id> --reason='<audited reason>'` run from
+may `--execute --actor-id=<central-user-id> --reason='<audited reason>'` run from
 the immutable release. It changes ownership metadata only, preserves IDs and
 all Ledger/opening data, verifies the checksum in-transaction, and is
 idempotent. Never convert an unreviewed code or infer missing allocations.
+
+### Central Fund Account V2.1 legacy allocation amount cleanup
+
+School allocation rows grant access only. The retained
+`opening_allocation_amount` column is rollback compatibility, not a financial
+source of truth. Application services and UI must not read or write it.
+
+After a fresh verified Central and tenant backup, run the exact preflight from
+the prepared immutable release:
+
+```sh
+php artisan finance:cleanup-fund-account-v2-1-allocations
+```
+
+Production execution is a financial-data Human Gate and requires an explicit
+Head Finance actor and reason:
+
+```sh
+php artisan finance:cleanup-fund-account-v2-1-allocations \
+  --actor-id=<central-user-id> \
+  --reason='<reviewed audit reason>' \
+  --execute
+```
+
+The command may only zero the compatibility column. It must preserve and
+verify the allocation-access checksum, Fund Account opening checksum, and
+canonical Ledger checksum in the same transaction, append a Fund Account
+audit, and be idempotent. Do not substitute manual SQL, generic migration, or
+schema removal. Remove the column only in a future release after rollback
+compatibility has been retired through a separate schema Human Gate.
 
 ### Finance P2/P3 targeted runner
 

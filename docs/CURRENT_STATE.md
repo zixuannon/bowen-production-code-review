@@ -1,9 +1,38 @@
 # eSchool Current State
 
-## Central Fund Account V2 — local candidate
+## Central Fund Account V2.1 allocation cleanup — local candidate
 
-- Baseline `186b009035586c4c695c44ca78a840af68c7bbbf` is unchanged in
-  Production. Branch `codex/central-fund-account-v2` moves Fund Account
+- Production `93aef0a78dc0c23f7f122e16894d08bbc96ae5e3` is the baseline.
+  Branch `codex/central-fund-account-v2-1-cleanup` removes monetary meaning
+  from School allocation rows: an allocation now grants account access only.
+- The School allocation form no longer accepts an amount. Controller,
+  administration service, Eloquent models, and balance service no longer
+  accept, persist, expose, or read `opening_allocation_amount`. The physical
+  balance remains the one account opening balance plus canonical Ledger
+  effects; School activity remains a `school_id + fund_account_id` Ledger
+  slice.
+- The compatibility column is intentionally retained as non-null/default-zero
+  so the previous immutable release remains rollback-compatible. The exact,
+  default-dry-run command
+  `finance:cleanup-fund-account-v2-1-allocations` clears legacy values to zero,
+  writes an append-only account audit, and fails closed unless allocation
+  access, account-opening, and Ledger checksums remain unchanged. Execution is
+  restricted to a vetted immutable Production release and requires an
+  explicitly authorized Head Finance actor plus audit reason.
+- Targeted Fund Account, controller, and UI contract regression passes 37
+  tests / 293 assertions. Unit regression passes 202 tests / 3,502
+  assertions; every Feature test file passes in isolated processes (the
+  repository's aggregate PHPUnit process exceeds its known 128 MB cumulative
+  limit). Authenticated local Playwright passes Central account creation,
+  access-only allocation to two Schools, removal of the legacy amount input,
+  and 390 px overflow/console checks.
+
+Last updated: 2026-09-17
+
+## Central Fund Account V2 — Production deployed
+
+- Production release `93aef0a78dc0c23f7f122e16894d08bbc96ae5e3`
+  moves Fund Account
   ownership to the Central/Group control plane: Head Finance can create an
   `owner_type=hq`, `school_id=NULL` account without selecting a School, and
   every School read/write path requires an explicit active allocation.
@@ -20,7 +49,7 @@
   `M-0001`. It locks rows, requires all existing Ledger School IDs to have
   active allocations, preserves account IDs/opening balances/Ledger rows,
   records before/after plus Ledger checksum, and is idempotent. No conversion
-  or Production migration has been executed.
+  and the reviewed Production conversion preserved all Ledger history.
 - The exact central migration runner is
   `finance:migrate-fund-account-v2`; the conversion preflight/runner is
   `finance:convert-fund-account-v2`. Both default to read-only, and Production

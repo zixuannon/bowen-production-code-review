@@ -848,4 +848,7 @@
     ,"Allocate this account to a School before assigning its School Accountant. Head Finance remains assigned automatically.": "Allocate this account to a School before assigning its School Accountant. Head Finance remains assigned automatically."
     ,"School allocation records are unavailable; this account cannot be used for School transactions.": "School allocation records are unavailable; this account cannot be used for School transactions."
     ,"A School allocation with Ledger history cannot be removed without formal reallocation.": "A School allocation with Ledger history cannot be removed without formal reallocation."
+    ,"School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries.": "School allocation grants access only. Physical balance remains account-level and School activity comes from School-scoped Ledger entries."
+    ,"Account Opening Balance / Adjustment": "Account Opening Balance / Adjustment"
+    ,"Each School allocation requires a valid School.": "Each School allocation requires a valid School."
 }

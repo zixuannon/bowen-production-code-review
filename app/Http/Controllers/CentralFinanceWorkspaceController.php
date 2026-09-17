@@ -543,7 +543,6 @@ final class CentralFinanceWorkspaceController extends Controller
             'reason' => ['required', 'string', 'max:2000'],
             'allocations' => ['required', 'array', 'min:1'],
             'allocations.*.school_id' => ['required', 'integer', 'distinct'],
-            'allocations.*.opening_allocation_amount' => ['required', 'numeric', 'min:0'],
             'allocations.*.is_active' => ['nullable', 'boolean'],
         ]);
         $this->accountAdministration->syncSchoolAllocations($actor, null, $account, $data['allocations'], $data['reason']);

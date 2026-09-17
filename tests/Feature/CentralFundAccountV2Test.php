@@ -10,6 +10,7 @@ use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Models\User;
 use App\Services\CentralFinanceFundAccountAdministrationService;
+use App\Services\CentralFinanceFundAccountAllocationCleanupService;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundAccountSchoolAvailabilityService;
 use App\Services\CentralFinanceFundAccountV2ConversionService;
@@ -239,6 +240,60 @@ final class CentralFundAccountV2Test extends TestCase
 
         $conversion->execute($this->head, 'Idempotency verification');
         $this->assertSame(2, DB::connection('mysql')->table('central_finance_document_audits')->where('action', 'group_ownership_migrated')->count());
+    }
+
+    public function test_v2_1_cleanup_clears_only_legacy_amounts_and_preserves_financial_and_access_state(): void
+    {
+        $account = $this->centralAccount('V21-CENTRAL');
+        $this->allocate($account, 2);
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')
+            ->where(['fund_account_id' => $account->id, 'school_id' => 2])
+            ->update(['opening_allocation_amount' => 496316250.6800]);
+        $this->ledger($account, 2, 'V21-LEDGER', 500);
+
+        $cleanup = app(CentralFinanceFundAccountAllocationCleanupService::class);
+        $before = $cleanup->preflight();
+        $this->assertSame('eligible', $before['status']);
+        $this->assertSame(1, $before['legacy_amount_rows']);
+
+        $after = $cleanup->execute($this->head, 'Approved removal of test-only legacy allocation amounts');
+        $this->assertSame('complete', $after['status']);
+        $this->assertSame(1, $after['rows_changed']);
+        $this->assertSame($before['ledger_checksum'], $after['ledger_checksum']);
+        $this->assertSame($before['account_opening_checksum'], $after['account_opening_checksum']);
+        $this->assertSame($before['allocation_access_checksum'], $after['allocation_access_checksum']);
+        $this->assertDatabaseHas('central_finance_fund_account_school_allocations', [
+            'fund_account_id' => $account->id, 'school_id' => 2,
+            'opening_allocation_amount' => 0, 'is_active' => 1, 'status' => 'active',
+        ], 'mysql');
+        $this->assertDatabaseHas('central_finance_document_audits', [
+            'document_type' => 'fund_account', 'document_id' => $account->id,
+            'action' => 'legacy_school_allocation_amounts_cleared',
+        ], 'mysql');
+
+        $repeat = $cleanup->execute($this->head, 'Idempotency verification');
+        $this->assertSame('complete', $repeat['status']);
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_document_audits')
+            ->where('action', 'legacy_school_allocation_amounts_cleared')->count());
+    }
+
+    public function test_school_allocation_service_ignores_forged_legacy_amount_and_grants_access_only(): void
+    {
+        $account = $this->centralAccount('ACCESS-ONLY');
+        app(CentralFinanceFundAccountAdministrationService::class)->syncSchoolAllocations(
+            $this->head,
+            null,
+            $account,
+            [['school_id' => 2, 'is_active' => true, 'opening_allocation_amount' => 999999999]],
+            'Grant access without monetary allocation'
+        );
+
+        $this->assertDatabaseHas('central_finance_fund_account_school_allocations', [
+            'fund_account_id' => $account->id, 'school_id' => 2,
+            'opening_allocation_amount' => 0, 'is_active' => 1,
+        ], 'mysql');
+        $this->assertSame(100.0, app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account));
+        $this->assertSame(0.0, app(CentralFinanceFundAccountBalanceService::class)->schoolActivity($account, 2)['net_movement']);
     }
 
     private function centralAccount(string $code): CentralFinanceFundAccount

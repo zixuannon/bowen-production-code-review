@@ -294,7 +294,9 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $view = app(CentralFinanceWorkspaceController::class)->manageFundAccount(new Request(), $this->zixuan->id);
         $this->assertSame('account-manage', $view->getData()['page']);
         $this->assertSame($this->zixuan->id, $view->getData()['accountReport']->id);
-        $this->assertStringContainsString('Opening Allocation / Adjustment', $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
+        $rendered = $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('Account Opening Balance / Adjustment', $rendered);
+        $this->assertStringNotContainsString('opening_allocation_amount', $rendered);
 
         $this->actingAs($this->zixuanAccountant);
         app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);

@@ -37,9 +37,10 @@ final class CentralFinanceUxBatchContractTest extends TestCase
         $this->assertStringNotContainsString('central-finance-cutover-readiness', $workspace);
         $this->assertStringNotContainsString("__('More actions')", $workspace);
         $this->assertStringContainsString("route('central-finance.accounts.manage'", $workspace);
-        foreach (['Basic details', 'Authorized users', 'School allocations', 'Opening Allocation / Adjustment', 'Audit History'] as $section) {
+        foreach (['Basic details', 'Authorized users', 'School allocations', 'Account Opening Balance / Adjustment', 'Audit History'] as $section) {
             $this->assertStringContainsString($section, $manage);
         }
+        $this->assertStringNotContainsString('opening_allocation_amount', $manage);
         foreach (['Report filters', 'School comparison', 'Income / expense trend', 'Category analysis', 'Open Ledger'] as $section) {
             $this->assertStringContainsString($section, $report);
         }

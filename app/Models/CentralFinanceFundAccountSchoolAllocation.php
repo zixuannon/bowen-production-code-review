@@ -14,13 +14,12 @@ final class CentralFinanceFundAccountSchoolAllocation extends Model
     protected $connection = 'mysql';
 
     protected $fillable = [
-        'fund_account_id', 'school_id', 'opening_allocation_amount',
+        'fund_account_id', 'school_id',
         'effective_from', 'effective_to', 'status', 'is_active', 'assigned_by',
         'assignment_reason',
     ];
 
     protected $casts = [
-        'opening_allocation_amount' => 'decimal:4',
         'effective_from' => 'date',
         'effective_to' => 'date',
         'is_active' => 'boolean',
