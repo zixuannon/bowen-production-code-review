@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Exports\CentralFinanceGroupImportTemplateV2Export;
+use App\Exports\CentralFinanceGroupImportTemplateV3Export;
 use App\Models\CentralFinanceGroupImportBatch;
 use App\Models\CentralFinanceGroupImportPreviewRow;
 use App\Models\FinanceGroup;
@@ -58,8 +58,8 @@ final class CentralFinanceGroupImportController extends Controller
         $lookups = $this->imports->templateLookups($actor, $group);
 
         return Excel::download(
-            new CentralFinanceGroupImportTemplateV2Export($lookups['schools'], $lookups['accounts'], $lookups['categories']),
-            'group-finance-import-template-v2.2.xlsx',
+            new CentralFinanceGroupImportTemplateV3Export($lookups['schools'], $lookups['accounts'], $lookups['categories']),
+            'group-finance-import-template-v3.xlsx',
         );
     }
 

@@ -64,6 +64,10 @@ final class ProductionMigrationGuard
         'finance:migrate-fund-account-v2' => [
             'database/migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
         ],
+        'finance:migrate-central-chart-of-accounts' => [
+            'database/migrations/2026_09_18_000001_add_central_chart_of_accounts.php',
+            'database/migrations/2026_09_18_000002_add_owner_holder_to_central_finance_fund_accounts.php',
+        ],
     ];
 
     /**

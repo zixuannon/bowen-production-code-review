@@ -4,6 +4,16 @@
 
 Production is a Human Gate.
 
+### Central Chart of Accounts / Group Import V3 candidate
+
+See `docs/CENTRAL_CHART_OF_ACCOUNTS_V3_MIGRATION_PLAN.md` before preparing a
+release. `finance:migrate-central-chart-of-accounts` defaults to dry-run and
+allows only its two exact Central migration paths after complete registry and
+schema preflight. Never replace it with broad migrate. Existing tenant Fee
+categories and Finance history are not automatically converted. A reviewed
+legacy mapping manifest and separate Production approval are required; the
+local candidate does not authorize execution or rewrite historical foreign keys.
+
 ## Canonical production connection
 
 - Canonical SSH alias: `eschool-prod`

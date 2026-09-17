@@ -152,7 +152,11 @@ final class CentralFinanceExpenseImportService
     /** @param array<string,mixed> $data */
     private function category(int $schoolId, array $data): CentralFinanceCategory
     {
-        return CentralFinanceCategory::on('mysql')->where(['school_id' => $schoolId, 'type' => CentralFinanceCategory::EXPENSE, 'name' => $data['category_name'], 'is_active' => true])->firstOrFail();
+        $query = CentralFinanceCategory::on('mysql')->availableForSchool($schoolId)
+            ->forCashDirection(CentralFinanceCategory::EXPENSE)->where(['name' => $data['category_name'], 'is_active' => true]);
+        app(CentralFinanceDataIsolationService::class)->apply($query, 'category');
+        // Legacy name-based uploads must never silently choose between two codes.
+        return $query->sole();
     }
 
     /** @param array<string,mixed> $data */

@@ -25,14 +25,14 @@ final class CentralFinanceLedgerService
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
     ) {}
 
-    public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null): CentralFinanceLedgerEntry
+    public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true): CentralFinanceLedgerEntry
     {
-        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME, $amount, $occurredAt, $referenceNo);
+        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME, $amount, $occurredAt, $referenceNo, $operating);
     }
 
-    public function recordOperatingExpense(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null): CentralFinanceLedgerEntry
+    public function recordOperatingExpense(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true): CentralFinanceLedgerEntry
     {
-        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE, $amount, $occurredAt, $referenceNo);
+        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE, $amount, $occurredAt, $referenceNo, $operating);
     }
 
     /**
@@ -42,12 +42,14 @@ final class CentralFinanceLedgerService
      */
     public function reverseOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null): CentralFinanceLedgerEntry
     {
-        return $this->recordReversal($actor, $account, $schoolId, $sourceType, $sourceId, 'void', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME_REVERSAL, 0, $amount, -$amount, 0, $occurredAt, $referenceNo);
+        $operating = $this->originalOperatingEffect($account, $schoolId, $sourceType, $sourceId, 'operating_income', $amount);
+        return $this->recordReversal($actor, $account, $schoolId, $sourceType, $sourceId, 'void', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME_REVERSAL, 0, $amount, -$operating, 0, $occurredAt, $referenceNo);
     }
 
     public function reverseOperatingExpense(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null): CentralFinanceLedgerEntry
     {
-        return $this->recordReversal($actor, $account, $schoolId, $sourceType, $sourceId, 'void', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE_REVERSAL, $amount, 0, 0, -$amount, $occurredAt, $referenceNo);
+        $operating = $this->originalOperatingEffect($account, $schoolId, $sourceType, $sourceId, 'operating_expense', $amount);
+        return $this->recordReversal($actor, $account, $schoolId, $sourceType, $sourceId, 'void', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE_REVERSAL, $amount, 0, 0, -$operating, $occurredAt, $referenceNo);
     }
 
     /** @return array{source:CentralFinanceLedgerEntry,destination:CentralFinanceLedgerEntry} */
@@ -115,7 +117,7 @@ final class CentralFinanceLedgerService
         });
     }
 
-    private function recordSingle(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo): CentralFinanceLedgerEntry
+    private function recordSingle(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo, bool $operating = true): CentralFinanceLedgerEntry
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount($amount);
@@ -123,11 +125,27 @@ final class CentralFinanceLedgerService
         $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($account->id);
         $this->assertSchoolAttribution($schoolId, $account);
 
-        return DB::connection('mysql')->transaction(function () use ($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, $occurredAt, $referenceNo): CentralFinanceLedgerEntry {
+        return DB::connection('mysql')->transaction(function () use ($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, $occurredAt, $referenceNo, $operating): CentralFinanceLedgerEntry {
             return $type === CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME
-                ? $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, 0, $amount, 0, $occurredAt, $referenceNo)
-                : $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, 0, $amount, 0, $amount, $occurredAt, $referenceNo);
+                ? $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, 0, $operating ? $amount : 0, 0, $occurredAt, $referenceNo)
+                : $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, 0, $amount, 0, $operating ? $amount : 0, $occurredAt, $referenceNo);
         });
+    }
+
+    /** CoA reversals mirror the immutable original, never today's mutable master. */
+    private function originalOperatingEffect(CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $column, float $legacyAmount): float
+    {
+        $originalType = match ($sourceType) {
+            'central_expense_void' => 'central_expense',
+            'central_other_income_void' => 'central_other_income',
+            default => null,
+        };
+        if ($originalType === null) return $legacyAmount;
+        $entry = CentralFinanceLedgerEntry::on('mysql')->where([
+            'fund_account_id' => $account->id, 'school_id' => $schoolId,
+            'source_type' => $originalType, 'source_id' => $sourceId, 'source_line' => 'primary',
+        ])->firstOrFail();
+        return (float) $entry->{$column};
     }
 
     private function recordReversal(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $moneyIn, float $moneyOut, float $operatingIncome, float $operatingExpense, CarbonImmutable $occurredAt, ?string $referenceNo): CentralFinanceLedgerEntry

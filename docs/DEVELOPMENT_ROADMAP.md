@@ -1,5 +1,15 @@
 # eSchool Finance V2 Roadmap
 
+## Central Chart of Accounts + Group Finance Import V3 — local candidate
+
+- [x] Five-type Group CoA, manual text code, explicit multi-School allocation
+- [x] Fund holder metadata; unchanged physical-balance/access-only allocation rules
+- [x] Bilingual V3 workbook, dependent dropdowns and currency-separated summaries
+- [x] Server validation, zero-write preview and exactly-once confirm regression
+- [x] Full regression, fresh disposable MySQL and authenticated Desktop/390 px QA
+- [ ] Approved legacy mapping manifest and Production preflight/migration/deployment
+
+
 ## Bahan + Timecity Centralization setup — no cutover
 
 - [x] Production read-only tenant, identity, Finance, Student, and migration inventory

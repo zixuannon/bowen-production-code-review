@@ -449,22 +449,25 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function createCategory(Request $request): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
-        $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $school);
-        $data = $request->validate(['type' => ['required', Rule::in([CentralFinanceCategory::INCOME, CentralFinanceCategory::EXPENSE])], 'name' => ['required', 'string', 'max:120']]);
-        CentralFinanceCategory::on('mysql')->firstOrCreate(['school_id' => $school->id, 'type' => $data['type'], 'name' => trim($data['name'])], ['is_active' => true]);
-        return back()->with('success', __('Central Finance category saved.'));
+        app(\App\Services\CentralChartOfAccountsService::class)->save($this->actor(), array_merge($request->all(), ['school_ids' => $request->input('school_ids', [])]));
+        return back()->with('success', __('Chart of Accounts saved.'));
     }
 
-    public function toggleCategory(int $category): RedirectResponse
+    public function updateCategory(Request $request, int $category): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
-        $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $school);
-        $item = CentralFinanceCategory::on('mysql')->where('school_id', $school->id)->findOrFail($category);
-        $this->dataIsolation->assertProduction('category', (int) $item->id);
-        $item->is_active = !$item->is_active;
-        $item->save();
-        return back()->with('success', __('Central Finance category status updated.'));
+        $this->dataIsolation->assertProduction('category', $category);
+        app(\App\Services\CentralChartOfAccountsService::class)->save($this->actor(), array_merge($request->all(), ['school_ids' => $request->input('school_ids', [])]), $category);
+        return back()->with('success', __('Chart of Accounts saved.'));
+    }
+
+    public function toggleCategory(Request $request, int $category): RedirectResponse
+    {
+        $item = CentralFinanceCategory::on('mysql')->findOrFail($category);
+        $this->dataIsolation->assertProduction('category', $category);
+        app(\App\Services\CentralChartOfAccountsService::class)->save($this->actor(), array_merge($item->only(['group_id','type','category_code','name']), [
+            'is_active' => !$item->is_active, 'school_ids' => $item->schoolAllocations()->where('is_active',true)->pluck('school_id')->all(), 'reason' => $request->input('reason'),
+        ]), $category);
+        return back()->with('success', __('Chart of Accounts saved.'));
     }
 
     public function enterSchool(Request $request): RedirectResponse
@@ -489,6 +492,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $data = $request->validate([
             'group_id' => ['required', 'integer', 'min:1'],
             'account_code' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9_.-]+$/'],
+            'owner_holder' => ['nullable', 'string', 'max:191'],
             'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', Rule::in(CentralFinanceCurrency::ALLOWED)],
             'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date'],
             'opening_reason' => ['required', 'string', 'max:2000'],
@@ -508,6 +512,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate([
             'account_name' => ['required', 'string', 'max:191'],
+            'owner_holder' => ['nullable', 'string', 'max:191'],
             'account_type' => ['required', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])],
             'bank_name' => ['nullable', 'string', 'max:191'], 'masked_account_identifier' => ['nullable', 'string', 'max:80'],
             'custodian_user_id' => ['nullable', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'], 'reason' => ['nullable', 'string', 'max:2000'],
@@ -927,11 +932,8 @@ final class CentralFinanceWorkspaceController extends Controller
         } catch (AuthorizationException) {
             // Read-only users can still inspect the canonical history.
         }
-        $categoriesQuery = CentralFinanceCategory::on('mysql')->where([
-            'school_id' => $school->id,
-            'type' => $type === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME,
-            'is_active' => true,
-        ]);
+        $categoriesQuery = CentralFinanceCategory::on('mysql')->availableForSchool($school->id)->forActor($actor,[$school->id],true)
+            ->forCashDirection($type === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME);
         $this->dataIsolation->apply($categoriesQuery, 'category');
         $categories = $categoriesQuery->orderBy('name')->get();
         $ledgerSource = $type === 'expense' ? 'central_expense' : 'central_other_income';
@@ -1015,7 +1017,7 @@ final class CentralFinanceWorkspaceController extends Controller
                         'income' => (float) $entries->sum('operating_income'), 'expense' => (float) $entries->sum('operating_expense')];
                 })->sortBy('date')->values();
             $reportCategoryAnalysis = $filteredLedgerEntries
-                ->filter(fn (CentralFinanceLedgerEntry $entry): bool => (float) $entry->operating_income !== 0.0 || (float) $entry->operating_expense !== 0.0)
+                ->filter(fn (CentralFinanceLedgerEntry $entry): bool => (float) $entry->money_in !== 0.0 || (float) $entry->money_out !== 0.0)
                 ->groupBy(function (CentralFinanceLedgerEntry $entry) use ($categoryDetails): string {
                     $category = $categoryDetails[$entry->source_type.':'.$entry->source_id] ?? ['id' => null, 'name' => __('Uncategorized')];
                     return $entry->school_id.'|'.$entry->currency.'|'.($category['id'] ?? 'none').'|'.$category['name'];
@@ -1024,6 +1026,9 @@ final class CentralFinanceWorkspaceController extends Controller
                     $category = $categoryDetails[$first->source_type.':'.$first->source_id] ?? ['id' => null, 'name' => __('Uncategorized')];
                     return ['school_id' => (int) $first->school_id, 'currency' => $first->currency,
                         'category_id' => $category['id'], 'category' => $category['name'],
+                        'category_code' => $category['code'] ?? '', 'account_type' => $category['type'] ?? '',
+                        'money_in' => (float) $entries->sum('money_in'), 'money_out' => (float) $entries->sum('money_out'),
+                        'net_movement' => (float) $entries->sum('money_in') - (float) $entries->sum('money_out'),
                         'income' => (float) $entries->sum('operating_income'), 'expense' => (float) $entries->sum('operating_expense')];
                 })->sortBy('category')->values();
         }
@@ -1118,7 +1123,12 @@ final class CentralFinanceWorkspaceController extends Controller
         $paymentReceivableQuery=$schoolId ? CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->whereIn('status',['open','partial']) : null;
         if ($paymentReceivableQuery) $this->dataIsolation->apply($paymentReceivableQuery, 'receivable');
         $paymentReceivables=$paymentReceivableQuery ? $paymentReceivableQuery->orderBy('student_profile_id')->orderBy('due_date')->get(['id','student_profile_id','description','amount_due','amount_paid','currency']) : collect();
-        $categoryQuery=CentralFinanceCategory::on('mysql')->when($schoolId, fn ($query) => $query->where('school_id',$schoolId), fn ($query) => $query->whereIn('school_id', $schools->pluck('id')));
+        $categoryQuery=CentralFinanceCategory::on('mysql')->forActor($actor,$schoolId ? [$schoolId] : $schools->pluck('id')->all());
+        if ($page === 'categories' && $canConfigureAccounts && Schema::connection('mysql')->hasColumn('central_finance_categories','group_id')) {
+            $categoryQuery = CentralFinanceCategory::on('mysql')->where(function ($query) use ($configurableGroups, $schools): void {
+                $query->whereIn('group_id', $configurableGroups->pluck('id'))->orWhere(fn ($legacy) => $legacy->whereNull('group_id')->whereIn('school_id',$schools->pluck('id')));
+            })->with('schoolAllocations');
+        }
         $this->dataIsolation->apply($categoryQuery, 'category', $includeQaTest);
         $categories=$categoryQuery->orderBy('type')->orderBy('name')->get();
         $operators=CentralFinanceUser::on('mysql')->whereIn('id', (clone $filteredLedger)->distinct()->pluck('created_by')->filter())->orderBy('first_name')->get(['id','first_name','last_name','email']);
@@ -1253,7 +1263,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $operatingDocuments = $operationsType ? $this->scopedOperatingDocumentsQuery($operationsType, $school, $schools, $accounts, $filters)
             ->latest($operationsType === 'expense' ? 'expense_date' : 'income_date')->paginate(25, ['*'], 'operations_page')->withQueryString() : collect();
         $operationOperators = $operationsType ? CentralFinanceUser::on('mysql')->whereIn('id', (clone $this->scopedOperatingDocumentsQuery($operationsType, $school, $schools, $accounts, $filters))->distinct()->pluck('created_by')->filter())->orderBy('first_name')->get() : collect();
-        $operationCategoryQuery = $operationsType ? CentralFinanceCategory::on('mysql')->whereIn('school_id', $school ? [$school->id] : $schools->pluck('id'))->where('type', $operationsType === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME) : null;
+        $operationCategoryQuery = $operationsType ? CentralFinanceCategory::on('mysql')->forActor($actor,$school ? [$school->id] : $schools->pluck('id')->all())->where('is_active',true)->forCashDirection($operationsType === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME) : null;
         if ($operationCategoryQuery) $this->dataIsolation->apply($operationCategoryQuery, 'category');
         $operationCategories = $operationCategoryQuery ? $operationCategoryQuery->orderBy('name')->get() : collect();
         $reimbursementQuery = CentralFinanceReimbursementRequest::on('mysql')->with('category');
@@ -1270,13 +1280,13 @@ final class CentralFinanceWorkspaceController extends Controller
         if ($fallbackReimbursementQuery) $this->dataIsolation->apply($fallbackReimbursementQuery, 'reimbursement', $includeQaTest);
         $reimbursements = $page === 'reimbursements' ? $reimbursementQuery->latest()->paginate(25, ['*'], 'reimbursements_page')->withQueryString() : ($fallbackReimbursementQuery ? $fallbackReimbursementQuery->latest()->get() : collect());
         $reimbursementRequesters = $page === 'reimbursements' ? CentralFinanceUser::on('mysql')->whereIn('id', (clone $reimbursementQuery)->distinct()->pluck('requested_by'))->orderBy('first_name')->get() : collect();
-        $reimbursementCategoryQuery = $page === 'reimbursements' ? CentralFinanceCategory::on('mysql')->whereIn('school_id', $school ? [$school->id] : $schools->pluck('id'))->where('type', CentralFinanceCategory::EXPENSE) : null;
+        $reimbursementCategoryQuery = $page === 'reimbursements' ? CentralFinanceCategory::on('mysql')->forActor($actor,$school ? [$school->id] : $schools->pluck('id')->all(),$canOperate)->where('is_active',true)->forCashDirection(CentralFinanceCategory::EXPENSE) : null;
         if ($reimbursementCategoryQuery) $this->dataIsolation->apply($reimbursementCategoryQuery, 'category');
         $reimbursementCategories = $reimbursementCategoryQuery ? $reimbursementCategoryQuery->orderBy('name')->get() : collect();
         $canApproveReimbursements = false;
         if ($school) try { app(\App\Services\CentralFinanceSchoolScopeService::class)->assertCanApproveReimbursements($actor, $school->id); $canApproveReimbursements = $canOperate; } catch (AuthorizationException) {}
-        $expenseCategoryQuery=$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'expense','is_active'=>true]):null;
-        $incomeCategoryQuery=$schoolId?CentralFinanceCategory::on('mysql')->where(['school_id'=>$schoolId,'type'=>'income','is_active'=>true]):null;
+        $expenseCategoryQuery=$schoolId?CentralFinanceCategory::on('mysql')->availableForSchool($schoolId)->forActor($actor,[$schoolId],true)->forCashDirection('expense'):null;
+        $incomeCategoryQuery=$schoolId?CentralFinanceCategory::on('mysql')->availableForSchool($schoolId)->forActor($actor,[$schoolId],true)->forCashDirection('income'):null;
         $expenseQuery=$schoolId?CentralFinanceExpense::on('mysql')->where('school_id',$schoolId):null;
         $incomeQuery=$schoolId?CentralFinanceOtherIncome::on('mysql')->where('school_id',$schoolId):null;
         $handoverQuery = null;
@@ -1544,11 +1554,11 @@ final class CentralFinanceWorkspaceController extends Controller
         $incomeIds = $entries->whereIn('source_type', ['central_other_income','central_other_income_void'])->pluck('source_id')->unique()->filter();
         $details = [];
         CentralFinanceExpense::on('mysql')->withTrashed()->with('category')->whereIn('expense_uuid', $expenseIds)->get()->each(function ($item) use (&$details): void {
-            $value = ['id' => $item->category?->id, 'name' => $item->category?->name ?? __('Uncategorized')];
+            $value = ['id' => $item->category?->id, 'name' => $item->category?->name ?? __('Uncategorized'), 'code' => $item->category?->category_code, 'type' => $item->category?->type];
             $details['central_expense:'.$item->expense_uuid] = $details['central_expense_void:'.$item->expense_uuid] = $value;
         });
         CentralFinanceOtherIncome::on('mysql')->withTrashed()->with('category')->whereIn('income_uuid', $incomeIds)->get()->each(function ($item) use (&$details): void {
-            $value = ['id' => $item->category?->id, 'name' => $item->category?->name ?? __('Uncategorized')];
+            $value = ['id' => $item->category?->id, 'name' => $item->category?->name ?? __('Uncategorized'), 'code' => $item->category?->category_code, 'type' => $item->category?->type];
             $details['central_other_income:'.$item->income_uuid] = $details['central_other_income_void:'.$item->income_uuid] = $value;
         });
         return $details;

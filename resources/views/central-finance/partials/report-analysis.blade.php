@@ -16,5 +16,24 @@
 
 <div class="row mt-3">
     <div class="col-xl-6 mb-3"><div class="card h-100"><div class="card-body"><h5>{{ __('Income / expense trend') }}</h5><div class="table-responsive"><table class="table table-sm cf-mobile-card-table mb-0"><thead><tr><th>{{ __('Date') }}</th><th>{{ __('Currency') }}</th><th>{{ __('Income') }}</th><th>{{ __('Expense') }}</th><th>{{ __('Net') }}</th></tr></thead><tbody>@forelse($reportTrend as $row)<tr><td data-label="{{ __('Date') }}">{{ $row['date'] }}</td><td data-label="{{ __('Currency') }}">{{ $row['currency'] }}</td><td data-label="{{ __('Income') }}">{{ number_format($row['income'], 2) }}</td><td data-label="{{ __('Expense') }}">{{ number_format($row['expense'], 2) }}</td><td data-label="{{ __('Net') }}">{{ number_format($row['income'] - $row['expense'], 2) }}</td></tr>@empty<tr><td colspan="5"><div class="cf-empty-state">{{ __('No trend data for this range.') }}</div></td></tr>@endforelse</tbody></table></div></div></div></div>
-    <div class="col-xl-6 mb-3"><div class="card h-100"><div class="card-body"><h5>{{ __('Category analysis') }}</h5><div class="table-responsive"><table class="table table-sm cf-mobile-card-table mb-0"><thead><tr><th>{{ __('School') }}</th><th>{{ __('Category') }}</th><th>{{ __('Currency') }}</th><th>{{ __('Income') }}</th><th>{{ __('Expense') }}</th><th>{{ __('Drill-down') }}</th></tr></thead><tbody>@forelse($reportCategoryAnalysis as $row)<tr><td data-label="{{ __('School') }}">{{ $schoolNames[$row['school_id']] ?? '—' }}</td><td data-label="{{ __('Category') }}">{{ $row['category'] }}</td><td data-label="{{ __('Currency') }}">{{ $row['currency'] }}</td><td data-label="{{ __('Income') }}">{{ number_format($row['income'], 2) }}</td><td data-label="{{ __('Expense') }}">{{ number_format($row['expense'], 2) }}</td><td data-label=""><a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.ledger', array_filter(['from' => $filters['from'] ?? null, 'to' => $filters['to'] ?? null, 'school_id' => $row['school_id'], 'currency' => $row['currency'], 'category_id' => $row['category_id']])) }}">{{ __('Open Ledger') }}</a></td></tr>@empty<tr><td colspan="6"><div class="cf-empty-state">{{ __('No categorized operating activity for this range.') }}</div></td></tr>@endforelse</tbody></table></div></div></div></div>
+    <div class="col-xl-6 mb-3"><div class="card h-100"><div class="card-body">
+        <h5>{{ __('Chart of Accounts analysis') }}</h5>
+        <p class="text-muted small">{{ __('Cash movement by account; Asset, Liability and Equity are not operating income or expense.') }}</p>
+        <div class="table-responsive"><table class="table table-sm cf-mobile-card-table mb-0">
+            <thead><tr><th>{{ __('School') }}</th><th>{{ __('Account Code') }}</th><th>{{ __('Account Type') }}</th><th>{{ __('Account Name') }}</th><th>{{ __('Currency') }}</th><th>{{ __('Incoming') }}</th><th>{{ __('Outgoing') }}</th><th>{{ __('Net Movement') }}</th><th>{{ __('Drill-down') }}</th></tr></thead>
+            <tbody>@forelse($reportCategoryAnalysis as $row)
+                <tr>
+                    <td data-label="{{ __('School') }}">{{ $schoolNames[$row['school_id']] ?? '—' }}</td>
+                    <td data-label="{{ __('Account Code') }}">{{ $row['category_code'] ?? '—' }}</td>
+                    <td data-label="{{ __('Account Type') }}">{{ __(ucfirst($row['account_type'] ?? '')) }}</td>
+                    <td data-label="{{ __('Account Name') }}">{{ $row['category'] }}</td>
+                    <td data-label="{{ __('Currency') }}">{{ $row['currency'] }}</td>
+                    <td data-label="{{ __('Incoming') }}">{{ number_format($row['money_in'], 2) }}</td>
+                    <td data-label="{{ __('Outgoing') }}">{{ number_format($row['money_out'], 2) }}</td>
+                    <td data-label="{{ __('Net Movement') }}">{{ number_format($row['net_movement'], 2) }}</td>
+                    <td data-label=""><a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.ledger', array_filter(['from' => $filters['from'] ?? null, 'to' => $filters['to'] ?? null, 'school_id' => $row['school_id'], 'currency' => $row['currency'], 'category_id' => $row['category_id']])) }}">{{ __('Open Ledger') }}</a></td>
+                </tr>
+            @empty<tr><td colspan="9"><div class="cf-empty-state">{{ __('No account activity for this range.') }}</div></td></tr>@endforelse</tbody>
+        </table></div>
+    </div></div></div>
 </div>

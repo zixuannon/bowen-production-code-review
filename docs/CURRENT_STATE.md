@@ -1,5 +1,44 @@
 # eSchool Current State
 
+## Central Chart of Accounts + Group Finance Import V3 — LOCAL PASS
+
+- Baseline: `dc9e38d53cd0ed13741c1e24ef93f96c2cd08639`, verified against the active
+  Production release before implementation. Local branch:
+  `codex/central-chart-of-accounts-import-v3`. No Production mutation/deploy.
+- Central accounts support five cash-flow classifications, manual text codes,
+  Group uniqueness, explicit audited School allocations and actor/group/School
+  isolation. Codes/types are immutable after creation; existing document IDs,
+  tenant Fee category references and historical Ledger effects are preserved.
+  Legacy-to-Central consolidation requires an explicit reviewed mapping; it is
+  not inferred by matching names or cross-database IDs.
+- Fund Account V2 access-only allocations and one physical balance remain
+  unchanged. Editable audited `owner_holder` is descriptive text, never an
+  authorization source. Asset/Liability/Equity cash movements do not become
+  operating income/expense. Voids reverse immutable original Ledger effects.
+- V3 exports bilingual 16-column Import plus unique account/fund definitions,
+  allocation sheets, currency-separated totals, and School activity. The
+  summary combines the canonical snapshot with unposted workbook movements
+  and labels closing balances as projected. No workbook balance is imported.
+- Server-side allocation/code/type/name/date/amount/currency validation,
+  zero-finance-write preview, account/batch locks, replay identity and
+  exactly-once confirmation are covered. Formula-only empty rows are ignored.
+- Final full regression: 146 files, 859 tests, 6,854 assertions, zero failures
+  (existing deprecations; opt-in MySQL test separately exercised). Disposable
+  MySQL rehearsal: 1 test / 20 assertions, two exact migrations, repeat-run
+  idempotency, partial-schema fail-closed and unchanged history hash.
+  Authenticated local browser QA passes 1440/1280/390 px CoA/holder/import
+  flows with no page overflow, console error or failed HTTP response.
+- Native Microsoft Excel open/save/close/reopen passes on the synthetic V3
+  workbook. Reloading Excel's saved file preserves text `0401`/`00101`, all
+  1,500 input validations, nine sheets and no formula errors; the separate
+  synthetic MMK/USD projected balances remain 1,900 / 23. Final independent
+  money-integrity/scope review found no remaining P0/P1 blocker.
+- Deployment/mapping gates and compatibility boundary are documented in
+  `docs/CENTRAL_CHART_OF_ACCOUNTS_V3_MIGRATION_PLAN.md`. Production migration,
+  historical mapping, push and deployment remain unperformed.
+
+Last updated: 2026-09-17
+
 ## Central Finance account authorization unification — local candidate
 
 - Production `607ddddc12638ecaa9b72282a913da31b7a874f9` is the local

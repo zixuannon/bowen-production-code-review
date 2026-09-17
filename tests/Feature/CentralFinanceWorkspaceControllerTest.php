@@ -311,6 +311,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
             ['school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'currency'=>'MMK', 'money_in'=>100, 'money_out'=>0, 'operating_income'=>100, 'operating_expense'=>0, 'source_id'=>'MMK-IN'],
             ['school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'currency'=>'USD', 'money_in'=>5, 'money_out'=>0, 'operating_income'=>5, 'operating_expense'=>0, 'source_id'=>'USD-IN'],
             ['school_id'=>2, 'fund_account_id'=>$this->timecity->id, 'currency'=>'MMK', 'money_in'=>0, 'money_out'=>20, 'operating_income'=>0, 'operating_expense'=>20, 'source_id'=>'MMK-OUT'],
+            ['school_id'=>1, 'fund_account_id'=>$this->zixuan->id, 'currency'=>'MMK', 'money_in'=>50, 'money_out'=>0, 'operating_income'=>0, 'operating_expense'=>0, 'source_id'=>'NEUTRAL-COA-CASH-IN'],
         ] as $index => $entry) {
             CentralFinanceLedgerEntry::on('mysql')->create(array_merge($entry, [
                 'entry_uuid'=>(string) Str::uuid(), 'entry_date'=>$now->toDateString(), 'occurred_at'=>$now,
@@ -328,6 +329,13 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertSame([1, 1, 2], $comparison->pluck('school_id')->all());
         $this->assertCount(2, $view->getData()['reportTrend']);
         $this->assertCount(3, $view->getData()['reportCategoryAnalysis']);
+        $schoolMmk = $comparison->first(fn ($row) => $row['school_id'] === 1 && $row['currency'] === 'MMK');
+        $this->assertSame(150.0, $schoolMmk['money_in']);
+        $this->assertSame(100.0, $schoolMmk['income']);
+        $analysisMmk = $view->getData()['reportCategoryAnalysis']->first(fn ($row) => $row['school_id'] === 1 && $row['currency'] === 'MMK');
+        $this->assertSame(150.0, $analysisMmk['money_in']);
+        $this->assertSame(150.0, $analysisMmk['net_movement']);
+        $this->assertSame(100.0, $analysisMmk['income']);
     }
 
     public function test_import_error_detail_is_scoped_read_only_and_correction_keeps_original_batch(): void

@@ -22,7 +22,8 @@ final class CentralFinanceGroupImportPreviewContractTest extends TestCase
             'Fund Account Type', 'Account Owner', 'Category Code', '付款方式', '收入', '支出',
             'Statement Balance / 对账余款', 'Reference / 单据号', 'Currency', '备注',
         ], (new CentralFinanceGroupImportTemplateV2Export())->headings());
-        $this->assertSame(CentralFinanceGroupImportService::SCHEMA_VERSION, CentralFinanceGroupImportTemplateV2Export::VERSION);
+        $this->assertSame('group-finance-v2.2', CentralFinanceGroupImportTemplateV2Export::VERSION);
+        $this->assertSame(CentralFinanceGroupImportService::SCHEMA_VERSION, \App\Exports\CentralFinanceGroupImportTemplateV3Export::VERSION);
         $this->assertSame([], (new CentralFinanceGroupImportTemplateV2Export())->array());
     }
 

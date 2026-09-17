@@ -74,6 +74,7 @@ final class CentralFundAccountV2Test extends TestCase
             '2026_08_24_000002_create_central_finance_school_staff_identities.php',
             '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
+            '2026_09_18_000002_add_owner_holder_to_central_finance_fund_accounts.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -133,6 +134,48 @@ final class CentralFundAccountV2Test extends TestCase
         DB::purge('mysql');
         @unlink($this->database);
         parent::tearDown();
+    }
+
+    public function test_owner_holder_is_editable_audited_metadata_not_scope_or_balance(): void
+    {
+        $admin = app(CentralFinanceFundAccountAdministrationService::class);
+        $account = $admin->createGroupAccount($this->head, $this->group->id, [
+            'account_code' => 'HOLDER-TEST', 'account_name' => 'Central Bank', 'currency' => 'MMK',
+            'opening_balance' => 123, 'opening_balance_date' => '2026-09-18', 'opening_reason' => 'QA opening',
+            'account_type' => 'bank', 'owner_holder' => ' BOWEN EDUCATION COMPANY LIMITED ',
+        ]);
+        $this->assertSame('BOWEN EDUCATION COMPANY LIMITED', $account->owner_holder);
+        $admin->updateMasterData($this->head, null, $account, [
+            'account_name' => 'Central Bank', 'account_type' => 'bank',
+            'owner_holder' => 'Updated legal holder', 'reason' => 'Verified legal account name',
+        ]);
+        $account->refresh();
+        $this->assertSame('Updated legal holder', $account->owner_holder);
+        $this->assertSame('hq', $account->owner_type);
+        $this->assertNull($account->school_id);
+        $this->assertFalse(app(CentralFinanceFundAccountSchoolAvailabilityService::class)->isAccountAvailableForSchool($account, 1));
+        $this->assertSame(123.0, app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account));
+        $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->count());
+        $audit = \App\Models\CentralFinanceDocumentAudit::on('mysql')->where('document_id', $account->id)->where('action', 'master_data_updated')->sole();
+        $this->assertSame('BOWEN EDUCATION COMPANY LIMITED', $audit->before_values['owner_holder']);
+        $this->assertSame('Updated legal holder', $audit->after_values['owner_holder']);
+        $this->assertSame('Verified legal account name', $audit->reason);
+        $admin->updateMasterData($this->head, null, $account, [
+            'account_name' => 'Central Bank', 'account_type' => 'bank', 'reason' => 'Unrelated metadata update',
+        ]);
+        $this->assertSame('Updated legal holder', $account->fresh()->owner_holder);
+        try {
+            $admin->updateMasterData($this->head, null, $account, [
+                'account_name' => 'Central Bank', 'account_type' => 'bank',
+                'owner_holder' => str_repeat('x', 192), 'reason' => 'Invalid holder',
+            ]);
+            $this->fail('Overlength holder must be rejected server-side.');
+        } catch (ValidationException $expected) {
+            $this->assertArrayHasKey('owner_holder', $expected->errors());
+            $this->assertSame('Updated legal holder', $account->fresh()->owner_holder);
+        }
+        (require database_path('migrations/2026_09_18_000002_add_owner_holder_to_central_finance_fund_accounts.php'))->up();
+        $this->assertSame('Updated legal holder', $account->fresh()->owner_holder);
     }
 
     public function test_group_account_requires_allocations_and_exposes_one_physical_balance_with_school_activity_isolation(): void

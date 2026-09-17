@@ -36,15 +36,17 @@ final class CentralFinanceOperatingDocumentService
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $description, $reimbursedBy): CentralFinanceExpense {
             $this->schools->assertCanOperate($actor, $schoolId);
             $this->accounts->assertCanOperate($actor, $account, $schoolId);
+            $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
             $key = $this->key('expense', $schoolId, $idempotencyReference);
-            $existing = CentralFinanceExpense::on('mysql')->where('idempotency_key', $key)->first();
+            $existing = CentralFinanceExpense::on('mysql')->withTrashed()->where('idempotency_key', $key)->lockForUpdate()->first();
             if ($existing) {
+                $this->assertReplayIdentity($existing, $account, $categoryId, $amount, $referenceNo, $paymentMethod, $occurredAt);
                 return $existing;
             }
 
             $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
             $this->availability->assertAccountAvailableForSchool($account, $schoolId);
-            $this->category($schoolId, $categoryId, CentralFinanceCategory::EXPENSE);
+            $category = $this->category($schoolId, $categoryId, CentralFinanceCategory::EXPENSE, (int) $account->group_id);
             $this->assertReferenceFree(CentralFinanceExpense::class, $schoolId, $referenceNo);
             $values = [
                 'school_id' => $schoolId, 'category_id' => $categoryId,
@@ -55,7 +57,7 @@ final class CentralFinanceOperatingDocumentService
             ];
             if ($reimbursedBy !== null && trim($reimbursedBy) !== '') $values['reimbursed_by'] = trim($reimbursedBy);
             $expense = CentralFinanceExpense::on('mysql')->create($values);
-            $this->ledger->recordOperatingExpense($actor, $account, $schoolId, 'central_expense', $expense->expense_uuid, $amount, $occurredAt, $referenceNo);
+            $this->ledger->recordOperatingExpense($actor, $account, $schoolId, 'central_expense', $expense->expense_uuid, $amount, $occurredAt, $referenceNo, $category->type === CentralFinanceCategory::EXPENSE);
             $this->audits->record($actor, $expense, 'expense', 'created', null, null, $this->snapshot($expense));
 
             return $expense;
@@ -70,15 +72,17 @@ final class CentralFinanceOperatingDocumentService
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $account, $amount, $paymentMethod, $occurredAt, $idempotencyReference, $referenceNo, $payer, $description): CentralFinanceOtherIncome {
             $this->schools->assertCanOperate($actor, $schoolId);
             $this->accounts->assertCanOperate($actor, $account, $schoolId);
+            $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
             $key = $this->key('other_income', $schoolId, $idempotencyReference);
-            $existing = CentralFinanceOtherIncome::on('mysql')->where('idempotency_key', $key)->first();
+            $existing = CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('idempotency_key', $key)->lockForUpdate()->first();
             if ($existing) {
+                $this->assertReplayIdentity($existing, $account, $categoryId, $amount, $referenceNo, $paymentMethod, $occurredAt);
                 return $existing;
             }
 
             $account = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($account->id);
             $this->availability->assertAccountAvailableForSchool($account, $schoolId);
-            $this->category($schoolId, $categoryId, CentralFinanceCategory::INCOME);
+            $category = $this->category($schoolId, $categoryId, CentralFinanceCategory::INCOME, (int) $account->group_id);
             $this->assertReferenceFree(CentralFinanceOtherIncome::class, $schoolId, $referenceNo);
             $income = CentralFinanceOtherIncome::on('mysql')->create([
                 'school_id' => $schoolId, 'category_id' => $categoryId,
@@ -88,7 +92,7 @@ final class CentralFinanceOperatingDocumentService
                 'currency' => strtoupper($account->currency), 'amount' => $amount,
                 'description' => $description, 'created_by' => $actor->id,
             ]);
-            $this->ledger->recordOperatingIncome($actor, $account, $schoolId, 'central_other_income', $income->income_uuid, $amount, $occurredAt, $referenceNo);
+            $this->ledger->recordOperatingIncome($actor, $account, $schoolId, 'central_other_income', $income->income_uuid, $amount, $occurredAt, $referenceNo, $category->type === CentralFinanceCategory::INCOME);
             $this->audits->record($actor, $income, 'other_income', 'created', null, null, $this->snapshot($income));
 
             return $income;
@@ -110,7 +114,8 @@ final class CentralFinanceOperatingDocumentService
             $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($expense->fund_account_id), (int) $expense->school_id);
             $before = $this->snapshot($expense);
             if (array_key_exists('category_id', $changes)) {
-                $this->category($expense->school_id, (int) $changes['category_id'], CentralFinanceCategory::EXPENSE);
+                $replacement = $this->category($expense->school_id, (int) $changes['category_id'], CentralFinanceCategory::EXPENSE, (int) CentralFinanceFundAccount::findOrFail($expense->fund_account_id)->group_id);
+                $this->assertSameClassification((int) $expense->category_id, $replacement);
                 $expense->category_id = (int) $changes['category_id'];
             }
             if (array_key_exists('description', $changes)) {
@@ -145,7 +150,8 @@ final class CentralFinanceOperatingDocumentService
             $this->accounts->assertCanOperate($actor, CentralFinanceFundAccount::on('mysql')->findOrFail($income->fund_account_id), (int) $income->school_id);
             $before = $this->snapshot($income);
             if (array_key_exists('category_id', $changes)) {
-                $this->category($income->school_id, (int) $changes['category_id'], CentralFinanceCategory::INCOME);
+                $replacement = $this->category($income->school_id, (int) $changes['category_id'], CentralFinanceCategory::INCOME, (int) CentralFinanceFundAccount::findOrFail($income->fund_account_id)->group_id);
+                $this->assertSameClassification((int) $income->category_id, $replacement);
                 $income->category_id = (int) $changes['category_id'];
             }
             if (array_key_exists('payer', $changes)) {
@@ -206,11 +212,34 @@ final class CentralFinanceOperatingDocumentService
         });
     }
 
-    private function category(int $schoolId, int $categoryId, string $type): CentralFinanceCategory
+    private function category(int $schoolId, int $categoryId, string $type, int $groupId): CentralFinanceCategory
     {
-        return CentralFinanceCategory::on('mysql')->where([
-            'id' => $categoryId, 'school_id' => $schoolId, 'type' => $type, 'is_active' => true,
-        ])->firstOrFail();
+        $query = CentralFinanceCategory::on('mysql')->availableForSchool($schoolId)
+            ->forCashDirection($type)->where(['id' => $categoryId, 'is_active' => true]);
+        app(CentralFinanceDataIsolationService::class)->apply($query, 'category');
+        $category = $query->lockForUpdate()->firstOrFail();
+        if ($category->group_id && (int) $category->group_id !== $groupId) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('The Account and Fund Account must belong to the same authorized Finance Group.');
+        }
+        return $category;
+    }
+
+    private function assertSameClassification(int $oldId, CentralFinanceCategory $replacement): void
+    {
+        if (CentralFinanceCategory::on('mysql')->findOrFail($oldId)->type !== $replacement->type) {
+            throw new InvalidArgumentException('A posted cash movement cannot silently change its Account Type. Use an audited reversal and replacement.');
+        }
+    }
+
+    private function assertReplayIdentity(CentralFinanceExpense|CentralFinanceOtherIncome $existing, CentralFinanceFundAccount $account, int $categoryId, float $amount, ?string $referenceNo, string $paymentMethod, CarbonImmutable $occurredAt): void
+    {
+        if ($existing->trashed() || (int) $existing->fund_account_id !== (int) $account->id
+            || (int) $existing->category_id !== $categoryId || abs((float) $existing->amount - $amount) >= 0.0001
+            || $existing->reference_no !== $referenceNo || $existing->currency !== $account->currency
+            || $existing->payment_method !== $paymentMethod
+            || ($existing instanceof CentralFinanceExpense ? $existing->expense_date : $existing->income_date)->toDateString() !== $occurredAt->toDateString()) {
+            throw new InvalidArgumentException('The idempotency reference is already reserved for a different immutable cash movement.');
+        }
     }
 
     /** @param class-string<CentralFinanceExpense|CentralFinanceOtherIncome> $class */

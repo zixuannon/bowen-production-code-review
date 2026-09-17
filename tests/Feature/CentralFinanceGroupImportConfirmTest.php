@@ -525,7 +525,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertInstanceOf(View::class, $workspace);
         $this->assertSame('central-finance.group-import.index', $workspace->name());
         $this->get(route('central-finance.group-import.template', ['finance_group_id' => $this->group->id]))
-            ->assertDownload('group-finance-import-template-v2.2.xlsx');
+            ->assertDownload('group-finance-import-template-v3.xlsx');
 
         $schoolActor = $this->schoolOnlyActor();
         $batch = CentralFinanceGroupImportBatch::on('mysql')->create([
@@ -569,6 +569,168 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         ]);
 
         return CentralFinanceUser::on('mysql')->findOrFail(101);
+    }
+
+    public function test_v3_one_central_account_two_allocations_preview_zero_write_and_confirm_exactly_once(): void
+    {
+        $category = $this->centralCategory('income', '4001', 'Tuition');
+        $this->zixuanAccount->update(['owner_type' => 'hq', 'school_id' => null]);
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->create([
+            'fund_account_id' => $this->zixuanAccount->id, 'school_id' => 2,
+            'effective_from' => '2026-09-01', 'status' => 'active', 'is_active' => true,
+            'assignment_reason' => 'Disposable multi-school allocation',
+        ]);
+        $one = $this->v3Row($category, 1, 'V3-IN-1', 500, null);
+        $two = $this->v3Row($category, 2, 'V3-IN-2', 120, null);
+        $batch = $this->preview([$one, $two, $one]);
+        $this->assertSame(2, $batch->new_rows);
+        $this->assertSame(1, $batch->duplicate_rows);
+        $this->assertSame(0, DB::table('central_finance_ledger_entries')->count());
+        $this->assertSame(0, CentralFinanceOtherIncome::count());
+        $service = app(CentralFinanceGroupImportService::class);
+        $service->confirm($this->head, $batch->token);
+        try { $service->confirm($this->head, $batch->token); $this->fail('Completed batch must reject a second confirm.'); }
+        catch (InvalidArgumentException) { /* no second write */ }
+        $this->assertSame(2, CentralFinanceOtherIncome::count());
+        $this->assertSame(2, DB::table('central_finance_ledger_entries')->count());
+        $this->assertSame(1, CentralFinanceCategory::where('category_code', '4001')->count());
+        $balances = app(\App\Services\CentralFinanceFundAccountBalanceService::class);
+        $this->assertSame(620.0, $balances->currentBalance($this->zixuanAccount));
+        $this->assertSame(500.0, $balances->schoolActivity($this->zixuanAccount, 1)['money_in']);
+        $this->assertSame(120.0, $balances->schoolActivity($this->zixuanAccount, 2)['money_in']);
+        $this->assertSame(0, DB::table('central_finance_payments')->count());
+        $this->assertSame(0, DB::table('central_finance_receipts')->count());
+    }
+
+    public function test_v3_all_five_types_preserve_cash_and_operating_distinction_and_void_snapshot(): void
+    {
+        foreach (['asset', 'liability', 'equity', 'income', 'expense'] as $offset => $type) {
+            $category = $this->centralCategory($type, '010'.$offset, ucfirst($type));
+            $out = in_array($type, ['asset', 'expense'], true);
+            $batch = $this->preview([$this->v3Row($category, 1, 'V3-TYPE-'.$type, $out ? null : 100, $out ? 100 : null)]);
+            $this->assertSame(0, $batch->error_rows, json_encode($batch->rows->pluck('error_message')));
+            app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+            $this->assertSame('010'.$offset, $category->fresh()->category_code);
+        }
+        $this->assertEquals(300, DB::table('central_finance_ledger_entries')->sum('money_in'));
+        $this->assertEquals(200, DB::table('central_finance_ledger_entries')->sum('money_out'));
+        $this->assertEquals(100, DB::table('central_finance_ledger_entries')->sum('operating_income'));
+        $this->assertEquals(100, DB::table('central_finance_ledger_entries')->sum('operating_expense'));
+        $asset = CentralFinanceExpense::where('reference_no', 'V3-TYPE-asset')->firstOrFail();
+        app(CentralFinanceOperatingDocumentService::class)->voidExpense($this->head, $asset->id, 'Disposable asset reversal', CarbonImmutable::parse('2026-09-18'));
+        $this->assertEquals(100, DB::table('central_finance_ledger_entries')->sum('operating_expense'));
+        $this->assertEquals(400, DB::table('central_finance_ledger_entries')->sum('money_in'));
+        // Asset outgoing void adds cash back but never reduces operating expense.
+        $this->assertEquals(100, DB::table('central_finance_ledger_entries')->where('source_type','central_expense_void')->sum('money_in'));
+    }
+
+    public function test_v3_rejects_tampered_identity_unallocated_account_and_invalid_amount_without_posting(): void
+    {
+        $category = $this->centralCategory('income', '0101', 'Tuition');
+        $base = $this->v3Row($category, 1, 'V3-TAMPER', 50, null);
+        $headings = \App\Exports\CentralFinanceGroupImportTemplateV3Export::HEADINGS;
+        foreach ([[6,'expense'],[8,'Wrong Name'],[10,'Wrong Fund'],[7,'101'],[12,-1],[12,0],[13,0],[13,20],[1,'2026-02-30']] as [$index,$value]) {
+            $row = $base; $row[$headings[$index]] = $value;
+            $batch = $this->preview([$row]);
+            $this->assertSame(1, $batch->error_rows, 'Tamper index '.$index);
+        }
+        DB::table('central_finance_category_school_allocations')->where('category_id', $category->id)->where('school_id',1)->update(['is_active'=>false]);
+        $this->assertSame(1, $this->preview([$base])->error_rows);
+        $this->assertSame(0, DB::table('central_finance_ledger_entries')->count());
+        $this->assertSame(0, CentralFinanceOtherIncome::count());
+    }
+
+    public function test_v3_same_file_conflicting_reference_is_blocked_before_financial_write(): void
+    {
+        $category = $this->centralCategory('income', '4001', 'Tuition');
+        $batch = $this->preview([$this->v3Row($category,1,'V3-CONFLICT',10,null), $this->v3Row($category,1,'V3-CONFLICT',20,null)]);
+        $this->assertSame(1, $batch->conflict_rows);
+        try { app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token); $this->fail('Conflict confirmed'); }
+        catch (InvalidArgumentException) { $this->assertSame(0, DB::table('central_finance_ledger_entries')->count()); }
+    }
+
+    private function centralCategory(string $type, string $code, string $name): CentralFinanceCategory
+    {
+        if (!Schema::connection('mysql')->hasColumn('central_finance_categories', 'group_id')) {
+            (require database_path('migrations/2026_09_18_000001_add_central_chart_of_accounts.php'))->up();
+        }
+        $category = CentralFinanceCategory::create(['group_id'=>$this->group->id, 'school_id'=>null, 'type'=>$type,
+            'category_code'=>$code, 'name'=>$name, 'is_active'=>true]);
+        foreach ([1,2] as $school) {
+            DB::table('central_finance_category_school_allocations')->insert(['category_id'=>$category->id,'school_id'=>$school,'is_active'=>true,'created_at'=>now(),'updated_at'=>now()]);
+        }
+        return $category;
+    }
+
+    public function test_v3_changed_posting_date_or_method_and_voided_replay_are_conflicts(): void
+    {
+        $category = $this->centralCategory('income', '4001', 'Tuition');
+        $row = $this->v3Row($category, 1, 'V3-REPLAY', 50, null);
+        $batch = $this->preview([$row]);
+        app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+        $h = \App\Exports\CentralFinanceGroupImportTemplateV3Export::HEADINGS;
+        foreach ([[1,'2026-09-16'],[11,'Cheque']] as [$index,$value]) {
+            $changed = $row; $changed[$h[$index]] = $value;
+            $this->assertSame(1, $this->preview([$changed])->conflict_rows);
+        }
+        $source = CentralFinanceOtherIncome::where('reference_no','V3-REPLAY')->firstOrFail();
+        app(CentralFinanceOperatingDocumentService::class)->voidOtherIncome($this->head,$source->id,'Disposable reversal',CarbonImmutable::parse('2026-09-18'));
+        $this->assertSame(1, $this->preview([$row])->conflict_rows);
+        $this->assertSame(2, DB::table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_v3_downloaded_workbook_formula_autofill_upload_ignores_blank_rows_and_confirms(): void
+    {
+        $category = $this->centralCategory('income', '0101', 'Tuition');
+        $export = new \App\Exports\CentralFinanceGroupImportTemplateV3Export(
+            [['code'=>'SCH-ZIX','name'=>'Zixuan QA']],
+            [['code'=>$this->zixuanAccount->account_code,'name'=>$this->zixuanAccount->account_name,'school_code'=>'SCH-ZIX','account_type'=>'cash','owner_type'=>'school','currency'=>'MMK']],
+            [['category_code'=>'0101','name'=>'Tuition','type'=>'income','school_code'=>'SCH-ZIX']],
+        );
+        $path = tempnam(sys_get_temp_dir(), 'coa_v3_roundtrip_');
+        try {
+            file_put_contents($path, Excel::raw($export, ExcelFormat::XLSX));
+            $workbook = IOFactory::load($path);
+            $sheet = $workbook->getSheet(0);
+            foreach (['B2'=>'2026-09-17','C2'=>'Zixuan QA','E2'=>'Handler','F2'=>'Tuition cash flow','H2'=>'0101',
+                'J2'=>$this->zixuanAccount->account_code,'L2'=>'Cash','O2'=>'V3-XLSX'] as $cell=>$value) {
+                $sheet->setCellValueExplicit($cell,$value,\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+            $sheet->setCellValue('M2',25);
+            IOFactory::createWriter($workbook,'Xlsx')->save($path);
+            $workbook->disconnectWorksheets();
+            $batch = app(CentralFinanceGroupImportService::class)->previewUploaded($this->head,$this->group,new UploadedFile($path,'v3.xlsx',null,null,true));
+            $this->assertSame(1,$batch->total_rows);
+            $this->assertSame(0,$batch->error_rows,json_encode($batch->rows->pluck('error_message')));
+            $this->assertSame('0101',$batch->rows->first()->normalized_data['category_code']);
+            $this->assertSame(0,DB::table('central_finance_ledger_entries')->count());
+            app(CentralFinanceGroupImportService::class)->confirm($this->head,$batch->token);
+            $this->assertSame(1,DB::table('central_finance_ledger_entries')->count());
+        } finally { @unlink($path); }
+    }
+
+    public function test_direct_operating_document_rejects_same_school_account_from_other_group(): void
+    {
+        $category = $this->centralCategory('income', '4001', 'Tuition');
+        $other = FinanceGroup::create(['code'=>'OTHER', 'name'=>'Other group', 'status'=>'active']);
+        DB::table('finance_group_schools')->insert(['group_id'=>$other->id,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+        // Same-school allocation alone must not cross a Finance Group boundary.
+        DB::table('central_finance_categories')->where('id',$category->id)->update(['group_id'=>$other->id]);
+        try {
+            app(CentralFinanceOperatingDocumentService::class)->createOtherIncome($this->head,1,$category->id,$this->zixuanAccount,10,'Cash',CarbonImmutable::parse('2026-09-17'),'V3-CROSS-GROUP');
+            $this->fail('Cross-group account accepted');
+        } catch (AuthorizationException) {
+            $this->assertSame(0, CentralFinanceOtherIncome::count());
+            $this->assertSame(0, DB::table('central_finance_ledger_entries')->count());
+        }
+    }
+
+    private function v3Row(CentralFinanceCategory $category, int $school, string $reference, ?float $incoming, ?float $outgoing): array
+    {
+        return array_combine(\App\Exports\CentralFinanceGroupImportTemplateV3Export::HEADINGS,
+            [1, '2026-09-17', $school === 1 ? 'Zixuan QA' : 'Times QA', $school === 1 ? 'SCH-ZIX' : 'SCH-TIM',
+                'Disposable handler', 'V3 cash movement', $category->type, $category->category_code, $category->name,
+                $this->zixuanAccount->account_code, $this->zixuanAccount->account_name, 'Cash', $incoming, $outgoing, $reference, '']);
     }
 
     /** @param list<array<string,mixed>> $rows */

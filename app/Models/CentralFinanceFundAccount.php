@@ -33,7 +33,7 @@ class CentralFinanceFundAccount extends Model
     protected $fillable = [
         'account_uuid', 'group_id', 'school_id', 'owner_type', 'account_code',
         'account_name', 'currency', 'opening_balance', 'is_active', 'account_type',
-        'bank_name', 'masked_account_identifier', 'custodian_user_id', 'status',
+        'bank_name', 'owner_holder', 'masked_account_identifier', 'custodian_user_id', 'status',
         'notes', 'status_reason', 'status_changed_by', 'status_changed_at',
     ];
 

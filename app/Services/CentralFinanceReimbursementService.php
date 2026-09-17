@@ -7,6 +7,8 @@ use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceReimbursementRequest;
 use App\Models\CentralFinanceUser;
+use App\Models\FinanceGroupUser;
+use Illuminate\Auth\Access\AuthorizationException;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -33,10 +35,16 @@ final class CentralFinanceReimbursementService
 
         return DB::connection('mysql')->transaction(function () use ($actor, $schoolId, $categoryId, $amount, $currency, $idempotencyReference, $reason, $referenceNo, $description): CentralFinanceReimbursementRequest {
             $this->schools->assertCanOperate($actor, $schoolId);
-            CentralFinanceCategory::on('mysql')->where([
-                'id' => $categoryId, 'school_id' => $schoolId,
-                'type' => CentralFinanceCategory::EXPENSE, 'is_active' => true,
-            ])->firstOrFail();
+            $categoryQuery = CentralFinanceCategory::on('mysql')->availableForSchool($schoolId)
+                ->forCashDirection(CentralFinanceCategory::EXPENSE)->where(['id' => $categoryId, 'is_active' => true]);
+            app(CentralFinanceDataIsolationService::class)->apply($categoryQuery, 'category');
+            $category = $categoryQuery->firstOrFail();
+            if ($category->group_id !== null) {
+                $groupUser = FinanceGroupUser::on('mysql')->where(['group_id'=>$category->group_id,'central_user_id'=>$actor->id,'status'=>'active'])->first();
+                if (!$groupUser || !app(FinanceGroupScopeService::class)->canAccessSchool($groupUser, $schoolId, 'operate_finance')) {
+                    throw new AuthorizationException('Reimbursement requires active operating scope in the Chart Account Finance Group and School.');
+                }
+            }
             $key = hash('sha256', 'reimbursement|'.$schoolId.'|'.$idempotencyReference);
             $existing = CentralFinanceReimbursementRequest::on('mysql')->where('idempotency_key', $key)->first();
             if ($existing) {

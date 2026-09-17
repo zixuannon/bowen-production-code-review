@@ -307,7 +307,7 @@ final class CentralFinanceDataIsolationService
         // HQ/shared Fund Accounts intentionally have no owning school. Their
         // usable School boundary is enforced by the allocation service, while
         // the classification itself remains global to the shared account.
-        if ($schoolId === null && in_array($subjectType, ['fund_account', 'central_user', 'group_import_batch'], true)) {
+        if ($schoolId === null && in_array($subjectType, ['fund_account', 'category', 'central_user', 'group_import_batch'], true)) {
             return true;
         }
 
@@ -359,7 +359,7 @@ final class CentralFinanceDataIsolationService
             throw new AuthorizationException('The classified record does not belong to the authorized School.');
         }
         if ($tenantSubject === null && $recordSchoolId === null && $subjectType !== 'school') {
-            $groupColumn = $subjectType === 'fund_account' ? 'group_id' : ($subjectType === 'group_import_batch' ? 'finance_group_id' : null);
+            $groupColumn = in_array($subjectType, ['fund_account', 'category'], true) ? 'group_id' : ($subjectType === 'group_import_batch' ? 'finance_group_id' : null);
             $groupId = $groupColumn ? (int) ($row->{$groupColumn} ?? 0) : 0;
             $isGroupSchool = $subjectType === 'central_user'
                 ? DB::connection('mysql')->table('central_finance_user_school_scopes')->where([

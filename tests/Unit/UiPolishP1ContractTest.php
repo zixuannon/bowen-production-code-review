@@ -101,7 +101,7 @@ final class UiPolishP1ContractTest extends TestCase
         $this->assertStringContainsString('label for="group-import-file"', $groupImport);
         $this->assertStringContainsString('id="group-import-file"', $groupImport);
 
-        foreach (['From', 'To', 'School', 'Fund Account', 'Direction', 'Operating', 'Category', 'Operator'] as $label) {
+        foreach (['From', 'To', 'School', 'Fund Account', 'Direction', 'Operating', 'Chart Account', 'Operator'] as $label) {
             $this->assertStringContainsString("aria-label=\"{{ __('{$label}') }}\"", $workspace);
         }
     }

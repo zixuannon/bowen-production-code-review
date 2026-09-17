@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Exports\CentralFinanceGroupImportTemplateV2Export;
-use App\Imports\CentralFinanceGroupImportFormulaReader;
+use App\Exports\CentralFinanceGroupImportTemplateV3Export;
 use App\Models\CentralFinanceCategory;
 use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceDocumentAudit;
@@ -24,7 +24,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
-use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 /**
@@ -34,7 +34,7 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
  */
 final class CentralFinanceGroupImportService
 {
-    public const SCHEMA_VERSION = 'group-finance-v2.2';
+    public const SCHEMA_VERSION = 'group-finance-v3';
     private const MAX_FILE_SIZE = 5_242_880;
 
     public function __construct(
@@ -135,33 +135,47 @@ final class CentralFinanceGroupImportService
             $accounts = $accountsQuery->get()
                 ->filter(fn (CentralFinanceFundAccount $account): bool => $this->isFormalTemplateLookup($account->account_code, $account->account_name))
                 ->flatMap(function (CentralFinanceFundAccount $account) use ($actor, $schoolCodes): array {
+                    $totals = $account->ledgerEntries()->selectRaw('COALESCE(SUM(money_in),0) as incoming, COALESCE(SUM(money_out),0) as outgoing')->first();
                     $base = ['code' => $account->account_code, 'name' => $account->account_name,
-                        'account_type' => $account->account_type, 'owner_type' => $account->owner_type, 'currency' => $account->currency];
+                        'account_type' => $account->account_type, 'owner_type' => $account->owner_type,
+                        'owner_holder' => (string) $account->owner_holder, 'currency' => $account->currency,
+                        'opening_balance' => (float) $account->opening_balance,
+                        'incoming' => (float) $totals->incoming, 'outgoing' => (float) $totals->outgoing];
                     return $schoolCodes->keys()->filter(function ($schoolId) use ($actor, $account): bool {
                         if (!$this->accountAvailability->isAccountAvailableForSchool($account, (int) $schoolId)) return false;
                         return $this->accountScopes->canOperate($actor, $account, (int) $schoolId);
                     })
-                        ->map(fn ($schoolId) => $base + ['school_code' => $schoolCodes->get($schoolId)])->values()->all();
+                        ->map(function ($schoolId) use ($base, $account, $schoolCodes): array {
+                            $activity = $this->balances->schoolActivity($account, (int) $schoolId);
+                            return $base + ['school_code' => $schoolCodes->get($schoolId),
+                                'school_incoming' => $activity['money_in'], 'school_outgoing' => $activity['money_out']];
+                        })->values()->all();
                 })
                 ->values()
                 ->all();
         }
 
         $categoriesQuery = CentralFinanceCategory::on('mysql')
-            ->whereIn('school_id', $schoolCodes->keys())
+            ->forSchools($schoolCodes->keys()->all())
             ->where('is_active', true)
             ->orderBy('school_id')
             ->orderBy('type')
             ->orderBy('category_code');
+        // V3 publishes reviewed Group definitions only. Unmapped legacy IDs
+        // remain resolvable by historical details and the V2 parser, never
+        // silently copied/renumbered into a new business chart.
+        if (\Illuminate\Support\Facades\Schema::connection('mysql')->hasColumn('central_finance_categories', 'group_id')) {
+            $categoriesQuery->where('group_id', $group->id);
+        }
         $this->dataIsolation->apply($categoriesQuery, 'category');
-        $categories = $categoriesQuery->get(['school_id', 'type', 'category_code', 'name'])
+        $categories = $categoriesQuery->get()
             ->filter(fn (CentralFinanceCategory $category): bool => $this->isFormalTemplateLookup($category->category_code, $category->name))
-            ->map(static fn (CentralFinanceCategory $category): array => [
-                'school_code' => $schoolCodes->get((int) $category->school_id),
-                'type' => $category->type,
-                'category_code' => $category->category_code,
-                'name' => $category->name,
-            ])
+            ->filter(fn (CentralFinanceCategory $category): bool => !str_starts_with((string) $category->category_code, 'CATEGORY-'))
+            ->filter(fn (CentralFinanceCategory $category): bool => !$category->group_id || (int) $category->group_id === (int) $group->id)
+            ->flatMap(fn (CentralFinanceCategory $category) => $schoolCodes->keys()
+                ->filter(fn ($schoolId) => $category->availableToSchool((int) $schoolId))
+                ->map(fn ($schoolId) => ['school_code' => $schoolCodes->get($schoolId), 'type' => $category->type,
+                    'category_code' => (string) $category->category_code, 'name' => $category->name]))
             ->values()
             ->all();
 
@@ -203,6 +217,7 @@ final class CentralFinanceGroupImportService
         try {
             return DB::connection('mysql')->transaction(function () use ($actor, $token): CentralFinanceGroupImportBatch {
                 $batch = CentralFinanceGroupImportBatch::on('mysql')->where('token', $token)->lockForUpdate()->firstOrFail();
+                if ((int) $batch->uploaded_by !== (int) $actor->id) throw new AuthorizationException('Only the authorized uploader can confirm this preview.');
                 $this->dataIsolation->assertProduction('group_import_batch', (int) $batch->id);
                 if ($batch->status !== 'previewed' || $batch->error_rows > 0 || $batch->conflict_rows > 0) {
                     throw new InvalidArgumentException('This Group Import preview is not eligible for confirmation.');
@@ -226,6 +241,15 @@ final class CentralFinanceGroupImportService
 
                 foreach ($rows as $row) {
                     $entry = $validated[$row->id]; $data = $entry['data'];
+                    // Recheck after prior rows have been posted in this same
+                    // transaction. Repeated file references resolve to the
+                    // existing source, while conflicting duplicates abort all.
+                    $ignoredProjection = [];
+                    $current = $this->validate($actor, $groupUser, $data, $ignoredProjection);
+                    if (!in_array($current['result_status'], ['New', 'Duplicate'], true)) {
+                        throw new GroupImportConfirmException($row, $current['error_code'] ?? 'REVALIDATION_FAILED', $current['error_message'] ?? 'Import identity changed.');
+                    }
+                    $entry['status'] = $current['result_status'];
                     // Only a revalidated Duplicate has a pre-existing canonical
                     // source. New rows obtain theirs exclusively from the
                     // canonical operating-document service below.
@@ -281,10 +305,24 @@ final class CentralFinanceGroupImportService
         $groupUser = $this->assertCanOperateGroup($actor, $group);
         $projected = [];
         $prepared = [];
+        $seen = [];
 
         foreach ($rows as $offset => $row) {
             $data = $this->normaliseRow($row);
             $result = $this->validate($actor, $groupUser, $data, $projected);
+            if ($result['idempotency_key'] && in_array($result['result_status'], ['New', 'Duplicate'], true)) {
+                $identity = [$data['fund_account_id'], $data['category_id'], $data['currency'], $data['amount'], $data['transaction_date'], $data['payment_method']];
+                $key = $result['idempotency_key'];
+                if (isset($seen[$key])) {
+                    $same = $seen[$key] === $identity;
+                    $result = ['result_status' => $same ? 'Duplicate' : 'Conflict',
+                        'error_code' => $same ? null : 'REFERENCE_CONFLICT',
+                        'error_message' => $same ? null : 'This file repeats a reference with a different immutable financial identity.',
+                        'idempotency_key' => $key];
+                } else {
+                    $seen[$key] = $identity;
+                }
+            }
             $prepared[] = array_merge(['row_number' => $offset + 2, 'data' => $data], $result);
         }
 
@@ -344,12 +382,21 @@ final class CentralFinanceGroupImportService
     /** @return list<array<string,mixed>> */
     private function rowsFromFile(UploadedFile $file): array
     {
-        $sheet = Excel::toArray(new CentralFinanceGroupImportFormulaReader(), $file)[0] ?? [];
+        // Keep reference sheets alive while evaluating the Import formulas.
+        // Laravel Excel's all-sheet toArray disconnects completed sheets,
+        // which breaks V3 summaries that refer back to Import. Only the
+        // authoritative first sheet is an import payload; summaries are not.
+        $workbook = IOFactory::load($file->getRealPath());
+        try {
+            $sheet = $workbook->getSheet(0)->toArray(null, true, false, false);
+        } finally {
+            $workbook->disconnectWorksheets();
+        }
         if (count($sheet) < 2) throw new InvalidArgumentException('The Group Finance Import must contain a heading row and at least one data row.');
         $headings = array_map(static fn ($value) => trim((string) $value), array_shift($sheet));
-        if (!in_array($headings, [CentralFinanceGroupImportTemplateV2Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::LEGACY_HEADINGS], true)) throw new InvalidArgumentException('Group Finance Import headings do not match Template V2.2 or its supported V2 legacy contract.');
+        if (!in_array($headings, [CentralFinanceGroupImportTemplateV3Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::LEGACY_HEADINGS], true)) throw new InvalidArgumentException('Group Finance Import headings must match Template V3 or the supported legacy V2 contract.');
         return array_values(array_filter(
-            array_map(static fn (array $values): array => array_combine($headings, array_pad($values, count($headings), null)), $sheet),
+            array_map(static fn (array $values): array => array_combine($headings, array_pad(array_slice($values, 0, count($headings)), count($headings), null)), $sheet),
             fn (array $row): bool => $this->containsUserSuppliedValue($row),
         ));
     }
@@ -365,6 +412,11 @@ final class CentralFinanceGroupImportService
      */
     private function containsUserSuppliedValue(array $row): bool
     {
+        if (array_key_exists(CentralFinanceGroupImportTemplateV3Export::HEADINGS[0], $row)) {
+            // Derived identity cells are never evidence of an entered row.
+            $editable = [1, 2, 4, 5, 7, 9, 11, 12, 13, 14, 15];
+            return collect($editable)->contains(fn ($index): bool => trim((string) ($row[CentralFinanceGroupImportTemplateV3Export::HEADINGS[$index]] ?? '')) !== '');
+        }
         foreach (['序号', 'School Code', 'Fund Account Type', 'Account Owner', 'Currency'] as $derivedHeading) {
             $value = $row[$derivedHeading] ?? null;
             if (is_string($value) && str_starts_with(trim($value), '=')) {
@@ -378,6 +430,16 @@ final class CentralFinanceGroupImportService
     /** @param array<string,mixed> $row @return array<string,mixed> */
     private function normaliseRow(array $row): array
     {
+        if (array_key_exists(CentralFinanceGroupImportTemplateV3Export::HEADINGS[0], $row)) {
+            $cells = array_map(fn ($heading) => $row[$heading] ?? null, CentralFinanceGroupImportTemplateV3Export::HEADINGS);
+            $normal = $this->normaliseRow(['School Code'=>$cells[3], '校区'=>$cells[2], '日期'=>$cells[1],
+                '报销人'=>$cells[4], '摘要'=>$cells[5], 'Category Code'=>$cells[7], 'Fund Account Code'=>$cells[9],
+                '付款方式'=>$cells[11], '收入'=>$cells[12], '支出'=>$cells[13], 'Reference / 单据号'=>$cells[14], '备注'=>$cells[15]]);
+            $normal['document_type'] = $normal['income'] !== null && $normal['income'] > 0 && $normal['expense'] === null
+                ? 'other_income' : ($normal['expense'] !== null && $normal['expense'] > 0 && $normal['income'] === null ? 'expense' : null);
+            return $normal + ['v3' => true, 'category_type' => strtolower(trim((string) $cells[6])),
+                'category_name' => trim((string) $cells[8]), 'fund_account_name' => trim((string) $cells[10])];
+        }
         $income = $this->decimal($row['收入'] ?? null); $expense = $this->decimal($row['支出'] ?? null);
         $type = $income !== null && $income > 0 && ($expense === null || $expense == 0.0) ? 'other_income' : (($expense !== null && $expense > 0 && ($income === null || $income == 0.0)) ? 'expense' : null);
         return [
@@ -410,16 +472,32 @@ final class CentralFinanceGroupImportService
         if (($data['income'] ?? 0) < 0 || ($data['expense'] ?? 0) < 0) return $error('AMOUNT_INVALID', '收入 and 支出 cannot be negative.');
         if (!in_array($data['payment_method'], FeesPaymentService::PAYMENT_METHODS, true)) return $error('PAYMENT_METHOD_INVALID', '付款方式 must be selected from the supported canonical list.');
         if (!preg_match('/^[A-Za-z0-9_.:-]{1,100}$/', $data['reference_no'])) return $error('REFERENCE_INVALID', 'Reference / 单据号 is required and invalid.');
-        try { CarbonImmutable::parse((string) $data['transaction_date'], 'Asia/Yangon'); CentralFinanceCurrency::assertCanonical($data['currency']); } catch (\Throwable) { return $error('DATE_OR_CURRENCY_INVALID', '日期 or Currency is invalid.'); }
+        try {
+            $date = CarbonImmutable::createFromFormat('!Y-m-d', (string) $data['transaction_date'], 'Asia/Yangon');
+            if (!$date || $date->format('Y-m-d') !== $data['transaction_date']) throw new InvalidArgumentException('Invalid date.');
+            if (empty($data['v3'])) CentralFinanceCurrency::assertCanonical($data['currency']);
+        } catch (\Throwable) { return $error('DATE_OR_CURRENCY_INVALID', '日期 must be a real YYYY-MM-DD date and Currency must be canonical.'); }
         $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->first();
         if (!$account || $data['fund_account_code'] !== $account->account_code) return $error('FUND_ACCOUNT_UNKNOWN', 'Fund Account Code must be an exact active canonical account code.');
         if (!$this->dataIsolation->isProduction('fund_account', (int) $account->id)) return $error('QA_TEST_FUND_ACCOUNT', 'QA/Test or archived Fund Accounts cannot be used for Production Group Import.');
-        if ($data['fund_account_type'] !== $account->account_type || $data['account_owner'] !== $account->owner_type) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Type or Account Owner does not match the canonical Fund Account.');
+        if (!empty($data['v3'])) {
+            if ($data['fund_account_name'] !== $account->account_name) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Name does not match its canonical code.');
+            // V3 never accepts client currency or a manual balance. Currency
+            // comes exclusively from the authorized physical Fund Account.
+            $data['currency'] = (string) $account->currency;
+            $data['expected_balance'] = null;
+        } elseif ($data['fund_account_type'] !== $account->account_type || $data['account_owner'] !== $account->owner_type) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Type or Account Owner does not match the canonical Fund Account.');
         if ((int) $account->group_id !== (int) $groupUser->group_id || !$this->accountAvailability->isAccountAvailableForSchool($account, (int) $school->id)) return $error('FUND_ACCOUNT_SCOPE_MISMATCH', 'Fund Account requires an active allocation to the routed School in this Finance Group.');
         try { $this->accountScopes->assertCanOperate($actor, $account, (int) $school->id); } catch (AuthorizationException) { return $error('FUND_ACCOUNT_SCOPE_DENIED', 'Fund Account is not authorized for operation by this actor.'); }
         if (!CentralFinanceCurrency::same($data['currency'], $account->currency)) return $error('CURRENCY_MISMATCH', 'Currency must match the canonical Fund Account currency.');
-        $category = CentralFinanceCategory::on('mysql')->where(['school_id' => $school->id, 'type' => $data['document_type'] === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME, 'category_code' => $data['category_code'], 'is_active' => true])->first();
-        if (!$category) return $error('CATEGORY_UNKNOWN', 'Category Code must exactly identify an active Category for the routed School and document type.');
+        $categories = CentralFinanceCategory::on('mysql')->availableForSchool((int) $school->id)
+            ->forCashDirection($data['document_type'] === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME)
+            ->where(['category_code' => $data['category_code'], 'is_active' => true])->get()
+            ->filter(fn ($category) => !$category->group_id || (int) $category->group_id === (int) $groupUser->group_id);
+        if ($categories->count() !== 1) return $error('CATEGORY_UNKNOWN', 'Account Code must exactly identify one active allocated Account in this Finance Group.');
+        $category = $categories->sole();
+        if ((string) $category->category_code !== $data['category_code']) return $error('CATEGORY_UNKNOWN', 'Account Code must match exactly, including leading zeros.');
+        if (!empty($data['v3']) && ($data['category_type'] !== $category->type || $data['category_name'] !== $category->name)) return $error('ACCOUNT_IDENTITY_MISMATCH', 'Account Type or Name does not match its canonical Account Code.');
         if (!$this->dataIsolation->isProduction('category', (int) $category->id)) return $error('QA_TEST_CATEGORY', 'QA/Test or archived Categories cannot be used for Production Group Import.');
         $data['fund_account_id'] = (int) $account->id; $data['category_id'] = (int) $category->id; $data['amount'] = (float) ($data['document_type'] === 'expense' ? $data['expense'] : $data['income']);
         $data['school_code'] = (string) $school->code;
@@ -428,7 +506,9 @@ final class CentralFinanceGroupImportService
             ? CentralFinanceExpense::on('mysql')->withTrashed()->where(['school_id' => $school->id, 'reference_no' => $data['reference_no']])->first()
             : CentralFinanceOtherIncome::on('mysql')->withTrashed()->where(['school_id' => $school->id, 'reference_no' => $data['reference_no']])->first();
         if ($existing) {
-            $same = (int) $existing->fund_account_id === $data['fund_account_id'] && (int) $existing->category_id === $data['category_id'] && CentralFinanceCurrency::same((string) $existing->currency, $data['currency']) && abs((float) $existing->amount - $data['amount']) < 0.0001;
+            $postedDate = $existing instanceof CentralFinanceExpense ? $existing->expense_date : $existing->income_date;
+            $same = !$existing->trashed() && (int) $existing->fund_account_id === $data['fund_account_id'] && (int) $existing->category_id === $data['category_id'] && CentralFinanceCurrency::same((string) $existing->currency, $data['currency']) && abs((float) $existing->amount - $data['amount']) < 0.0001
+                && $existing->payment_method === $data['payment_method'] && $postedDate->toDateString() === $data['transaction_date'];
             return ['result_status' => $same ? 'Duplicate' : 'Conflict', 'error_code' => $same ? null : 'REFERENCE_CONFLICT', 'error_message' => $same ? null : 'Reference exists with different immutable financial identity.', 'idempotency_key' => $key];
         }
         $projectionKey = $account->id.'|'.$account->currency; $projected[$projectionKey] ??= $this->balances->currentBalance($account);

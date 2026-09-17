@@ -50,6 +50,7 @@ final class CentralFinanceFundAccountAdministrationService
                 'account_uuid' => (string) Str::uuid(), 'group_id' => $groupUser->group_id,
                 'school_id' => null, 'owner_type' => CentralFinanceFundAccount::OWNER_HQ,
                 'account_code' => $attributes['account_code'], 'account_name' => $attributes['account_name'],
+                ...$this->holderAttributes($attributes),
                 'currency' => $attributes['currency'], 'opening_balance' => $attributes['opening_balance'],
                 'is_active' => true, 'account_type' => $attributes['account_type'] ?? CentralFinanceFundAccount::TYPE_OTHER,
                 'bank_name' => $this->nullableTrim($attributes['bank_name'] ?? null),
@@ -71,6 +72,7 @@ final class CentralFinanceFundAccountAdministrationService
                 'account_code' => $account->account_code,
                 'account_type' => $account->account_type,
                 'owner_type' => $account->owner_type,
+                'owner_holder' => $account->owner_holder,
                 'group_id' => (int) $account->group_id,
                 'allocated_school_ids' => [],
             ]);
@@ -187,9 +189,10 @@ final class CentralFinanceFundAccountAdministrationService
             $groupUser = $this->groupUserForAccount($actor, $school, $account);
             $this->assertAccountInConfigurationScope($account, $school, (int) $groupUser->group_id);
             $this->assertCustodian($account, $school, $attributes['custodian_user_id'] ?? null);
-            $before = $account->only(['account_name', 'account_type', 'bank_name', 'masked_account_identifier', 'custodian_user_id', 'notes']);
+            $before = $account->only(['account_name', 'account_type', 'owner_holder', 'bank_name', 'masked_account_identifier', 'custodian_user_id', 'notes']);
             $account->fill([
                 'account_name' => trim((string) $attributes['account_name']),
+                ...$this->holderAttributes($attributes),
                 'account_type' => $attributes['account_type'],
                 'bank_name' => $this->nullableTrim($attributes['bank_name'] ?? null),
                 'masked_account_identifier' => $this->nullableTrim($attributes['masked_account_identifier'] ?? null),
@@ -293,6 +296,7 @@ final class CentralFinanceFundAccountAdministrationService
                 'school_id' => $ownerType === CentralFinanceFundAccount::OWNER_HQ ? null : $school->id,
                 'owner_type' => $ownerType, 'account_code' => $attributes['account_code'],
                 'account_name' => $attributes['account_name'], 'currency' => $attributes['currency'],
+                ...$this->holderAttributes($attributes),
                 'opening_balance' => $attributes['opening_balance'], 'is_active' => true,
                 'account_type' => $attributes['account_type'] ?? CentralFinanceFundAccount::TYPE_OTHER,
                 'bank_name' => $this->nullableTrim($attributes['bank_name'] ?? null),
@@ -315,7 +319,7 @@ final class CentralFinanceFundAccountAdministrationService
                 'effective_date' => $attributes['opening_balance_date'], 'reason' => trim($attributes['opening_reason']),
                 'created_by' => $actor->id,
             ]);
-            $this->audit($school, $account, $actor, 'created', trim($attributes['opening_reason']), [], ['account_code' => $account->account_code, 'account_type' => $account->account_type, 'owner_type' => $account->owner_type, 'custodian_user_id' => $account->custodian_user_id]);
+            $this->audit($school, $account, $actor, 'created', trim($attributes['opening_reason']), [], ['account_code' => $account->account_code, 'account_type' => $account->account_type, 'owner_type' => $account->owner_type, 'owner_holder' => $account->owner_holder, 'custodian_user_id' => $account->custodian_user_id]);
             $this->syncAssignmentsLocked($actor, $school, $account, $groupUser->group_id, $assigneeIds);
 
             return $account->fresh();
@@ -377,6 +381,22 @@ final class CentralFinanceFundAccountAdministrationService
     {
         $value = trim((string) $value);
         return $value === '' ? null : $value;
+    }
+
+    /** Descriptive holder text never participates in authorization or balance calculation. */
+    private function holderAttributes(array $attributes): array
+    {
+        // Omitted values retain legacy callers' metadata and permit safe rollout
+        // before the additive column. Explicit use without schema fails closed.
+        if (!array_key_exists('owner_holder', $attributes)) return [];
+        $holder = $attributes['owner_holder'];
+        if ($holder !== null && (!is_string($holder) || mb_strlen($holder) > 191)) {
+            throw ValidationException::withMessages(['owner_holder' => [__('Owner / Holder must be text of at most 191 characters.')]]);
+        }
+        if (!Schema::connection('mysql')->hasColumn('central_finance_fund_accounts', 'owner_holder')) {
+            throw ValidationException::withMessages(['owner_holder' => [__('Fund Account holder schema is unavailable.')]]);
+        }
+        return ['owner_holder' => $this->nullableTrim($holder)];
     }
 
     private function audit(?School $school, CentralFinanceFundAccount $account, CentralFinanceUser $actor, string $action, ?string $reason, array $before, array $after): void

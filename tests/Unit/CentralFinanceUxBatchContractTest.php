@@ -42,7 +42,7 @@ final class CentralFinanceUxBatchContractTest extends TestCase
         }
         $this->assertStringContainsString('Compatibility and audit only.', $manage);
         $this->assertStringNotContainsString('opening_allocation_amount', $manage);
-        foreach (['Report filters', 'School comparison', 'Income / expense trend', 'Category analysis', 'Open Ledger'] as $section) {
+        foreach (['Report filters', 'School comparison', 'Income / expense trend', 'Chart of Accounts analysis', 'Open Ledger'] as $section) {
             $this->assertStringContainsString($section, $report);
         }
         $this->assertStringContainsString('Field', $audit);
