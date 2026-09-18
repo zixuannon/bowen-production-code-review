@@ -90,6 +90,13 @@ final class CentralFundAccountV2Test extends TestCase
         Schema::connection('mysql')->create('subscription_bills', function (Blueprint $table): void {
             $table->id(); $table->unsignedBigInteger('payment_transaction_id')->nullable(); $table->timestamps();
         });
+        Schema::connection('mysql')->create('central_finance_group_import_batches', function (Blueprint $table): void {
+            $table->id(); $table->timestamps();
+        });
+        Schema::connection('mysql')->create('central_finance_import_batches', function (Blueprint $table): void {
+            $table->id(); $table->unsignedBigInteger('group_import_batch_id')->nullable(); $table->timestamps();
+            $table->foreign('group_import_batch_id')->references('id')->on('central_finance_group_import_batches')->restrictOnDelete();
+        });
 
         DB::connection('mysql')->table('schools')->insert(collect(range(1, 4))->map(fn (int $id): array => [
             'id' => $id, 'name' => 'School '.$id, 'code' => 'MMBOWEN0'.$id,
@@ -469,6 +476,8 @@ final class CentralFundAccountV2Test extends TestCase
         DB::connection('mysql')->table('payment_transactions')->insert(['id' => 700, 'reference' => 'SYSTEM-BILLING-PAYMENT', 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('mysql')->table('subscriptions')->insert(['id' => 701, 'reference' => 'SYSTEM-SUBSCRIPTION', 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('mysql')->table('subscription_bills')->insert(['id' => 702, 'payment_transaction_id' => 700, 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('mysql')->table('central_finance_group_import_batches')->insert(['id' => 801, 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('mysql')->table('central_finance_import_batches')->insert(['id' => 802, 'group_import_batch_id' => 801, 'created_at' => now(), 'updated_at' => now()]);
 
         $reset = app(CentralFinancePreGoLiveResetService::class);
         $preflight = $reset->preflight();
@@ -478,6 +487,8 @@ final class CentralFundAccountV2Test extends TestCase
         $this->assertSame(0, CentralFinanceFundAccount::on('mysql')->count());
         $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->count());
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_categories')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_import_batches')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_group_import_batches')->count());
         $this->assertSame(1, DB::connection('mysql')->table('subscriptions')->count());
         $this->assertSame(1, DB::connection('mysql')->table('subscription_bills')->count());
         $this->assertSame(1, DB::connection('mysql')->table('payment_transactions')->count());
