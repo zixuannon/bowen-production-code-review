@@ -392,6 +392,7 @@ final class StudentImportV2Service
         $student = $identity->student;
         $user = $student?->user;
         $guardian = $student?->guardian;
+        $admissionDate = $student?->admission_date;
         return [
             'student_name' => trim((string) ($user?->first_name ?? '').' '.(string) ($user?->last_name ?? '')),
             'student_first_name' => (string) ($user?->first_name ?? ''),
@@ -399,7 +400,12 @@ final class StudentImportV2Service
             'guardian_mobile' => (string) ($guardian?->mobile ?? ''),
             'class_section_id' => (int) ($student?->class_section_id ?? 0),
             'academic_year_id' => (int) ($student?->session_year_id ?? 0),
-            'admission_date' => $student?->admission_date?->format('Y-m-d') ?? (string) ($student?->admission_date ?? ''),
+            // Older tenant models do not cast admission_date, so an existing
+            // identity can legitimately expose a string here.  Preserve the
+            // date comparison without assuming a Carbon instance.
+            'admission_date' => $admissionDate instanceof \DateTimeInterface
+                ? $admissionDate->format('Y-m-d')
+                : (string) ($admissionDate ?? ''),
             'schedule_type' => (string) ($identity->schedule_type ?? ''),
             'enrollment_status' => (string) ($identity->enrollment_status ?? 'active'),
         ];
