@@ -122,6 +122,18 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertSame(['Import Reference must be stored as Text to preserve leading zeroes.'], $errors);
     }
 
+    public function test_duplicate_snapshot_normalizes_only_known_valid_legacy_admission_date_forms(): void
+    {
+        $service = app(StudentImportV2Service::class);
+        $snapshotDate = new \ReflectionMethod($service, 'snapshotDate');
+        $snapshotDate->setAccessible(true);
+
+        $this->assertSame('2026-09-18', $snapshotDate->invoke($service, '2026-09-18'));
+        $this->assertSame('2026-09-18', $snapshotDate->invoke($service, '18-09-2026'));
+        $this->assertSame('31-02-2026', $snapshotDate->invoke($service, '31-02-2026'));
+        $this->assertSame('legacy-date', $snapshotDate->invoke($service, 'legacy-date'));
+    }
+
     public function test_phase_two_contract_keeps_school_routing_server_side_and_finance_effects_receivable_only(): void
     {
         $source = file_get_contents(app_path('Services/StudentImportV2Service.php'));

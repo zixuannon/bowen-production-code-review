@@ -403,12 +403,29 @@ final class StudentImportV2Service
             // Older tenant models do not cast admission_date, so an existing
             // identity can legitimately expose a string here.  Preserve the
             // date comparison without assuming a Carbon instance.
-            'admission_date' => $admissionDate instanceof \DateTimeInterface
-                ? $admissionDate->format('Y-m-d')
-                : (string) ($admissionDate ?? ''),
+            'admission_date' => $this->snapshotDate($admissionDate),
             'schedule_type' => (string) ($identity->schedule_type ?? ''),
             'enrollment_status' => (string) ($identity->enrollment_status ?? 'active'),
         ];
+    }
+
+    /**
+     * Tenant models may expose the same stored admission date in either the
+     * current ISO form or the legacy d-m-Y display form.  Normalize only
+     * those two exact, valid representations for duplicate comparison;
+     * unknown values remain untouched and therefore cannot be coerced into a
+     * match.
+     */
+    private function snapshotDate(mixed $value): string
+    {
+        if ($value instanceof \DateTimeInterface) return $value->format('Y-m-d');
+        $value = trim((string) ($value ?? ''));
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return $value;
+        if (!preg_match('/^\d{2}-\d{2}-\d{4}$/', $value)) return $value;
+        $date = \DateTimeImmutable::createFromFormat('!d-m-Y', $value);
+        $errors = \DateTimeImmutable::getLastErrors();
+        if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) return $value;
+        return $date->format('Y-m-d');
     }
 
     /** A duplicate must be the same deterministic import identity and data. */
