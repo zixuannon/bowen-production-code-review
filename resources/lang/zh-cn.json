@@ -3058,4 +3058,10 @@
     ,"Chart of Accounts saved.": "会计科目已保存。"
     ,"Account Code and Type are locked to preserve historical classification.": "为保留历史分类，科目代码和类型已锁定。"
     ,"Account Code may be corrected with an audit reason. Historical records keep their existing snapshots.": "会计科目代码可在填写审计原因后更正；历史记录会保留原有快照。"
+    ,"English display name": "英文显示名称"
+    ,"Optional. English falls back to the original name; changing the original marks this translation for review.": "可选。未提供英文时显示原始名称；修改原始名称后会将译文标记为待复核。"
+    ,"Optional English display value.": "可选英文显示值。"
+    ,"Physical Account Summary": "实体账户汇总"
+    ,"Data scope: Official data": "数据范围：正式数据"
+    ,"QA/Test history is visible in this read view.": "当前只读视图包含 QA/Test 历史数据。"
 }

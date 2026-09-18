@@ -449,14 +449,22 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function createCategory(Request $request): RedirectResponse
     {
-        app(\App\Services\CentralChartOfAccountsService::class)->save($this->actor(), array_merge($request->all(), ['school_ids' => $request->input('school_ids', [])]));
+        $actor = $this->actor();
+        $category = app(\App\Services\CentralChartOfAccountsService::class)->save($actor, array_merge($request->all(), ['school_ids' => $request->input('school_ids', [])]));
+        app(\App\Services\CentralFinanceBusinessContentTranslationService::class)->saveEnglish($actor, 'chart_account', $category->id, null, $category->name, (string) $request->input('english_name'), (string) $request->input('reason'));
         return back()->with('success', __('Chart of Accounts saved.'));
     }
 
     public function updateCategory(Request $request, int $category): RedirectResponse
     {
         $this->dataIsolation->assertProduction('category', $category);
-        app(\App\Services\CentralChartOfAccountsService::class)->save($this->actor(), array_merge($request->all(), ['school_ids' => $request->input('school_ids', [])]), $category);
+        $actor = $this->actor();
+        $before = CentralFinanceCategory::on('mysql')->findOrFail($category);
+        $oldName = (string) $before->name;
+        $saved = app(\App\Services\CentralChartOfAccountsService::class)->save($actor, array_merge($request->all(), ['school_ids' => $request->input('school_ids', [])]), $category);
+        $translations = app(\App\Services\CentralFinanceBusinessContentTranslationService::class);
+        if ($oldName !== $saved->name) $translations->markEnglishStale('chart_account', $saved->id, null, $saved->name);
+        $translations->saveEnglish($actor, 'chart_account', $saved->id, null, $saved->name, (string) $request->input('english_name'), (string) $request->input('reason'));
         return back()->with('success', __('Chart of Accounts saved.'));
     }
 
@@ -494,6 +502,7 @@ final class CentralFinanceWorkspaceController extends Controller
             'account_code' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9_.-]+$/'],
             'owner_holder' => ['nullable', 'string', 'max:191'],
             'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', Rule::in(CentralFinanceCurrency::ALLOWED)],
+            'english_name' => ['nullable', 'string', 'max:2000'],
             'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date'],
             'opening_reason' => ['required', 'string', 'max:2000'],
             'account_type' => ['required', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])],
@@ -501,6 +510,7 @@ final class CentralFinanceWorkspaceController extends Controller
             'custodian_user_id' => ['nullable', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'],
         ]);
         $account = $this->accountAdministration->createGroupAccount($actor, (int) $data['group_id'], $data);
+        app(\App\Services\CentralFinanceBusinessContentTranslationService::class)->saveEnglish($actor, 'fund_account', $account->id, null, $account->account_name, (string) $request->input('english_name'), (string) $data['opening_reason']);
 
         return redirect()->route('central-finance.accounts.manage', ['fundAccount' => $account->id])
             ->with('success', __('Central / Group Fund Account created. Add explicit School allocations before use.'));
@@ -512,12 +522,18 @@ final class CentralFinanceWorkspaceController extends Controller
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate([
             'account_name' => ['required', 'string', 'max:191'],
+            'english_name' => ['nullable', 'string', 'max:2000'],
             'owner_holder' => ['nullable', 'string', 'max:191'],
             'account_type' => ['required', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])],
             'bank_name' => ['nullable', 'string', 'max:191'], 'masked_account_identifier' => ['nullable', 'string', 'max:80'],
             'custodian_user_id' => ['nullable', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'], 'reason' => ['nullable', 'string', 'max:2000'],
         ]);
+        $oldName = (string) $account->account_name;
         $this->accountAdministration->updateMasterData($actor, null, $account, $data);
+        $account->refresh();
+        $translations = app(\App\Services\CentralFinanceBusinessContentTranslationService::class);
+        if ($oldName !== $account->account_name) $translations->markEnglishStale('fund_account', $account->id, null, $account->account_name);
+        $translations->saveEnglish($actor, 'fund_account', $account->id, null, $account->account_name, (string) $request->input('english_name'), (string) ($data['reason'] ?? ''));
         return back()->with('success', __('Central Fund Account master data updated.'));
     }
 
@@ -1002,6 +1018,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $ledger=(clone $filteredLedger)->latest('occurred_at')->paginate(25)->withQueryString();
         $filteredLedgerEntries = (clone $filteredLedger)->get();
         $currencyTotals = $this->currencySummaries->ledger($filteredLedgerEntries);
+        $physicalAccountTotals = $this->balances->physicalSummaryByCurrency($accounts);
         $reportSchoolComparison = collect();
         $reportTrend = collect();
         $reportCategoryAnalysis = collect();
@@ -1310,7 +1327,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $fundingQuery=$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId):null;
         foreach ([[$expenseCategoryQuery,'category'],[$incomeCategoryQuery,'category']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->dataIsolation->apply($isolatedQuery,$subjectType);
         foreach ([[$expenseQuery,'expense'],[$incomeQuery,'other_income'],[$handoverQuery,'fund_handover'],[$fundingQuery,'hq_funding']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->dataIsolation->apply($isolatedQuery,$subjectType,$includeQaTest);
-        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'operationAccounts'=>$operationAccounts,'handoverDestinationUserIds'=>$handoverDestinationUserIds,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'canConfigureSchool'=>$canConfigureSchool,'configurableGroups'=>$configurableGroups,'allocationSchools'=>$allocationSchools,'accountAssignableUsers'=>$accountAssignableUsers,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'currencyTotals'=>$currencyTotals,'reportSchoolComparison'=>$reportSchoolComparison,'reportTrend'=>$reportTrend,'reportCategoryAnalysis'=>$reportCategoryAnalysis,'receivableCurrencyTotals'=>$receivableCurrencyTotals,'filters'=>$filters,'includeQaTest'=>$includeQaTest,'canIncludeQaTest'=>$this->dataIsolation->canIncludeQaTest($actor),'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$expenseCategoryQuery?->get()??collect(),'incomeCategories'=>$incomeCategoryQuery?->get()??collect(),'expenses'=>$expenseQuery?->latest()->get()??collect(),'otherIncomes'=>$incomeQuery?->latest()->get()??collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$handoverQuery?->latest()->get()??collect(),'fundingRequests'=>$fundingQuery?->latest()->get()??collect()];
+        $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'operationAccounts'=>$operationAccounts,'handoverDestinationUserIds'=>$handoverDestinationUserIds,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'canConfigureSchool'=>$canConfigureSchool,'configurableGroups'=>$configurableGroups,'allocationSchools'=>$allocationSchools,'accountAssignableUsers'=>$accountAssignableUsers,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'currencyTotals'=>$currencyTotals,'physicalAccountTotals'=>$physicalAccountTotals,'reportSchoolComparison'=>$reportSchoolComparison,'reportTrend'=>$reportTrend,'reportCategoryAnalysis'=>$reportCategoryAnalysis,'receivableCurrencyTotals'=>$receivableCurrencyTotals,'filters'=>$filters,'includeQaTest'=>$includeQaTest,'canIncludeQaTest'=>$this->dataIsolation->canIncludeQaTest($actor),'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$expenseCategoryQuery?->get()??collect(),'incomeCategories'=>$incomeCategoryQuery?->get()??collect(),'expenses'=>$expenseQuery?->latest()->get()??collect(),'otherIncomes'=>$incomeQuery?->latest()->get()??collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$handoverQuery?->latest()->get()??collect(),'fundingRequests'=>$fundingQuery?->latest()->get()??collect()];
         $data['schoolFinanceFacade'] = $schoolFinanceFacade;
         $transferQuery = null;
         if ($page === 'transfers') {

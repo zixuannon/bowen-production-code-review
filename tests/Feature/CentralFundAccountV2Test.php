@@ -15,6 +15,7 @@ use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundAccountSchoolAvailabilityService;
 use App\Services\CentralFinanceFundAccountV2ConversionService;
 use App\Services\CentralFinanceLedgerService;
+use App\Services\CentralFinancePreGoLiveResetService;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -75,9 +76,20 @@ final class CentralFundAccountV2Test extends TestCase
             '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
             '2026_09_18_000002_add_owner_holder_to_central_finance_fund_accounts.php',
+            '2026_09_18_000002_create_central_finance_pre_go_live_reset_manifests.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
+
+        Schema::connection('mysql')->create('payment_transactions', function (Blueprint $table): void {
+            $table->id(); $table->string('reference')->unique(); $table->timestamps();
+        });
+        Schema::connection('mysql')->create('subscriptions', function (Blueprint $table): void {
+            $table->id(); $table->string('reference')->unique(); $table->timestamps();
+        });
+        Schema::connection('mysql')->create('subscription_bills', function (Blueprint $table): void {
+            $table->id(); $table->unsignedBigInteger('payment_transaction_id')->nullable(); $table->timestamps();
+        });
 
         DB::connection('mysql')->table('schools')->insert(collect(range(1, 4))->map(fn (int $id): array => [
             'id' => $id, 'name' => 'School '.$id, 'code' => 'MMBOWEN0'.$id,
@@ -427,6 +439,52 @@ final class CentralFundAccountV2Test extends TestCase
         $this->assertSame(CentralFinanceFundAccount::STATUS_ARCHIVED, $account->fresh()->status);
         $this->assertSame(3, DB::connection('mysql')->table('central_finance_document_audits')->where('document_id', $account->id)->whereIn('action', ['lifecycle_inactive', 'lifecycle_active', 'lifecycle_archived'])->count());
         $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)->count());
+    }
+
+    public function test_physical_currency_summary_counts_a_shared_account_once_not_per_school_allocation(): void
+    {
+        $account = $this->centralAccount('PHYSICAL-SUMMARY');
+        $this->allocate($account, 1);
+        $this->allocate($account, 2);
+        $this->ledger($account, 1, 'physical-1', 25);
+
+        $summary = app(CentralFinanceFundAccountBalanceService::class)
+            ->physicalSummaryByCurrency(collect([$account, $account]));
+
+        $this->assertSame(100.0, $summary['MMK']['opening_balance']);
+        $this->assertSame(25.0, $summary['MMK']['money_in']);
+        $this->assertSame(0.0, $summary['MMK']['money_out']);
+        $this->assertSame(125.0, $summary['MMK']['closing_balance']);
+    }
+
+    public function test_pre_go_live_reset_deletes_only_reviewed_central_finance_data_and_preserves_system_billing(): void
+    {
+        $account = $this->centralAccount('RESET-ACCOUNT');
+        $this->allocate($account, 1);
+        $this->ledger($account, 1, 'reset-ledger', 30);
+        DB::connection('mysql')->table('central_finance_categories')->insert([
+            'category_uuid' => (string) Str::uuid(), 'school_id' => 1, 'type' => 'income', 'name' => 'Reset test category',
+            'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('mysql')->table('payment_transactions')->insert(['id' => 700, 'reference' => 'SYSTEM-BILLING-PAYMENT', 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('mysql')->table('subscriptions')->insert(['id' => 701, 'reference' => 'SYSTEM-SUBSCRIPTION', 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('mysql')->table('subscription_bills')->insert(['id' => 702, 'payment_transaction_id' => 700, 'created_at' => now(), 'updated_at' => now()]);
+
+        $reset = app(CentralFinancePreGoLiveResetService::class);
+        $preflight = $reset->preflight();
+        $this->assertSame(1, $preflight['business_allowlist']['central_finance_fund_accounts']);
+        $result = $reset->execute($this->head, 'TEST-PRE-GO-LIVE-RESET', 'Approved isolated reset test');
+
+        $this->assertSame(0, CentralFinanceFundAccount::on('mysql')->count());
+        $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_categories')->count());
+        $this->assertSame(1, DB::connection('mysql')->table('subscriptions')->count());
+        $this->assertSame(1, DB::connection('mysql')->table('subscription_bills')->count());
+        $this->assertSame(1, DB::connection('mysql')->table('payment_transactions')->count());
+        $this->assertSame($preflight['protected_hash'], $result['protected_hash']);
+        $this->assertDatabaseHas('central_finance_pre_go_live_reset_manifests', [
+            'approval_reference' => 'TEST-PRE-GO-LIVE-RESET', 'actor_id' => $this->head->id,
+        ], 'mysql');
     }
 
     private function centralAccount(string $code): CentralFinanceFundAccount

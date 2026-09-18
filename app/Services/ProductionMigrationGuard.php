@@ -71,6 +71,10 @@ final class ProductionMigrationGuard
             'database/migrations/2026_09_18_000001_add_central_chart_of_accounts.php',
             'database/migrations/2026_09_18_000002_add_owner_holder_to_central_finance_fund_accounts.php',
         ],
+        'finance:migrate-fresh-start' => [
+            'database/migrations/2026_09_18_000002_create_central_finance_pre_go_live_reset_manifests.php',
+            'database/migrations/2026_09_18_000003_create_central_finance_content_translations.php',
+        ],
     ];
 
     /**

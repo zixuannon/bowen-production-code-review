@@ -14,6 +14,7 @@
     .cf-summary-card { height: 100%; border: 1px solid var(--cf-border); border-radius: .55rem; padding: .8rem .9rem; background: #fff; }
     .cf-summary-card__label { display: block; color: var(--cf-muted); font-size: .75rem; font-weight: 600; }
     .cf-summary-card__value { display: block; margin-top: .2rem; color: #243746; font-size: 1rem; font-weight: 700; }
+    .cf-data-scope { min-height: 2.25rem; padding: .45rem .75rem; border: 1px solid var(--cf-border); border-radius: .5rem; background: #fff; gap: .45rem; }
     .cf-primary-action, .central-finance-page .btn-theme { background: var(--cf-navy); border-color: var(--cf-navy); color: #fff; }
     .cf-primary-action:hover, .central-finance-page .btn-theme:hover { background: #174c6d; border-color: #174c6d; color: #fff; }
     .central-finance-page .btn-outline-primary { color: var(--cf-navy); border-color: var(--cf-navy); }

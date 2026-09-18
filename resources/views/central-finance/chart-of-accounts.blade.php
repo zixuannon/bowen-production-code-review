@@ -12,7 +12,7 @@
 <div class="card"><div class="card-body"><div class="table-responsive">
     <table class="table"><thead><tr><th>{{ __('Account Type') }}</th><th>{{ __('Account Code') }}</th><th>{{ __('Account Name') }}</th><th>{{ __('Allocated Schools') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead>
     <tbody>@forelse($categories as $category)
-        <tr><td>{{ __(ucfirst($category->type)) }}</td><td>{{ $category->group_id ? $category->category_code : __('Legacy mapping required') }}</td><td>{{ $category->name }}</td>
+        <tr><td>{{ __(ucfirst($category->type)) }}</td><td>{{ $category->group_id ? $category->category_code : __('Legacy mapping required') }}</td><td>{{ app(\App\Services\CentralFinanceBusinessContentTranslationService::class)->display('chart_account', $category->id, null, $category->name) }}</td>
             <td>@if($category->group_id){{ $schools->whereIn('id', $category->schoolAllocations->where('is_active',true)->pluck('school_id'))->pluck('name')->join(', ') ?: '—' }}@else{{ $schools->firstWhere('id',$category->school_id)?->name }}@endif</td>
             <td>{{ $category->is_active ? __('Active') : __('Inactive') }}</td>
             <td>@if($canConfigureAccounts && $category->group_id && $configurableGroups->contains('id',$category->group_id))

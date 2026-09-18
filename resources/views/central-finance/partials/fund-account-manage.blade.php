@@ -1,7 +1,7 @@
 <div class="cf-account-manage">
     <div class="cf-workspace-toolbar">
         <div>
-            <h4 class="mb-1">{{ $accountReport->account_name }}</h4>
+            <h4 class="mb-1">{{ app(\App\Services\CentralFinanceBusinessContentTranslationService::class)->display('fund_account', $accountReport->id, null, $accountReport->account_name) }}</h4>
             <p class="text-muted mb-0">{{ $accountReport->account_code }} · {{ $accountReport->currency }} · {{ __($accountReport->status) }} · {{ __('Owner: Bowen Group / Central Finance') }}</p>
         </div>
         <div class="cf-workspace-toolbar__actions">
@@ -16,6 +16,7 @@
         <form method="POST" action="{{ route('central-finance.accounts.update', $accountReport->id) }}">@csrf @method('PUT')
             <div class="form-row">
                 <div class="form-group col-md-6"><label>{{ __('Account name') }}</label><input name="account_name" class="form-control" value="{{ $accountReport->account_name }}" required></div>
+                <div class="form-group col-md-6"><label>{{ __('English display name') }}</label><input name="english_name" class="form-control" value="{{ app(\App\Services\CentralFinanceBusinessContentTranslationService::class)->english('fund_account', $accountReport->id, null) }}"><small class="form-text text-muted">{{ __('Optional. English falls back to the original name; changing the original marks this translation for review.') }}</small></div>
                 <div class="form-group col-md-6"><label for="fund-owner-holder">{{ __('Owner / Holder') }}</label><input id="fund-owner-holder" name="owner_holder" class="form-control" maxlength="191" value="{{ $accountReport->owner_holder }}"><small class="form-text text-muted">{{ __('Descriptive account holder only; does not change ownership or access.') }}</small></div>
                 <div class="form-group col-md-3"><label>{{ __('Type') }}</label><select name="account_type" class="form-control">@foreach(['cash' => 'Cash', 'bank' => 'Bank', 'other' => 'Other'] as $value => $label)<option value="{{ $value }}" @selected($accountReport->account_type === $value)>{{ __($label) }}</option>@endforeach</select></div>
                 <div class="form-group col-md-3"><label>{{ __('Custodian') }}</label><select name="custodian_user_id" class="form-control"><option value="">{{ __('No custodian') }}</option>@foreach($accountAssignableUsers as $user)<option value="{{ $user->id }}" @selected($accountReport->custodian_user_id === $user->id)>{{ $user->full_name }}</option>@endforeach</select></div>

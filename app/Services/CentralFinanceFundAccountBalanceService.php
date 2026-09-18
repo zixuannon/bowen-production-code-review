@@ -9,6 +9,37 @@ use LogicException;
 
 final class CentralFinanceFundAccountBalanceService
 {
+    /**
+     * Summary of physical custody. Account IDs are de-duplicated before
+     * aggregation, so an allocation never turns one shared opening balance
+     * into multiple School balances.
+     *
+     * @param iterable<CentralFinanceFundAccount> $accounts
+     * @return array<string,array{opening_balance:float,money_in:float,money_out:float,closing_balance:float}>
+     */
+    public function physicalSummaryByCurrency(iterable $accounts): array
+    {
+        $summary = collect(CentralFinanceCurrency::ALLOWED)->mapWithKeys(fn (string $currency) => [$currency => [
+            'opening_balance' => 0.0, 'money_in' => 0.0, 'money_out' => 0.0, 'closing_balance' => 0.0,
+        ]])->all();
+
+        foreach (collect($accounts)->unique('id') as $account) {
+            $currency = CentralFinanceCurrency::normalize((string) $account->currency);
+            $ledger = CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)
+                ->selectRaw('COALESCE(SUM(money_in), 0) as money_in, COALESCE(SUM(money_out), 0) as money_out')->first();
+            $opening = (float) $account->opening_balance;
+            $in = (float) $ledger->money_in;
+            $out = (float) $ledger->money_out;
+            $summary[$currency]['opening_balance'] += $opening;
+            $summary[$currency]['money_in'] += $in;
+            $summary[$currency]['money_out'] += $out;
+            $summary[$currency]['closing_balance'] += $opening + $in - $out;
+        }
+        foreach ($summary as &$row) foreach ($row as $key => $value) $row[$key] = round($value, 4);
+        unset($row);
+        return $summary;
+    }
+
     public function currentBalance(CentralFinanceFundAccount $account): float
     {
         $totals = CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)
