@@ -1,5 +1,25 @@
 # eSchool Current State
 
+## Student Import UX cleanup — local candidate
+
+- Normal `Student Import` navigation and the legacy `students/create-bulk`
+  URL now lead directly to Student Import V2. Zixuan, Bahan, Timecity, and
+  Kindergarten remain the explicitly enabled canonical V2 Schools.
+- Legacy CSV import remains backend-compatible but is no longer exposed to
+  normal School users. Its dedicated Advanced page, template, POST endpoint,
+  and retained legacy URL aliases all enforce the Super Admin role server-side.
+- No Student Code, duplicate/conflict, receivable, or confirm/exactly-once
+  behavior changed. No schema or migration is included.
+- Targeted Student Import/Student Code regression passes 23 tests / 157
+  assertions; UI/localization contracts pass 14 tests / 2,837 assertions;
+  route and Blade compilation checks pass. The canonical-code runner no longer
+  keeps the deprecated Zixuan code in a runtime preflight check; it verifies
+  the canonical history by stable School ID instead. Full local regression
+  passes when all 148 Unit/Feature test classes run in isolated PHP processes,
+  which avoids the test runner's cumulative 128 MB XLSX-export memory limit.
+
+Last updated: 2026-09-18
+
 ## Zixuan QA Student Import + Front Desk Collection — local candidate
 
 - Baseline: Production release `a4aec6bc…`; isolated branch

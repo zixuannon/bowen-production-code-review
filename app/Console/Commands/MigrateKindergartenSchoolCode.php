@@ -65,7 +65,10 @@ final class MigrateKindergartenSchoolCode extends Command
             || !Schema::connection('mysql')->hasColumns('school_code_history', ['school_id', 'legacy_code', 'canonical_code', 'change_reason', 'changed_at'])
             || !Schema::connection('mysql')->hasColumns('school_code_sequences', ['prefix', 'next_number'])) return false;
         return DB::connection('mysql')->table('migrations')->where('migration', '2026_09_11_000001_finalize_school_code_identity')->exists()
-            && DB::connection('mysql')->table('school_code_history')->where(['legacy_code' => 'SCH202615', 'canonical_code' => 'MMBOWEN01'])->exists();
+            && DB::connection('mysql')->table('school_code_history')->where([
+                'school_id' => 15,
+                'canonical_code' => 'MMBOWEN01',
+            ])->exists();
     }
 
     private function fail(string $message): int

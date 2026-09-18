@@ -3,18 +3,21 @@
 namespace Tests\Feature;
 
 use App\Exports\StudentImportV2TemplateExport;
+use App\Http\Controllers\StudentController;
 use App\Services\StudentImportV2Service;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Excel as ExcelFormat;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Tests\TestCase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class StudentImportV2ContractTest extends TestCase
 {
@@ -80,15 +83,55 @@ final class StudentImportV2ContractTest extends TestCase
         }
     }
 
-    public function test_v2_routes_exist_beside_the_legacy_bulk_import_routes(): void
+    public function test_v2_is_the_default_route_while_legacy_csv_lives_under_an_explicit_advanced_route(): void
     {
         $routes = collect(app('router')->getRoutes()->getRoutes())->pluck('uri')->all();
         $this->assertContains('students/create-bulk', $routes);
+        $this->assertContains('students/advanced/legacy-import', $routes);
+        $this->assertContains('students/advanced/legacy-import/template', $routes);
         $this->assertContains('students/store-bulk', $routes);
         $this->assertContains('students/import-v2', $routes);
         $this->assertContains('students/import-v2/template', $routes);
         $this->assertContains('students/import-v2/preview', $routes);
         $this->assertContains('students/import-v2/confirm', $routes);
+        $this->assertSame(['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03', 'MMBOWEN04'], config('student_import_v2.enabled_school_codes'));
+    }
+
+    public function test_normal_student_import_ui_is_v2_only_and_legacy_csv_is_super_admin_compatibility_only(): void
+    {
+        $controller = file_get_contents(app_path('Http/Controllers/StudentController.php'));
+        $legacy = file_get_contents(resource_path('views/students/add_bulk_data.blade.php'));
+        $sidebar = file_get_contents(resource_path('views/layouts/sidebar.blade.php'));
+
+        $this->assertStringContainsString("return redirect()->route('students.import-v2');", $controller);
+        $this->assertStringContainsString('function createLegacyBulkData()', $controller);
+        $this->assertStringContainsString('assertLegacyStudentImportAccess();', $controller);
+        $this->assertStringContainsString("hasRole('Super Admin')", $controller);
+        $this->assertStringContainsString("route('students.legacy-import.store')", $legacy);
+        $this->assertStringContainsString('Legacy — compatibility only', $legacy);
+        $this->assertStringNotContainsString('Open Student Import V2', $legacy);
+        $this->assertStringContainsString("route('students.import-v2')", $sidebar);
+        $this->assertStringContainsString("@role('Super Admin')", $sidebar);
+        $this->assertStringContainsString("route('students.legacy-import')", $sidebar);
+    }
+
+    public function test_legacy_csv_endpoints_fail_closed_for_a_non_super_admin(): void
+    {
+        $actor = \Mockery::mock(\App\Models\User::class);
+        $actor->shouldReceive('hasRole')->once()->with('Super Admin')->andReturnFalse();
+        Auth::shouldReceive('check')->once()->andReturnTrue();
+        Auth::shouldReceive('user')->once()->andReturn($actor);
+
+        $controller = (new \ReflectionClass(StudentController::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod($controller, 'assertLegacyStudentImportAccess');
+        $method->setAccessible(true);
+
+        try {
+            $method->invoke($controller);
+            $this->fail('A non-Super Admin must not reach legacy CSV compatibility endpoints.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
     }
 
     public function test_preview_contract_is_no_write_and_confirm_reuses_the_canonical_student_fee_assignment_path(): void

@@ -582,7 +582,13 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
                 Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');
                 Route::post('{studentId}/fee-assignment/add-fee', [StudentFeeAssignmentController::class, 'addFee'])->name('students.fee-assignment.add-fee');
             });
+            // The normal School import entry is V2. Keep legacy CSV support
+            // behind an explicit Super Admin-only compatibility route.
             Route::get('create-bulk', [StudentController::class, 'createBulkData'])->name('students.create-bulk-data');
+            Route::get('advanced/legacy-import', [StudentController::class, 'createLegacyBulkData'])->name('students.legacy-import');
+            Route::post('advanced/legacy-import', [StudentController::class, 'storeBulkData'])->name('students.legacy-import.store');
+            // Retain legacy backend URLs for Super Admin compatibility only;
+            // no normal navigation points to either alias.
             Route::post('store-bulk', [StudentController::class, 'storeBulkData'])->name('students.store-bulk-data');
             Route::get('import-v2', [StudentController::class, 'createBulkDataV2'])->name('students.import-v2');
             Route::get('import-v2/template', [StudentController::class, 'downloadBulkDataV2Template'])->name('students.import-v2.template');
@@ -595,6 +601,7 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::post('update-profile', [StudentController::class, 'store_update_profile'])->name('students.update-profile');
 
 
+            Route::get('advanced/legacy-import/template', [StudentController::class, 'downloadSampleFile'])->name('students.legacy-import.template');
             Route::get('download-file', [StudentController::class, 'downloadSampleFile'])->name('student.bulk-data-sample');
             Route::delete('change-status/{id}', [StudentController::class, 'changeStatus'])->name('student.change-status');
             /*** Reset Password ***/

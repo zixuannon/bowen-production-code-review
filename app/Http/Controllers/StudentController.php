@@ -554,19 +554,21 @@ class StudentController extends Controller
     public function createBulkData()
     {
         ResponseService::noPermissionThenRedirect('student-create');
-        $class_section = $this->classSection->all(['*'], ['class', 'class.stream', 'class.shift', 'section', 'medium']);
-        $sessionYears = $this->sessionYear->all();
-        $studentImportV2Enabled = false;
-        try {
-            app(StudentImportV2Service::class)->assertPilot(Auth::user());
-            $studentImportV2Enabled = true;
-        } catch (AuthorizationException) {
-            // V2 is an explicit canonical-School allowlist. Legacy import remains available.
-        }
-        return view('students.add_bulk_data', compact('class_section', 'sessionYears', 'studentImportV2Enabled'));
+        return redirect()->route('students.import-v2');
     }
 
-    /** Preview-first allowlisted import; legacy CSV import remains available to other Schools. */
+    /**
+     * Compatibility-only CSV import. Normal School users always enter V2.
+     */
+    public function createLegacyBulkData()
+    {
+        $this->assertLegacyStudentImportAccess();
+        $class_section = $this->classSection->all(['*'], ['class', 'class.stream', 'class.shift', 'section', 'medium']);
+        $sessionYears = $this->sessionYear->all();
+        return view('students.add_bulk_data', compact('class_section', 'sessionYears'));
+    }
+
+    /** Preview-first allowlisted import for approved canonical Schools. */
     public function createBulkDataV2(StudentImportV2Service $imports)
     {
         ResponseService::noPermissionThenRedirect('student-create');
@@ -609,7 +611,7 @@ class StudentController extends Controller
 
     public function storeBulkData(Request $request)
     {
-        ResponseService::noPermissionThenRedirect('student-create');
+        $this->assertLegacyStudentImportAccess();
         $validator = Validator::make($request->all(), [
             'session_year_id' => 'required|numeric',
             'class_section_id' => 'required',
@@ -835,12 +837,18 @@ class StudentController extends Controller
 
     public function downloadSampleFile()
     {
+        $this->assertLegacyStudentImportAccess();
         try {
             return Excel::download(new StudentDataExport(), 'Student_import.xlsx');
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e, 'Student Controller ---> Download Sample File');
             ResponseService::errorResponse();
         }
+    }
+
+    private function assertLegacyStudentImportAccess(): void
+    {
+        abort_unless(Auth::check() && Auth::user()->hasRole('Super Admin'), 403);
     }
 
     public function update_profile()

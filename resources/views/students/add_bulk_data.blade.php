@@ -1,28 +1,23 @@
 @extends('layouts.master')
 
-@section('title', __('add_bulk_data'))
+@section('title', __('Advanced / Legacy Student Import'))
 
 @section('content')
 <div class="content-wrapper">
-    <div class="page-header"><h3 class="page-title">{{ __('add_bulk_data') }}</h3></div>
+    <div class="page-header"><h3 class="page-title">{{ __('Advanced / Legacy Student Import') }}</h3></div>
 
     @if($errors->any())
         <div class="alert alert-danger" role="alert"><strong>{{ __('Import could not be started') }}</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
     @endif
 
     <div class="card"><div class="card-body">
-        @if($studentImportV2Enabled ?? false)
-            <div class="ui-section-switcher" aria-label="{{ __('Student import options') }}">
-                <span class="small text-muted mr-auto px-2">{{ __('Choose the import path that matches your template.') }}</span>
-                <a class="btn btn-outline-primary" href="{{ route('students.import-v2') }}">{{ __('Open Student Import V2') }}</a>
-            </div>
-        @endif
+        <div class="alert alert-warning" role="alert">{{ __('Legacy — compatibility only') }}</div>
 
         <div class="row align-items-stretch">
             <div class="col-lg-4 mb-3 mb-lg-0">
                 <section class="ui-form-section h-100 mb-0">
                     <div class="ui-form-section__header"><h5>{{ __('Legacy CSV template') }}</h5><p>{{ __('Use this path only for Schools that still use the legacy Student Import format.') }}</p></div>
-                    <a class="btn btn-outline-primary btn-block" href="{{ route('student.bulk-data-sample') }}" download>{{ __('Download Import Template') }}</a>
+                    <a class="btn btn-outline-primary btn-block" href="{{ route('students.legacy-import.template') }}" download>{{ __('Download Import Template') }}</a>
                     <ul class="small text-muted pl-3 mt-3 mb-0">
                         <li>{{ __('Download the template before preparing the file.') }}</li>
                         <li>{{ __('Save the completed workbook as CSV before upload.') }}</li>
@@ -33,7 +28,7 @@
             <div class="col-lg-8">
                 <section class="ui-form-section mb-0">
                     <div class="ui-form-section__header"><h5>{{ __('Upload legacy Student file') }}</h5><p>{{ __('The server validates School identity, Import Reference, class, and session before generating Student Code.') }}</p></div>
-                    <form id="create-form" enctype="multipart/form-data" action="{{ route('students.store-bulk-data') }}" method="POST">
+                    <form id="create-form" enctype="multipart/form-data" action="{{ route('students.legacy-import.store') }}" method="POST">
                         @csrf
                         <div class="row">
                             <div class="form-group col-md-6">

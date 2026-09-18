@@ -305,9 +305,14 @@
                         @endcanany
 
                         @can('student-create')
-                            <li class="nav-item"><a href="{{ route('students.create-bulk-data') }}"
+                            <li class="nav-item"><a href="{{ route('students.import-v2') }}"
                                     class="nav-link">{{ __('add_bulk_data') }}</a></li>
                         @endcan
+
+                        @role('Super Admin')
+                            <li class="nav-item"><a href="{{ route('students.legacy-import') }}"
+                                    class="nav-link">{{ __('Advanced / Legacy Student Import') }}</a></li>
+                        @endrole
 
                         {{-- parents --}}
                         @can('guardian-create')
