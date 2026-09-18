@@ -17,7 +17,7 @@
                     <ul class="small text-muted pl-3 mt-3 mb-0">
                         <li>{{ __('Accepted file: XLSX') }}</li>
                         <li>{{ __('Preview creates no Student or Finance record.') }}</li>
-                        <li>{{ __('Class Section and Academic Year are validated against the current School.') }}</li>
+                        <li>{{ __('Class Section, Schedule Type and Status are validated against the current School. The default Academic Year is used.') }}</li>
                     </ul>
                 </section>
             </div>
@@ -49,8 +49,8 @@
     const result = document.getElementById('student-import-v2-result');
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
     const labels = {
-        valid: '{{ __('Valid') }}', new: '{{ __('New') }}', duplicate: '{{ __('Duplicate') }}',
-        error: '{{ __('Error') }}', conflict: '{{ __('Conflict') }}', loading: '{{ __('Loading') }}…',
+        valid: 'NEW', new: 'NEW', duplicate: 'DUPLICATE',
+        error: 'ERROR', conflict: 'CONFLICT', loading: '{{ __('Loading') }}…',
         failed: '{{ __('Preview failed') }}', confirm: '{{ __('Confirm Import') }}',
         confirming: '{{ __('Confirming import') }}…', complete: '{{ __('Import completed') }}'
     };
@@ -59,7 +59,7 @@
     const addCell = (row, value, label, className = '') => { const cell = document.createElement('td'); cell.textContent = value || '—'; cell.dataset.label = label; if (className) cell.className = className; row.appendChild(cell); };
     const addSummary = (summary) => {
         const wrapper = document.createElement('div'); wrapper.className = 'ui-import-summary'; wrapper.setAttribute('aria-label', '{{ __('Validation summary') }}');
-        [['new', labels.valid], ['duplicate', labels.duplicate], ['error', labels.error], ['conflict', labels.conflict]].forEach(([key, label]) => {
+        [['new', labels.new], ['duplicate', labels.duplicate], ['error', labels.error], ['conflict', labels.conflict]].forEach(([key, label]) => {
             const item = document.createElement('div'); item.className = 'ui-import-summary__item';
             const caption = document.createElement('span'); caption.textContent = label;
             const value = document.createElement('strong'); value.textContent = summary[key] || 0;

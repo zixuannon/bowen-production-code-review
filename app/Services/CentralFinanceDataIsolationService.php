@@ -322,6 +322,47 @@ final class CentralFinanceDataIsolationService
         }
     }
 
+    /**
+     * QA/Test Schools are intentionally excluded from official reporting, but
+     * their authorized School workflow may create isolated QA fixtures.  This
+     * helper is deliberately narrower than assertProduction(): archived data
+     * is still immutable and no caller gains any role or School scope.
+     */
+    public function assertWorkflowWritable(string $subjectType, int $subjectId): void
+    {
+        $subject = self::SUBJECTS[$subjectType] ?? null;
+        if ($subject === null) {
+            throw new RuntimeException("Unsupported Central Finance classification subject: {$subjectType}");
+        }
+        if (!$this->schemaAvailable()) {
+            if (app()->environment('production')) {
+                throw new RuntimeException('Central Finance data isolation schema is missing.');
+            }
+            return;
+        }
+
+        $row = DB::connection('mysql')->table($subject['table'])->where('id', $subjectId)->first();
+        if ($row === null || $this->classification($subjectType, $subjectId) === CentralFinanceDataClassification::ARCHIVED) {
+            throw new AuthorizationException('Archived or missing data cannot be used by a workflow.');
+        }
+        if ($subjectType === 'school') {
+            return;
+        }
+        $schoolColumn = $subject['school'];
+        $schoolId = $schoolColumn === null ? null : ($row->{$schoolColumn} ?? null);
+        if ($schoolId === null) {
+            throw new AuthorizationException('A workflow record must have an owning School.');
+        }
+        if ($this->classification('school', (int) $schoolId) === CentralFinanceDataClassification::ARCHIVED) {
+            throw new AuthorizationException('Archived School data cannot be used by a workflow.');
+        }
+    }
+
+    public function isQaTestSchool(int $schoolId): bool
+    {
+        return $this->classification('school', $schoolId) === CentralFinanceDataClassification::QA_TEST;
+    }
+
     public function classify(CentralFinanceUser $actor, int $schoolId, string $subjectType, int $subjectId, string $classification, string $reason): CentralFinanceDataClassification
     {
         if ((!isset(self::SUBJECTS[$subjectType]) && !isset(self::TENANT_SUBJECTS[$subjectType])) || !in_array($classification, CentralFinanceDataClassification::VALUES, true)) {

@@ -19,6 +19,7 @@
         @if($description)<p class="cf-page-header__description">{{ $description }}</p>@endif
         <div class="cf-page-header__meta">
             <span class="cf-context-chip">{{ $school ? __('Current School').': '.$school->name : __('All Schools') }}</span>
+            @if($school?->is_qa_test)<span class="cf-context-chip cf-context-chip--qa">{{ __('QA/Test School') }}</span>@endif
             @if($school && $status)<span class="badge cf-status-badge badge-{{ $status === 'central' ? 'success' : ($status === 'ready' ? 'info' : 'warning') }}">{{ __($status) }}</span>@endif
         </div>
     </div>

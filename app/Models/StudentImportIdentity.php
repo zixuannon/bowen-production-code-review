@@ -20,6 +20,8 @@ final class StudentImportIdentity extends Model
         'school_id',
         'student_code',
         'import_reference',
+        'schedule_type',
+        'enrollment_status',
         'student_id',
         'user_id',
         'created_by',

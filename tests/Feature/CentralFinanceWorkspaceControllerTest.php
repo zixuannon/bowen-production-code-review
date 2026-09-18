@@ -788,7 +788,9 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
 
         $this->actingAs($this->head);
         $default = app(CentralFinanceWorkspaceController::class)->reports(new Request());
-        $this->assertSame([2], $default->getData()['schools']->pluck('id')->all());
+        // Authorized Head Finance users can deliberately select a QA School,
+        // but its data remains excluded from the default official report.
+        $this->assertSame([2, 1], $default->getData()['schools']->pluck('id')->all());
         $this->assertSame(['TIM-CASH'], $default->getData()['accounts']->pluck('account_code')->all());
         $this->assertSame(40.0, $default->getData()['currencyTotals']['MMK']['money_in']);
         $this->assertFalse($default->getData()['includeQaTest']);

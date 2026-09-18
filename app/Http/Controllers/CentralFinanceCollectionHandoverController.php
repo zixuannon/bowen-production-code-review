@@ -49,24 +49,25 @@ final class CentralFinanceCollectionHandoverController extends Controller
         $school = $isHeadFinance
             ? $this->workspace->assertCanOperateSchool($actor, (int) $school->id)
             : $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $school->id);
+        $workflowIncludeQaTest = $includeQaTest || (!$isHeadFinance && $this->dataIsolation->isQaTestSchool((int) $school->id));
 
         $batchQuery = CentralFinanceCollectionHandoverBatch::on('mysql')
             ->with(['items.pendingCollection.studentProfile'])
             ->where('school_id', $school->id);
-        $this->dataIsolation->apply($batchQuery, 'collection_handover', $includeQaTest);
+        $this->dataIsolation->apply($batchQuery, 'collection_handover', $workflowIncludeQaTest);
         if (!$isHeadFinance) {
             $batchQuery->where('collector_id', $actor->id);
         }
         $batches = $batchQuery->latest()->paginate(20);
         $batches->getCollection()->each(fn (CentralFinanceCollectionHandoverBatch $batch) => $batch->setAttribute(
-            'production_eligible', $this->dataIsolation->isProduction('collection_handover', (int) $batch->id)
+            'production_eligible', $this->isWorkflowEligible('collection_handover', (int) $batch->id)
         ));
-        $productionSchool = $this->dataIsolation->isProduction('school', (int) $school->id);
+        $productionSchool = $this->isWorkflowEligible('school', (int) $school->id);
 
         $eligiblePending = collect();
         $accounts = collect();
         if ($isHeadFinance) {
-            $accounts = $this->workspace->accessibleAccounts($actor, (int) $school->id, $includeQaTest);
+            $accounts = $this->workspace->accessibleAccounts($actor, (int) $school->id, $workflowIncludeQaTest);
         } else {
             $occupiedPendingIds = CentralFinanceCollectionHandoverItem::on('mysql')
                 ->where('status', '!=', CentralFinanceCollectionHandoverItem::REMOVED)
@@ -81,7 +82,7 @@ final class CentralFinanceCollectionHandoverController extends Controller
                 ->where('status', CentralFinancePendingCollection::SUBMITTED)
                 ->whereNotIn('id', $occupiedPendingIds)
                 ->orderBy('submitted_at');
-            $this->dataIsolation->apply($eligiblePending, 'pending_collection', $includeQaTest);
+            $this->dataIsolation->apply($eligiblePending, 'pending_collection', $workflowIncludeQaTest);
             $eligiblePending = $eligiblePending->get();
         }
 
@@ -110,7 +111,7 @@ final class CentralFinanceCollectionHandoverController extends Controller
 
     public function add(Request $request, CentralFinanceCollectionHandoverBatch $batch): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $data = $request->validate(['pending_collection_id' => ['required', 'integer']]);
         $this->validated(fn () => $this->handovers->add($this->actor(), $batch, (int) $data['pending_collection_id']));
         return back()->with('success', __('Collection added to handover.'));
@@ -118,21 +119,21 @@ final class CentralFinanceCollectionHandoverController extends Controller
 
     public function remove(CentralFinanceCollectionHandoverBatch $batch, CentralFinanceCollectionHandoverItem $item): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $this->validated(fn () => $this->handovers->remove($this->actor(), $batch, $item));
         return back()->with('success', __('Collection removed from handover.'));
     }
 
     public function submit(CentralFinanceCollectionHandoverBatch $batch): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $this->validated(fn () => $this->handovers->submit($this->actor(), $batch));
         return back()->with('success', __('Handover submitted for review.'));
     }
 
     public function hold(Request $request, CentralFinanceCollectionHandoverBatch $batch): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $this->validated(fn () => $this->handovers->hold($this->actor(), $batch, $data['reason']));
         return back()->with('success', __('Handover placed on hold.'));
@@ -140,7 +141,7 @@ final class CentralFinanceCollectionHandoverController extends Controller
 
     public function reject(Request $request, CentralFinanceCollectionHandoverBatch $batch): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $this->validated(fn () => $this->handovers->reject($this->actor(), $batch, $data['reason']));
         return back()->with('success', __('Handover rejected.'));
@@ -148,7 +149,7 @@ final class CentralFinanceCollectionHandoverController extends Controller
 
     public function cancel(Request $request, CentralFinanceCollectionHandoverBatch $batch): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $this->validated(fn () => $this->handovers->cancel($this->actor(), $batch, $data['reason']));
         return back()->with('success', __('Handover cancelled.'));
@@ -183,6 +184,16 @@ final class CentralFinanceCollectionHandoverController extends Controller
         $actor = $this->actor();
         $school = $this->workspace->currentSchool($actor);
         abort_unless($school !== null, 403);
-        $this->dataIsolation->assertProduction('school', (int) $school->id);
+        $this->dataIsolation->assertWorkflowWritable('school', (int) $school->id);
+    }
+
+    private function isWorkflowEligible(string $subjectType, int $subjectId): bool
+    {
+        try {
+            $this->dataIsolation->assertWorkflowWritable($subjectType, $subjectId);
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

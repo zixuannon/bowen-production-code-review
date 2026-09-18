@@ -7,6 +7,7 @@ use App\Models\FeesClassType;
 use App\Models\FormField;
 use App\Models\School;
 use App\Models\SessionYear;
+use App\Models\StudentImportIdentity;
 use App\Models\Students;
 use App\Models\User;
 use App\Repositories\Subscription\SubscriptionInterface;
@@ -35,8 +36,8 @@ final class StudentImportV2Service
 
     /** @var list<string> */
     private const SIMPLIFIED_REQUIRED_HEADERS = [
-        'import_reference', 'student_name', 'class_section', 'academic_year',
-        'admission_date', 'guardian_name', 'guardian_mobile',
+        'import_reference', 'student_name', 'class_section', 'schedule_type',
+        'admission_date', 'enrollment_status', 'guardian_name', 'guardian_mobile',
     ];
 
     /** V2.0 upload compatibility is retained while V2.1 is the downloaded template. */
@@ -56,7 +57,7 @@ final class StudentImportV2Service
         foreach ($rows as $line => $row) {
             if ($this->blank($row)) continue;
             $prepared = $this->prepareRow($row, $line + 2, $actor, $school, $classSections, $academicYears, $customFields, $seen);
-            $seen[$prepared['import_reference']] = true;
+            $seen[$prepared['import_reference']] = $prepared;
             $result[] = $prepared;
         }
         if ($result === []) throw ValidationException::withMessages(['file' => 'The workbook has no Student Import V2 data rows.']);
@@ -84,7 +85,7 @@ final class StudentImportV2Service
         $classes = ClassSection::query()->where('school_id', $actor->school_id)->with(['class', 'section', 'medium'])->get()
             ->map(fn (ClassSection $section): array => ['id' => $section->id, 'name' => trim((string) $section->full_name)])->filter(fn (array $row): bool => $row['name'] !== '')->values()->all();
         $years = SessionYear::query()->where('school_id', $actor->school_id)->orderByDesc('default')->orderByDesc('id')->get()
-            ->map(fn (SessionYear $year): array => ['id' => $year->id, 'name' => (string) $year->name])->values()->all();
+            ->map(fn (SessionYear $year): array => ['id' => $year->id, 'name' => (string) $year->name, 'default' => (bool) $year->default])->values()->all();
         $fields = FormField::query()->where('school_id', $actor->school_id)->where('user_type', 1)->orderBy('rank')->get()
             ->filter(fn (FormField $field): bool => in_array($field->type, ['text', 'number', 'dropdown', 'radio', 'textarea', 'checkbox'], true))
             ->map(function (FormField $field): array {
@@ -158,7 +159,6 @@ final class StudentImportV2Service
                 if ($this->identityExists($actor, $row['import_reference'])) continue;
                 $this->assertStudentCapacity($actor);
                 [$sessionYear, $classSection] = $this->placementById($actor, (int) $row['academic_year_id'], (int) $row['class_section_id']);
-                $this->assertCompulsorySetup($actor, $sessionYear, $classSection);
                 $guardian = app(UserService::class)->createGuardianForStudentImport(
                     $row['guardian_name'], $row['guardian_email'] ?: null, $row['guardian_mobile']
                 );
@@ -166,10 +166,16 @@ final class StudentImportV2Service
                 $studentUser = app(UserService::class)->createStudentUser(
                     $row['student_first_name'], $row['student_last_name'], $admissionNo, $row['mobile'] ?: null,
                     $row['date_of_birth'], $row['gender'], null, $classSection->id, $row['admission_date'],
-                    null, null, $sessionYear->id, $guardian->id, $row['custom_fields'] ?? [], 1, false, $row['notes'] ?: null
+                    null, null, $sessionYear->id, $guardian->id, $row['custom_fields'] ?? [], $row['enrollment_status'] === 'active' ? 1 : 0, false, $row['notes'] ?: null
                 );
                 $student = Students::query()->where('user_id', $studentUser->id)->lockForUpdate()->firstOrFail();
                 $identity = app(StudentCodeService::class)->assignGenerated($student, $actor, $row['import_reference']);
+                if (Schema::connection('school')->hasColumns('student_import_identities', ['schedule_type', 'enrollment_status'])) {
+                    $identity->update([
+                        'schedule_type' => $row['schedule_type'],
+                        'enrollment_status' => $row['enrollment_status'],
+                    ]);
+                }
                 $assignmentService = app(StudentFeeAssignmentService::class);
                 $draft = $assignmentService->saveDraft($student, $actor, []);
                 $confirmed = $assignmentService->confirm($student, $actor, $draft->uuid);
@@ -269,6 +275,8 @@ final class StudentImportV2Service
             'guardian_email' => strtolower(trim((string) ($row['guardian_email'] ?? ''))),
             'guardian_name' => $guardianName,
             'guardian_mobile' => $guardianMobile,
+            'schedule_type' => $this->scheduleType($row['schedule_type'] ?? null, $errors),
+            'enrollment_status' => $this->enrollmentStatus($row['status'] ?? $row['enrollment_status'] ?? null, $errors),
             'notes' => trim((string) ($row['notes'] ?? '')),
         ];
         $placement = $this->placementByName($row, $classSections, $academicYears, $errors);
@@ -278,14 +286,31 @@ final class StudentImportV2Service
         if ($prepared['guardian_email'] === '' && $prepared['guardian_name'] !== '' && $prepared['guardian_mobile'] !== '') {
             $warnings[] = 'Possible existing Guardian match: import will create a new Guardian because no Email was supplied.';
         }
-        if ($reference !== '' && isset($seen[$reference])) $warnings[] = 'Duplicate Import Reference in this workbook.';
-        if ($reference !== '' && $this->identityExists($actor, $reference)) $warnings[] = 'Import Reference already exists in this School.';
+        $duplicate = false;
+        if ($reference !== '' && isset($seen[$reference])) {
+            if ($this->sameImportIdentity($prepared, $seen[$reference])) {
+                $duplicate = true;
+                $warnings[] = 'Duplicate Import Reference in this workbook; this row will be skipped.';
+            } else {
+                $errors[] = 'Import Reference conflicts with another row in this workbook.';
+            }
+        }
+        if ($reference !== '') {
+            $existing = $this->existingImportIdentity($actor, $reference);
+            if ($existing !== null) {
+                if ($this->sameImportIdentity($prepared, $this->identitySnapshot($existing))) {
+                    $duplicate = true;
+                    $warnings[] = 'This Import Reference already exists with matching Student data; it will be skipped.';
+                } else {
+                    $errors[] = 'This Import Reference belongs to an existing Student with conflicting enrollment or guardian data.';
+                }
+            }
+        }
         if ($this->secondaryMatch($prepared, (int) $actor->school_id)) $warnings[] = 'A Student with the same name, date of birth, and Guardian email may already exist.';
         try {
             $this->assertCentralReady($school);
             if ($errors === []) {
                 [$year, $section] = $this->placementById($actor, (int) $prepared['academic_year_id'], (int) $prepared['class_section_id']);
-                $this->assertCompulsorySetup($actor, $year, $section);
             }
         } catch (\Throwable $exception) {
             $prepared['status'] = 'conflict';
@@ -295,7 +320,7 @@ final class StudentImportV2Service
         }
         $prepared['errors'] = $errors;
         $prepared['warnings'] = $warnings;
-        $prepared['status'] = $prepared['placement_conflict'] ? 'conflict' : ($errors !== [] ? 'error' : ($warnings !== [] && str_contains(implode(' ', $warnings), 'Import Reference') ? 'duplicate' : 'new'));
+        $prepared['status'] = $prepared['placement_conflict'] ? 'conflict' : ($errors !== [] ? 'error' : ($duplicate ? 'duplicate' : 'new'));
         return $prepared;
     }
 
@@ -304,10 +329,12 @@ final class StudentImportV2Service
     {
         $className = trim((string) ($row['class_section'] ?? '')); $yearName = trim((string) ($row['academic_year'] ?? ''));
         $class = collect($classes)->first(fn (array $item): bool => hash_equals($item['name'], $className));
-        $year = collect($years)->first(fn (array $item): bool => hash_equals($item['name'], $yearName));
+        $year = $yearName === ''
+            ? collect($years)->first(fn (array $item): bool => (bool) ($item['default'] ?? false))
+            : collect($years)->first(fn (array $item): bool => hash_equals($item['name'], $yearName));
         if ($class === null) $errors[] = 'Class Section must be selected from this School workbook.';
         if ($year === null) $errors[] = 'Academic Year must be selected from this School workbook.';
-        return ['class_section_id' => (int) ($class['id'] ?? 0), 'academic_year_id' => (int) ($year['id'] ?? 0), 'class_section' => $className, 'academic_year' => $yearName, 'placement_conflict' => $class === null || $year === null];
+        return ['class_section_id' => (int) ($class['id'] ?? 0), 'academic_year_id' => (int) ($year['id'] ?? 0), 'class_section' => $className, 'academic_year' => (string) ($year['name'] ?? $yearName), 'placement_conflict' => $class === null || $year === null];
     }
 
     /** @param list<array{id:int,name:string,type:string,required:bool,values:list<string>}> $fields @param list<string> $errors @return list<array{form_field_id:int,input_type:string,data:mixed}> */
@@ -345,6 +372,44 @@ final class StudentImportV2Service
         return app(StudentCodeService::class)->existsByImportReference((int) $actor->school_id, $reference);
     }
 
+    private function existingImportIdentity(User $actor, string $reference): ?StudentImportIdentity
+    {
+        return StudentImportIdentity::query()->with(['student.user', 'student.guardian'])
+            ->where('school_id', (int) $actor->school_id)
+            ->where('import_reference', $reference)
+            ->first();
+    }
+
+    /** @return array<string,mixed> */
+    private function identitySnapshot(StudentImportIdentity $identity): array
+    {
+        $student = $identity->student;
+        $user = $student?->user;
+        $guardian = $student?->guardian;
+        return [
+            'student_name' => trim((string) ($user?->first_name ?? '').' '.(string) ($user?->last_name ?? '')),
+            'student_first_name' => (string) ($user?->first_name ?? ''),
+            'guardian_name' => trim((string) ($guardian?->first_name ?? '').' '.(string) ($guardian?->last_name ?? '')),
+            'guardian_mobile' => (string) ($guardian?->mobile ?? ''),
+            'class_section_id' => (int) ($student?->class_section_id ?? 0),
+            'academic_year_id' => (int) ($student?->session_year_id ?? 0),
+            'admission_date' => $student?->admission_date?->format('Y-m-d') ?? (string) ($student?->admission_date ?? ''),
+            'schedule_type' => (string) ($identity->schedule_type ?? ''),
+            'enrollment_status' => (string) ($identity->enrollment_status ?? 'active'),
+        ];
+    }
+
+    /** A duplicate must be the same deterministic import identity and data. */
+    private function sameImportIdentity(array $left, array $right): bool
+    {
+        foreach (['student_name', 'student_first_name', 'guardian_name', 'guardian_mobile', 'class_section_id', 'academic_year_id', 'admission_date', 'schedule_type', 'enrollment_status'] as $key) {
+            if (mb_strtolower(trim((string) ($left[$key] ?? ''))) !== mb_strtolower(trim((string) ($right[$key] ?? '')))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** @param array<string,mixed> $row */
     private function secondaryMatch(array $row, int $schoolId): bool
     {
@@ -355,8 +420,10 @@ final class StudentImportV2Service
 
     private function legacyAdmissionNo(User $actor, SessionYear $year): string
     {
-        $lastId = (int) (Students::withTrashed()->max('id') ?? 0);
-        return $year->name.'0'.$actor->school_id.'0'.($lastId + 1);
+        // Student Code is the immutable School-facing identity.  Legacy
+        // admission_no remains required by the pre-existing Student/User
+        // schema, but must never be derived from a latest database ID.
+        return 'IMP-'.$actor->school_id.'-'.Str::upper(Str::random(20));
     }
 
     private function assertStudentCapacity(User $actor): void
@@ -411,6 +478,14 @@ final class StudentImportV2Service
             // Keep them upload-compatible without treating that value as the
             // generated canonical Student Code.
             'student_code' => 'import_reference',
+            'no' => 'import_reference',
+            'no.' => 'import_reference',
+            'class' => 'class_section',
+            'parent_name' => 'guardian_name',
+            'parent_phone' => 'guardian_mobile',
+            'student_phone' => 'mobile',
+            'enrollment_date' => 'admission_date',
+            'remarks' => 'notes',
             '学生姓名' => 'student_name',
             '班级' => 'class_section',
             '学年' => 'academic_year',
@@ -422,6 +497,10 @@ final class StudentImportV2Service
             '家长_监护人电话' => 'guardian_mobile',
             '家长_email' => 'guardian_email',
             '备注' => 'notes',
+            'schedule_type' => 'schedule_type',
+            'schedule' => 'schedule_type',
+            '状态' => 'enrollment_status',
+            'status' => 'enrollment_status',
         ][$header] ?? $header;
     }
 
@@ -465,6 +544,23 @@ final class StudentImportV2Service
         $gender = strtolower($this->text($value, $label, $errors, $required));
         if ($gender !== '' && !in_array($gender, ['male', 'female'], true)) $errors[] = "{$label} must be male or female.";
         return $gender;
+    }
+
+    /** @param list<string> $errors */
+    private function scheduleType(mixed $value, array &$errors): string
+    {
+        $schedule = strtolower($this->text($value, 'Schedule Type', $errors, true));
+        $canonical = ['weekday' => 'Weekday', 'weekend' => 'Weekend'][$schedule] ?? null;
+        if ($schedule !== '' && $canonical === null) $errors[] = 'Schedule Type must be Weekday or Weekend.';
+        return $canonical ?? '';
+    }
+
+    /** @param list<string> $errors */
+    private function enrollmentStatus(mixed $value, array &$errors): string
+    {
+        $status = strtolower($this->text($value, 'Status', $errors, true));
+        if (!in_array($status, ['active', 'inactive'], true) && $status !== '') $errors[] = 'Status must be Active or Inactive.';
+        return $status;
     }
 
     /** @param list<string> $errors */

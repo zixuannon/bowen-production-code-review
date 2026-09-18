@@ -8,8 +8,9 @@ use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 final class StudentImportV2TemplateExport implements WithMultipleSheets
 {
     public const HEADINGS = [
-        'Import Reference *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期',
-        '学生电话', '家长/监护人姓名 *', '家长/监护人电话 *', '家长 Email', '备注',
+        'No. *', 'Student Name *', 'Class *', 'Schedule Type *', 'Parent Name *',
+        'Parent Phone *', 'Student Phone', 'Gender', 'Date of Birth', 'Enrollment Date *',
+        'Status *', 'Remarks',
     ];
 
     /** @param list<array{id:int,name:string}> $classSections @param list<array{id:int,name:string}> $academicYears @param list<array{name:string,type:string,required:bool,values:list<string>}> $customFields */

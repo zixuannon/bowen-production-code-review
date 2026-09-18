@@ -36,6 +36,7 @@ final class StudentImportV2MigrationRunnerTest extends TestCase
         $this->assertTrue(Schema::connection('mysql')->hasColumn('central_finance_student_profiles','student_code'));
         $this->assertTrue(Schema::connection('school')->hasTable('student_import_identities'));
         $this->assertTrue(Schema::connection('school')->hasColumn('students', 'notes'));
+        $this->assertTrue(Schema::connection('school')->hasColumns('student_import_identities', ['schedule_type', 'enrollment_status']));
         DB::connection('school')->table('users')->insert([
             ['first_name' => '学生甲', 'last_name' => null, 'email' => null],
             ['first_name' => '学生乙', 'last_name' => null, 'email' => null],

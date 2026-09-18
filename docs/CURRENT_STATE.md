@@ -1,5 +1,46 @@
 # eSchool Current State
 
+## Zixuan QA Student Import + Front Desk Collection — local candidate
+
+- Baseline: Production release `a4aec6bc…`; isolated branch
+  `codex/zixuan-student-import-frontdesk-e2e`. No Production data, migration,
+  deployment, or Bahan/Timecity/Kindergarten record was touched.
+- An authorized Head Finance/Super Admin can deliberately select Zixuan
+  `MMBOWEN01`, which is visibly marked QA/Test. The School selector change
+  does not include its data in official totals, reports, accounts or default
+  lookups; Include QA/Test remains the deliberate authorized history view.
+- Student Import V2 now downloads a new-school workbook with `No.`, student,
+  class, Weekday/Weekend, parent/contact, optional demographic data,
+  enrollment date/status and remarks. Student Code is not an upload field:
+  it is generated server-side from the locked per-School six-digit sequence.
+  Preview is cache-only and labels NEW/DUPLICATE/CONFLICT/ERROR; deterministic
+  import-reference matching skips exact replays and blocks conflicting rows.
+  Confirm creates only NEW rows, and produces receivables only through the
+  existing compulsory-fee assignment flow—never a Payment, Receipt or Ledger.
+- The exact, read-only-by-default Zixuan schema runner now includes an
+  additive `student_import_identities` enrollment-metadata migration. It
+  validates registry/migration state before every write and remains confined
+  to canonical `MMBOWEN01` when explicitly executed.
+- Front Desk collection is now a non-canonical declaration: Bank Transfer
+  requires an active, allocated, same-currency Bank account; Cash has no
+  account until a submitted Cash handover. Head Finance revalidates all
+  account/allocation/currency conditions before the only canonical posting
+  path. Cash cannot be directly confirmed. Payment/Receipt/Ledger writes
+  remain exactly-once and Head Finance-only.
+- A printable 80 mm Collection Receipt is immediately available after a
+  Front Desk declaration. It is explicitly non-official until confirmation,
+  then links the canonical receipt. Pending review now displays School,
+  Student Code, receivable, currency, method/intended account, collector,
+  time, reference and remarks.
+- Targeted regression passes 74 tests / 2,260 assertions; full regression
+  passes when test files run in isolated processes against disposable local
+  databases (the aggregate process retains its known 128 MB memory cap).
+  `view:cache`, route validation and `git diff --check` pass. Production
+  deployment, the exact Zixuan migration, and authenticated browser QA remain
+  separate human-gated work.
+
+Last updated: 2026-09-18
+
 ## Central Finance Fund Management bugfix — local candidate
 
 - Baseline: Production commit `8dfc265ac88ca31257f7db0f03b4eaf3d4754043`.

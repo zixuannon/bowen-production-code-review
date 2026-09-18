@@ -45,8 +45,8 @@ final class StudentImportV2ContractTest extends TestCase
             [['name' => 'Nationality', 'type' => 'dropdown', 'required' => true, 'values' => ['Myanmar', 'China']]],
         );
         $this->assertSame([
-            'Import Reference *', '学生姓名 *', '班级 *', '学年 *', '性别', '出生日期', '入学日期', '学生电话',
-            '家长/监护人姓名 *', '家长/监护人电话 *', '家长 Email', '备注', 'Nationality',
+            'No. *', 'Student Name *', 'Class *', 'Schedule Type *', 'Parent Name *', 'Parent Phone *',
+            'Student Phone', 'Gender', 'Date of Birth', 'Enrollment Date *', 'Status *', 'Remarks', 'Nationality',
         ], $export->headings());
 
         $path = tempnam(sys_get_temp_dir(), 'student-import-v2-');
@@ -56,22 +56,23 @@ final class StudentImportV2ContractTest extends TestCase
             $this->assertSame('Import', $book->getSheet(0)->getTitle());
             $this->assertSame(['Import', 'Class Sections', 'Academic Years', 'Custom Fields', 'Validation Lists'], $book->getSheetNames());
             $sheet = $book->getSheet(0);
-            $this->assertSame('Import Reference *', (string) $sheet->getCell('A1')->getValue());
+            $this->assertSame('No. *', (string) $sheet->getCell('A1')->getValue());
             $this->assertSame('@', $sheet->getStyle('A2')->getNumberFormat()->getFormatCode());
-            $this->assertSame('@', $sheet->getStyle('H2')->getNumberFormat()->getFormatCode());
-            $this->assertSame('@', $sheet->getStyle('J2')->getNumberFormat()->getFormatCode());
+            $this->assertSame('@', $sheet->getStyle('F2')->getNumberFormat()->getFormatCode());
+            $this->assertSame('@', $sheet->getStyle('G2')->getNumberFormat()->getFormatCode());
             $this->assertSame('=StudentImportClassSections', $sheet->getCell('C2')->getDataValidation()->getFormula1());
-            $this->assertSame('=StudentImportAcademicYears', $sheet->getCell('D2')->getDataValidation()->getFormula1());
-            $this->assertSame('=StudentImportGenders', $sheet->getCell('E2')->getDataValidation()->getFormula1());
+            $this->assertSame('"Weekday,Weekend"', $sheet->getCell('D2')->getDataValidation()->getFormula1());
+            $this->assertSame('=StudentImportGenders', $sheet->getCell('H2')->getDataValidation()->getFormula1());
+            $this->assertSame('"Active,Inactive"', $sheet->getCell('K2')->getDataValidation()->getFormula1());
             $this->assertSame(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN, $book->getSheetByName('Validation Lists')->getSheetState());
             $sheet->setCellValueExplicit('A2', 'SRC-000125', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            $sheet->setCellValueExplicit('H2', '0912345678', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('F2', '0912345678', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
             $book->disconnectWorksheets();
             $book = IOFactory::load($path);
             $sheet = $book->getSheetByName('Import');
             $this->assertSame('SRC-000125', (string) $sheet->getCell('A2')->getValue());
-            $this->assertSame('0912345678', (string) $sheet->getCell('H2')->getValue());
+            $this->assertSame('0912345678', (string) $sheet->getCell('F2')->getValue());
             $this->assertSame('=StudentImportClassSections', $sheet->getCell('C2')->getDataValidation()->getFormula1());
         } finally {
             $book->disconnectWorksheets();
@@ -103,6 +104,8 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringContainsString('saveDraft($student, $actor, [])', $confirm);
         $this->assertStringContainsString('confirm($student, $actor, $draft->uuid)', $confirm);
         $this->assertStringNotContainsString('CentralFinancePaymentService', $source);
+        $this->assertStringNotContainsString('max(\'id\')', $confirm);
+        $this->assertStringContainsString("'IMP-'.\$actor->school_id", $source);
     }
 
     public function test_parser_keeps_text_import_references_and_rejects_numeric_identity_cells(): void
@@ -179,11 +182,12 @@ final class StudentImportV2ContractTest extends TestCase
         $sheet->setCellValueExplicit('A2', 'SRC-00125', DataType::TYPE_STRING);
         $sheet->setCellValue('B2', '张 三');
         $sheet->setCellValue('C2', 'Grade 1 - A');
-        $sheet->setCellValue('D2', '2026');
-        $sheet->setCellValue('G2', '2026-09-03');
-        $sheet->setCellValueExplicit('H2', '0912345678', DataType::TYPE_STRING);
-        $sheet->setCellValue('I2', '王 母亲');
-        $sheet->setCellValueExplicit('J2', '0998765432', DataType::TYPE_STRING);
+        $sheet->setCellValue('D2', 'Weekday');
+        $sheet->setCellValue('E2', '王 母亲');
+        $sheet->setCellValueExplicit('F2', '0998765432', DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('G2', '0912345678', DataType::TYPE_STRING);
+        $sheet->setCellValue('J2', '2026-09-03');
+        $sheet->setCellValue('K2', 'Active');
         $path = tempnam(sys_get_temp_dir(), 'student-import-v21-parser-');
         (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book))->save($path);
 
@@ -201,6 +205,8 @@ final class StudentImportV2ContractTest extends TestCase
             $this->assertSame('', $rows[0]['guardian_email'] ?? '');
             $this->assertSame('', $rows[0]['gender'] ?? '');
             $this->assertSame('', $rows[0]['date_of_birth'] ?? '');
+            $this->assertSame('Weekday', $rows[0]['schedule_type']);
+            $this->assertSame('Active', $rows[0]['enrollment_status']);
         } finally {
             $book->disconnectWorksheets();
             @unlink($path);
@@ -231,5 +237,17 @@ final class StudentImportV2ContractTest extends TestCase
         DB::connection('school')->table('student_import_identities')->insert([
             'school_id' => 1, 'student_code' => '00125', 'student_id' => 3, 'user_id' => 3, 'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    public function test_enrollment_metadata_migration_is_additive_and_requires_the_identity_table(): void
+    {
+        $base = require database_path('migrations/schools/2026_09_03_000001_create_student_import_identities_table.php');
+        $base->up();
+        $migration = require database_path('migrations/schools/2026_09_18_000001_add_enrollment_metadata_to_student_import_identities.php');
+        $migration->up();
+
+        $this->assertTrue(Schema::connection('school')->hasColumns('student_import_identities', ['schedule_type', 'enrollment_status']));
+        $migration->up();
+        $this->assertTrue(Schema::connection('school')->hasColumns('student_import_identities', ['schedule_type', 'enrollment_status']));
     }
 }

@@ -31,7 +31,7 @@
         @if($canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.enter') }}">@csrf<input type="hidden" name="return_to" value="{{ request('return_to', url()->full()) }}">
                 <select name="school_id" class="form-control form-control-sm" onchange="this.form.submit()" aria-label="{{ __('Switch School') }}">
                     <option value="">{{ __('切换校区') }}</option>
-                    @foreach($schools as $availableSchool)<option value="{{ $availableSchool->id }}" @selected($school && $school->id === $availableSchool->id)>{{ $availableSchool->name }}</option>@endforeach
+                    @foreach($schools as $availableSchool)<option value="{{ $availableSchool->id }}" @selected($school && $school->id === $availableSchool->id)>{{ $availableSchool->name }}{{ $availableSchool->is_qa_test ? ' · '. __('QA/Test School') : '' }}</option>@endforeach
                 </select>
             </form>@endif
         @if($school && $canAccessAllSchools)<form method="POST" action="{{ route('central-finance.school.exit') }}">@csrf<input type="hidden" name="return_to" value="{{ url()->full() }}"><button class="btn btn-sm btn-outline-secondary">{{ __('返回全部校区') }}</button></form>@endif

@@ -47,5 +47,7 @@ final class CentralFinancePendingCollection extends Model
     public function studentProfile(): BelongsTo { return $this->belongsTo(CentralFinanceStudentProfile::class, 'student_profile_id'); }
     public function intendedFundAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'intended_fund_account_id'); }
     public function confirmedPayment(): BelongsTo { return $this->belongsTo(CentralFinancePayment::class, 'confirmed_payment_id'); }
+    public function collectedBy(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'collected_by'); }
+    public function confirmedBy(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'confirmed_by'); }
     public function handoverItems(): HasMany { return $this->hasMany(CentralFinanceCollectionHandoverItem::class, 'pending_collection_id'); }
 }

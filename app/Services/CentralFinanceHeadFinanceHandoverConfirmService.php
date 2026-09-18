@@ -42,7 +42,7 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
                 if ($pending->status !== CentralFinancePendingCollection::SUBMITTED) {
                     throw new InvalidArgumentException('Every handover item must still be a submitted Pending Collection.');
                 }
-                $this->pendingConfirmation->confirm($actor, (int) $pending->id, $account, $confirmedAt, $reason);
+                $this->pendingConfirmation->confirm($actor, (int) $pending->id, $account, $confirmedAt, $reason, true);
                 $item->update(['status' => CentralFinanceCollectionHandoverItem::CONFIRMED, 'confirmed_payment_id' => $pending->fresh()->confirmed_payment_id]);
             }
             $before = $batch->toArray();

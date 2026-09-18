@@ -16,6 +16,8 @@ use InvalidArgumentException;
 /** Creates a non-financial Front Desk declaration. It never calls payment, receipt, ledger, or balance code. */
 final class CentralFinancePendingCollectionService
 {
+    public const METHOD_CASH = 'Cash';
+    public const METHOD_BANK_TRANSFER = 'Bank Transfer';
     public function __construct(
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
@@ -25,7 +27,8 @@ final class CentralFinancePendingCollectionService
 
     public function submit(CentralFinanceUser $actor, int $profileId, int $receivableId, float $amount, string $method, CarbonImmutable $collectedAt, string $idempotencyReference, ?int $intendedFundAccountId = null, ?string $paymentReference = null, ?string $note = null): CentralFinancePendingCollection
     {
-        if ($amount <= 0 || !is_finite($amount) || !preg_match('/^[A-Za-z0-9 _.-]{2,40}$/', $method) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference)) {
+        $method = trim($method);
+        if ($amount <= 0 || !is_finite($amount) || !in_array($method, [self::METHOD_CASH, self::METHOD_BANK_TRANSFER], true) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference)) {
             throw new InvalidArgumentException('Pending collection input is invalid.');
         }
         $school = $this->workspace->currentSchool($actor);
@@ -39,9 +42,18 @@ final class CentralFinancePendingCollectionService
             if (!in_array($receivable->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true) || (float) $receivable->amount_paid + $amount > (float) $receivable->amount_due) {
                 throw new InvalidArgumentException('Pending collection exceeds the current receivable outstanding balance.');
             }
+            if ($method === self::METHOD_BANK_TRANSFER && $intendedFundAccountId === null) {
+                throw new InvalidArgumentException('Bank Transfer requires the intended Bank Fund Account.');
+            }
+            if ($method === self::METHOD_CASH && $intendedFundAccountId !== null) {
+                throw new InvalidArgumentException('Cash collections do not select a Fund Account until Head Finance confirms the handover.');
+            }
             if ($intendedFundAccountId !== null) {
                 $intended = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($intendedFundAccountId);
                 $this->availability->assertAccountAvailableForSchool($intended, (int) $school->id);
+                if ($method === self::METHOD_BANK_TRANSFER && $intended->account_type !== 'bank') {
+                    throw new InvalidArgumentException('Bank Transfer requires an active Bank Fund Account.');
+                }
                 if (strtoupper((string) $intended->currency) !== strtoupper((string) $receivable->currency)) {
                     throw new InvalidArgumentException('The intended Fund Account currency does not match the receivable.');
                 }

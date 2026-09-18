@@ -69,9 +69,15 @@ final class CentralFinanceWorkspaceService
             ->values();
 
         $query = School::on('mysql')->whereIn('id', $scopeSchoolIds->intersect($groupSchoolIds)->values());
-        $this->dataIsolation->apply($query, 'school', $includeQaTest);
+        // A Head Finance / Super Admin needs to be able to deliberately enter
+        // a long-lived QA School.  This only exposes the School selector; all
+        // records remain hidden unless the authorized user enables the
+        // Include QA/Test filter.  School-staff identities never receive this
+        // broader selector.
+        $this->dataIsolation->apply($query, 'school', $includeQaTest || $this->dataIsolation->canIncludeQaTest($actor));
 
-        return $query->orderBy('name')->get(['id', 'name', 'code']);
+        return $query->orderBy('name')->get(['id', 'name', 'code'])
+            ->each(fn (School $school) => $school->setAttribute('is_qa_test', $this->dataIsolation->isQaTestSchool((int) $school->id)));
     }
 
     public function enterSchool(CentralFinanceUser $actor, int $schoolId): School
@@ -218,6 +224,26 @@ final class CentralFinanceWorkspaceService
         $query = $this->accounts->visibleAccounts($actor, $schoolId, false)->orderBy('account_name');
         $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
 
+        return $query->get();
+    }
+
+    /**
+     * Front Desk selects a parent-declared destination only; this is not
+     * Fund-Account operation authority. The School collection role plus an
+     * active explicit allocation is the complete selection boundary. Canonical
+     * posting is re-authorized by Head Finance at confirmation.
+     *
+     * @return Collection<int, CentralFinanceFundAccount>
+     */
+    public function collectionBankAccounts(CentralFinanceUser $actor, int $schoolId, bool $includeQaTest = false): Collection
+    {
+        $this->assertCanSubmitCollectionsSchool($actor, $schoolId);
+        $query = CentralFinanceFundAccount::on('mysql')->active()
+            ->where('account_type', 'bank')
+            ->whereHas('schoolAllocations', fn (Builder $allocations) => $allocations
+                ->where('school_id', $schoolId)->effective())
+            ->orderBy('account_name');
+        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
         return $query->get();
     }
 
