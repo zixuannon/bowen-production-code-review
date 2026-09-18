@@ -213,6 +213,11 @@ final class CentralFinanceFundAccountAdministrationService
             $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
             $groupUser = $this->groupUserForAccount($actor, $school, $account);
             $this->assertAccountInConfigurationScope($account, $school, (int) $groupUser->group_id);
+            // A double click or replay must not create a second lifecycle
+            // mutation/audit row once the requested state is already current.
+            if ($account->status === $status && (bool) $account->is_active === ($status === CentralFinanceFundAccount::STATUS_ACTIVE)) {
+                return;
+            }
             if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED && abs(app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account)) > 0.0001) {
                 throw ValidationException::withMessages(['status' => [__('A Fund Account with a non-zero balance cannot be archived.')]]);
             }

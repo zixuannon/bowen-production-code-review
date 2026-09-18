@@ -116,7 +116,7 @@ final class CentralFinanceLedgerPresentationService
             'central_finance_payment', 'central_payment' => __('Student Payment'),
             'central_finance_payment_refund', 'central_payment_refund' => __('Payment Refund / Reversal'),
             'central_finance_expense', 'expense' => __('Expense'),
-            'central_finance_other_income', 'other_income' => __('Other Income'),
+            'central_finance_other_income', 'other_income' => __('Income'),
             'central_finance_reimbursement', 'reimbursement' => __('Reimbursement'),
             'central_finance_receivable', 'central_receivable' => __('Receivable'),
             'central_finance_receivable_adjustment' => __('Adjustment / Waiver / Void'),
@@ -177,7 +177,7 @@ final class CentralFinanceLedgerPresentationService
             'central_payment' => ['label' => __('Student Payment'), 'query' => fn (string $id) => CentralFinancePayment::on('mysql')->where('payment_uuid', $id)->first()],
             'central_payment_refund' => ['label' => __('Payment Refund / Reversal'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
             'central_expense', 'central_expense_void' => ['label' => $sourceType === 'central_expense_void' ? __('Expense Reversal') : __('Expense'), 'query' => fn (string $id) => CentralFinanceExpense::on('mysql')->withTrashed()->where('expense_uuid', $id)->first()],
-            'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? __('Other Income Reversal') : __('Other Income'), 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
+            'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? __('Income Reversal') : __('Income'), 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
             'central_internal_transfer', 'central_internal_transfer_reversal' => ['label' => $sourceType === 'central_internal_transfer_reversal' ? __('Internal Transfer Reversal') : __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->with(['sourceAccount', 'destinationAccount'])->where('transfer_uuid', $id)->first()],
             default => null,
         };

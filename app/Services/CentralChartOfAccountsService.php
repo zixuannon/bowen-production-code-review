@@ -39,7 +39,12 @@ final class CentralChartOfAccountsService
             FinanceGroup::on('mysql')->whereKey($groupId)->lockForUpdate()->firstOrFail();
             $category = $categoryId ? CentralFinanceCategory::on('mysql')->lockForUpdate()->findOrFail($categoryId) : new CentralFinanceCategory;
             if ($category->exists && (int) $category->group_id !== $groupId) throw ValidationException::withMessages(['group_id' => 'Legacy or other-group accounts require an explicitly reviewed mapping, not an edit.']);
-            if ($category->exists && ($category->category_code !== $data['category_code'] || $category->type !== $data['type'])) throw ValidationException::withMessages(['category_code'=>'Account Code and Type are immutable; create a new definition instead of rewriting historical classification.']);
+            // The internal ID, not the displayed Account Code, is the durable
+            // financial relationship. A Head Finance user may correct the
+            // current code with an auditable reason; historical document
+            // snapshots remain untouched. Type still changes classification
+            // semantics and must be modelled as a new Account instead.
+            if ($category->exists && $category->type !== $data['type']) throw ValidationException::withMessages(['type'=>'Account Type is immutable; create a new definition instead of rewriting historical classification.']);
             $schoolIds = array_map('intval', $data['school_ids']);
             // A form may omit Schools the actor can no longer see. An omitted
             // allocation is still a mutation, not an implicit revocation grant.
@@ -61,7 +66,7 @@ final class CentralChartOfAccountsService
             $category->fill(['group_id'=>$groupId,'school_id'=>null,'type'=>$data['type'],'category_code'=>$data['category_code'],'name'=>$data['name'],'is_active'=>(bool)$data['is_active']])->save();
             CentralFinanceCategorySchoolAllocation::on('mysql')->where('category_id',$category->id)->whereNotIn('school_id',$schoolIds)->update(['is_active'=>false,'updated_at'=>now()]);
             foreach ($schoolIds as $schoolId) CentralFinanceCategorySchoolAllocation::on('mysql')->updateOrCreate(['category_id'=>$category->id,'school_id'=>$schoolId],['is_active'=>true]);
-            DB::connection('mysql')->table('central_finance_category_audits')->insert(['category_id'=>$category->id,'group_id'=>$groupId,'actor_id'=>$actor->id,'action'=>$before ? 'updated' : 'created','reason'=>$data['reason'],'before'=>$before ? json_encode($before,JSON_THROW_ON_ERROR) : null,'after'=>json_encode($this->snapshot($category),JSON_THROW_ON_ERROR),'created_at'=>now()]);
+            DB::connection('mysql')->table('central_finance_category_audits')->insert(['category_id'=>$category->id,'group_id'=>$groupId,'actor_id'=>$actor->id,'action'=>$before ? (($before['category_code'] ?? null) !== $category->category_code ? 'account_code_updated' : 'updated') : 'created','reason'=>$data['reason'],'before'=>$before ? json_encode($before,JSON_THROW_ON_ERROR) : null,'after'=>json_encode($this->snapshot($category),JSON_THROW_ON_ERROR),'created_at'=>now()]);
             return $category->fresh();
         });
     }

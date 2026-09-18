@@ -1613,3 +1613,11 @@ Do not implement finance roles until P1 is production-verified and business rule
 - Production DOM sinks identified by the security review now render question, plan, and gallery-caption data as text rather than executable HTML.
 - Axios is upgraded to the patched 1.20 release line, and the subject-loader option merge now copies only known own properties from a plain object.
 - Disposable-MySQL full regression passes 597 tests / 4050 assertions with zero errors or failures. Production-only findings were kept separate from excluded test credentials, test SHA1 fixtures, and translation-file false positives.
+
+## Central Finance Bugfix Batch (local candidate)
+
+- Chart of Accounts now treats the internal category ID as the durable financial relationship: Head Finance may correct the current text Account Code (including leading zeroes) with a required reason, group-unique validation, and before/after audit; Account Type remains immutable and no historical document or Ledger row is rewritten.
+- The All Schools Income detail endpoint now resolves the owning School from the canonical income record and then enforces Central/Group scope plus readable-account scope. It no longer depends on a selected School; cross-School access remains denied.
+- The shared audited lifecycle confirmation modal disables a repeated confirmation, while Fund Account lifecycle status changes are a server-side no-op when the requested state is already current, preventing duplicate lifecycle audit writes on replay.
+- User-facing Central Finance terminology now says `Income`; routes and underlying `other_income` compatibility identifiers remain unchanged.
+- Targeted regression covers Account Code change/audit/duplicate rejection, V3 lookup refresh, all-Schools detail authorization, lifecycle replay, operating-document and transfer reversal paths. The complete suite was also run; an initially missing new Chinese translation was fixed. The remaining suite interruption is the pre-existing 128 MB memory failure and unrelated `FeeModelAccessorTest` failures, not bypassed by this candidate. Production is unchanged pending candidate review/release.

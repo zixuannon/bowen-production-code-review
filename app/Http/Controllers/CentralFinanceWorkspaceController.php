@@ -388,7 +388,7 @@ final class CentralFinanceWorkspaceController extends Controller
                 $document->trashed() ? __('Voided') : __('Active'), $document->description,
             ];
         })->all();
-        $title = $type === 'expense' ? 'Central Expenses' : 'Central Other Income';
+        $title = $type === 'expense' ? 'Central Expenses' : 'Central Income';
         return $this->downloadReadExport(new CentralFinanceReadExport($title, [
             'Date','School','Fund Account ID','Category','Payment Method','Reference','Payee / Payer','Currency','Amount','Operator','Status','Description',
         ], $rows), $type === 'expense' ? 'central_expenses' : 'central_other_income', $format);
@@ -711,7 +711,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $account = CentralFinanceFundAccount::on('mysql')->findOrFail($data['fund_account_id']);
         $this->assertProductionSubjects([['category', (int) $data['category_id']], ['fund_account', (int) $account->id]]);
         $this->documents->createOtherIncome($actor, $school->id, (int) $data['category_id'], $account, (float) $data['amount'], $data['payment_method'], CarbonImmutable::now(), $this->workspace->idempotencyReference('ui-income'), $data['reference_no'] ?? null, $data['payer'] ?? null, $data['description'] ?? null);
-        return back()->with('success', __('Central other income recorded.'));
+        return back()->with('success', __('Central income recorded.'));
     }
 
     public function updateExpense(Request $request, int $expense): RedirectResponse
@@ -731,7 +731,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $data = $request->validate(['category_id' => ['required','integer'], 'payer' => ['nullable','string','max:191'], 'description' => ['nullable','string','max:2000'], 'reason' => ['required','string','max:255']]);
         $this->assertProductionSubjects([['other_income', (int) $document->id], ['category', (int) $data['category_id']]]);
         $this->documents->updateOtherIncomeDetails($actor, $document->id, $data, $data['reason']);
-        return redirect()->route('central-finance.other-income.show', $document->id)->with('success', __('Other Income details updated.'));
+        return redirect()->route('central-finance.other-income.show', $document->id)->with('success', __('Income details updated.'));
     }
 
     public function voidExpense(Request $request, int $expense): RedirectResponse
@@ -751,7 +751,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $this->dataIsolation->assertProduction('other_income', (int) $document->id);
         $data = $request->validate(['reason' => ['required','string','max:255']]);
         $this->documents->voidOtherIncome($actor, $document->id, $data['reason'], CarbonImmutable::now());
-        return redirect()->route('central-finance.other-income.show', $document->id)->with('success', __('Other Income reversed.'));
+        return redirect()->route('central-finance.other-income.show', $document->id)->with('success', __('Income reversed.'));
     }
 
     public function reimbursement(Request $request): RedirectResponse
@@ -915,12 +915,18 @@ final class CentralFinanceWorkspaceController extends Controller
 
     private function operatingDocumentDetail(string $type, int $id): View
     {
-        [$actor, $school] = $this->currentReadSchool();
+        $actor = $this->actor();
         $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor);
-        $accounts = $this->workspace->readableAccounts($actor, $school->id, $includeQaTest);
         $class = $type === 'expense' ? CentralFinanceExpense::class : CentralFinanceOtherIncome::class;
-        $document = $class::on('mysql')->withTrashed()->with('category')
-            ->where('school_id', $school->id)->whereIn('fund_account_id', $accounts->pluck('id'))->findOrFail($id);
+        $documentQuery = $class::on('mysql')->withTrashed()->with('category');
+        $this->dataIsolation->apply($documentQuery, $type, $includeQaTest);
+        $document = $documentQuery->findOrFail($id);
+        // Resolve the owning School from the canonical document, not the
+        // selected workspace context. This lets an authorised Head Finance
+        // user inspect All Schools details without weakening school scope.
+        $school = $this->workspace->assertCanViewSchool($actor, (int) $document->school_id);
+        $accounts = $this->workspace->readableAccounts($actor, $school->id, $includeQaTest);
+        abort_unless($accounts->pluck('id')->contains((int) $document->fund_account_id), 403);
         $audits = CentralFinanceDocumentAudit::on('mysql')->where([
             'school_id' => $school->id, 'document_type' => $type, 'document_id' => $document->id,
         ])->latest()->get();

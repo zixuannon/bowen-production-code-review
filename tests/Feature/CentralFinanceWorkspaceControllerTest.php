@@ -8,6 +8,7 @@ use App\Models\CentralFinanceCategory;
 use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceLedgerEntry;
+use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinanceUser;
 use App\Models\User;
 use App\Services\CentralFinanceWorkspaceService;
@@ -98,6 +99,42 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $view=app(CentralFinanceWorkspaceController::class)->dashboard();
         $this->assertSame('central-finance.workspace',$view->name()); $this->assertNull($view->getData()['school']);
         $this->expectException(AuthorizationException::class); $workspace->enterSchool($this->zixuanAccountant,2);
+    }
+
+    public function test_all_schools_income_detail_resolves_its_canonical_school_without_requiring_a_school_switch(): void
+    {
+        $category = CentralFinanceCategory::on('mysql')->create([
+            'school_id' => 2, 'type' => 'income', 'name' => 'Timecity Income', 'is_active' => true,
+        ]);
+        $income = CentralFinanceOtherIncome::on('mysql')->create([
+            'school_id' => 2, 'category_id' => $category->id, 'fund_account_id' => $this->timecity->id,
+            'idempotency_key' => 'ALL-SCHOOLS-INCOME-DETAIL', 'reference_no' => 'TIM-INCOME-DETAIL',
+            'payment_method' => 'Bank Transfer', 'income_date' => '2026-09-18', 'payer' => 'QA payer',
+            'currency' => 'MMK', 'amount' => 10, 'description' => 'Read-only detail fixture', 'created_by' => $this->head->id,
+        ]);
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+
+        $view = app(CentralFinanceWorkspaceController::class)->otherIncomeDetail($income->id);
+        $this->assertSame('central-finance.operating-document-detail', $view->name());
+        $this->assertSame(2, $view->getData()['school']->id);
+        $this->assertSame($income->id, $view->getData()['document']->id);
+
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 2);
+        $this->assertSame($income->id, app(CentralFinanceWorkspaceController::class)->otherIncomeDetail($income->id)->getData()['document']->id);
+
+        $this->actingAs($this->zixuanAccountant);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->zixuanAccountant, 1);
+        try {
+            app(CentralFinanceWorkspaceController::class)->otherIncomeDetail($income->id);
+            $this->fail('A School-scoped identity must not read another School income detail.');
+        } catch (AuthorizationException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->actingAs($this->head);
+        $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+        app(CentralFinanceWorkspaceController::class)->otherIncomeDetail(999999);
     }
 
     public function test_head_finance_creates_group_account_without_school_context_then_manages_allocations(): void

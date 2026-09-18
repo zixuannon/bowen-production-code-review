@@ -411,6 +411,24 @@ final class CentralFundAccountV2Test extends TestCase
         $this->assertSame(0.0, app(CentralFinanceFundAccountBalanceService::class)->schoolActivity($account, 2)['net_movement']);
     }
 
+    public function test_fund_account_lifecycle_is_authorized_audited_and_exactly_once_on_replay(): void
+    {
+        $account = $this->centralAccount('LIFECYCLE-TEST');
+        $account->update(['opening_balance' => 0]);
+        $admin = app(CentralFinanceFundAccountAdministrationService::class);
+
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_INACTIVE, 'Temporarily suspend QA account');
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_INACTIVE, 'Replayed submit must be a no-op');
+        $this->assertSame(CentralFinanceFundAccount::STATUS_INACTIVE, $account->fresh()->status);
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_document_audits')->where('document_id', $account->id)->where('action', 'lifecycle_inactive')->count());
+
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_ACTIVE, 'Reactivate reviewed QA account');
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_ARCHIVED, 'Archive zero-balance QA account');
+        $this->assertSame(CentralFinanceFundAccount::STATUS_ARCHIVED, $account->fresh()->status);
+        $this->assertSame(3, DB::connection('mysql')->table('central_finance_document_audits')->where('document_id', $account->id)->whereIn('action', ['lifecycle_inactive', 'lifecycle_active', 'lifecycle_archived'])->count());
+        $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)->count());
+    }
+
     private function centralAccount(string $code): CentralFinanceFundAccount
     {
         return CentralFinanceFundAccount::on('mysql')->create([

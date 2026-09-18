@@ -23,6 +23,9 @@ class CentralFinanceTransferReversalModalTest extends TestCase
         self::assertStringContainsString('data-lifecycle-confirm="reason-input"', $component);
         self::assertStringContainsString('pendingModalReason', $component);
         self::assertStringContainsString('hiddenReason.name = \'reason\';', $component);
+        self::assertStringContainsString("pendingForm.dataset.lifecycleSubmitting === 'true'", $component);
+        self::assertStringContainsString("pendingForm.dataset.lifecycleSubmitting = 'true';", $component);
+        self::assertStringContainsString('confirm.disabled = true;', $component);
         self::assertStringContainsString("form.dispatchEvent(new Event('submit', { cancelable: true }))", $component);
         self::assertStringContainsString("var datasetKey = 'lifecycle' + name.replace(/(^|-)([a-z])/g", $component);
         self::assertStringNotContainsString('window.confirm(', $component);

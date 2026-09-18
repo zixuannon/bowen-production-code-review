@@ -2149,6 +2149,7 @@
     "Receivable": "应收",
     "Receivables": "应收",
     "Other Income": "其他收入",
+    "Income": "收入",
     "Reimbursement": "报销申请",
     "Finance Staff": "财务人员",
     "Finance Groups": "财务组",
@@ -2264,6 +2265,7 @@
     "Student fee received.": "学生费用已收款。",
     "Fund handover is pending receiver confirmation.": "资金交接待接收人确认。",
     "Central other income recorded.": "中央其他收入已记录。",
+    "Central income recorded.": "中央收入已记录。",
     "Central payment collected.": "中央收款已记录。",
     "Central payment import confirmed.": "中央收款导入已确认。",
     "Central payment import preview created. Confirm only after reviewing every row.": "已创建中央收款导入预览。请审核每一行后再确认。",
@@ -2388,6 +2390,8 @@
     "Other": "其他",
     "Other Income details updated.": "其他收入详情已更新。",
     "Other Income reversed.": "其他收入已冲回。",
+    "Income details updated.": "收入详情已更新。",
+    "Income reversed.": "收入已冲回。",
     "Outstanding Receivable": "未缴应收",
     "Owner": "归属方",
     "PDF: NOT IMPLEMENTED — P1": "PDF：尚未实现 — P1",
@@ -2535,6 +2539,7 @@
     "Student Payment": "学生收款",
     "Expense Reversal": "支出冲回",
     "Other Income Reversal": "其他收入冲回",
+    "Income Reversal": "收入冲回",
     "central": "中央财务",
     "legacy": "旧财务",
     "ready": "准备启用",
@@ -3052,4 +3057,5 @@
     ,"Read only": "只读"
     ,"Chart of Accounts saved.": "会计科目已保存。"
     ,"Account Code and Type are locked to preserve historical classification.": "为保留历史分类，科目代码和类型已锁定。"
+    ,"Account Code may be corrected with an audit reason. Historical records keep their existing snapshots.": "会计科目代码可在填写审计原因后更正；历史记录会保留原有快照。"
 }

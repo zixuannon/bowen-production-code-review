@@ -102,11 +102,26 @@ final class CentralChartOfAccountsTest extends TestCase
         $this->assertSame(0,CentralFinanceCategory::count()); $this->assertSame(0,DB::table('central_finance_category_audits')->count());
     }
 
-    public function test_account_code_and_type_cannot_rewrite_history(): void
+    public function test_account_code_is_editable_and_audited_but_type_cannot_rewrite_history(): void
     {
-        $account=$this->save();
+        $account=$this->save(['category_code'=>'0101']);
+        $id = $account->id;
+        $allocations = DB::table('central_finance_category_school_allocations')->orderBy('school_id')->pluck('school_id')->all();
+        $this->save(['category_code'=>'0102','reason'=>'Correct the published code'], $account->id);
+        $account->refresh();
+        $this->assertSame($id, $account->id);
+        $this->assertSame('0102', $account->category_code);
+        $this->assertSame($allocations, DB::table('central_finance_category_school_allocations')->orderBy('school_id')->pluck('school_id')->all());
+        $audit = DB::table('central_finance_category_audits')->where('action','account_code_updated')->sole();
+        $this->assertSame(100, (int) $audit->actor_id);
+        $this->assertSame('Correct the published code', $audit->reason);
+        $this->assertSame('0101', json_decode($audit->before, true, 512, JSON_THROW_ON_ERROR)['category_code']);
+        $this->assertSame('0102', json_decode($audit->after, true, 512, JSON_THROW_ON_ERROR)['category_code']);
+        $this->assertSame(0, DB::table('central_finance_expenses')->count());
+        $this->assertSame(0, DB::table('central_finance_other_incomes')->count());
+        try { $this->save(['category_code'=>'0102','name'=>'Duplicate','reason'=>'Must reject duplicate'], null); $this->fail('Expected duplicate Account Code rejection'); } catch (ValidationException $e) {}
         try { $this->save(['type'=>'liability'],$account->id); $this->fail('Expected rejection'); } catch (ValidationException $e) {}
-        $this->assertSame('income',$account->fresh()->type); $this->assertSame(1,DB::table('central_finance_category_audits')->count());
+        $this->assertSame('income',$account->fresh()->type); $this->assertSame(2,DB::table('central_finance_category_audits')->count());
     }
 
     public function test_legacy_school_definition_remains_scoped_without_rewriting_id_or_code(): void
@@ -148,7 +163,8 @@ final class CentralChartOfAccountsTest extends TestCase
         $this->assertStringContainsString('name="category_code"',$new); $this->assertStringNotContainsString('@endforeach',$new);
         $account=$this->save(['category_code'=>'0101']);
         $edit=view('central-finance.chart-of-accounts-fields',array_merge($data,['coa'=>$account]))->render();
-        $this->assertStringContainsString('value="0101"',$edit); $this->assertStringContainsString('readonly',$edit);
+        $this->assertStringContainsString('value="0101"',$edit); $this->assertStringNotContainsString('readonly',$edit);
+        $this->assertStringNotContainsString('Account Code and Type are locked',$edit);
     }
 
     public function test_reimbursement_requires_matching_group_operate_scope_before_any_write(): void

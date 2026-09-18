@@ -602,6 +602,20 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertSame(0, DB::table('central_finance_receipts')->count());
     }
 
+    public function test_v3_template_lookup_uses_the_current_account_code_without_rewriting_history(): void
+    {
+        $category = $this->centralCategory('income', '0101', 'Tuition');
+        $before = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
+        $this->assertContains('0101', array_column($before['categories'], 'category_code'));
+
+        $category->update(['category_code' => '0102']);
+        $after = app(CentralFinanceGroupImportService::class)->templateLookups($this->head, $this->group);
+        $this->assertContains('0102', array_column($after['categories'], 'category_code'));
+        $this->assertNotContains('0101', array_column($after['categories'], 'category_code'));
+        $this->assertSame(0, CentralFinanceOtherIncome::count());
+        $this->assertSame(0, DB::table('central_finance_ledger_entries')->count());
+    }
+
     public function test_v3_all_five_types_preserve_cash_and_operating_distinction_and_void_snapshot(): void
     {
         foreach (['asset', 'liability', 'equity', 'income', 'expense'] as $offset => $type) {

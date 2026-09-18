@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var modalReason = form.dataset.lifecycleModalReason === 'true';
             if (reason && !String(reason.value || '').trim()) { reason.focus(); return; }
             pendingForm = form;
+            pendingForm.dataset.lifecycleSubmitting = 'false';
             pendingModalReason = modalReason;
             var reasonField = modal.querySelector('[data-lifecycle-confirm="reason-field"]');
             var reasonInput = modal.querySelector('[data-lifecycle-confirm="reason-input"]');
@@ -46,7 +47,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (output) output.textContent = form.dataset[datasetKey] || String(defaults[name] || '').trim() || '—';
             });
             var confirmButton = modal.querySelector('[data-lifecycle-confirm="submit"]');
-            if (confirmButton) confirmButton.textContent = form.dataset.lifecycleConfirmLabel || @json(__('Confirm action'));
+            if (confirmButton) {
+                confirmButton.disabled = false;
+                confirmButton.textContent = form.dataset.lifecycleConfirmLabel || @json(__('Confirm action'));
+            }
             if (window.jQuery && window.jQuery.fn.modal) window.jQuery(modal).modal('show');
         });
         form.querySelectorAll('[data-lifecycle-open]').forEach(function (button) {
@@ -57,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     var confirm = modal.querySelector('[data-lifecycle-confirm="submit"]');
     if (confirm) confirm.addEventListener('click', function () {
-        if (!pendingForm) return;
+        if (!pendingForm || pendingForm.dataset.lifecycleSubmitting === 'true') return;
         if (pendingModalReason) {
             var reasonInput = modal.querySelector('[data-lifecycle-confirm="reason-input"]');
             var value = String(reasonInput && reasonInput.value || '').trim();
@@ -72,6 +76,8 @@ document.addEventListener('DOMContentLoaded', function () {
             hiddenReason.value = value;
         }
         pendingForm.dataset.lifecycleConfirmed = 'true';
+        pendingForm.dataset.lifecycleSubmitting = 'true';
+        confirm.disabled = true;
         pendingForm.submit();
     });
 });
