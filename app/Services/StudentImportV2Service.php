@@ -163,10 +163,16 @@ final class StudentImportV2Service
                     $row['guardian_name'], $row['guardian_email'] ?: null, $row['guardian_mobile']
                 );
                 $admissionNo = $this->legacyAdmissionNo($actor, $sessionYear);
+                // Materialise typed arguments before the legacy positional
+                // service call.  Passing the coalescing expression inline
+                // made the runtime bind an array to the required status
+                // parameter on PHP 8.3 for V2 imports.
+                $extraFields = is_array($row['custom_fields'] ?? null) ? $row['custom_fields'] : [];
+                $studentStatus = $row['enrollment_status'] === 'active' ? 1 : 0;
                 $studentUser = app(UserService::class)->createStudentUser(
                     $row['student_first_name'], $row['student_last_name'], $admissionNo, $row['mobile'] ?: null,
                     $row['date_of_birth'], $row['gender'], null, $classSection->id, $row['admission_date'],
-                    null, null, $sessionYear->id, $guardian->id, $row['custom_fields'] ?? [], $row['enrollment_status'] === 'active' ? 1 : 0, false, $row['notes'] ?: null
+                    null, null, $sessionYear->id, $guardian->id, $extraFields, $studentStatus, false, $row['notes'] ?: null
                 );
                 $student = Students::query()->where('user_id', $studentUser->id)->lockForUpdate()->firstOrFail();
                 $identity = app(StudentCodeService::class)->assignGenerated($student, $actor, $row['import_reference']);
