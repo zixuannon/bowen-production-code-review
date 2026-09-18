@@ -39,6 +39,7 @@ final class CentralFinanceTenantFeeAssignmentSource {
         }
         if (!$fresh->class_id) return [];
         return $this->onSchool($db,function() use($fresh): array {
+            $includeQaTest = $this->dataIsolation->isQaTestSchool((int) $fresh->school_id);
             if (Schema::connection('school')->hasTable('student_fee_assignments')
                 && Schema::connection('school')->hasTable('student_fee_assignment_items')) {
                 $assigned = $this->confirmedStudentAssignmentRows($fresh);
@@ -54,8 +55,8 @@ final class CentralFinanceTenantFeeAssignmentSource {
             if ($hasCurrency) $select[] = 'fees_class_types.fee_currency';
             $query = DB::connection('school')->table('fees_class_types')->leftJoin('fees','fees.id','=','fees_class_types.fees_id')
                 ->where('fees_class_types.class_id',$fresh->class_id)->where('fees_class_types.optional',0);
-            $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $fresh->school_id, false, 'fees_class_types.id');
-            $this->dataIsolation->applyTenantMetadata($query, 'fee', (int) $fresh->school_id, false, 'fees.id');
+            $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $fresh->school_id, $includeQaTest, 'fees_class_types.id');
+            $this->dataIsolation->applyTenantMetadata($query, 'fee', (int) $fresh->school_id, $includeQaTest, 'fees.id');
             if (Schema::connection('school')->hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('fees_class_types.deleted_at');
             if (Schema::connection('school')->hasColumn('fees', 'deleted_at')) $query->whereNull('fees.deleted_at');
             $rows=$query

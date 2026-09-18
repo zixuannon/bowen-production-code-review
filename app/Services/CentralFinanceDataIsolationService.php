@@ -258,6 +258,26 @@ final class CentralFinanceDataIsolationService
             && $this->classification($subjectType, $subjectId, $this->tenantScope($schoolId)) === CentralFinanceDataClassification::PRODUCTION;
     }
 
+    /**
+     * A QA/Test School's own active master data may support an explicitly
+     * authorised QA workflow. Archived data remains immutable everywhere.
+     */
+    public function isTenantMetadataWorkflowWritable(string $subjectType, int $schoolId, int $subjectId): bool
+    {
+        if (!isset(self::TENANT_SUBJECTS[$subjectType])) {
+            throw new RuntimeException("Unsupported tenant classification subject: {$subjectType}");
+        }
+        if (!$this->schemaAvailable()) {
+            if (app()->environment('production')) {
+                throw new RuntimeException('Central Finance data isolation schema is missing.');
+            }
+            return true;
+        }
+
+        return $this->classification($subjectType, $subjectId, $this->tenantScope($schoolId)) !== CentralFinanceDataClassification::ARCHIVED
+            && $this->classification('school', $schoolId) !== CentralFinanceDataClassification::ARCHIVED;
+    }
+
     public function isTenantProduction(string $subjectType, int $schoolId, int $subjectId): bool
     {
         if (!$this->isTenantMetadataProduction($subjectType, $schoolId, $subjectId)) {

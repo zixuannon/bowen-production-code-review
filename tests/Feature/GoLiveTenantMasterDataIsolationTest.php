@@ -154,6 +154,16 @@ final class GoLiveTenantMasterDataIsolationTest extends TestCase
         $this->assertSame(2, DB::connection('mysql')->table('users')->whereIn('id', [100, 101])->count());
     }
 
+    public function test_active_qa_school_metadata_is_workflow_writable_but_archived_fixture_is_not(): void
+    {
+        $this->isolation->classify($this->actor, 17, 'school', 17, 'qa_test', 'Permanent QA School.');
+        $this->assertTrue($this->isolation->isTenantMetadataWorkflowWritable('student', 17, 1));
+        $this->assertFalse($this->isolation->isTenantMetadataProduction('student', 17, 1));
+
+        $this->isolation->classify($this->actor, 17, 'student', 1, 'archived', 'Expired QA fixture.');
+        $this->assertFalse($this->isolation->isTenantMetadataWorkflowWritable('student', 17, 1));
+    }
+
     private function createTenant(string $database): void
     {
         $this->useTenant($database);

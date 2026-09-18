@@ -41,13 +41,14 @@ final class StudentFeeAssignmentService
             ->where('class_id', $classId)
             ->where('school_id', $student->school_id)
             ->whereNotIn('id', $assigned);
-        $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $student->school_id, false, 'fees_class_types.id');
+        $includeQaTest = $this->dataIsolation->isQaTestSchool((int) $student->school_id);
+        $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $student->school_id, $includeQaTest, 'fees_class_types.id');
         if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
         return $query->get()
             ->filter(fn (FeesClassType $item) => $item->fee !== null && $item->fee->getRawOriginal('deleted_at') === null
                 && (int) $item->fee->session_year_id === (int) $student->session_year_id
-                && $this->dataIsolation->isTenantMetadataProduction('fee', (int) $student->school_id, (int) $item->fees_id)
-                && $this->dataIsolation->isTenantMetadataProduction('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
+                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
+                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
             ->values();
     }
 
@@ -83,14 +84,15 @@ final class StudentFeeAssignmentService
             ->where('class_id', $this->studentClassId($student))
             ->where('school_id', $student->school_id)
             ->where('optional', true);
-        $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $student->school_id, false, 'fees_class_types.id');
+        $includeQaTest = $this->dataIsolation->isQaTestSchool((int) $student->school_id);
+        $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $student->school_id, $includeQaTest, 'fees_class_types.id');
         if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
 
         return $query->get()
             ->filter(fn (FeesClassType $item) => $item->fee !== null && $item->fee->getRawOriginal('deleted_at') === null
                 && (int) $item->fee->session_year_id === (int) $student->session_year_id
-                && $this->dataIsolation->isTenantMetadataProduction('fee', (int) $student->school_id, (int) $item->fees_id)
-                && $this->dataIsolation->isTenantMetadataProduction('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
+                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
+                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
             ->values();
     }
 

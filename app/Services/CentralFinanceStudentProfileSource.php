@@ -93,7 +93,13 @@ final class CentralFinanceStudentProfileSource
         } else {
             $query->addSelect(DB::raw('NULL as student_code'));
         }
-        $this->dataIsolation->applyTenantMetadata($query, 'student', (int) $school->id, false, 'students.id');
+        $this->dataIsolation->applyTenantMetadata(
+            $query,
+            'student',
+            (int) $school->id,
+            $this->dataIsolation->isQaTestSchool((int) $school->id),
+            'students.id',
+        );
 
         return $query;
     }
