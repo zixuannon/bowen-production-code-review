@@ -34,6 +34,16 @@
     .cf-account-card__details div:last-child { grid-column: 1 / -1; }
     .cf-account-card__details dt { margin: 0; color: var(--cf-muted); font-size: .72rem; font-weight: 700; }
     .cf-account-card__details dd { margin: .12rem 0 0; color: #314553; font-size: .83rem; overflow-wrap: anywhere; }
+    .cf-fund-account-list { min-width: 1060px; }
+    .cf-fund-account-list th:nth-child(1) { width: 9%; }
+    .cf-fund-account-list th:nth-child(2) { width: 15%; }
+    .cf-fund-account-list th:nth-child(3) { width: 15%; }
+    .cf-fund-account-list th:nth-child(4), .cf-fund-account-list th:nth-child(5), .cf-fund-account-list th:nth-child(8) { width: 8%; }
+    .cf-fund-account-list th:nth-child(6) { width: 13%; }
+    .cf-fund-account-list th:nth-child(7) { width: 16%; }
+    .cf-fund-account-list th:nth-child(9) { width: 12%; }
+    .cf-fund-account-list td { overflow-wrap: anywhere; }
+    .cf-account-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
     .cf-break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     .cf-workspace-intro { margin-top: 1rem; background: #fbfdff; }
     .cf-workspace-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .85rem; margin-bottom: 1rem; }
@@ -69,6 +79,8 @@
         .cf-mobile-card-table td:last-child::before { content: none; }
         .cf-mobile-card-table .btn { width: 100%; margin-top: .3rem; }
         .cf-ledger-table { min-width: 760px; }
+        .cf-fund-account-list { min-width: 0; }
+        .cf-fund-account-list .cf-account-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .cf-account-card { padding: .9rem; }
         .cf-account-card__details { grid-template-columns: 1fr; }
         .cf-account-card__details div:last-child { grid-column: auto; }

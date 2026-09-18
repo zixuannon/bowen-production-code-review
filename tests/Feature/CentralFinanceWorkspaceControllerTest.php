@@ -189,6 +189,38 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringNotContainsString('value="'.$this->head->id.'">Head Finance', $handoverHtml);
     }
 
+    public function test_group_owned_allocated_accounts_are_valid_handover_destinations_without_legacy_account_user_bindings(): void
+    {
+        $this->zixuan->update(['owner_type' => CentralFinanceFundAccount::OWNER_HQ, 'school_id' => null]);
+        $destination = $this->account('ZIX-GROUP-RESERVE', 'Zixuan Group Reserve', 1);
+        $destination->update(['owner_type' => CentralFinanceFundAccount::OWNER_HQ, 'school_id' => null]);
+        $this->zixuan->refresh();
+        $destination->refresh();
+
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $view = app(CentralFinanceWorkspaceController::class)->handovers(new Request());
+        $this->assertEqualsCanonicalizing([$this->zixuan->id, $destination->id], $view->getData()['operationAccounts']->pluck('id')->all());
+        $this->assertSame([$this->zixuanAccountant->id], $view->getData()['handoverDestinationUserIds']->get($destination->id)->all());
+        $html = $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringNotContainsString("option.dataset.ownerType === 'school'", $html);
+        $this->assertStringContainsString('Central Fund Account V2 deliberately separates account ownership', $html);
+
+        $transfer = app(CentralFinanceInternalTransferService::class)->transfer(
+            $this->head, 1, $this->zixuan, $destination, 10,
+            CarbonImmutable::parse('2026-09-18 08:00:00', 'Asia/Yangon'), 'GROUP-TRANSFER-1', 'Disposable Group transfer', 'GROUP-TRANSFER-REF',
+        );
+        $this->assertSame($destination->id, $transfer->destination_account_id);
+        $this->assertSame(2, CentralFinanceLedgerEntry::on('mysql')->count());
+
+        $handover = app(CentralFinanceFundHandoverService::class)->request(
+            $this->head, $this->zixuanAccountant, 1, $this->zixuan, $destination, 5,
+            CarbonImmutable::parse('2026-09-18 09:00:00', 'Asia/Yangon'), 'GROUP-HANDOVER-1', 'GROUP-HANDOVER-REF',
+        );
+        $this->assertSame($destination->id, $handover->destination_account_id);
+        $this->assertSame(2, CentralFinanceLedgerEntry::on('mysql')->count());
+    }
+
     public function test_all_schools_transfer_and_handover_history_is_consolidated_and_participant_actions_are_scoped(): void
     {
         $this->actingAs($this->head);
@@ -306,6 +338,11 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $statement = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/partials/account-statements.blade.php');
 
         $this->assertStringContainsString('cf-account-directory', $workspace);
+        $this->assertStringContainsString('cf-fund-account-list', $workspace);
+        $this->assertStringContainsString("__('Physical Account Balance')", $workspace);
+        $this->assertStringContainsString("__('Allocated Schools')", $workspace);
+        $this->assertStringContainsString("__('Actions')", $workspace);
+        $this->assertStringNotContainsString('<article class="cf-account-card">', $workspace);
         $this->assertStringContainsString("route('central-finance.accounts.statements', ['fund_account_id' => \$a->id])", $workspace);
         $this->assertStringContainsString('cf-account-statement-workspace', $statement);
         $this->assertStringContainsString('name="fund_account_id"', $statement);

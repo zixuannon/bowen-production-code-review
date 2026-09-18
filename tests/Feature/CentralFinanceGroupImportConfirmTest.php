@@ -157,10 +157,13 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
 
     public function test_multi_school_mixed_confirm_creates_only_canonical_operating_documents_and_links_rows(): void
     {
-        $batch = $this->preview([
-            $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-IN-1', 125, 0),
-            $this->row('SCH-TIM', 'Times QA', $this->timesAccount, $this->timesExpense, 'GI-EX-1', 0, 40),
-        ]);
+        $income = $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GI-IN-1', 125, 0);
+        $income['摘要'] = 'September tuition';
+        $income['备注'] = 'Imported income remark';
+        $expense = $this->row('SCH-TIM', 'Times QA', $this->timesAccount, $this->timesExpense, 'GI-EX-1', 0, 40);
+        $expense['摘要'] = 'September tuition expense';
+        $expense['备注'] = 'Imported expense remark';
+        $batch = $this->preview([$income, $expense]);
 
         $confirmed = app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
 
@@ -172,6 +175,10 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertSame(0, DB::connection('mysql')->table('central_finance_receipts')->count());
         $this->assertSame(2, $confirmed->rows()->whereNotNull('canonical_source_id')->count());
         $this->assertSame(2, DB::connection('mysql')->table('central_finance_import_batches')->where('group_import_batch_id', $confirmed->id)->where('status', 'completed')->count());
+        $this->assertSame("September tuition\nImported income remark", CentralFinanceOtherIncome::on('mysql')->sole()->description);
+        $this->assertSame("September tuition expense\nImported expense remark", CentralFinanceExpense::on('mysql')->sole()->description);
+        $this->assertSame("September tuition\nImported income remark", DB::connection('mysql')->table('central_finance_ledger_entries')->where('source_type', 'central_other_income')->value('memo'));
+        $this->assertSame("September tuition expense\nImported expense remark", DB::connection('mysql')->table('central_finance_ledger_entries')->where('source_type', 'central_expense')->value('memo'));
         // one canonical document audit plus start/completion batch audit per School
         $this->assertSame(6, DB::connection('mysql')->table('central_finance_document_audits')->count());
     }

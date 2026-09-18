@@ -1,5 +1,26 @@
 # eSchool Current State
 
+## Central Finance Fund Management bugfix — local candidate
+
+- Baseline: Production commit `8dfc265ac88ca31257f7db0f03b4eaf3d4754043`.
+  This candidate keeps Fund Account V2 accounting and authorization intact.
+- The Fund Accounts directory now renders one physical account per horizontal
+  desktop/tablet row, with account-level physical balance, allocated-school
+  summary and Detail/Statement/Manage actions. The existing responsive card
+  presentation remains available at narrow mobile widths.
+- Group Finance Import V3 now carries its canonical Description into the
+  immutable Ledger `memo` at confirmation. Reference and Description remain
+  independent; historical entries with no memo are deliberately unchanged.
+- Fund Handover and Bank Transfer client selection no longer rejects
+  Group-owned accounts solely because their owner type is `hq`. Server-side
+  authorization remains the canonical active-account + active allocation +
+  school-scope predicate, with source exclusion and same-currency checks.
+- Targeted and expanded Central Finance regression: 78 passing tests / 665
+  assertions (two existing PHPUnit deprecation warnings). No migration or
+  financial-data change is included.
+
+Last updated: 2026-09-18
+
 ## Central Chart of Accounts + Group Finance Import V3 — LOCAL PASS
 
 - Baseline: `dc9e38d53cd0ed13741c1e24ef93f96c2cd08639`, verified against the active

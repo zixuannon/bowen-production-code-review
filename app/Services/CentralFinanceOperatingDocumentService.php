@@ -57,7 +57,7 @@ final class CentralFinanceOperatingDocumentService
             ];
             if ($reimbursedBy !== null && trim($reimbursedBy) !== '') $values['reimbursed_by'] = trim($reimbursedBy);
             $expense = CentralFinanceExpense::on('mysql')->create($values);
-            $this->ledger->recordOperatingExpense($actor, $account, $schoolId, 'central_expense', $expense->expense_uuid, $amount, $occurredAt, $referenceNo, $category->type === CentralFinanceCategory::EXPENSE);
+            $this->ledger->recordOperatingExpense($actor, $account, $schoolId, 'central_expense', $expense->expense_uuid, $amount, $occurredAt, $referenceNo, $category->type === CentralFinanceCategory::EXPENSE, $expense->description);
             $this->audits->record($actor, $expense, 'expense', 'created', null, null, $this->snapshot($expense));
 
             return $expense;
@@ -92,7 +92,7 @@ final class CentralFinanceOperatingDocumentService
                 'currency' => strtoupper($account->currency), 'amount' => $amount,
                 'description' => $description, 'created_by' => $actor->id,
             ]);
-            $this->ledger->recordOperatingIncome($actor, $account, $schoolId, 'central_other_income', $income->income_uuid, $amount, $occurredAt, $referenceNo, $category->type === CentralFinanceCategory::INCOME);
+            $this->ledger->recordOperatingIncome($actor, $account, $schoolId, 'central_other_income', $income->income_uuid, $amount, $occurredAt, $referenceNo, $category->type === CentralFinanceCategory::INCOME, $income->description);
             $this->audits->record($actor, $income, 'other_income', 'created', null, null, $this->snapshot($income));
 
             return $income;

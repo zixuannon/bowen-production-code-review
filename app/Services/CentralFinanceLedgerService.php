@@ -25,14 +25,14 @@ final class CentralFinanceLedgerService
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
     ) {}
 
-    public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true): CentralFinanceLedgerEntry
+    public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
     {
-        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME, $amount, $occurredAt, $referenceNo, $operating);
+        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME, $amount, $occurredAt, $referenceNo, $operating, $memo);
     }
 
-    public function recordOperatingExpense(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true): CentralFinanceLedgerEntry
+    public function recordOperatingExpense(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
     {
-        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE, $amount, $occurredAt, $referenceNo, $operating);
+        return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE, $amount, $occurredAt, $referenceNo, $operating, $memo);
     }
 
     /**
@@ -117,7 +117,7 @@ final class CentralFinanceLedgerService
         });
     }
 
-    private function recordSingle(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo, bool $operating = true): CentralFinanceLedgerEntry
+    private function recordSingle(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount($amount);
@@ -125,10 +125,10 @@ final class CentralFinanceLedgerService
         $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($account->id);
         $this->assertSchoolAttribution($schoolId, $account);
 
-        return DB::connection('mysql')->transaction(function () use ($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, $occurredAt, $referenceNo, $operating): CentralFinanceLedgerEntry {
+        return DB::connection('mysql')->transaction(function () use ($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, $occurredAt, $referenceNo, $operating, $memo): CentralFinanceLedgerEntry {
             return $type === CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME
-                ? $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, 0, $operating ? $amount : 0, 0, $occurredAt, $referenceNo)
-                : $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, 0, $amount, 0, $operating ? $amount : 0, $occurredAt, $referenceNo);
+                ? $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, $amount, 0, $operating ? $amount : 0, 0, $occurredAt, $referenceNo, $memo)
+                : $this->append($actor, $account, $schoolId, $sourceType, $sourceId, $sourceLine, $type, 0, $amount, 0, $operating ? $amount : 0, $occurredAt, $referenceNo, $memo);
         });
     }
 
@@ -163,7 +163,7 @@ final class CentralFinanceLedgerService
         ));
     }
 
-    private function append(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $moneyIn, float $moneyOut, float $operatingIncome, float $operatingExpense, CarbonImmutable $occurredAt, ?string $referenceNo): CentralFinanceLedgerEntry
+    private function append(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $moneyIn, float $moneyOut, float $operatingIncome, float $operatingExpense, CarbonImmutable $occurredAt, ?string $referenceNo, ?string $memo = null): CentralFinanceLedgerEntry
     {
         try {
             return CentralFinanceLedgerEntry::on('mysql')->create([
@@ -174,7 +174,7 @@ final class CentralFinanceLedgerService
                 'reference_no' => $referenceNo, 'transaction_type' => $type,
                 'currency' => strtoupper($account->currency), 'money_in' => $moneyIn,
                 'money_out' => $moneyOut, 'operating_income' => $operatingIncome,
-                'operating_expense' => $operatingExpense, 'created_by' => $actor->id,
+                'operating_expense' => $operatingExpense, 'memo' => $memo, 'created_by' => $actor->id,
             ]);
         } catch (QueryException $exception) {
             // A retry of the same canonical document must not duplicate a
