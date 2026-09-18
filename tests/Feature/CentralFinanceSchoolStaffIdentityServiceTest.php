@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\CentralFinanceSchoolStaffIdentity;
+use App\Models\CentralFinanceDataClassification;
+use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Services\CentralFinanceSchoolStaffIdentityService;
@@ -36,8 +38,9 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         Schema::connection('mysql')->create('users', function (Blueprint $table): void { $table->id(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->unsignedBigInteger('school_id')->nullable(); $table->boolean('status')->default(true); $table->boolean('two_factor_enabled')->default(false); $table->text('two_factor_secret')->nullable(); $table->timestamp('two_factor_expires_at')->nullable(); $table->softDeletes(); $table->timestamps(); });
         Schema::connection('mysql')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamps(); });
         Schema::connection('mysql')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
-        foreach (['2026_08_18_000001_create_finance_group_scope_tables.php', '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php', '2026_08_21_000002_create_central_finance_operating_documents.php', '2026_08_21_000003_create_central_finance_internal_transfer_documents.php', '2026_08_24_000002_create_central_finance_school_staff_identities.php', '2026_09_04_000001_create_central_finance_pending_collections.php'] as $migration) (require database_path('migrations/'.$migration))->up();
+        foreach (['2026_08_18_000001_create_finance_group_scope_tables.php', '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php', '2026_08_21_000002_create_central_finance_operating_documents.php', '2026_08_21_000003_create_central_finance_internal_transfer_documents.php', '2026_08_24_000002_create_central_finance_school_staff_identities.php', '2026_09_04_000001_create_central_finance_pending_collections.php', '2026_09_14_000003_create_central_finance_data_classifications.php'] as $migration) (require database_path('migrations/'.$migration))->up();
         DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan', 'code' => 'MMBOWEN01', 'database_name' => $this->zixuan, 'installed' => true, 'status' => 'active']);
+        DB::connection('mysql')->table('users')->insert(['id' => 900, 'first_name' => 'QA', 'last_name' => 'Operator', 'email' => 'qa.operator@example.test', 'password' => bcrypt('qa-only'), 'status' => true]);
 
         Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->boolean('status')->default(true); $table->boolean('two_factor_enabled')->default(true); $table->text('two_factor_secret')->nullable(); $table->timestamp('two_factor_expires_at')->nullable(); $table->timestamps(); $table->softDeletes(); });
         Schema::connection('school')->create('staffs', function (Blueprint $table): void { $table->id(); $table->unsignedBigInteger('user_id'); });
@@ -182,6 +185,27 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         app(\App\Services\CentralFinanceWorkspaceService::class)->assertCanSubmitCollectionsSchool($frontDesk, 1);
         $this->expectException(AuthorizationException::class);
         app(\App\Services\CentralFinanceWorkspaceService::class)->assertCanOperateSchool($frontDesk, 1);
+    }
+
+    public function test_active_qa_school_can_onboard_and_use_its_own_front_desk_identity_but_archived_staff_fails_closed(): void
+    {
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'Bowen QA', 'code' => 'BOWEN_QA', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        $isolation = app(\App\Services\CentralFinanceDataIsolationService::class);
+        $actor = CentralFinanceUser::on('mysql')->findOrFail(900);
+        $isolation->classify($actor, 1, 'school', 1, CentralFinanceDataClassification::QA_TEST, 'Permanent QA School workflow fixture.');
+
+        $service = app(CentralFinanceSchoolStaffIdentityService::class);
+        $frontDesk = $service->grantSchoolFrontDesk($group, 1, 11, 'Approved QA Front Desk onboarding', 900);
+        $uuid = (string) DB::connection('school')->table('users')->where('id', 11)->value('central_finance_source_uuid');
+
+        $this->assertFalse($isolation->isTenantProduction('staff', 1, 11));
+        $this->assertSame($frontDesk->id, $service->resolveTrustedSession(['school_id' => 1, 'user_uuid' => $uuid])->id);
+        $this->assertSame(11, $service->executeAsTenantIdentity($frontDesk, School::on('mysql')->findOrFail(1), fn ($tenant): int => (int) $tenant->id));
+
+        $isolation->classify($actor, 1, 'staff', 11, CentralFinanceDataClassification::ARCHIVED, 'Archive expired QA Front Desk.');
+        $this->expectException(AuthorizationException::class);
+        $service->executeAsTenantIdentity($frontDesk, School::on('mysql')->findOrFail(1), fn ($tenant): int => (int) $tenant->id);
     }
 
     public function test_central_front_desk_provisioning_is_idempotent_and_assigns_a_stable_tenant_identity(): void

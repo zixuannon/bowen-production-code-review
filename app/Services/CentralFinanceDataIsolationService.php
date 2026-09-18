@@ -280,6 +280,36 @@ final class CentralFinanceDataIsolationService
         }
     }
 
+    /**
+     * QA/Test Schools remain excluded from Official views, but an explicitly
+     * authorised QA workflow must be able to use its own active tenant data.
+     * Archived records and archived Schools stay fail-closed.
+     */
+    public function assertTenantWorkflowWritable(string $subjectType, int $schoolId, int $subjectId): void
+    {
+        if (!isset(self::TENANT_SUBJECTS[$subjectType])) {
+            throw new RuntimeException("Unsupported tenant classification subject: {$subjectType}");
+        }
+        if (!$this->schemaAvailable()) {
+            if (app()->environment('production')) {
+                throw new RuntimeException('Central Finance data isolation schema is missing.');
+            }
+            return;
+        }
+
+        $this->assertTrustedTenantConnection($schoolId, $subjectType);
+        $subject = self::TENANT_SUBJECTS[$subjectType];
+        $exists = DB::connection('school')->table($subject['table'])->where('id', $subjectId)->exists();
+        if ($exists && ($subject['staff_relation'] ?? false)) {
+            $exists = DB::connection('school')->table('staffs')->where('user_id', $subjectId)->exists();
+        }
+        if (!$exists
+            || $this->classification($subjectType, $subjectId, $this->tenantScope($schoolId)) === CentralFinanceDataClassification::ARCHIVED
+            || $this->classification('school', $schoolId) === CentralFinanceDataClassification::ARCHIVED) {
+            throw new AuthorizationException('Archived or missing tenant data cannot be used by a workflow.');
+        }
+    }
+
     public function isProduction(string $subjectType, int $subjectId): bool
     {
         $subject = self::SUBJECTS[$subjectType] ?? null;
@@ -319,6 +349,17 @@ final class CentralFinanceDataIsolationService
     {
         if (!$this->isProduction($subjectType, $subjectId)) {
             throw new AuthorizationException('QA/Test or archived data is read-only and cannot be used by a Production workflow.');
+        }
+    }
+
+    /** Whether a central record is active for an explicitly authorised workflow. */
+    public function isWorkflowWritable(string $subjectType, int $subjectId): bool
+    {
+        try {
+            $this->assertWorkflowWritable($subjectType, $subjectId);
+            return true;
+        } catch (AuthorizationException) {
+            return false;
         }
     }
 
