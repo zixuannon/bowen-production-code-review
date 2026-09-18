@@ -100,4 +100,30 @@ class ProductionMigrationGuardTest extends TestCase
         (new ProductionMigrationGuard())->assertAllowed('migrate', 'migrate', [], false, false);
         $this->addToAssertionCount(1);
     }
+
+    public function test_student_import_v2_runner_allows_its_v3_exact_path_in_production(): void
+    {
+        (new ProductionMigrationGuard())->assertAllowed(
+            'migrate',
+            'student-import-v2:migrate',
+            [database_path('migrations/schools/2026_09_18_000001_add_enrollment_metadata_to_student_import_identities.php')],
+            true,
+            true,
+        );
+
+        $this->assertTrue(true);
+    }
+
+    public function test_student_import_v2_runner_rejects_an_unlisted_path_in_production(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        (new ProductionMigrationGuard())->assertAllowed(
+            'migrate',
+            'student-import-v2:migrate',
+            [database_path('migrations/schools/2026_06_25_000001_create_bank_transfers_table.php')],
+            true,
+            true,
+        );
+    }
 }

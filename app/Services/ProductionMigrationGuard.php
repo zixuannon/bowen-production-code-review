@@ -32,6 +32,7 @@ final class ProductionMigrationGuard
             'database/migrations/2026_09_03_000002_add_student_code_to_central_finance_student_profiles.php',
             'database/migrations/schools/2026_09_03_000001_create_student_import_identities_table.php',
             'database/migrations/schools/2026_09_03_000002_make_student_import_v21_identity_fields_nullable.php',
+            'database/migrations/schools/2026_09_18_000001_add_enrollment_metadata_to_student_import_identities.php',
         ],
         'finance:migrate-central-finance-staff-uuid' => [
             'database/migrations/schools/2026_08_24_000003_add_central_finance_source_uuid_to_users_table.php',
