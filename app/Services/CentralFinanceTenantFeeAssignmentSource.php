@@ -86,7 +86,16 @@ final class CentralFinanceTenantFeeAssignmentSource {
             ->whereIn('student_fee_assignment_id', $assignments->pluck('id'))
             ->where('status', 'active')
             ->where('source_type', 'fees_class_type');
-        $this->dataIsolation->applyTenantMetadata($rowsQuery, 'fee_item', (int) $profile->school_id, false, 'source_id');
+        // A QA/Test School is allowed to project its own explicitly
+        // classified fixture fee into a QA/Test receivable.  Official
+        // Schools continue to exclude QA/Test source metadata.
+        $this->dataIsolation->applyTenantMetadata(
+            $rowsQuery,
+            'fee_item',
+            (int) $profile->school_id,
+            $this->dataIsolation->isQaTestSchool((int) $profile->school_id),
+            'source_id',
+        );
         $rows = $rowsQuery->orderBy('id')->get();
         $confirmedAt = $assignments->keyBy('id');
         return ['has_confirmed_assignment' => true, 'rows' => $rows->map(function (object $row) use ($confirmedAt): array {
