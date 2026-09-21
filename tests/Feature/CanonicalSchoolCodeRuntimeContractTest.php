@@ -14,6 +14,7 @@ final class CanonicalSchoolCodeRuntimeContractTest extends TestCase
         $allowed = [
             base_path('app/Console/Commands/MigrateOperationalIdentitySchema.php'),
             base_path('app/Console/Commands/MigrateBahanTimecitySchoolCodes.php'),
+            base_path('app/Console/Commands/MigrateKindergartenSchoolCode.php'),
         ];
         $violations = [];
 
@@ -42,9 +43,7 @@ final class CanonicalSchoolCodeRuntimeContractTest extends TestCase
             'app/Http/Controllers/Auth/ForgotPasswordController.php',
             'app/Http/Controllers/Auth/ResetPasswordController.php',
             'app/Http/Controllers/Auth/DingTalkLoginController.php',
-            'app/Http/Middleware/APISwitchDatabase.php',
-            'app/Http/Middleware/CheckChild.php',
-            'app/Http/Middleware/CheckSchoolStatus.php',
+            'app/Services/TrustedTenantContextService.php',
             'app/Http/Middleware/DifyTokenMiddleware.php',
             'app/Services/StudentImportV2Service.php',
             'app/Services/CentralFinanceGroupImportService.php',

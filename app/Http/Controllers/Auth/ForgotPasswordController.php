@@ -4,11 +4,10 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\School;
+use App\Services\TenantConnectionScope;
 use App\Services\TenantPasswordBroker;
 use Illuminate\Foundation\Auth\SendsPasswordResetEmails;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\DB;
 use Log;
 
 class ForgotPasswordController extends Controller
@@ -44,14 +43,10 @@ class ForgotPasswordController extends Controller
             return back()->withErrors(['school_code' => __('Invalid school identifier.')]);
         }
 
-        Config::set('database.connections.school.database', $school->database_name);
-        DB::purge('school');
-        DB::connection('school')->reconnect();
-        DB::setDefaultConnection('school');
-
         try {
-            $response = app(TenantPasswordBroker::class)->broker()->sendResetLink(
-                $request->only('email')
+            $response = app(TenantConnectionScope::class)->forSchool(
+                $school,
+                fn (): string => app(TenantPasswordBroker::class)->broker()->sendResetLink($request->only('email')),
             );
            
             switch ($response) {

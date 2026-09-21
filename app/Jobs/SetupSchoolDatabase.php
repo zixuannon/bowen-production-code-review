@@ -8,13 +8,13 @@ use App\Models\School;
 use App\Services\SchoolDataService;
 use App\Services\SubscriptionService;
 use App\Services\CachingService;
+use App\Services\TenantConnectionScope;
 use App\Repositories\SystemSetting\SystemSettingInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -46,9 +46,11 @@ final class SetupSchoolDatabase implements ShouldQueue
         SchoolDataService $schoolService,
         SubscriptionService $subscriptionService,
         CachingService $cache,
-        SystemSettingInterface $systemSettings
+        SystemSettingInterface $systemSettings,
+        TenantConnectionScope $connections,
     ): void {
-        try {
+        $connections->preserve(function () use ($schoolService, $subscriptionService, $cache, $systemSettings, $connections): void {
+          try {
             DB::setDefaultConnection('mysql');
 
             // Get school data
@@ -86,12 +88,9 @@ final class SetupSchoolDatabase implements ShouldQueue
             // Update school status to active
             $school->update(['status' => 1, 'installed' => 1]);
 
-            DB::setDefaultConnection('school');
-            Config::set('database.connections.school.database', $school->database_name);
-            DB::purge('school');
-            DB::connection('school')->reconnect();
-            DB::setDefaultConnection('school');
-            School::on('school')->where('id', $this->schoolId)->update(['status' => 1, 'installed' => 1]);
+            $connections->forSchool($school, function (): void {
+                School::on('school')->where('id', $this->schoolId)->update(['status' => 1, 'installed' => 1]);
+            });
 
             $school = School::with('user')->findOrFail($this->schoolId);
             $settings = $cache->getSystemSettings();
@@ -114,14 +113,15 @@ final class SetupSchoolDatabase implements ShouldQueue
                 $school->user->sendEmailVerificationNotification();
             }
 
-        } catch (Throwable $e) {
+          } catch (Throwable $e) {
             Log::error("School database setup failed for school ID: {$this->schoolId}", [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
             throw $e;
-        }
+          }
+        });
     }
 
     /**
@@ -139,28 +139,12 @@ final class SetupSchoolDatabase implements ShouldQueue
     {
         $templateContent = $settings['email_template_school_registration'] ?? '';
 
-        // Ensure database connection is switched to the school database so the token
-        // is stored in the school's password_resets table (not the main database).
-        // Order matters: Config::set before any DB call so reconnect picks up
-        // the correct database name.
-        $previousConnection = DB::getDefaultConnection();
-        $switched = !empty($school->database_name);
-        if ($switched) {
-            Config::set('database.connections.school.database', $school->database_name);
-            DB::purge('school');
-            DB::reconnect('school');
-            DB::setDefaultConnection('school');
-        }
-
-        try {
-            $resetUrl = app(\App\Services\StaffInvitationService::class)->createUrl($user, $schoolCode);
-        } finally {
-            // Restore previous database connection even if token generation fails
-            if ($switched && $previousConnection !== 'school') {
-                DB::setDefaultConnection($previousConnection);
-                DB::purge('school');
-            }
-        }
+        // Invitation tokens are tenant-local. The scope restores the queue
+        // worker's default connection and tenant configuration on every path.
+        $resetUrl = app(TenantConnectionScope::class)->forSchool(
+            $school,
+            fn (): string => app(\App\Services\StaffInvitationService::class)->createUrl($user, $schoolCode),
+        );
 
         $placeholders = [
             '{school_admin_name}' => $user->full_name,

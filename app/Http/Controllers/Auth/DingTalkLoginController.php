@@ -6,10 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\DingTalkBinding;
 use App\Models\School;
 use App\Models\User;
+use App\Services\TenantConnectionScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -158,7 +157,7 @@ class DingTalkLoginController extends Controller
             $nick    = $userData['nick'] ?? null;
 
             // 3. 查询绑定记录
-            $binding = DingTalkBinding::where('dingtalk_open_id', $openId)->first();
+            $binding = DingTalkBinding::on('mysql')->where('dingtalk_open_id', $openId)->first();
 
             if ($binding) {
                 // 已绑定：从 binding 记录反查学校信息（不依赖 session）
@@ -183,7 +182,7 @@ class DingTalkLoginController extends Controller
                     'open_id_masked' => substr($openId, 0, 6) . '****',
                 ]);
 
-                return $this->autoLogin($request, $binding, $boundSchool->id, $boundSchool->code, $boundSchool->database_name);
+                return $this->autoLogin($request, $binding, $boundSchool);
             }
 
             // 4. 无绑定 → 保存钉钉信息到 session
@@ -215,18 +214,18 @@ class DingTalkLoginController extends Controller
      * 已绑定用户自动登录 eSchool。
      *
      * 复用 LoginController 的 session 设置模式：
-     * - Session::put('school_database_name', ...) 供 SwitchDatabase middleware 使用
+     * - Session::put('school_database_name', ...) is later verified against
+     *   the central School registry by InitializeTenantDatabase.
      * - Auth::login() + redirect /dashboard
      */
-    private function autoLogin(Request $request, DingTalkBinding $binding, $schoolId, $schoolCode, $schoolDatabaseName)
+    private function autoLogin(Request $request, DingTalkBinding $binding, School $school)
     {
-        // 1. 切换到学校数据库
-        Config::set('database.connections.school.database', $schoolDatabaseName);
-        DB::purge('school');
-        DB::reconnect('school');
-        DB::setDefaultConnection('school');
+        $schoolId = (int) $school->id;
+        $schoolCode = (string) $school->code;
+        $schoolDatabaseName = (string) $school->database_name;
 
         try {
+            return app(TenantConnectionScope::class)->forSchool($school, function () use ($request, $binding, $schoolId, $schoolCode, $schoolDatabaseName) {
             // 2. 在学校库查找绑定用户
             $user = User::where('id', $binding->user_id)->first();
 
@@ -279,7 +278,7 @@ class DingTalkLoginController extends Controller
             Session::put('school_database_name', $schoolDatabaseName);
 
             // 8. 更新最后登录时间
-            $binding->update(['last_login_at' => now()]);
+            DingTalkBinding::on('mysql')->whereKey($binding->getKey())->update(['last_login_at' => now()]);
 
             // 9. 清除 DingTalk 相关 session（保留 login 相关 session）
             session()->forget([
@@ -300,12 +299,14 @@ class DingTalkLoginController extends Controller
             // 10. 跳转 dashboard
             return redirect('/dashboard');
 
+            });
         } catch (\Throwable $e) {
             Log::error('DingTalk auto-login exception', [
-                'stage'   => 'auto-login',
-                'class'   => get_class($e),
-                'code'    => $e->getCode(),
+                'stage' => 'auto-login',
+                'class' => get_class($e),
+                'code' => $e->getCode(),
             ]);
+
             return response('DingTalk auto-login failed.', 500);
         }
     }
@@ -380,14 +381,8 @@ class DingTalkLoginController extends Controller
             'dingtalk_school_code' => $school->code,
         ]);
 
-        // 2. 切换到学校数据库
-        $previousConnection = DB::getDefaultConnection();
-        Config::set('database.connections.school.database', $school->database_name);
-        DB::purge('school');
-        DB::reconnect('school');
-        DB::setDefaultConnection('school');
-
         try {
+            return app(TenantConnectionScope::class)->forSchool($school, function () use ($request, $school, $pendingOpenId, $pendingUnionId, $pendingNick) {
             // 3. 在学校库查找用户（email 或 mobile）
             $loginValue = $request->input('email');
             $user = User::where('email', $loginValue)
@@ -407,7 +402,7 @@ class DingTalkLoginController extends Controller
             }
 
             // 5a. 检查当前 DingTalk 账号是否已绑定其他学校
-            $crossSchool = DingTalkBinding::where('dingtalk_open_id', $pendingOpenId)
+            $crossSchool = DingTalkBinding::on('mysql')->where('dingtalk_open_id', $pendingOpenId)
                 ->where('school_id', '!=', $school->id)
                 ->first();
 
@@ -420,7 +415,7 @@ class DingTalkLoginController extends Controller
             }
 
             // 5b. 检查当前 school_id + user_id 是否已被其他 DingTalk 账号绑定
-            $sameUserOtherDingTalk = DingTalkBinding::where('school_id', $school->id)
+            $sameUserOtherDingTalk = DingTalkBinding::on('mysql')->where('school_id', $school->id)
                 ->where('user_id', $user->id)
                 ->where('dingtalk_open_id', '!=', $pendingOpenId)
                 ->first();
@@ -484,6 +479,7 @@ class DingTalkLoginController extends Controller
 
             // 11. 跳转 dashboard
             return redirect('/dashboard')->with('success', __('DingTalk binding created successfully.'));
+            });
 
         } catch (\Throwable $e) {
             Log::error('DingTalk bind exception', [
@@ -496,12 +492,6 @@ class DingTalkLoginController extends Controller
             ]);
             return redirect()->route('dingtalk.bind')
                 ->with('error', 'Binding failed. Please try again later.');
-        } finally {
-            // 恢复默认数据库连接
-            if ($previousConnection !== 'school') {
-                DB::setDefaultConnection($previousConnection);
-                DB::purge('school');
-            }
         }
     }
 }

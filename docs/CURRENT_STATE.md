@@ -1,5 +1,29 @@
 # eSchool Current State
 
+## Tenant + API Context Security — local candidate
+
+- Baseline: active Production commit `64c9ef951660478d0965628398c05348333d0022` in the isolated branch
+  `codex/tenant-api-context-security`. No Production data, deployment, cache,
+  service, or configuration changed.
+- API tenant context now resolves the canonical School, validates the
+  tenant-local Sanctum token, School identity, explicit API-family ability and
+  tenant role before a request handler can run in that tenant context. Every
+  success, denial and exception restores the prior default connection and
+  configured tenant database.
+- Web requests accept a tenant context only when the session database maps to
+  exactly one central School and the authenticated tenant actor belongs to that
+  School. Central administrators are never converted into tenant actors by a
+  session value. Middleware no longer re-applies a raw session database switch.
+- `SetupSchoolDatabase` and tenant password-broker operations now use the same
+  scoped connection guard, restoring worker/request defaults on success and
+  failure without altering provisioning or password-token business rules.
+- Security-focused regression: 34 tests / 197 assertions. Full local PHPUnit
+  regression was run in six bounded batches across all 149 test files:
+  883 tests / 7,028 assertions passing with a CLI-only 512 MB memory limit
+  (the Laravel test wrapper otherwise spawns a 128 MB subprocess).
+
+Last updated: 2026-09-21
+
 ## Zixuan QA Student Import + Front Desk Collection — local candidate
 
 - Baseline: Production release `a4aec6bc…`; isolated branch

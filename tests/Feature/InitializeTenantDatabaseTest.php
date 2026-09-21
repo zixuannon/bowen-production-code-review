@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\InitializeTenantDatabase;
+use App\Models\School;
 use App\Models\User;
 use App\Support\LocalBowenQaGuard;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -38,6 +39,17 @@ class InitializeTenantDatabaseTest extends TestCase
         $tenantDatabase = LocalBowenQaGuard::TENANT_DATABASE;
         Config::set('database.connections.school.database', $tenantDatabase);
         DB::purge('school');
+        $this->ensureCentralSchoolFixture();
+        DB::connection('mysql')->table('schools')
+            ->where('id', '!=', 1)
+            ->where('database_name', $tenantDatabase)
+            ->update(['database_name' => 'isolated-' . bin2hex(random_bytes(8))]);
+        DB::connection('mysql')->table('schools')->where('id', 1)->update([
+            'database_name' => $tenantDatabase,
+            'deleted_at' => null,
+            'updated_at' => now(),
+        ]);
+        $this->assertSame(1, School::on('mysql')->where('database_name', $tenantDatabase)->count());
         $email = 'tenant-context-' . bin2hex(random_bytes(12)) . '@local.test';
         $password = bcrypt('local-only');
         $centralId = DB::connection('mysql')->table('users')->insertGetId([

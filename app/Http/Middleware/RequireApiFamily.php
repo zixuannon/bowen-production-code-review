@@ -18,23 +18,28 @@ final class RequireApiFamily
     public function handle(Request $request, Closure $next, string $family): Response
     {
         $user = $request->user();
-        $abilities = (array) ($user?->currentAccessToken()?->abilities ?? []);
+        self::assertAuthorized($user, $family);
+        return $next($request);
+    }
 
+    public static function assertAuthorized(?object $user, string $family): void
+    {
+        $abilities = (array) ($user?->currentAccessToken()?->abilities ?? []);
         if (!$user || in_array('*', $abilities, true)) {
             abort(403, 'This API token is not scoped to an authorized API family.');
         }
 
         $families = $family === 'any' ? array_keys(self::FAMILY_ABILITIES) : [$family];
         foreach ($families as $candidate) {
-            if ($this->matches($user, $abilities, $candidate)) {
-                return $next($request);
+            if (self::matches($user, $abilities, $candidate)) {
+                return;
             }
         }
 
         abort(403, 'This API token is not authorized for this API family.');
     }
 
-    private function matches(object $user, array $abilities, string $family): bool
+    private static function matches(object $user, array $abilities, string $family): bool
     {
         $ability = self::FAMILY_ABILITIES[$family] ?? null;
         if (!$ability || !in_array($ability, $abilities, true)) {

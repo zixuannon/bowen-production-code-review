@@ -5,13 +5,12 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Models\User;
+use App\Services\TenantConnectionScope;
 use App\Services\TenantPasswordBroker;
 use App\Providers\RouteServiceProvider;
 use Auth;
 use Illuminate\Foundation\Auth\ResetsPasswords;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
@@ -63,15 +62,7 @@ class ResetPasswordController extends Controller
             ]);
         }
 
-        $previousDefault = DB::getDefaultConnection();
-        $previousDatabase = Config::get('database.connections.school.database');
-
-        try {
-            Config::set('database.connections.school.database', $school->database_name);
-            DB::purge('school');
-            DB::connection('school')->reconnect();
-            DB::setDefaultConnection('school');
-
+        $response = app(TenantConnectionScope::class)->forSchool($school, function () use ($request, $school): string {
             // Do not permit a reset token/email that resolves to a user whose
             // tenant ownership differs from the trusted school-code context.
             $tenantUser = User::where('email', $request->email)
@@ -79,7 +70,7 @@ class ResetPasswordController extends Controller
                 ->first();
 
             if (!$tenantUser) {
-                return $this->sendResetFailedResponse($request, Password::INVALID_USER);
+                return Password::INVALID_USER;
             }
 
             $broker = $request->input('purpose', 'password_reset') === 'staff_invitation'
@@ -90,11 +81,9 @@ class ResetPasswordController extends Controller
                     $this->resetPassword($user, $password);
                 }
             );
-        } finally {
-            DB::purge('school');
-            Config::set('database.connections.school.database', $previousDatabase);
-            DB::setDefaultConnection($previousDefault);
-        }
+
+            return $response;
+        });
 
         if ($response == Password::PASSWORD_RESET) {
             Auth::logout();

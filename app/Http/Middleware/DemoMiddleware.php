@@ -8,9 +8,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Session;
 
 class DemoMiddleware {
     /**
@@ -21,19 +18,8 @@ class DemoMiddleware {
      * @return JsonResponse
      */
     public function handle(Request $request, Closure $next) {
-//        echo $request->getRequestUri();
-        $school_database_name = Session::get('school_database_name');
-        if ($school_database_name) {
-            DB::setDefaultConnection('school');
-            Config::set('database.connections.school.database', $school_database_name);
-            DB::purge('school');
-            DB::connection('school')->reconnect();
-            DB::setDefaultConnection('school');
-        } else {
-            DB::purge('school');
-            DB::connection('mysql')->reconnect();
-            DB::setDefaultConnection('mysql');
-        }
+        // Tenant context is established once by InitializeTenantDatabase or
+        // APISwitchDatabase. Demo checks must never trust a raw session DB.
         $exclude_uri = array(
             '/login',
             '/api/student/login',
