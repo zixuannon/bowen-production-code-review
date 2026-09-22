@@ -52,8 +52,18 @@ final class TrustedTenantContextService
             });
         }
 
-        $actor = User::on('mysql')->find((int) $actorId);
-        if (!$actor || $actor->getRawOriginal('school_id') === null || (int) $actor->getRawOriginal('school_id') !== (int) $school->id) {
+        // App\Models\User resolves its connection from db_connection_name in
+        // the session.  This pre-scope registry lookup must not use that
+        // model: a retained tenant session intentionally says "school", but
+        // TenantConnectionScope has not configured that connection yet.
+        // Pin the lookup to Central mysql without changing session identity.
+        $actor = DB::connection('mysql')->table('users')
+            ->select(['id', 'school_id'])
+            ->where('id', (int) $actorId)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$actor || $actor->school_id === null || (int) $actor->school_id !== (int) $school->id) {
             throw new AuthorizationException('The authenticated actor is not authorized for the requested School context.');
         }
 

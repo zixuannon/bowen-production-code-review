@@ -151,6 +151,43 @@ final class TenantApiContextSecurityTest extends TestCase
         $this->assertSame('mysql', DB::getDefaultConnection());
     }
 
+    public function test_retained_tenant_session_pins_actor_lookup_to_central_before_school_is_configured(): void
+    {
+        $request = Request::create('/tenant-probe');
+        $request->setLaravelSession(app('session.store'));
+        $request->session()->put(Auth::getName(), 10);
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $this->schoolA);
+
+        // Reproduce a fresh PHP-FPM request: the retained session identifies
+        // the tenant, but the process-local school connection has no database
+        // configured yet.
+        Config::set('database.connections.school.database', null);
+        DB::purge('school');
+
+        $queriesOnUnconfiguredSchool = [];
+        DB::listen(function ($query) use (&$queriesOnUnconfiguredSchool): void {
+            if ($query->connectionName === 'school'
+                && config('database.connections.school.database') === null) {
+                $queriesOnUnconfiguredSchool[] = $query->sql;
+            }
+        });
+
+        $response = app(TrustedTenantContextService::class)->forWebRequest($request, function () {
+            $this->assertSame('school', DB::getDefaultConnection());
+            $this->assertSame($this->schoolA, config('database.connections.school.database'));
+            $this->assertSame(10, Auth::id());
+
+            return response('', 204);
+        });
+
+        $this->assertSame(204, $response->getStatusCode());
+        $this->assertSame([], $queriesOnUnconfiguredSchool);
+        $this->assertSame('mysql', DB::getDefaultConnection());
+        $this->assertNull(config('database.connections.school.database'));
+        $this->assertSame('school', $request->session()->get('db_connection_name'));
+    }
+
     public function test_web_context_never_turns_a_central_administrator_into_a_tenant_actor(): void
     {
         $request = Request::create('/tenant-probe');
