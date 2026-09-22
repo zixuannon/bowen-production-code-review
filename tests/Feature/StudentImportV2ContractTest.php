@@ -91,6 +91,56 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertContains('students/import-v2/confirm', $routes);
     }
 
+    public function test_v2_is_the_only_normal_student_import_entry_and_legacy_backend_is_unchanged(): void
+    {
+        $controller = file_get_contents(app_path('Http/Controllers/StudentController.php'));
+        $sidebar = file_get_contents(resource_path('views/layouts/sidebar.blade.php'));
+        $legacy = file_get_contents(resource_path('views/students/add_bulk_data.blade.php'));
+
+        $createBulk = substr(
+            $controller,
+            strpos($controller, 'public function createBulkData()'),
+            strpos($controller, 'public function createBulkDataV2', strpos($controller, 'public function createBulkData()'))
+                - strpos($controller, 'public function createBulkData()'),
+        );
+
+        $this->assertStringContainsString("ResponseService::noPermissionThenRedirect('student-create');", $createBulk);
+        $this->assertStringContainsString("return redirect()->route('students.import-v2');", $createBulk);
+        $this->assertStringContainsString("route('students.import-v2')", $sidebar);
+        $this->assertStringNotContainsString("route('students.create-bulk-data')", $sidebar);
+        $this->assertStringNotContainsString('Open Student Import V2', $sidebar);
+
+        // Step 3 owns any Legacy authorization or endpoint retirement. This
+        // UX recovery deliberately leaves that backend and its view intact.
+        $this->assertStringContainsString('public function storeBulkData(Request $request)', $controller);
+        $this->assertStringContainsString("route('students.store-bulk-data')", $legacy);
+        $this->assertStringContainsString('Open Student Import V2', $legacy);
+    }
+
+    public function test_v2_default_flow_is_enabled_for_every_canonical_bowen_school_without_granting_new_roles(): void
+    {
+        $controller = file_get_contents(app_path('Http/Controllers/StudentController.php'));
+        $v2Controller = substr(
+            $controller,
+            strpos($controller, 'public function createBulkDataV2()'),
+            strpos($controller, 'public function downloadBulkDataV2Template', strpos($controller, 'public function createBulkDataV2()'))
+                - strpos($controller, 'public function createBulkDataV2()'),
+        );
+
+        $this->assertSame([
+            'MMBOWEN01',
+            'MMBOWEN02',
+            'MMBOWEN03',
+            'MMBOWEN04',
+        ], config('student_import_v2.enabled_school_codes'));
+        $this->assertStringContainsString("ResponseService::noPermissionThenRedirect('student-create');", $v2Controller);
+        $this->assertStringNotContainsString('Super Admin', $v2Controller);
+        $this->assertStringNotContainsString('Principal', $v2Controller);
+        $this->assertStringNotContainsString('Front Desk', $v2Controller);
+        $this->assertStringNotContainsString('School Accountant', $v2Controller);
+        $this->assertStringNotContainsString('Head Finance', $v2Controller);
+    }
+
     public function test_preview_contract_is_no_write_and_confirm_reuses_the_canonical_student_fee_assignment_path(): void
     {
         $source = file_get_contents(app_path('Services/StudentImportV2Service.php'));

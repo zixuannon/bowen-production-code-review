@@ -554,16 +554,10 @@ class StudentController extends Controller
     public function createBulkData()
     {
         ResponseService::noPermissionThenRedirect('student-create');
-        $class_section = $this->classSection->all(['*'], ['class', 'class.stream', 'class.shift', 'section', 'medium']);
-        $sessionYears = $this->sessionYear->all();
-        $studentImportV2Enabled = false;
-        try {
-            app(StudentImportV2Service::class)->assertPilot(Auth::user());
-            $studentImportV2Enabled = true;
-        } catch (AuthorizationException) {
-            // V2 is an explicit canonical-School allowlist. Legacy import remains available.
-        }
-        return view('students.add_bulk_data', compact('class_section', 'sessionYears', 'studentImportV2Enabled'));
+
+        // Keep the established legacy endpoint for compatibility, while
+        // making V2 the single normal entry point for authorised Schools.
+        return redirect()->route('students.import-v2');
     }
 
     /** Preview-first allowlisted import; legacy CSV import remains available to other Schools. */

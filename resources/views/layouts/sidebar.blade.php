@@ -305,7 +305,7 @@
                         @endcanany
 
                         @can('student-create')
-                            <li class="nav-item"><a href="{{ route('students.create-bulk-data') }}"
+                            <li class="nav-item"><a href="{{ route('students.import-v2') }}"
                                     class="nav-link">{{ __('add_bulk_data') }}</a></li>
                         @endcan
 
