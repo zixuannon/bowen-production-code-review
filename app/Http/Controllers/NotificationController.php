@@ -10,6 +10,7 @@ use App\Repositories\Notification\NotificationInterface;
 use App\Repositories\User\UserInterface;
 use App\Services\BootstrapTableService;
 use App\Services\CachingService;
+use App\Services\NotificationRecipientAuthorizationService;
 use App\Services\ResponseService;
 use App\Services\SessionYearsTrackingsService;
 use Illuminate\Support\Facades\Validator;
@@ -28,14 +29,16 @@ class NotificationController extends Controller
     private UserInterface $user;
     private FeesInterface $fees;
     private SessionYearsTrackingsService $sessionYearsTrackingsService;
+    private NotificationRecipientAuthorizationService $recipientAuthorization;
 
-    public function __construct(NotificationInterface $notification, CachingService $cache, UserInterface $user, FeesInterface $fees, SessionYearsTrackingsService $sessionYearsTrackingsService)
+    public function __construct(NotificationInterface $notification, CachingService $cache, UserInterface $user, FeesInterface $fees, SessionYearsTrackingsService $sessionYearsTrackingsService, NotificationRecipientAuthorizationService $recipientAuthorization)
     {
         $this->notification = $notification;
         $this->cache = $cache;
         $this->user = $user;
         $this->fees = $fees;
         $this->sessionYearsTrackingsService = $sessionYearsTrackingsService;
+        $this->recipientAuthorization = $recipientAuthorization;
     }
 
     /**
@@ -100,11 +103,21 @@ class NotificationController extends Controller
         }
 
         try {
+            // Every requested recipient is resolved and authorized before a
+            // notification record, UserNotification, or delivery can exist.
+            $selection = $this->recipientAuthorization->authorize(
+                Auth::user(),
+                $request->input('user_id'),
+                $request->input('roles', []),
+            );
+        } catch (\Illuminate\Auth\Access\AuthorizationException $exception) {
+            abort(403, $exception->getMessage());
+        }
+
+        try {
             DB::beginTransaction();
             $sessionYear = $this->cache->getDefaultSessionYear();
-            $roles = Role::whereNot('name', 'School Admin')->whereIn('id', $request->roles)->pluck('name');
-            $rolesArray = $roles->toarray();
-            $roles = implode(', ', $rolesArray); 
+            $roles = implode(', ', $selection['roles']->pluck('name')->all());
             $data = [
                 'title' => $request->title,
                 'message' => $request->message,
@@ -114,23 +127,19 @@ class NotificationController extends Controller
                 'session_year_id' => $sessionYear->id
             ];
             $notification = $this->notification->create($data);
-            $notifyUser = [];
-
-            if ($request->has('user_id')) {
-                $notifyUser = explode(',', $request->user_id);
-                // Store user notifications for user-wise storage
-                $userNotifications = [];
-                foreach ($notifyUser as $userId) {
-                    $userNotifications[] = [
-                        'notification_id' => $notification->id,
-                        'user_id' => $userId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-                }
-                if (!empty($userNotifications)) {
-                    UserNotification::insert($userNotifications);
-                }
+            $notifyUser = $selection['recipients']->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+            // Store user notifications for the already-authorized recipients.
+            $userNotifications = [];
+            foreach ($notifyUser as $userId) {
+                $userNotifications[] = [
+                    'notification_id' => $notification->id,
+                    'user_id' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+            if ($userNotifications !== []) {
+                UserNotification::insert($userNotifications);
             }
 
             $customData = [];
@@ -142,27 +151,23 @@ class NotificationController extends Controller
 
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Notification', $notification->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
 
-            $title = $request->title; // Title for Notification
-            $body = $request->message;
-            $type = 'custom';
-            send_notification($notifyUser, $title, $body, $type, $customData); // Send Notification
             DB::commit();
+        } catch (Throwable $e) {
+            DB::rollBack();
+            ResponseService::logErrorResponse($e, "Notification Controller -> Store Method");
+            ResponseService::errorResponse();
+        }
 
+        try {
+            send_notification($notifyUser, $request->title, $request->message, 'custom', $customData);
             ResponseService::successResponse('Data Stored Successfully');
         } catch (Throwable $e) {
-            if (
-                Str::contains($e->getMessage(), [
-                    'does not exist',
-                    'file_get_contents'
-                ])
-            ) {
-                DB::commit();
+            if (Str::contains($e->getMessage(), ['does not exist', 'file_get_contents'])) {
                 ResponseService::warningResponse("Data Stored successfully. But App push notification not send.");
-            } else {
-                DB::rollBack();
-                ResponseService::logErrorResponse($e, "Notification Controller -> Store Method");
-                ResponseService::errorResponse();
             }
+
+            ResponseService::logErrorResponse($e, "Notification Controller -> Store notification delivery");
+            ResponseService::errorResponse();
         }
     }
 

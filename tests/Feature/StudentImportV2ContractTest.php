@@ -80,18 +80,23 @@ final class StudentImportV2ContractTest extends TestCase
         }
     }
 
-    public function test_v2_routes_exist_beside_the_legacy_bulk_import_routes(): void
+    public function test_v2_routes_exist_while_legacy_bulk_import_routes_are_retirement_guards(): void
     {
-        $routes = collect(app('router')->getRoutes()->getRoutes())->pluck('uri')->all();
-        $this->assertContains('students/create-bulk', $routes);
-        $this->assertContains('students/store-bulk', $routes);
+        $routes = collect(app('router')->getRoutes()->getRoutes())->keyBy('uri');
+        $this->assertTrue($routes->has('students/create-bulk'));
+        $this->assertTrue($routes->has('students/store-bulk'));
+        $this->assertTrue($routes->has('students/download-file'));
+        $this->assertStringNotContainsString('StudentController@createBulkData', (string) $routes->get('students/create-bulk')->getActionName());
+        $this->assertStringNotContainsString('StudentController@storeBulkData', (string) $routes->get('students/store-bulk')->getActionName());
+        $this->assertStringNotContainsString('StudentController@downloadSampleFile', (string) $routes->get('students/download-file')->getActionName());
+        $routes = $routes->keys()->all();
         $this->assertContains('students/import-v2', $routes);
         $this->assertContains('students/import-v2/template', $routes);
         $this->assertContains('students/import-v2/preview', $routes);
         $this->assertContains('students/import-v2/confirm', $routes);
     }
 
-    public function test_v2_is_the_only_normal_student_import_entry_and_legacy_backend_is_unchanged(): void
+    public function test_v2_is_the_only_normal_student_import_entry_and_legacy_backend_is_unregistered(): void
     {
         $controller = file_get_contents(app_path('Http/Controllers/StudentController.php'));
         $sidebar = file_get_contents(resource_path('views/layouts/sidebar.blade.php'));
@@ -110,11 +115,14 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringNotContainsString("route('students.create-bulk-data')", $sidebar);
         $this->assertStringNotContainsString('Open Student Import V2', $sidebar);
 
-        // Step 3 owns any Legacy authorization or endpoint retirement. This
-        // UX recovery deliberately leaves that backend and its view intact.
+        // Legacy controller/view/importer code remains temporarily for
+        // historical compatibility, but no route can render or execute it.
         $this->assertStringContainsString('public function storeBulkData(Request $request)', $controller);
-        $this->assertStringContainsString("route('students.store-bulk-data')", $legacy);
         $this->assertStringContainsString('Open Student Import V2', $legacy);
+        $routesFile = file_get_contents(base_path('routes/web.php'));
+        $this->assertStringContainsString("Route::get('create-bulk', static fn () => abort(410))", $routesFile);
+        $this->assertStringContainsString("Route::post('store-bulk', static fn () => abort(410))", $routesFile);
+        $this->assertStringContainsString("Route::get('download-file', static fn () => abort(410))", $routesFile);
     }
 
     public function test_v2_default_flow_is_enabled_for_every_canonical_bowen_school_without_granting_new_roles(): void

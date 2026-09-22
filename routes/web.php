@@ -582,8 +582,12 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
                 Route::post('{studentId}/fee-assignment/confirm', [StudentFeeAssignmentController::class, 'confirm'])->name('students.fee-assignment.confirm');
                 Route::post('{studentId}/fee-assignment/add-fee', [StudentFeeAssignmentController::class, 'addFee'])->name('students.fee-assignment.add-fee');
             });
-            Route::get('create-bulk', [StudentController::class, 'createBulkData'])->name('students.create-bulk-data');
-            Route::post('store-bulk', [StudentController::class, 'storeBulkData'])->name('students.store-bulk-data');
+            // Legacy CSV Student Import was retired in Step 3. Exact 410
+            // guards run before the resource wildcard, so old bookmarks and
+            // POSTs can never reach the legacy controller/importer or be
+            // redirected into V2.
+            Route::get('create-bulk', static fn () => abort(410));
+            Route::post('store-bulk', static fn () => abort(410));
             Route::get('import-v2', [StudentController::class, 'createBulkDataV2'])->name('students.import-v2');
             Route::get('import-v2/template', [StudentController::class, 'downloadBulkDataV2Template'])->name('students.import-v2.template');
             Route::post('import-v2/preview', [StudentController::class, 'previewBulkDataV2'])->name('students.import-v2.preview');
@@ -595,7 +599,8 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
             Route::post('update-profile', [StudentController::class, 'store_update_profile'])->name('students.update-profile');
 
 
-            Route::get('download-file', [StudentController::class, 'downloadSampleFile'])->name('student.bulk-data-sample');
+            // The legacy CSV template is retired with the legacy importer.
+            Route::get('download-file', static fn () => abort(410));
             Route::delete('change-status/{id}', [StudentController::class, 'changeStatus'])->name('student.change-status');
             /*** Reset Password ***/
             Route::get('reset-password', [StudentController::class, 'resetPasswordIndex'])->name('students.reset-password.index');

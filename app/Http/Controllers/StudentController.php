@@ -555,12 +555,13 @@ class StudentController extends Controller
     {
         ResponseService::noPermissionThenRedirect('student-create');
 
-        // Keep the established legacy endpoint for compatibility, while
-        // making V2 the single normal entry point for authorised Schools.
+        // This controller method is deliberately unregistered.  It remains
+        // only for source/history compatibility; the Step 3 route guard
+        // returns 410 before an old bookmark can enter this action.
         return redirect()->route('students.import-v2');
     }
 
-    /** Preview-first allowlisted import; legacy CSV import remains available to other Schools. */
+    /** Preview-first allowlisted import; V2 is the only supported runtime import. */
     public function createBulkDataV2(StudentImportV2Service $imports)
     {
         ResponseService::noPermissionThenRedirect('student-create');
