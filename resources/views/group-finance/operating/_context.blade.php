@@ -22,5 +22,4 @@
     <li class="nav-item"><a class="nav-link {{ request()->routeIs('group-finance.operating.bank-accounts') ? 'active' : '' }}" href="{{ route('group-finance.operating.bank-accounts') }}">{{ __('Bank Accounts') }}</a></li>
     <li class="nav-item"><a class="nav-link {{ request()->routeIs('group-finance.operating.transactions') ? 'active' : '' }}" href="{{ route('group-finance.operating.transactions') }}">{{ __('Transactions') }}</a></li>
     <li class="nav-item"><a class="nav-link {{ request()->routeIs('group-finance.operating.reports') ? 'active' : '' }}" href="{{ route('group-finance.operating.reports') }}">{{ __('Finance Reports') }}</a></li>
-    <li class="nav-item"><a class="nav-link {{ request()->routeIs('group-finance.operating.operations*') ? 'active' : '' }}" href="{{ route('group-finance.operating.operations') }}">{{ __('Finance Operations') }}</a></li>
 </ul>

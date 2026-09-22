@@ -34,7 +34,10 @@ class BankAccountController extends Controller
             'mobile_wallet' => __('Mobile Wallet'),
         ];
 
-        return view('bank-account.index', compact('accountTypes'));
+        // This model is retained solely for historical compatibility. New
+        // accounts belong to Central Fund Account V2.
+        $legacyFinanceReadOnly = true;
+        return view('bank-account.index', compact('accountTypes', 'legacyFinanceReadOnly'));
     }
 
     public function list(Request $request)
@@ -87,13 +90,6 @@ class BankAccountController extends Controller
             $operate = '';
             if (!$row->trashed()) {
                 $operate .= BootstrapTableService::viewButton(route('bank-accounts.show', $row->id));
-                if (!app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace()
-                    && app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user())) {
-                    $operate .= BootstrapTableService::editButton(route('bank-accounts.edit', $row->id));
-                    if (!$row->is_default) {
-                        $operate .= BootstrapTableService::deleteButton(route('bank-accounts.destroy', $row->id));
-                    }
-                }
             }
 
             $tempRow = $row->toArray();
@@ -119,6 +115,7 @@ class BankAccountController extends Controller
 
     public function store(Request $request)
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account create');
         abort_unless(app(FinanceAccountAccessService::class)->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
@@ -466,6 +463,7 @@ class BankAccountController extends Controller
 
     public function edit($id)
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account edit');
         $access = app(FinanceAccountAccessService::class);
         abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
@@ -481,6 +479,7 @@ class BankAccountController extends Controller
 
     public function update(Request $request, $id)
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account update');
         $access = app(FinanceAccountAccessService::class);
         abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');
@@ -579,6 +578,7 @@ class BankAccountController extends Controller
 
     public function destroy($id)
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account delete');
         $access = app(FinanceAccountAccessService::class);
         abort_unless($access->canManageAccounts(Auth::user()), 403);
         ResponseService::noFeatureThenSendJson('Expense Management');

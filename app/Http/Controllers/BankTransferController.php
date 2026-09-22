@@ -3,17 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\BankTransfer;
-use App\Services\BankTransferService;
 use App\Services\BootstrapTableService;
 use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
 use App\Services\ResponseService;
+use App\Services\TrustedSchoolScopeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Validation\ValidationException;
-use Throwable;
-use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class BankTransferController extends Controller
 {
@@ -28,7 +24,9 @@ class BankTransferController extends Controller
             ->orderBy('account_name')
             ->get();
 
-        return view('bank-account.transfer.index', compact('bankAccounts'));
+        // Legacy transfer rows remain readable, but all writes are retired.
+        $legacyFinanceReadOnly = true;
+        return view('bank-account.transfer.index', compact('bankAccounts', 'legacyFinanceReadOnly'));
     }
 
     public function list(Request $request)
@@ -43,7 +41,11 @@ class BankTransferController extends Controller
         $search = $request->input('search');
 
         $accountIds = app(FinanceAccountAccessService::class)->accessibleAccounts(Auth::user())->pluck('id');
-        $sql = BankTransfer::owner()
+        // Bank transfers are retained as a legacy historical register. Its
+        // scope must be the trusted current school, not the model's legacy
+        // role-derived owner scope.
+        $schoolId = app(TrustedSchoolScopeService::class)->schoolIdFor(Auth::user());
+        $sql = BankTransfer::query()->where('school_id', $schoolId)
             ->where(function ($query) use ($accountIds) {
                 $query->whereIn('from_account_id', $accountIds)->orWhereIn('to_account_id', $accountIds);
             })
@@ -77,11 +79,7 @@ class BankTransferController extends Controller
             // A Cashier may see a transfer touching an assigned account, but
             // cancellation changes both sides. Do not present an action that
             // the server must reject unless the user controls both accounts.
-            if ($row->status === 'completed'
-                && $accountIds->contains($row->from_account_id)
-                && $accountIds->contains($row->to_account_id)) {
-                $operate .= BootstrapTableService::deleteButton(route('bank-transfers.destroy', $row->id));
-            }
+            // The legacy register is historical-only; do not offer reversal.
 
             $tempRow = $row->toArray();
             $tempRow['no']              = $no++;
@@ -100,61 +98,13 @@ class BankTransferController extends Controller
         return response()->json($bulkData);
     }
 
-    public function store(Request $request, BankTransferService $transfers)
+    public function store(Request $request): never
     {
-        ResponseService::noFeatureThenSendJson('Expense Management');
-        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-create');
-
-        $request->validate([
-            'from_account_id' => 'required|exists:bank_accounts,id',
-            'to_account_id'   => 'required|exists:bank_accounts,id|different:from_account_id',
-            'amount'          => 'required|numeric|min:0.01',
-            'transfer_date'   => 'required|date',
-            'reference_no'    => 'nullable|string|max:100',
-            'notes'           => 'nullable|string|max:1000',
-        ]);
-
-        try {
-            $transfer = $transfers->create(Auth::user(), $request->only([
-                'from_account_id', 'to_account_id', 'amount',
-                'transfer_date', 'reference_no', 'notes',
-            ]));
-
-            return response()->json([
-                'error' => false,
-                'message' => __('Bank transfer created successfully'),
-                'id' => $transfer->id,
-            ]);
-        } catch (ValidationException $exception) {
-            throw $exception;
-        } catch (ModelNotFoundException | HttpExceptionInterface $exception) {
-            throw $exception;
-        } catch (Throwable $exception) {
-            ResponseService::logErrorResponse($exception, 'BankTransferController -> Store');
-            return response()->json(['error' => true, 'message' => __('Error Occurred')], 500);
-        }
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Transfer create');
     }
 
-    public function destroy($id, BankTransferService $transfers)
+    public function destroy(int $id): never
     {
-        ResponseService::noFeatureThenSendJson('Expense Management');
-        app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-transfer-create');
-
-        try {
-            $transfer = BankTransfer::owner()->findOrFail($id);
-            $transfers->cancel(Auth::user(), $transfer);
-
-            return response()->json([
-                'error' => false,
-                'message' => __('Bank transfer cancelled successfully'),
-            ]);
-        } catch (ValidationException $exception) {
-            throw $exception;
-        } catch (ModelNotFoundException | HttpExceptionInterface $exception) {
-            throw $exception;
-        } catch (Throwable $exception) {
-            ResponseService::logErrorResponse($exception, 'BankTransferController -> Destroy');
-            return response()->json(['error' => true, 'message' => __('Error Occurred')], 500);
-        }
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Transfer cancellation');
     }
 }

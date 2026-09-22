@@ -242,19 +242,20 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         // Scheme B: central identity remains authenticated while selected
         // School data is read through an explicit mapped tenant identity.
         // Only the narrow operating context session transition is POST; this
-        // initial workspace intentionally contains no tenant write endpoint.
+        // legacy Finance writes are retired; Central Finance owns operating
+        // writes and this compatibility workspace is history-only.
         Route::post('group-finance/{financeGroup}/operating', [FinanceOperatingWorkspaceController::class, 'enter'])->name('group-finance.operating.enter');
         Route::post('group-finance/operating/exit', [FinanceOperatingWorkspaceController::class, 'exit'])->name('group-finance.operating.exit');
 
         Route::get('group-finance/operating/bank-accounts', [FinanceOperatingWorkspaceController::class, 'bankAccounts'])->name('group-finance.operating.bank-accounts');
         Route::get('group-finance/operating/transactions', [FinanceOperatingWorkspaceController::class, 'transactions'])->name('group-finance.operating.transactions');
         Route::get('group-finance/operating/reports', [FinanceOperatingWorkspaceController::class, 'reports'])->name('group-finance.operating.reports');
-        Route::get('group-finance/operating/operations', [FinanceOperatingWorkspaceController::class, 'operations'])->name('group-finance.operating.operations');
-        Route::post('group-finance/operating/expense', [FinanceOperatingWorkspaceController::class, 'storeExpense'])->name('group-finance.operating.expense.store');
-        Route::post('group-finance/operating/receive-money', [FinanceOperatingWorkspaceController::class, 'receiveMoney'])->name('group-finance.operating.receive-money.store');
-        Route::post('group-finance/operating/student-fee', [FinanceOperatingWorkspaceController::class, 'receiveStudentFee'])->name('group-finance.operating.student-fee.store');
-        Route::post('group-finance/operating/bank-transfer', [FinanceOperatingWorkspaceController::class, 'storeBankTransfer'])->name('group-finance.operating.bank-transfer.store');
-        Route::post('group-finance/operating/fund-handover', [FinanceOperatingWorkspaceController::class, 'storeFundHandover'])->name('group-finance.operating.fund-handover.store');
+        Route::match(['get', 'post'], 'group-finance/operating/operations', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance operations'))->name('group-finance.operating.operations');
+        Route::post('group-finance/operating/expense', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance expense'))->name('group-finance.operating.expense.store');
+        Route::post('group-finance/operating/receive-money', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance income'))->name('group-finance.operating.receive-money.store');
+        Route::post('group-finance/operating/student-fee', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance student fee'))->name('group-finance.operating.student-fee.store');
+        Route::post('group-finance/operating/bank-transfer', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance bank transfer'))->name('group-finance.operating.bank-transfer.store');
+        Route::post('group-finance/operating/fund-handover', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance fund handover'))->name('group-finance.operating.fund-handover.store');
         Route::get('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'funding'])->name('finance-groups.transfers.index');
         Route::post('finance-groups/{financeGroup}/funding', [FinanceGroupTransferController::class, 'store'])->name('finance-groups.transfers.store');
         Route::post('finance-groups/{financeGroup}/funding/{transfer}/confirm', [FinanceGroupTransferController::class, 'confirm'])->name('finance-groups.transfers.confirm');
@@ -933,22 +934,33 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
         Route::get('finance/transactions', [FinanceTransactionController::class, 'transactions'])->name('finance-transactions.index');
         Route::post('finance/transactions/receive', [FinanceTransactionController::class, 'receive'])->middleware('tenantFinanceWritable')->name('finance-transactions.receive');
 
-        // Bank Accounts
+        // Legacy Bank Accounts remain queryable for historical compatibility,
+        // but all operating writes are permanently retired in favour of
+        // Central Fund Account V2.
         Route::get('bank-accounts/list', [BankAccountController::class, 'list'])->name('bank-accounts.list');
-        Route::put('bank-accounts/{bankAccount}/assignments', [BankAccountAssignmentController::class, 'update'])->middleware('tenantFinanceWritable')->name('bank-accounts.assignments.update');
-        Route::resource('bank-accounts', BankAccountController::class)->middleware('tenantFinanceWritable');
+        Route::get('bank-accounts/create', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account create'))->name('bank-accounts.create');
+        Route::post('bank-accounts', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account create'))->name('bank-accounts.store');
+        Route::get('bank-accounts/{bankAccount}/edit', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account edit'))->name('bank-accounts.edit');
+        Route::match(['put', 'patch'], 'bank-accounts/{bankAccount}', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account update'))->name('bank-accounts.update');
+        Route::delete('bank-accounts/{bankAccount}', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account delete'))->name('bank-accounts.destroy');
+        Route::put('bank-accounts/{bankAccount}/assignments', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account assignment'))->name('bank-accounts.assignments.update');
+        Route::resource('bank-accounts', BankAccountController::class)->only(['index', 'show']);
 
-        // Bank Transfers
+        // Legacy Bank Transfers are read-only history. Canonical internal
+        // movement remains the Central Finance transfer workflow.
         Route::get('bank-transfers/list', [BankTransferController::class, 'list'])->name('bank-transfers.list');
-        Route::resource('bank-transfers', BankTransferController::class)->only(['index', 'store', 'destroy'])->middleware('tenantFinanceWritable');
+        Route::get('bank-transfers', [BankTransferController::class, 'index'])->name('bank-transfers.index');
+        Route::post('bank-transfers', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Transfer create'))->name('bank-transfers.store');
+        Route::delete('bank-transfers/{bankTransfer}', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Transfer cancellation'))->name('bank-transfers.destroy');
 
         // Fund handovers are separate from immediate Bank Transfers: pending
         // handovers do not affect any balance until receiver confirmation.
         Route::get('fund-handovers/list', [FundHandoverController::class, 'list'])->name('fund-handovers.list');
-        Route::post('fund-handovers/{id}/confirm', [FundHandoverController::class, 'confirm'])->middleware('tenantFinanceWritable')->name('fund-handovers.confirm');
-        Route::post('fund-handovers/{id}/reject', [FundHandoverController::class, 'reject'])->middleware('tenantFinanceWritable')->name('fund-handovers.reject');
-        Route::post('fund-handovers/{id}/cancel', [FundHandoverController::class, 'cancel'])->middleware('tenantFinanceWritable')->name('fund-handovers.cancel');
-        Route::resource('fund-handovers', FundHandoverController::class)->only(['index', 'store'])->middleware('tenantFinanceWritable');
+        Route::post('fund-handovers/{id}/confirm', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover confirmation'))->name('fund-handovers.confirm');
+        Route::post('fund-handovers/{id}/reject', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover rejection'))->name('fund-handovers.reject');
+        Route::post('fund-handovers/{id}/cancel', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover cancellation'))->name('fund-handovers.cancel');
+        Route::get('fund-handovers', [FundHandoverController::class, 'index'])->name('fund-handovers.index');
+        Route::post('fund-handovers', static fn () => app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover create'))->name('fund-handovers.store');
         Route::get('finance-staff',[FinanceStaffController::class,'index'])->name('finance-staff.index');
         Route::post('finance-staff',[FinanceStaffController::class,'store'])->middleware('tenantFinanceWritable')->name('finance-staff.store');
         Route::post('finance-staff/{user}/role',[FinanceStaffController::class,'role'])->middleware('tenantFinanceWritable')->name('finance-staff.role');

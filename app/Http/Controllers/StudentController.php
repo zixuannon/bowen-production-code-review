@@ -110,7 +110,6 @@ class StudentController extends Controller
         ResponseService::noAnyPermissionThenRedirect(['student-create', 'student-edit']);
 
         $student = $this->student->defaultModel()
-            ->owner()
             ->where('user_id', $id)
             ->firstOrFail();
 

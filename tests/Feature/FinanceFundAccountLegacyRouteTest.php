@@ -53,14 +53,14 @@ class FinanceFundAccountLegacyRouteTest extends TestCase
         $this->assertTrue(Route::has('bank-accounts.index'));
         Auth::login($user);
         foreach ([
-            fn () => app(BankAccountController::class)->index(),
-            fn () => app(BankAccountController::class)->store(new \Illuminate\Http\Request()),
-        ] as $call) {
+            [fn () => app(BankAccountController::class)->index(), 403],
+            [fn () => app(BankAccountController::class)->store(new \Illuminate\Http\Request()), 410],
+        ] as [$call, $status]) {
             try {
                 $call();
                 $this->fail('School Admin must be denied before a Fund Account action.');
             } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
-                $this->assertSame(403, $exception->getStatusCode());
+                $this->assertSame($status, $exception->getStatusCode());
             }
         }
     }

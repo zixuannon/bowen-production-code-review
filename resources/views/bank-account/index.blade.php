@@ -5,11 +5,9 @@
 @endsection
 
 @section('content')
-    @php($historicalLegacyWorkspace = app(\App\Services\CentralFinanceSchoolFinanceNavigationService::class)->usesCentralFinanceDailyWorkspace())
+    @php($historicalLegacyWorkspace = true)
     <div class="content-wrapper">
-        @if($historicalLegacyWorkspace)
-            @include('components.central-finance-legacy-historical-notice')
-        @endif
+        @include('components.central-finance-legacy-historical-notice')
         <div class="page-header">
             <h3 class="page-title">
                 {{ __('Bank Accounts') }}

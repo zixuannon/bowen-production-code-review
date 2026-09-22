@@ -45,6 +45,9 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         $this->assertStringContainsString('$centralCanViewSchoolReports', $view);
         $this->assertStringContainsString('CentralFinanceSchoolFinanceNavigationService::class', $view);
         $this->assertStringContainsString('$usesCentralFinanceDailyWorkspace', $view);
+        $this->assertStringNotContainsString("route('bank-accounts.index')", $view);
+        $this->assertStringNotContainsString("route('bank-transfers.index')", $view);
+        $this->assertStringNotContainsString("route('fund-handovers.index')", $view);
         $this->assertStringContainsString('Fee Setup remains tenant academic/master data after Central cutover.', $view);
         $this->assertStringContainsString('School pages retain the tenant Auth user.', $view);
         $this->assertStringContainsString('request()->routeIs(\'central-finance.student-collection.*\'', $view);
@@ -65,7 +68,6 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         }
 
         $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/ExpenseController.php'));
-        $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/BankAccountController.php'));
         $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/FeesController.php'));
 
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');

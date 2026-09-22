@@ -62,14 +62,12 @@ class FinanceAuthorizationServiceTest extends TestCase
         app(FinanceAuthorizationService::class)->assert($user, 'finance-transfer-create');
     }
 
-    public function test_sidebar_uses_the_same_central_fund_account_read_decision_as_the_controller(): void
+    public function test_sidebar_hides_retired_legacy_fund_account_navigation(): void
     {
         $sidebar = file_get_contents(resource_path('views/layouts/sidebar.blade.php'));
 
-        $this->assertStringContainsString(
-            "FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view')",
-            $sidebar,
-        );
-        $this->assertStringNotContainsString("@can('finance-fund-account-view')", $sidebar);
+        $this->assertStringNotContainsString("route('bank-accounts.index')", $sidebar);
+        $this->assertStringNotContainsString("route('bank-transfers.index')", $sidebar);
+        $this->assertStringNotContainsString("route('fund-handovers.index')", $sidebar);
     }
 }

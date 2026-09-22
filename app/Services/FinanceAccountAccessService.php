@@ -15,7 +15,11 @@ class FinanceAccountAccessService
 
     public function scope(User $user): Builder
     {
-        $query = BankAccount::query()->where('school_id', $user->school_id);
+        // Legacy Bank Accounts are historical-only. Never derive a school
+        // boundary from an optional role or request parameter: the trusted
+        // tenant context is the sole source for the retained read path.
+        $schoolId = app(TrustedSchoolScopeService::class)->schoolIdFor($user);
+        $query = BankAccount::query()->where('school_id', $schoolId);
         if (!$this->canManageAll($user)) {
             $query->whereHas('authorized_users', fn (Builder $users) => $users->whereKey($user->id));
         }
@@ -46,7 +50,8 @@ class FinanceAccountAccessService
 
     public function canAccessAccount(User $user, BankAccount $account): bool
     {
-        return $account->school_id === $user->school_id && $this->scope($user)->whereKey($account->id)->exists();
+        return $account->school_id === app(TrustedSchoolScopeService::class)->schoolIdFor($user)
+            && $this->scope($user)->whereKey($account->id)->exists();
     }
 
     public function canManageAccountAssignments(User $user): bool

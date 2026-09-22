@@ -88,6 +88,7 @@ class FundHandoverService
     /** @param null|callable(FundHandover):void $afterCreate */
     public function create(User $sender, array $data, ?callable $afterCreate = null): FundHandover
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover create');
         app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($sender);
         $receiver = User::whereKey($data['receiver_id'])->where('school_id', $sender->school_id)->firstOrFail();
         $this->assertValidParties($sender, $receiver);
@@ -121,6 +122,7 @@ class FundHandoverService
     /** @param null|callable(FundHandover,BankTransfer):void $afterConfirm */
     public function confirm(User $actor, int $handoverId, ?callable $afterConfirm = null): FundHandover
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover confirmation');
         app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         return DB::transaction(function () use ($actor, $handoverId, $afterConfirm) {
             $handover = FundHandover::where('school_id', $actor->school_id)->lockForUpdate()->findOrFail($handoverId);
@@ -167,12 +169,14 @@ class FundHandoverService
 
     public function reject(User $actor, int $handoverId, string $reason): FundHandover
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover rejection');
         app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         return $this->finishWithoutTransfer($actor, $handoverId, 'receiver_id', FundHandover::STATUS_REJECTED, 'rejected', $reason);
     }
 
     public function cancel(User $actor, int $handoverId, string $reason): FundHandover
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Fund Handover cancellation');
         app(CentralFinanceSchoolCutoverService::class)->assertTenantFinanceWritesAllowed($actor);
         return $this->finishWithoutTransfer($actor, $handoverId, 'sender_id', FundHandover::STATUS_CANCELLED, 'cancelled', $reason);
     }

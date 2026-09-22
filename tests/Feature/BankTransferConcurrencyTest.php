@@ -15,6 +15,12 @@ class BankTransferConcurrencyTest extends TestCase
 {
     protected bool $tenantDbAsDefault = true;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->markTestSkipped('Legacy BankTransfer writes are retired; canonical Central Finance transfer coverage is in CentralFinanceInternalTransferDocumentsTest.');
+    }
+
     public function test_two_concurrent_overbalance_transfers_allow_at_most_one_success(): void
     {
         if (!function_exists('pcntl_fork')) {

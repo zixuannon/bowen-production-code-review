@@ -102,6 +102,7 @@ class FinanceOperatingWorkspaceController extends Controller
 
     public function operations(): View
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance operations');
         $actor = Auth::user();
         abort_unless($actor, 403);
         $workspace = $this->workspace->workspace($actor);
@@ -111,6 +112,7 @@ class FinanceOperatingWorkspaceController extends Controller
 
     public function storeExpense(Request $request): RedirectResponse
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance expense');
         $actor = Auth::user(); abort_unless($actor, 403);
         $id = $this->writes->createExpense($actor, $request->all());
         return back()->with('success', __('Expense created.') . ' #' . $id);
@@ -118,6 +120,7 @@ class FinanceOperatingWorkspaceController extends Controller
 
     public function receiveMoney(Request $request): RedirectResponse
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance income');
         $actor = Auth::user(); abort_unless($actor, 403);
         $id = $this->writes->receiveMoney($actor, $request->all());
         return back()->with('success', __('Money received successfully.') . ' #' . $id);
@@ -125,6 +128,7 @@ class FinanceOperatingWorkspaceController extends Controller
 
     public function receiveStudentFee(Request $request): RedirectResponse
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance student fee');
         $actor = Auth::user(); abort_unless($actor, 403);
         $id = $this->writes->receiveStudentFee($actor, $request->all());
         return back()->with('success', __('Student fee received.') . ' #' . $id);
@@ -132,6 +136,7 @@ class FinanceOperatingWorkspaceController extends Controller
 
     public function storeBankTransfer(Request $request): RedirectResponse
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance bank transfer');
         $actor = Auth::user(); abort_unless($actor, 403);
         $id = $this->writes->createBankTransfer($actor, $request->all());
         return back()->with('success', __('Bank transfer created successfully') . ' #' . $id);
@@ -139,6 +144,7 @@ class FinanceOperatingWorkspaceController extends Controller
 
     public function storeFundHandover(Request $request): RedirectResponse
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Group Finance fund handover');
         $actor = Auth::user(); abort_unless($actor, 403);
         $id = $this->writes->createFundHandover($actor, $request->all());
         return back()->with('success', __('Fund handover is pending receiver confirmation.') . ' #' . $id);

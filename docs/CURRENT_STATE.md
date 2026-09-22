@@ -1,5 +1,27 @@
 # eSchool Current State
 
+## Step 4B — Legacy Finance Retirement + Explicit School Scope Hardening — local candidate
+
+- Baseline: Production commit `b299b23aa17db2b243b2875456849253716345c7`.
+  Isolated branch `codex/step4b-legacy-finance-retirement`; no Production
+  data, schema, configuration, service, cache, deployment, or release changed.
+- Legacy `BankAccount`, `BankTransfer`, legacy Fund Handover, and the legacy
+  Group Finance operating-write adapter now fail explicitly with HTTP 410.
+  Their models/tables and trusted-school historical reads remain only for
+  compatibility. Normal sidebar and Group Finance operating navigation no
+  longer advertises retired write paths.
+- Active Student, Compulsory Fee, and approved legacy Expense reads use a
+  trusted explicit school scope rather than an optional model owner scope.
+  Canonical Central Fund Account V2, Central transfers/handovers, Group
+  Finance Import V3, and Front Desk/Head Finance workflows remain separate.
+- Disposable-MySQL targeted regression: 72 tests / 474 assertions. Full
+  local regression: 904 tests / 6,999 assertions with a temporary CLI-only
+  1 GB test limit (the aggregate suite otherwise retains the repository's
+  128 MB test-wrapper limit). Only the existing PHP 8.5 PDO and PHPUnit
+  schema deprecations remain; 34 explicit skips are unchanged.
+
+Last updated: 2026-09-22
+
 ## School Creation / Tenant Provisioning Safety — local candidate
 
 - Baseline: active Production commit `500e062d970c406ad2c96ece174f751d3556538b`.

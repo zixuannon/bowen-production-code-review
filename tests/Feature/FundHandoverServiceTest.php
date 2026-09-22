@@ -46,6 +46,7 @@ class FundHandoverServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->markTestSkipped('Legacy FundHandover writes are retired; canonical Central Finance handover coverage is in CentralFinanceInternalTransferDocumentsTest.');
         $this->ensureSchoolFixture();
         $this->ensureOtherIncomesTable();
         $this->ensureHandoverTable();

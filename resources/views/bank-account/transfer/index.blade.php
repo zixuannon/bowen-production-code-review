@@ -6,12 +6,16 @@
 
 @section('content')
     <div class="content-wrapper">
+        @if($legacyFinanceReadOnly ?? false)
+            @include('components.central-finance-legacy-historical-notice')
+        @endif
         <div class="page-header">
             <h3 class="page-title">
                 {{ __('Bank Transfer') }}
             </h3>
         </div>
 
+        @unless($legacyFinanceReadOnly ?? false)
         {{-- Create Form --}}
         <div class="row">
             <div class="col-md-12 grid-margin stretch-card">
@@ -79,6 +83,8 @@
                 </div>
             </div>
         </div>
+
+        @endunless
 
         {{-- Transfer List --}}
         <div class="row">

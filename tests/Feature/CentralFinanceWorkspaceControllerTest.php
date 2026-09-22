@@ -309,8 +309,13 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString('cf-mobile-card-table',$view);
         $this->assertStringContainsString("route('central-finance.student-collection.show'",$view);
         $this->assertStringContainsString("route('central-finance.student-collection.index')",$view);
-        foreach (['expense.store', 'bank-transfers.store', 'fund-handovers.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
+        foreach (['expense.store', 'finance-transactions.receive', 'fees.compulsory.store'] as $name) {
             $this->assertContains('tenantFinanceWritable', app('router')->getRoutes()->getByName($name)->middleware());
+        }
+        foreach (['bank-transfers.store', 'fund-handovers.store'] as $name) {
+            $route = app('router')->getRoutes()->getByName($name);
+            $this->assertNotContains('tenantFinanceWritable', $route->middleware());
+            $this->assertSame('Closure', $route->getActionName());
         }
     }
 

@@ -66,6 +66,7 @@ class FinanceOperatingWriteService
     /** @param array<string,mixed> $input */
     public function receiveMoney(User $central, array $input): int
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Group Finance income');
         return $this->within($central, 'finance-payment-create', function (User $tenant, $context) use ($input): int {
             $data = Validator::make($input, [
                 'date' => ['required', 'date'], 'payer' => ['required', 'string', 'max:255'],
@@ -85,6 +86,7 @@ class FinanceOperatingWriteService
     /** @param array<string,mixed> $input */
     public function createExpense(User $central, array $input): int
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Group Finance expense');
         return $this->within($central, 'finance-expense-create', function (User $tenant, $context) use ($input): int {
             $data = Validator::make($input, [
                 'ref_no' => ['nullable', Rule::unique('expenses', 'ref_no')->where(fn ($q) => $q->where('session_year_id', $input['session_year_id'] ?? null)->whereNull('vehicle_id')->whereNull('staff_id'))],
@@ -102,6 +104,7 @@ class FinanceOperatingWriteService
     /** @param array<string,mixed> $input */
     public function receiveStudentFee(User $central, array $input): int
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Group Finance student fee');
         return $this->within($central, 'finance-payment-create', function (User $tenant, $context) use ($input): int {
             $data = Validator::make($input, [
                 'fees_id' => ['required','integer'], 'student_id' => ['required','integer'], 'date' => ['required','date'],
@@ -128,6 +131,7 @@ class FinanceOperatingWriteService
     /** @param array<string,mixed> $input */
     public function createBankTransfer(User $central, array $input): int
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Group Finance bank transfer');
         return $this->within($central, 'finance-transfer-create', function (User $tenant, $context) use ($input): int {
             $data = Validator::make($input, [
                 'from_account_id' => ['required', 'integer'],
@@ -145,6 +149,7 @@ class FinanceOperatingWriteService
     /** @param array<string,mixed> $input */
     public function createFundHandover(User $central, array $input): int
     {
+        app(LegacyFinanceRetirementService::class)->rejectWrite('Group Finance fund handover');
         return $this->within($central, 'finance-handover-create', function (User $tenant, $context) use ($input): int {
             $data = Validator::make($input, [
                 'receiver_id' => ['required', 'integer'],

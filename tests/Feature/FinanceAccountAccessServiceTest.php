@@ -107,44 +107,28 @@ class FinanceAccountAccessServiceTest extends TestCase
         $access->authorize($cashier, $account->id);
     }
 
-    public function test_head_finance_can_assign_only_current_school_cashiers_and_cashier_cannot_manage_assignments(): void
+    public function test_legacy_account_assignment_is_retired_for_every_actor(): void
     {
         $this->ensurePivotTable();
 
         $headFinance = $this->createUser('assignment-head', 1);
         $cashier = $this->createUser('assignment-cashier', 1);
-        $foreignUser = $this->createUser('assignment-foreign', 2);
         $account = $this->createAccount('Assignment target', 1);
         $this->assignRole($headFinance, 'Head Finance', 1);
         $this->assignRole($cashier, 'Cashier', 1);
 
         Auth::login($headFinance);
-        $response = app(BankAccountAssignmentController::class)->update(
-            new Request(['user_ids' => [$cashier->id]]),
-            $account,
-            app(FinanceAccountAccessService::class),
-        );
-        $this->assertSame(200, $response->getStatusCode());
-        $this->assertSame([$cashier->id], $account->authorized_users()->pluck('users.id')->all());
-
         try {
             app(BankAccountAssignmentController::class)->update(
-                new Request(['user_ids' => [$foreignUser->id]]),
+                new Request(['user_ids' => [$cashier->id]]),
                 $account,
                 app(FinanceAccountAccessService::class),
             );
-            $this->fail('A Head Finance user must not assign a user from another school.');
+            $this->fail('Legacy Bank Account assignment must be retired before any pivot write.');
         } catch (HttpException $exception) {
-            $this->assertSame(422, $exception->getStatusCode());
+            $this->assertSame(410, $exception->getStatusCode());
         }
-
-        Auth::login($cashier);
-        $this->expectException(HttpException::class);
-        app(BankAccountAssignmentController::class)->update(
-            new Request(['user_ids' => [$cashier->id]]),
-            $account,
-            app(FinanceAccountAccessService::class),
-        );
+        $this->assertSame([], $account->authorized_users()->pluck('users.id')->all());
     }
 
     public function test_cashier_payment_service_rejects_an_unassigned_fund_account_before_any_financial_write(): void

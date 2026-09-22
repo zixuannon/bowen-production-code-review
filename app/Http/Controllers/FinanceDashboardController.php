@@ -23,7 +23,7 @@ class FinanceDashboardController extends Controller
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-dashboard-view');
 
         $request   = request();
-        $schoolId  = Auth::user()->school_id;
+        $schoolId  = app(\App\Services\TrustedSchoolScopeService::class)->schoolIdFor(Auth::user());
         $cache     = app(CachingService::class);
         $sessionYear = $cache->getDefaultSessionYear();
         $sessionYearId = $sessionYear->id ?? null;
@@ -62,7 +62,7 @@ class FinanceDashboardController extends Controller
         $totalIncome = $compulsoryIncome + $optionalIncome + $otherIncome;
 
         // ── Expense (date-filtered) ──
-        $expenses = Expense::owner()
+        $expenses = Expense::query()->where('school_id', $schoolId)
             ->whereBetween('date', [$from, $to])
             ->get();
         $totalExpense = $expenses->sum(fn($e) => ($e->amount_mmk > 0) ? $e->amount_mmk : $e->amount);
@@ -89,7 +89,7 @@ class FinanceDashboardController extends Controller
         $recentPayments = $this->getRecentPayments($schoolId, $allFeeIds, $from, $to);
 
         // ── Recent Expenses ──
-        $recentExpenses = Expense::owner()
+        $recentExpenses = Expense::query()->where('school_id', $schoolId)
             ->whereBetween('date', [$from, $to])
             ->with(['finance_category'])
             ->orderBy('date', 'desc')
@@ -274,7 +274,7 @@ class FinanceDashboardController extends Controller
         // ── Expense by Category ──
         $expenseByCat = [];
         $totalExpenseCat = 0;
-        $expenses = Expense::owner()
+        $expenses = Expense::query()->where('school_id', $schoolId)
             ->whereBetween('date', [$from, $to])
             ->with('finance_category')
             ->get();

@@ -922,49 +922,14 @@
                             </li>
                         @endcanany
 
-                        {{-- Fund management / 资金管理 --}}
-                        <li class="nav-item menu-group-label">
-                            <span class="menu-group-text">{{ __('Fund Management') }}</span>
-                        </li>
-
-                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
-                            <li class="nav-item">
-                                <a href="{{ route('bank-accounts.index') }}" class="nav-link"
-                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Accounts') }}
-                                </a>
-                            </li>
-                        @endif
-
-                        @can('finance-transfer-view')
-                            <li class="nav-item">
-                                <a href="{{ route('bank-transfers.index') }}" class="nav-link"
-                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Transfer') }}
-                                </a>
-                            </li>
-                        @endcanany
-
-                        @can('finance-handover-view')
-                            <li class="nav-item">
-                                <a href="{{ route('fund-handovers.index') }}" class="nav-link"
-                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Fund Handover') }}
-                                </a>
-                            </li>
-                        @endcan
+                        {{-- Legacy Bank Account / Transfer / Handover registers
+                             are historical-read compatibility only. They have
+                             no normal navigation entry; current operations use
+                             Central Finance and Fund Account V2. --}}
                         @can('finance-staff-manage')
                             <li class="nav-item"><a href="{{ route('finance-staff.index') }}" class="nav-link">{{ __('Finance Staff') }}</a></li>
                         @endcan
 
-                        @if (app(\App\Services\FinanceAuthorizationService::class)->can(Auth::user(), 'finance-fund-account-view'))
-                            <li class="nav-item">
-                                <a href="{{ route('bank-account-report.index') }}" class="nav-link"
-                                    data-name="{{ $sidebarRoleName }}" data-access="@hasFeatureAccess('Expense Management')">
-                                    {{ __('Bank Account Report') }}
-                                </a>
-                            </li>
-                        @endif
                     </ul>
                 </div>
             </li>

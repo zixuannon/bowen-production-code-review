@@ -13,6 +13,7 @@ class BankAccountAssignmentController extends Controller
 {
     public function update(Request $request, BankAccount $bankAccount, FinanceAccountAccessService $access)
     {
+        app(\App\Services\LegacyFinanceRetirementService::class)->rejectWrite('Bank Account assignment');
         app(FinanceAuthorizationService::class)->assert(Auth::user(), 'finance-fund-account-manage');
         abort_unless($access->canManageAccountAssignments(Auth::user()) && $bankAccount->school_id === Auth::user()->school_id, 403);
         $data = $request->validate(['user_ids' => ['array'], 'user_ids.*' => ['integer']]);

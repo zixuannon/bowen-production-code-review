@@ -7,6 +7,7 @@ use App\Services\FinanceAccountAccessService;
 use App\Services\FinanceAuthorizationService;
 use App\Services\FundHandoverService;
 use App\Services\ResponseService;
+use App\Services\TrustedSchoolScopeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -22,7 +23,9 @@ class FundHandoverController extends Controller
         // Fund Handover has its own custody roles. A Head Finance or Cashier
         // must not be gated by unrelated generic Expense permissions.
         $this->handovers->assertCanViewRegister($actor);
-        $canParticipate = $this->handovers->isParticipant($actor);
+        // Legacy handovers remain visible for historical review only. Central
+        // Finance owns current custody workflows.
+        $canParticipate = false;
         $recipients = collect();
         $senderAccounts = collect();
         $recipientAccounts = [];
@@ -55,7 +58,8 @@ class FundHandoverController extends Controller
 
         $actor = Auth::user();
         $this->handovers->assertCanViewRegister($actor);
-        $query = FundHandover::where('school_id', $actor->school_id)
+        $schoolId = app(TrustedSchoolScopeService::class)->schoolIdFor($actor);
+        $query = FundHandover::where('school_id', $schoolId)
             ->with(['from_account:id,account_name', 'to_account:id,account_name', 'sender:id,first_name,last_name', 'receiver:id,first_name,last_name']);
         if (!$actor->hasRole('School Admin')) {
             $query->where(fn ($q) => $q->where('sender_id', $actor->id)->orWhere('receiver_id', $actor->id));
@@ -83,9 +87,9 @@ class FundHandoverController extends Controller
                         FundHandover::STATUS_CANCELLED => __('Cancelled by :name at :time — :reason', ['name' => trim(($handover->sender?->first_name ?? '') . ' ' . ($handover->sender?->last_name ?? '')), 'time' => optional($handover->cancelled_at)->toDateTimeString(), 'reason' => $handover->cancellation_reason]),
                         default => __('Pending confirmation'),
                     },
-                    'can_confirm' => $handover->status === FundHandover::STATUS_PENDING && $handover->receiver_id === $actor->id,
-                    'can_reject' => $handover->status === FundHandover::STATUS_PENDING && $handover->receiver_id === $actor->id,
-                    'can_cancel' => $handover->status === FundHandover::STATUS_PENDING && $handover->sender_id === $actor->id,
+                    'can_confirm' => false,
+                    'can_reject' => false,
+                    'can_cancel' => false,
                 ];
             })->values(),
         ]);
