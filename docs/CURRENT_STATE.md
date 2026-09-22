@@ -1,5 +1,28 @@
 # eSchool Current State
 
+## School Creation / Tenant Provisioning Safety — local candidate
+
+- Baseline: active Production commit `500e062d970c406ad2c96ece174f751d3556538b`.
+  The isolated local branch `codex/school-provisioning-safety-step2` changes
+  only initial School Admin tenant provisioning; no Production data, schema,
+  deployment, cache, service, or configuration was changed.
+- The provisioning path now uses the trusted central `admin_id` as the stable
+  tenant identity key and an idempotent insert/re-read. It no longer attempts
+  a malformed nested payload followed by an unconditional second user insert.
+  A retry reuses only an exactly matching target-School identity.
+- A missing School Admin role assignment is recovered idempotently. Conflicting
+  tenant IDs, mismatched email bindings, soft-deleted identities, or a central
+  user from another School fail closed without an overwrite or role grant.
+- New disposable local-MySQL regression covers first create, repeat/retry convergence,
+  partial-failure recovery, matching-user role recovery, identity conflicts,
+  Super Admin separation, canonical School Code preservation, and tenant
+  connection restoration. No finance behavior changed.
+- Full local regression passes in bounded Unit and Feature batches at the
+  required CLI memory limit: 891 tests / 7,054 assertions, with only the
+  pre-existing PHP 8.5 PDO deprecation and PHPUnit XML-schema warnings.
+
+Last updated: 2026-09-21
+
 ## Tenant + API Context Security — local candidate
 
 - Baseline: active Production commit `64c9ef951660478d0965628398c05348333d0022` in the isolated branch

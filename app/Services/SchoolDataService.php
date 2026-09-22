@@ -53,30 +53,7 @@ class SchoolDataService
         $school->updated_at = $schoolData->updated_at;
         $school->save();
 
-        $mainUser = DB::connection('mysql')->table('users')->where('id', $schoolData->admin_id)->first();
-
-        $user = User::on('school')->find($mainUser->id);
-
-        $userRow[] = [
-            'id' => $mainUser->id,
-            'first_name' => $mainUser->first_name,
-            'last_name' => $mainUser->last_name,
-            'mobile' => $mainUser->mobile,
-            'email' => $mainUser->email,
-            'password' => $mainUser->password,
-            'school_id' => $mainUser->school_id,
-            'two_factor_enabled' => 0,
-            'status' => $mainUser->status,
-            'email_verified_at' => $schoolData->type == "demo" ? Carbon::now() : null,
-            'created_at' => $mainUser->created_at,
-            'updated_at' => $mainUser->updated_at,
-        ];
-
-        if(!$user) {
-            $user = User::on('school')->create($userRow);
-        }
-
-        DB::connection('school')->table('users')->insert($userRow);
+        $this->provisionInitialSchoolAdmin($schoolData);
 
         $school = School::find($schoolData->id);
         $school->admin_id = $schoolData->admin_id;
@@ -225,6 +202,108 @@ class SchoolDataService
         SchoolSetting::upsert($schoolSettingData, ["name", "school_id"], ["data", "type"]);
     }
 
+    /**
+     * Create or safely reuse the tenant-local mirror of the School's initial
+     * administrator. The central admin id is the stable provisioning key.
+     *
+     * A retry may complete a missing tenant user, but it must never overwrite
+     * a user that belongs to another school or represents another identity.
+     */
+    public function provisionInitialSchoolAdmin(School $schoolData): User
+    {
+        if (DB::getDefaultConnection() !== 'school'
+            || (string) config('database.connections.school.database') !== (string) $schoolData->database_name) {
+            throw new \LogicException('Initial School Admin provisioning requires the explicitly selected target tenant.');
+        }
+
+        $adminId = (int) $schoolData->admin_id;
+        $schoolId = (int) $schoolData->id;
+        $mainUser = DB::connection('mysql')->table('users')->where('id', $adminId)->first();
+
+        if ($adminId <= 0 || $mainUser === null || (int) ($mainUser->school_id ?? 0) !== $schoolId) {
+            throw new \LogicException('Initial School Admin identity is missing or does not belong to the target School.');
+        }
+
+        $email = strtolower(trim((string) ($mainUser->email ?? '')));
+        if ($email === '') {
+            throw new \LogicException('Initial School Admin identity has no stable email address.');
+        }
+
+        $existing = DB::connection('school')->table('users')->where('id', $adminId)->first();
+
+        if ($existing !== null) {
+            $existingEmail = strtolower(trim((string) ($existing->email ?? '')));
+            if (isset($existing->deleted_at)
+                || (int) ($existing->school_id ?? 0) !== $schoolId
+                || $existingEmail !== $email) {
+                throw new \LogicException('Initial School Admin tenant identity conflicts with the trusted central identity.');
+            }
+
+            return User::on('school')->findOrFail($adminId);
+        }
+
+        if (DB::connection('school')->table('users')
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->where('id', '!=', $adminId)
+            ->exists()) {
+            throw new \LogicException('Initial School Admin email is already bound to a different tenant identity.');
+        }
+
+        DB::connection('school')->table('users')->insertOrIgnore([
+            'id' => $adminId,
+            'first_name' => $mainUser->first_name,
+            'last_name' => $mainUser->last_name,
+            'mobile' => $mainUser->mobile,
+            'email' => $mainUser->email,
+            'password' => $mainUser->password,
+            'school_id' => $schoolId,
+            'two_factor_enabled' => 0,
+            'status' => $mainUser->status,
+            'email_verified_at' => $schoolData->type === 'demo' ? Carbon::now() : null,
+            'created_at' => $mainUser->created_at,
+            'updated_at' => $mainUser->updated_at,
+        ]);
+
+        $provisioned = DB::connection('school')->table('users')->where('id', $adminId)->first();
+        if ($provisioned === null
+            || isset($provisioned->deleted_at)
+            || (int) ($provisioned->school_id ?? 0) !== $schoolId
+            || strtolower(trim((string) ($provisioned->email ?? ''))) !== $email) {
+            throw new \LogicException('Initial School Admin provisioning did not converge to the trusted tenant identity.');
+        }
+
+        return User::on('school')->findOrFail($adminId);
+    }
+
+    /**
+     * Complete the role portion of initial-admin provisioning without adding a
+     * second pivot row when a queue retry repeats the setup work.
+     */
+    public function ensureInitialSchoolAdminRole(School $school): void
+    {
+        $user = User::on('school')->withTrashed()->find($school->admin_id);
+        if ($user === null
+            || $user->trashed()
+            || (int) $user->school_id !== (int) $school->id) {
+            throw new \LogicException('Initial School Admin tenant identity is unavailable for role provisioning.');
+        }
+
+        $role = Role::withoutGlobalScope('school')
+            ->where('name', 'School Admin')
+            ->where('school_id', $school->id)
+            ->first();
+        if ($role === null) {
+            throw new \LogicException('Canonical School Admin role is unavailable in the target tenant.');
+        }
+
+        DB::connection('school')->table(config('permission.table_names.model_has_roles', 'model_has_roles'))
+            ->updateOrInsert([
+                'role_id' => $role->id,
+                'model_type' => $user->getMorphClass(),
+                'model_id' => $user->id,
+            ], []);
+    }
+
     public function createPreSetupRole($school)
     {
 
@@ -242,9 +321,7 @@ class SchoolDataService
         // intentionally created during provisioning but never assigned here.
         $this->ensureFinanceRoleDefaultPermissions($school);
 
-        $schoolAdminUser = User::on('school')->where('id', $school->admin_id)->first();
-        $user = $schoolAdminUser->setConnection('school');
-        $user->assignRole('School Admin');
+        $this->ensureInitialSchoolAdminRole($school);
 
         $this->defaultRoles($school);
 
