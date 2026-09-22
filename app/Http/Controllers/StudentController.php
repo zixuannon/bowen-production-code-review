@@ -21,6 +21,7 @@ use App\Services\ResponseService;
 use App\Services\SubscriptionService;
 use App\Services\StudentImportV2Service;
 use App\Services\StudentCodeService;
+use App\Services\TrustedSchoolScopeService;
 use App\Services\UserService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -109,9 +110,7 @@ class StudentController extends Controller
     {
         ResponseService::noAnyPermissionThenRedirect(['student-create', 'student-edit']);
 
-        $student = $this->student->defaultModel()
-            ->where('user_id', $id)
-            ->firstOrFail();
+        $student = $this->studentForTrustedSchool((int) $id);
 
         return redirect()->route('students.index', [
             'edit_student' => $student->user_id,
@@ -253,6 +252,7 @@ class StudentController extends Controller
     public function update($id, Request $request)
     {
         ResponseService::noAnyPermissionThenSendJson(['student-create', 'student-edit']);
+        $this->studentUserForTrustedSchool((int) $id);
         $rules = [
             'first_name' => 'required',
             'last_name' => 'required',
@@ -461,11 +461,10 @@ class StudentController extends Controller
             ResponseService::noPermissionThenRedirect('student-edit');
             $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
-            $user = $this->user->builder()->withTrashed()
-                ->where('school_id', Auth::user()->school_id)
-                ->findOrFail($userId);
+            $schoolId = $this->trustedSchoolId();
+            $user = $this->studentUserForTrustedSchool((int) $userId, $schoolId);
             if ($user->status == 0) {
-                $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
+                $subscription = $this->subscriptionService->active_subscription($schoolId);
                 // If prepaid plan check student limit
                 if ($subscription && $subscription->package_type == 0) {
                     $status = $this->subscriptionService->check_user_limit($subscription, "Students");
@@ -478,18 +477,21 @@ class StudentController extends Controller
 
             $newStatus = $user->status == 0 ? 1 : 0;
             $this->user->builder()->withTrashed()
-                ->where('school_id', Auth::user()->school_id)
+                ->where('school_id', $schoolId)
                 ->where('id', $userId)
                 ->update(['status' => $newStatus, 'deleted_at' => $user->status == 1 ? now() : null]);
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
                 Auth::user(),
-                $this->user->builder()->withTrashed()->findOrFail($userId),
+                $user,
                 $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
                 $data['reason'],
                 ['previous_status' => (int) $user->status, 'status' => $newStatus],
             );
             DB::commit();
             ResponseService::successResponse('Data Updated Successfully');
+        } catch (AuthorizationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             DB::rollBack();
             ResponseService::logErrorResponse($e, 'Student Controller ---> Change Status');
@@ -504,12 +506,11 @@ class StudentController extends Controller
         try {
             $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
+            $schoolId = $this->trustedSchoolId();
             foreach (json_decode($request->ids, false, 512, JSON_THROW_ON_ERROR) as $key => $userId) {
-                $studentUser = $this->user->builder()->withTrashed()
-                    ->where('school_id', Auth::user()->school_id)
-                    ->findOrFail($userId);
+                $studentUser = $this->studentUserForTrustedSchool((int) $userId, $schoolId);
                 if ($studentUser->status == 0) {
-                    $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
+                    $subscription = $this->subscriptionService->active_subscription($schoolId);
                     // If prepaid plan check student limit
                     if ($subscription && $subscription->package_type == 0) {
                         $status = $this->subscriptionService->check_user_limit($subscription, "Students");
@@ -522,12 +523,12 @@ class StudentController extends Controller
 
                 $newStatus = $studentUser->status == 0 ? 1 : 0;
                 $this->user->builder()->withTrashed()
-                    ->where('school_id', Auth::user()->school_id)
+                    ->where('school_id', $schoolId)
                     ->where('id', $userId)
                     ->update(['status' => $newStatus, 'deleted_at' => $studentUser->status == 1 ? now() : null]);
                 app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
                     Auth::user(),
-                    $this->user->builder()->withTrashed()->findOrFail($userId),
+                    $studentUser,
                     $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
                     $data['reason'],
                     ['previous_status' => (int) $studentUser->status, 'status' => $newStatus],
@@ -535,6 +536,9 @@ class StudentController extends Controller
             }
             DB::commit();
             ResponseService::successResponse("Status Updated Successfully");
+        } catch (AuthorizationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();
@@ -1168,11 +1172,12 @@ class StudentController extends Controller
         try {
             $userService = app(UserService::class);
             DB::beginTransaction();
+            $schoolId = $this->trustedSchoolId();
             foreach (json_decode($request->ids, false, 512, JSON_THROW_ON_ERROR) as $key => $userId) {
-                $user = $this->user->findTrashedById($userId);
-                $student = $this->student->builder()->where('user_id', $userId)->first();
+                $user = $this->studentUserForTrustedSchool((int) $userId, $schoolId);
+                $student = $this->studentForTrustedSchool((int) $userId, $schoolId);
                 if ($user->status == 0) {
-                    $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
+                    $subscription = $this->subscriptionService->active_subscription($schoolId);
                     // If prepaid plan check student limit
                     if ($subscription && $subscription->package_type == 0) {
                         $status = $this->subscriptionService->check_user_limit($subscription, "Students");
@@ -1200,6 +1205,9 @@ class StudentController extends Controller
             }
             DB::commit();
             ResponseService::successResponse("Status Updated Successfully");
+        } catch (AuthorizationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();
@@ -1221,10 +1229,11 @@ class StudentController extends Controller
             $userService = app(UserService::class);
             DB::beginTransaction();
 
-            $user = $this->user->findTrashedById($request->edit_user_id);
-            $student = $this->student->builder()->where('user_id', $request->edit_user_id)->first();
+            $schoolId = $this->trustedSchoolId();
+            $user = $this->studentUserForTrustedSchool((int) $request->edit_user_id, $schoolId);
+            $student = $this->studentForTrustedSchool((int) $request->edit_user_id, $schoolId);
             if ($user->status == 0) {
-                $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
+                $subscription = $this->subscriptionService->active_subscription($schoolId);
                 // If prepaid plan check student limit
                 if ($subscription && $subscription->package_type == 0) {
                     $status = $this->subscriptionService->check_user_limit($subscription, "Students");
@@ -1251,6 +1260,9 @@ class StudentController extends Controller
 
             DB::commit();
             ResponseService::successResponse("Status Updated Successfully");
+        } catch (AuthorizationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();
@@ -1267,5 +1279,25 @@ class StudentController extends Controller
             ResponseService::logErrorResponse($e, "Student Controller -> getclassSectionByClass method");
             ResponseService::errorResponse();
         }
+    }
+
+    /** Lifecycle targets must be resolved through a registered request scope. */
+    private function trustedSchoolId(): int
+    {
+        return app(TrustedSchoolScopeService::class)->trustedSchoolIdFor(Auth::user());
+    }
+
+    private function studentUserForTrustedSchool(int $userId, ?int $schoolId = null): \App\Models\User
+    {
+        return $this->user->builder()->withTrashed()
+            ->where('school_id', $schoolId ?? $this->trustedSchoolId())
+            ->findOrFail($userId);
+    }
+
+    private function studentForTrustedSchool(int $userId, ?int $schoolId = null): \App\Models\Students
+    {
+        $this->studentUserForTrustedSchool($userId, $schoolId);
+
+        return $this->student->builder()->where('user_id', $userId)->firstOrFail();
     }
 }

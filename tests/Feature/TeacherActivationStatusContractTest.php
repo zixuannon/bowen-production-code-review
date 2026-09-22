@@ -109,7 +109,9 @@ class TeacherActivationStatusContractTest extends TestCase
         $this->assertStringContainsString("if (\$showDeleted)", $controller);
         $this->assertStringContainsString("menuEditButton('edit', route('teachers.update', \$row->id))", $controller);
         $this->assertStringContainsString("abort_unless(Auth::user()?->can('teacher-edit'), 403)", $controller);
-        $this->assertStringContainsString('abort_unless((int) $teacher->school_id === (int) $schoolId, 403)', $controller);
+        $this->assertStringContainsString('TrustedSchoolScopeService', $controller);
+        $this->assertStringContainsString('trustedSchoolIdFor(Auth::user())', $controller);
+        $this->assertStringContainsString("->where('school_id', \$this->trustedSchoolId())", $controller);
         $this->assertStringContainsString('return response($teacher->staff);', $controller);
         $this->assertStringContainsString('SchoolRecordLifecycleAuditService', $controller);
         $this->assertStringContainsString('XiaobailongLifecycleNotifier', $controller);

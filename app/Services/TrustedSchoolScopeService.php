@@ -16,6 +16,22 @@ final class TrustedSchoolScopeService
 {
     public function schoolIdFor(?User $actor): int
     {
+        return $this->resolveSchoolId($actor, allowUnitTestBypass: true);
+    }
+
+    /**
+     * Resolves a scope for a mutation that must prove the request's tenant
+     * context even while the local feature suite is running.  Read/list
+     * repositories retain their existing unit-test ergonomics through
+     * schoolIdFor(); lifecycle controllers must use this stricter contract.
+     */
+    public function trustedSchoolIdFor(?User $actor): int
+    {
+        return $this->resolveSchoolId($actor, allowUnitTestBypass: false);
+    }
+
+    private function resolveSchoolId(?User $actor, bool $allowUnitTestBypass): int
+    {
         if (! $actor) {
             throw new AuthorizationException('An authenticated tenant identity is required.');
         }
@@ -24,7 +40,7 @@ final class TrustedSchoolScopeService
             throw new AuthorizationException('A tenant school identity is required.');
         }
 
-        if (app()->runningUnitTests()) {
+        if ($allowUnitTestBypass && app()->runningUnitTests()) {
             return $schoolId;
         }
 

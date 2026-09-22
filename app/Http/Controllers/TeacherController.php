@@ -30,6 +30,7 @@ use Illuminate\Validation\ValidationException;
 use App\Repositories\PayrollSetting\PayrollSettingInterface;
 use App\Repositories\StaffSalary\StaffSalaryInterface;
 use App\Services\UserService;
+use App\Services\TrustedSchoolScopeService;
 use App\Services\XiaobailongLifecycleNotifier;
 use Illuminate\Http\UploadedFile;
 
@@ -456,12 +457,9 @@ class TeacherController extends Controller {
 
     private function teacherForCurrentSchool(int $id): \App\Models\User
     {
-        $teacher = $this->user->builder()->withTrashed()->with('staff')->findOrFail($id);
-        if ($schoolId = Auth::user()?->school_id) {
-            abort_unless((int) $teacher->school_id === (int) $schoolId, 403);
-        }
-
-        return $teacher;
+        return $this->user->builder()->withTrashed()->with('staff')
+            ->where('school_id', $this->trustedSchoolId())
+            ->findOrFail($id);
     }
 
 
@@ -479,13 +477,14 @@ class TeacherController extends Controller {
         try {
             $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
+            $schoolId = $this->trustedSchoolId();
             $teacher = $this->user->builder()->withTrashed()
-                ->where('school_id', Auth::user()->school_id)
+                ->where('school_id', $schoolId)
                 ->findOrFail($id);
 
             if ($teacher->status == 0) {
                 // If prepaid plan check student limit
-                $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
+                $subscription = $this->subscriptionService->active_subscription($schoolId);
                 if ($subscription && $subscription->package_type == 0) {
                     $status = $this->subscriptionService->check_user_limit($subscription, "Staffs");
                     
@@ -497,12 +496,12 @@ class TeacherController extends Controller {
 
             $newStatus = $teacher->status == 0 ? 1 : 0;
             $this->user->builder()->withTrashed()
-                ->where('school_id', Auth::user()->school_id)
+                ->where('school_id', $schoolId)
                 ->where('id', $id)
                 ->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
                 Auth::user(),
-                $this->user->builder()->withTrashed()->findOrFail($id),
+                $teacher,
                 $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
                 $data['reason'],
                 ['previous_status' => (int) $teacher->status, 'status' => $newStatus],
@@ -514,6 +513,9 @@ class TeacherController extends Controller {
                 $newStatus === 1 ? 'active' : 'disabled'
             );
             ResponseService::successResponse('Data Updated Successfully');
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e, 'Status methods -> Teacher controller');
             ResponseService::errorResponse();
@@ -525,15 +527,16 @@ class TeacherController extends Controller {
         try {
             $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
             DB::beginTransaction();
+            $schoolId = $this->trustedSchoolId();
             $userIds = json_decode($request->ids);
             $lifecycleChanges = [];
             foreach ($userIds as $userId) {
                 $teacher = $this->user->builder()->withTrashed()
-                    ->where('school_id', Auth::user()->school_id)
+                    ->where('school_id', $schoolId)
                     ->findOrFail($userId);
                 if ($teacher->status == 0) {
                     // If prepaid plan check student limit
-                    $subscription = $this->subscriptionService->active_subscription(Auth::user()->school_id);
+                    $subscription = $this->subscriptionService->active_subscription($schoolId);
                     if ($subscription && $subscription->package_type == 0) {
                         $status = $this->subscriptionService->check_user_limit($subscription, "Staffs");
                         
@@ -544,12 +547,12 @@ class TeacherController extends Controller {
                 }
                 $newStatus = $teacher->status == 0 ? 1 : 0;
                 $this->user->builder()->withTrashed()
-                    ->where('school_id', Auth::user()->school_id)
+                    ->where('school_id', $schoolId)
                     ->where('id', $userId)
                     ->update(['status' => $newStatus,'deleted_at' => $teacher->status == 1 ? now() : null]);
                 app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(
                     Auth::user(),
-                    $this->user->builder()->withTrashed()->findOrFail($userId),
+                    $teacher,
                     $newStatus === 1 ? \App\Models\SchoolRecordLifecycleAudit::REACTIVATE : \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE,
                     $data['reason'],
                     ['previous_status' => (int) $teacher->status, 'status' => $newStatus],
@@ -561,6 +564,9 @@ class TeacherController extends Controller {
                 app(XiaobailongLifecycleNotifier::class)->deferStatus($schoolId, $teacherId, $accountStatus);
             }
             ResponseService::successResponse("Status Updated Successfully");
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Throwable $e) {
             ResponseService::logErrorResponse($e);
             ResponseService::errorResponse();
@@ -571,6 +577,11 @@ class TeacherController extends Controller {
         ResponseService::noAnyPermissionThenSendJson(['teacher-create', 'teacher-edit']);
         return view('teacher.bulk_upload');
        
+    }
+
+    private function trustedSchoolId(): int
+    {
+        return app(TrustedSchoolScopeService::class)->trustedSchoolIdFor(Auth::user());
     }
     public function storeBulkUpload(Request $request)
     {
