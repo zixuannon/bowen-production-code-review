@@ -436,14 +436,16 @@ class StaffController extends Controller
             ResponseService::successResponse('Data Stored Successfully');
 
         } catch (Throwable $e) {
-            if (Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
-                DB::commit();
-                ResponseService::warningResponse("Staff Registered successfully. But Email not sent.");
-            } else {
+            // Invitation delivery is handled after commit by UserService and
+            // returns an explicit success/failure result. Any exception that
+            // reaches this boundary is therefore a core-creation failure, not
+            // a reason to commit a second time or misreport a saved Staff as
+            // an email error.
+            if (DB::transactionLevel() > 0) {
                 DB::rollback();
-                ResponseService::logErrorResponse($e);
-                ResponseService::errorResponse();
             }
+            ResponseService::logErrorResponse($e);
+            ResponseService::errorResponse();
 
         }
     }

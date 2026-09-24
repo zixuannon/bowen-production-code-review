@@ -34,5 +34,10 @@ class StaffCreateSingleSubmitContractTest extends TestCase
         $method = substr($method, 0, strpos($method, 'private function replaceStaffPlaceholders'));
         $this->assertStringNotContainsString('ResponseService::errorResponse', $method);
         $this->assertStringNotContainsString('ResponseService::warningResponse', $method);
+
+        $catch = substr($controller, strpos($controller, '} catch (Throwable $e)'));
+        $catch = substr($catch, 0, strpos($catch, 'public function show'));
+        $this->assertStringContainsString('DB::transactionLevel() > 0', $catch);
+        $this->assertStringNotContainsString('DB::commit();', $catch);
     }
 }

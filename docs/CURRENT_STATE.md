@@ -3,7 +3,7 @@
 ## Tenant-only staff identity compatibility — local candidate
 
 - Baseline: active Production commit
-  `0cf5a9a4e72bdc201811c297f3361c7577c4b0cf`. Isolated branch
+  `f17e6703f2d25b12942a359f1a33cc3ecfb43e08`. Isolated branch
   `codex/tenant-only-staff-identity`; no Production data, deployment, cache,
   service, or configuration was changed.
 - Canonical School Code login now creates a server-session assertion bound to
@@ -23,7 +23,13 @@
 - Staff creation now keeps its atomic identity transaction separate from
   optional invitation delivery: after a successful commit, a failed email is
   logged and returned as a successful warning instead of `error_occur`.
-  No Central shadow user is created for tenant-local roles.
+  No Central shadow user is created for tenant-local roles. The controller
+  never attempts a second commit from its catch boundary; it rolls back only
+  an open core transaction.
+- Disposable local-MySQL coverage verifies tenant login/context restoration,
+  tenant-local staff roles, invitation token binding, and a forced invitation
+  template failure. Full local regression: 887 passed / 7,091 assertions;
+  34 existing skips and PHP 8.5/PHPUnit deprecations only.
 
 Last updated: 2026-09-24
 
