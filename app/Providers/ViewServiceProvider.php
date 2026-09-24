@@ -7,7 +7,7 @@ use App\Models\Package;
 use App\Models\School;
 use App\Models\User;
 use App\Services\CachingService;
-use Illuminate\Support\Facades\Auth;
+use App\Services\TrustedTenantContextService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\View;
@@ -45,15 +45,19 @@ class ViewServiceProvider extends ServiceProvider {
 
             $cache = app(CachingService::class);
             $isCentralFinanceRequest = static fn (): bool => request()->is('central-finance*');
+            $tenantViewContext = static function (): array {
+                $user = app(TrustedTenantContextService::class)
+                    ->trustedTenantUserForCurrentRequest(request());
 
-            view()->composer('*', function ($view) use ($cache, $isCentralFinanceRequest) {
-                $user = auth()->user();
-                $schoolId = null;
-
-                if ($user) {
-                    // if user has school_id column
-                    $schoolId = $user->school_id ?? null;
+                if ($user === null) {
+                    return [null, null];
                 }
+
+                return [$user, (int) $user->getRawOriginal('school_id')];
+            };
+
+            view()->composer('*', function ($view) use ($cache, $isCentralFinanceRequest, $tenantViewContext) {
+                [, $schoolId] = $tenantViewContext();
                 if ($schoolId && !$isCentralFinanceRequest()){
                   $originalDateFormat = $cache->getSchoolSettings('date_format', $schoolId);
                   $originalTimeFormat = $cache->getSchoolSettings('time_format', $schoolId);
@@ -133,7 +137,7 @@ class ViewServiceProvider extends ServiceProvider {
         
 
         /*** Header File ***/
-        View::composer('layouts.header', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
+        View::composer('layouts.header', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest, $tenantViewContext) {
             $view->with('systemSettings', $cache->getSystemSettings());
             $view->with('languages', $cache->getLanguages());
 
@@ -141,7 +145,7 @@ class ViewServiceProvider extends ServiceProvider {
             // its authenticated principal has a school_id. Session years and
             // semesters are tenant-only tables, so never resolve them while a
             // Central Finance view is being rendered.
-            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && $tenantViewContext()[1] !== null) {
                 $view->with('sessionYear', $cache->getDefaultSessionYear());
                 $view->with('schoolSettings', $cache->getSchoolSettings());
                 $view->with('semester', $cache->getDefaultSemesterData());
@@ -149,9 +153,9 @@ class ViewServiceProvider extends ServiceProvider {
         });
 
         /*** Include File ***/
-        View::composer('layouts.include', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
+        View::composer('layouts.include', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest, $tenantViewContext) {
             $view->with('systemSettings', $cache->getSystemSettings());
-            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && $tenantViewContext()[1] !== null) {
                 $view->with('schoolSettings', $cache->getSchoolSettings());
             }
         });
@@ -186,9 +190,9 @@ class ViewServiceProvider extends ServiceProvider {
             $view->with('systemSettings', $cache->getSystemSettings());
         });
 
-        View::composer('layouts.home_page.master', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
+        View::composer('layouts.home_page.master', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest, $tenantViewContext) {
             $view->with('systemSettings', $cache->getSystemSettings());
-            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && $tenantViewContext()[1] !== null) {
                 $view->with('schoolSettings', $cache->getSchoolSettings());
             }
         });
@@ -211,9 +215,9 @@ class ViewServiceProvider extends ServiceProvider {
         });
 
         /*** Footer File ***/
-        View::composer('layouts.footer_js', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest) {
+        View::composer('layouts.footer_js', static function (\Illuminate\View\View $view) use ($cache, $isCentralFinanceRequest, $tenantViewContext) {
             $view->with('systemSettings', $cache->getSystemSettings());
-            if (!$isCentralFinanceRequest() && !empty(Auth::user()->school_id)) {
+            if (!$isCentralFinanceRequest() && $tenantViewContext()[1] !== null) {
                 $view->with('schoolSettings', $cache->getSchoolSettings());
             }
         });

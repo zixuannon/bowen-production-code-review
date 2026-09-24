@@ -16,7 +16,7 @@
         <h1 class="h3">@yield('heading')</h1>
         <div class="ui-error-state__message">@yield('message')</div>
         <div class="ui-error-state__actions">
-            @auth
+            @if(app(\App\Services\TrustedTenantContextService::class)->hasSafeAuthenticatedUserForErrorPage(request()))
                 <a href="{{ url('/dashboard') }}" class="btn btn-theme">{{ __('Return to Dashboard') }}</a>
             @else
                 <a href="{{ url('/') }}" class="btn btn-theme">{{ __('Return Home') }}</a>

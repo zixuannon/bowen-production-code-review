@@ -23,6 +23,68 @@ final class TrustedTenantContextService
 
     public function __construct(private readonly TenantConnectionScope $connections) {}
 
+    /**
+     * Returns the trusted tenant target for the current request only after this
+     * service has configured the tenant connection. Consumers such as global
+     * view composers must use this instead of treating a session connection
+     * name (or an authenticated User model) as proof of tenant context.
+     */
+    public function trustedSchoolIdForCurrentRequest(Request $request): ?int
+    {
+        $schoolId = $request->attributes->get('trusted_tenant_school_id');
+
+        if ($request->attributes->get(self::REQUEST_ACTIVE) !== true
+            || filter_var($schoolId, FILTER_VALIDATE_INT) === false
+            || (int) $schoolId <= 0
+            || DB::getDefaultConnection() !== 'school'
+            || trim((string) config('database.connections.school.database')) === '') {
+            return null;
+        }
+
+        return (int) $schoolId;
+    }
+
+    /**
+     * Resolves the tenant User only after the request has a trusted initialized
+     * tenant context. This prevents global consumers from dereferencing a
+     * session-aware User model while its school connection has no database.
+     */
+    public function trustedTenantUserForCurrentRequest(Request $request): ?User
+    {
+        $schoolId = $this->trustedSchoolIdForCurrentRequest($request);
+        if ($schoolId === null) {
+            return null;
+        }
+
+        $user = Auth::user();
+
+        if (! $user || (int) $user->getRawOriginal('school_id') !== $schoolId) {
+            return null;
+        }
+
+        return $user;
+    }
+
+    /**
+     * Error views must never invoke Laravel's session guard against an
+     * unconfigured tenant connection. Tenant users are safe only through the
+     * trusted request contract; central users are safe only while mysql is the
+     * active connection and the session does not name the tenant resolver.
+     */
+    public function hasSafeAuthenticatedUserForErrorPage(Request $request): bool
+    {
+        if ($this->trustedTenantUserForCurrentRequest($request) !== null) {
+            return true;
+        }
+
+        if (($request->hasSession() && $request->session()->get('db_connection_name') === 'school')
+            || DB::getDefaultConnection() !== 'mysql') {
+            return false;
+        }
+
+        return Auth::check();
+    }
+
     /** @template T @param Closure():T $callback @return T */
     public function forWebRequest(Request $request, Closure $callback): mixed
     {
@@ -67,10 +129,11 @@ final class TrustedTenantContextService
             throw new AuthorizationException('The authenticated actor is not authorized for the requested School context.');
         }
 
-        return $this->connections->forSchool($school, function () use ($request, $callback): mixed {
+        return $this->connections->forSchool($school, function () use ($request, $callback, $school): mixed {
             $priorConnectionName = $request->session()->get('db_connection_name');
             $request->session()->put('db_connection_name', 'school');
             $request->attributes->set(self::REQUEST_ACTIVE, true);
+            $request->attributes->set('trusted_tenant_school_id', (int) $school->id);
             Auth::forgetUser();
 
             try {
@@ -78,6 +141,7 @@ final class TrustedTenantContextService
             } finally {
                 Auth::forgetUser();
                 $request->attributes->remove(self::REQUEST_ACTIVE);
+                $request->attributes->remove('trusted_tenant_school_id');
                 if ($priorConnectionName === null) {
                     $request->session()->forget('db_connection_name');
                 } else {

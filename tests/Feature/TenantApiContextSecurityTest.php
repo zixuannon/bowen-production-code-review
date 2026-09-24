@@ -173,10 +173,13 @@ final class TenantApiContextSecurityTest extends TestCase
             }
         });
 
-        $response = app(TrustedTenantContextService::class)->forWebRequest($request, function () {
+        $service = app(TrustedTenantContextService::class);
+        $response = $service->forWebRequest($request, function () use ($service, $request) {
             $this->assertSame('school', DB::getDefaultConnection());
             $this->assertSame($this->schoolA, config('database.connections.school.database'));
             $this->assertSame(10, Auth::id());
+            $this->assertSame(1, $service->trustedSchoolIdForCurrentRequest($request));
+            $this->assertSame(10, $service->trustedTenantUserForCurrentRequest($request)?->id);
 
             return response('', 204);
         });
@@ -186,6 +189,7 @@ final class TenantApiContextSecurityTest extends TestCase
         $this->assertSame('mysql', DB::getDefaultConnection());
         $this->assertNull(config('database.connections.school.database'));
         $this->assertSame('school', $request->session()->get('db_connection_name'));
+        $this->assertNull($service->trustedSchoolIdForCurrentRequest($request));
     }
 
     public function test_web_context_never_turns_a_central_administrator_into_a_tenant_actor(): void
@@ -219,6 +223,86 @@ final class TenantApiContextSecurityTest extends TestCase
         });
 
         $this->assertSame('school', DB::getDefaultConnection());
+    }
+
+    public function test_global_view_consumers_cannot_treat_a_retained_session_as_trusted_tenant_context(): void
+    {
+        $request = Request::create('/denied-route');
+        $request->setLaravelSession(app('session.store'));
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $this->schoolA);
+        Config::set('database.connections.school.database', null);
+        DB::purge('school');
+
+        $queriesOnUnconfiguredSchool = [];
+        DB::listen(function ($query) use (&$queriesOnUnconfiguredSchool): void {
+            if ($query->connectionName === 'school'
+                && config('database.connections.school.database') === null) {
+                $queriesOnUnconfiguredSchool[] = $query->sql;
+            }
+        });
+
+        $this->assertNull(app(TrustedTenantContextService::class)
+            ->trustedSchoolIdForCurrentRequest($request));
+        $this->assertNull(app(TrustedTenantContextService::class)
+            ->trustedTenantUserForCurrentRequest($request));
+        $this->assertSame([], $queriesOnUnconfiguredSchool);
+    }
+
+    public function test_denied_error_page_renders_without_querying_an_unconfigured_tenant_connection(): void
+    {
+        $request = Request::create('/central-finance/denied-route');
+        $request->setLaravelSession(app('session.store'));
+        $request->session()->put(Auth::getName(), 10);
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $this->schoolA);
+        $this->app->instance('request', $request);
+        Auth::forgetUser();
+        Config::set('database.connections.school.database', null);
+        DB::purge('school');
+
+        $queriesOnUnconfiguredSchool = [];
+        DB::listen(function ($query) use (&$queriesOnUnconfiguredSchool): void {
+            if ($query->connectionName === 'school'
+                && config('database.connections.school.database') === null) {
+                $queriesOnUnconfiguredSchool[] = $query->sql;
+            }
+        });
+
+        $response = app(\App\Exceptions\Handler::class)
+            ->render($request, new \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException());
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringNotContainsString('SQLSTATE[3D000]', $response->getContent());
+        $this->assertSame([], $queriesOnUnconfiguredSchool);
+    }
+
+    public function test_not_found_error_page_renders_without_querying_an_unconfigured_tenant_connection(): void
+    {
+        $request = Request::create('/missing-route');
+        $request->setLaravelSession(app('session.store'));
+        $request->session()->put(Auth::getName(), 10);
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $this->schoolA);
+        $this->app->instance('request', $request);
+        Auth::forgetUser();
+        Config::set('database.connections.school.database', null);
+        DB::purge('school');
+
+        $queriesOnUnconfiguredSchool = [];
+        DB::listen(function ($query) use (&$queriesOnUnconfiguredSchool): void {
+            if ($query->connectionName === 'school'
+                && config('database.connections.school.database') === null) {
+                $queriesOnUnconfiguredSchool[] = $query->sql;
+            }
+        });
+
+        $response = app(\App\Exceptions\Handler::class)
+            ->render($request, new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException());
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertStringNotContainsString('SQLSTATE[3D000]', $response->getContent());
+        $this->assertSame([], $queriesOnUnconfiguredSchool);
     }
 
     public function test_connection_scope_restores_success_and_exception_paths_used_by_workers(): void

@@ -1,5 +1,25 @@
 # eSchool Current State
 
+## Tenant-safe global view composer — local candidate
+
+- Baseline: Production commit `b327f4d5a59ae51febcea72c4f575c488d3c0ef9`.
+  Isolated branch `codex/tenant-safe-global-view-composer`; no Production data,
+  deployment, cache, service, or configuration was changed.
+- Global Blade composers now consume only the request-scoped trusted tenant
+  context. A retained `db_connection_name=school` session marker is no longer
+  treated as proof that a tenant database has been configured.
+- 403/404 error rendering uses the same trusted-context contract rather than
+  resolving the session guard against an unconfigured tenant connection. The
+  expected denial/not-found response remains intact and does not become
+  `SQLSTATE[3D000] No database selected`.
+- Disposable local-MySQL coverage exercises retained tenant sessions, trusted
+  scope setup/cleanup, and actual 403/404 error-page rendering with zero
+  queries against an unconfigured `school` connection. Full local regression:
+  913 tests / 7,045 assertions; only pre-existing PHP 8.5/PHPUnit deprecations
+  and 34 explicit skips remain.
+
+Last updated: 2026-09-24
+
 ## Step 4B — Legacy Finance Retirement + Explicit School Scope Hardening — local candidate
 
 - Baseline: Production commit `b299b23aa17db2b243b2875456849253716345c7`.
