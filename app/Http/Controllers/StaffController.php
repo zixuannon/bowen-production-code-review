@@ -426,9 +426,11 @@ class StaffController extends Controller
 
             DB::commit();
 
-            if ($user->school_id) {
-                $sendEmail = app(UserService::class);
-                $sendEmail->sendStaffRegistrationEmail($user);
+            $emailSent = ! $user->school_id
+                || app(UserService::class)->sendStaffRegistrationEmail($user);
+
+            if (! $emailSent) {
+                ResponseService::warningResponse('Staff registered successfully. Invitation email was not sent.');
             }
 
             ResponseService::successResponse('Data Stored Successfully');

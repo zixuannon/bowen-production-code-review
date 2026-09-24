@@ -20,6 +20,10 @@
   assertions fail closed. Legacy pre-assertion sessions are only cleared at
   public entry routes so the user can log in again; protected routes remain
   denied. Logout clears the assertion explicitly.
+- Staff creation now keeps its atomic identity transaction separate from
+  optional invitation delivery: after a successful commit, a failed email is
+  logged and returned as a successful warning instead of `error_occur`.
+  No Central shadow user is created for tenant-local roles.
 
 Last updated: 2026-09-24
 

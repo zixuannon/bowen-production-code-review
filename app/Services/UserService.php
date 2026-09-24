@@ -435,7 +435,13 @@ class UserService {
         return $templateContent;
     }
 
-    public function sendStaffRegistrationEmail($user)
+    /**
+     * Send a Staff invitation without allowing an optional delivery failure to
+     * terminate the caller's already-committed identity workflow. Staff
+     * creation/import callers own their HTTP response and transaction
+     * boundary; this method deliberately reports delivery success as data.
+     */
+    public function sendStaffRegistrationEmail($user): bool
     {
         try {
             $cache = app(CachingService::class);
@@ -450,12 +456,21 @@ class UserService {
             Mail::send('teacher.email', $data, static function ($message) use ($data) {
                 $message->to($data['email'])->subject($data['subject']);
             });
+
+            return true;
         } catch (\Throwable $th) {
-            if (Str::contains($th->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
-                ResponseService::warningResponse("Data stored successfully. But Email not sent.");
-            } else {
-                ResponseService::errorResponse(trans('error_occured'));
-            }
+            // Mail delivery is a secondary side effect. In particular, never
+            // call ResponseService here: it sends a response and exits, which
+            // previously made a committed Staff creation look like a failed
+            // request to the browser.
+            Log::warning('Staff registration email was not sent.', [
+                'user_id' => $user->getKey(),
+                'school_id' => $user->getRawOriginal('school_id'),
+                'exception' => $th::class,
+                'message' => $th->getMessage(),
+            ]);
+
+            return false;
         }
     }
 
