@@ -15,6 +15,7 @@ final class SchoolLoginTenantBootstrapContractTest extends TestCase
         $tail = substr($source, $finalLogin, 1000);
         $this->assertStringContainsString("Session::put('db_connection_name', 'school')", $tail);
         $this->assertStringContainsString("Session::put('school_database_name', \$school->database_name)", $tail);
+        $this->assertStringContainsString('establishTenantLoginAssertion($request, $school, $user)', $tail);
         $this->assertStringNotContainsString('School::where(', $tail);
         $this->assertStringNotContainsString('orWhere(', $tail);
     }

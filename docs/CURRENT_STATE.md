@@ -1,5 +1,28 @@
 # eSchool Current State
 
+## Tenant-only staff identity compatibility — local candidate
+
+- Baseline: active Production commit
+  `0cf5a9a4e72bdc201811c297f3361c7577c4b0cf`. Isolated branch
+  `codex/tenant-only-staff-identity`; no Production data, deployment, cache,
+  service, or configuration was changed.
+- Canonical School Code login now creates a server-session assertion bound to
+  the registered School, exact tenant database, tenant-local user, tenant
+  `school_id`, and the regenerated Laravel session identifier. Raw session
+  database values remain routing state and cannot by themselves select a
+  tenant.
+- Every later tenant request re-resolves the central School registry and the
+  tenant-local active user before setting the tenant context. A Central
+  duplicate user with the same numeric ID is neither required nor used for
+  tenant-local School Admin, Principal, Front Desk, or School Accountant
+  identities. Central/Super Admin and Head Finance flows remain central.
+- Missing, tampered, inactive, deleted, cross-School, or stale tenant
+  assertions fail closed. Legacy pre-assertion sessions are only cleared at
+  public entry routes so the user can log in again; protected routes remain
+  denied. Logout clears the assertion explicitly.
+
+Last updated: 2026-09-24
+
 ## Tenant-safe global view composer — local candidate
 
 - Baseline: Production commit `b327f4d5a59ae51febcea72c4f575c488d3c0ef9`.

@@ -114,8 +114,7 @@ final class TenantApiContextSecurityTest extends TestCase
     {
         $request = Request::create('/tenant-probe');
         $request->setLaravelSession(app('session.store'));
-        $request->session()->put(Auth::getName(), 10);
-        $request->session()->put('school_database_name', $this->schoolA);
+        $this->establishTenantSession($request, 1, 10);
         $before = config('database.connections.school.database');
 
         try {
@@ -131,7 +130,7 @@ final class TenantApiContextSecurityTest extends TestCase
 
         $this->assertSame('mysql', DB::getDefaultConnection());
         $this->assertSame($before, config('database.connections.school.database'));
-        $this->assertNull($request->session()->get('db_connection_name'));
+        $this->assertSame('school', $request->session()->get('db_connection_name'));
 
         $request->session()->put('school_database_name', $this->schoolB);
         try {
@@ -141,7 +140,7 @@ final class TenantApiContextSecurityTest extends TestCase
             $this->assertSame('mysql', DB::getDefaultConnection());
         }
 
-        $request->session()->put(Auth::getName(), 20);
+        $this->establishTenantSession($request, 2, 20);
         $response = app(TrustedTenantContextService::class)->forWebRequest($request, function () {
             $this->assertSame('school', DB::getDefaultConnection());
             $this->assertSame(20, Auth::id());
@@ -155,9 +154,7 @@ final class TenantApiContextSecurityTest extends TestCase
     {
         $request = Request::create('/tenant-probe');
         $request->setLaravelSession(app('session.store'));
-        $request->session()->put(Auth::getName(), 10);
-        $request->session()->put('db_connection_name', 'school');
-        $request->session()->put('school_database_name', $this->schoolA);
+        $this->establishTenantSession($request, 1, 10);
 
         // Reproduce a fresh PHP-FPM request: the retained session identifies
         // the tenant, but the process-local school connection has no database
@@ -216,13 +213,153 @@ final class TenantApiContextSecurityTest extends TestCase
         $request->session()->put('school_database_name', $this->schoolA);
         DB::setDefaultConnection('school');
 
-        app(TrustedTenantContextService::class)->forWebRequest($request, function () {
+        try {
+            app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('', 204));
+            $this->fail('A raw tenant database session value must never select a tenant.');
+        } catch (AuthorizationException) {
+            $this->assertSame('school', DB::getDefaultConnection());
+        }
+
+        $this->assertSame('school', DB::getDefaultConnection());
+    }
+
+    public function test_tenant_only_front_desk_requires_no_central_duplicate_and_is_revalidated_in_its_own_tenant(): void
+    {
+        $this->addTenantStaff($this->schoolA, 77, 1, 'Front Desk');
+        $this->assertFalse(DB::connection('mysql')->table('users')->where('id', 77)->exists());
+
+        $request = Request::create('/collections');
+        $request->setLaravelSession(app('session.store'));
+        $this->establishTenantSession($request, 1, 77);
+
+        $response = app(TrustedTenantContextService::class)->forWebRequest($request, function () {
+            $this->assertSame('school', DB::getDefaultConnection());
+            $this->assertSame(77, Auth::id());
+            $this->assertSame(1, Auth::user()->school_id);
+            $this->assertTrue(Auth::user()->hasRole('Front Desk'));
+
+            return response('', 204);
+        });
+
+        $this->assertSame(204, $response->getStatusCode());
+        $this->assertSame('mysql', DB::getDefaultConnection());
+    }
+
+    public function test_tenant_only_standard_roles_can_establish_own_school_context_without_central_duplicates(): void
+    {
+        foreach (['School Admin', 'Principal', 'School Accountant'] as $offset => $role) {
+            $userId = 80 + $offset;
+            $this->addTenantStaff($this->schoolA, $userId, 1, $role);
+            $request = Request::create('/own-school');
+            $request->setLaravelSession(app('session.store'));
+            $this->establishTenantSession($request, 1, $userId);
+
+            $response = app(TrustedTenantContextService::class)->forWebRequest($request, function () use ($userId, $role) {
+                $this->assertSame($userId, Auth::id());
+                $this->assertTrue(Auth::user()->hasRole($role));
+
+                return response('', 204);
+            });
+
+            $this->assertSame(204, $response->getStatusCode());
+            $this->assertFalse(DB::connection('mysql')->table('users')->where('id', $userId)->exists());
+        }
+    }
+
+    public function test_missing_or_tampered_tenant_assertion_is_denied_and_public_entry_safely_clears_stale_context(): void
+    {
+        $request = Request::create('/dashboard');
+        $request->setLaravelSession(app('session.store'));
+        $this->establishTenantSession($request, 1, 10);
+        $request->session()->put(TrustedTenantContextService::TENANT_SESSION_ASSERTION, ['version' => 1]);
+
+        $this->expectException(AuthorizationException::class);
+        app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('', 204));
+    }
+
+    public function test_central_user_with_a_coincidental_numeric_id_cannot_establish_tenant_trust(): void
+    {
+        // User id 10 exists in both fixtures. Without the login-issued
+        // assertion it must still be rejected rather than using Central as a
+        // fallback proof for the tenant identity.
+        $request = Request::create('/dashboard');
+        $request->setLaravelSession(app('session.store'));
+        $request->session()->put(Auth::getName(), 10);
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $this->schoolA);
+
+        $this->expectException(AuthorizationException::class);
+        app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('', 204));
+    }
+
+    public function test_stale_pre_assertion_session_can_reach_login_entry_only_after_its_untrusted_tenant_context_is_cleared(): void
+    {
+        $request = Request::create('/login');
+        $request->setLaravelSession(app('session.store'));
+        $request->session()->put(Auth::getName(), 10);
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $this->schoolA);
+
+        $response = app(TrustedTenantContextService::class)->forWebRequest($request, function () {
             $this->assertSame('mysql', DB::getDefaultConnection());
 
             return response('', 204);
         });
 
-        $this->assertSame('school', DB::getDefaultConnection());
+        $this->assertSame(204, $response->getStatusCode());
+        $this->assertNull($request->session()->get('school_database_name'));
+        $this->assertNull($request->session()->get(TrustedTenantContextService::TENANT_SESSION_ASSERTION));
+        $this->assertNull($request->session()->get(Auth::getName()));
+    }
+
+    public function test_missing_inactive_or_wrong_school_tenant_user_is_denied_after_login_assertion(): void
+    {
+        $request = Request::create('/dashboard');
+        $request->setLaravelSession(app('session.store'));
+        $this->establishTenantSession($request, 1, 10);
+        DB::connection('school')->table('users')->where('id', 10)->update(['status' => 0]);
+
+        try {
+            app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('', 204));
+            $this->fail('An inactive tenant user must be denied.');
+        } catch (AuthorizationException) {
+            $this->assertSame('mysql', DB::getDefaultConnection());
+        }
+
+        DB::connection('school')->table('users')->where('id', 10)->update(['status' => 1]);
+        DB::connection('mysql')->table('schools')->where('id', 1)->update(['status' => 0]);
+        try {
+            app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('', 204));
+            $this->fail('An inactive School must be denied.');
+        } catch (AuthorizationException) {
+            $this->assertSame('mysql', DB::getDefaultConnection());
+        }
+    }
+
+    public function test_deleted_tenant_user_is_denied_after_a_valid_login_assertion(): void
+    {
+        $request = Request::create('/dashboard');
+        $request->setLaravelSession(app('session.store'));
+        $this->establishTenantSession($request, 2, 20);
+        $school = School::on('mysql')->findOrFail(2);
+        app(TenantConnectionScope::class)->forSchool($school, function (): void {
+            DB::connection('school')->table('users')->where('id', 20)->update(['deleted_at' => now()]);
+        });
+
+        $this->expectException(AuthorizationException::class);
+        app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('', 204));
+    }
+
+    public function test_logout_cleanup_removes_the_assertion_and_prevents_a_retained_tenant_context(): void
+    {
+        $request = Request::create('/logout');
+        $request->setLaravelSession(app('session.store'));
+        $this->establishTenantSession($request, 1, 10);
+        app(TrustedTenantContextService::class)->clearTenantLoginAssertion($request);
+
+        $this->assertNull($request->session()->get(TrustedTenantContextService::TENANT_SESSION_ASSERTION));
+        $this->assertNull($request->session()->get('school_database_name'));
+        $this->assertNull($request->session()->get(Auth::getName()));
     }
 
     public function test_global_view_consumers_cannot_treat_a_retained_session_as_trusted_tenant_context(): void
@@ -346,16 +483,16 @@ final class TenantApiContextSecurityTest extends TestCase
     private function schema(): void
     {
         Schema::connection('mysql')->create('schools', function ($table): void {
-            $table->id(); $table->string('code'); $table->string('database_name'); $table->timestamps(); $table->softDeletes();
+            $table->id(); $table->string('code'); $table->string('database_name'); $table->tinyInteger('status')->default(1); $table->boolean('installed')->default(true); $table->timestamps(); $table->softDeletes();
         });
         Schema::connection('mysql')->create('users', function ($table): void {
-            $table->id(); $table->unsignedBigInteger('school_id')->nullable(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->timestamps(); $table->softDeletes();
+            $table->id(); $table->unsignedBigInteger('school_id')->nullable(); $table->tinyInteger('status')->default(1); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->timestamps(); $table->softDeletes();
         });
         foreach ([$this->schoolA, $this->schoolB] as $database) {
             Config::set('database.connections.school', $this->sqlite($database));
             DB::purge('school');
             Schema::connection('school')->create('users', function ($table): void {
-                $table->id(); $table->unsignedBigInteger('school_id')->nullable(); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->timestamps(); $table->softDeletes();
+                $table->id(); $table->unsignedBigInteger('school_id')->nullable(); $table->tinyInteger('status')->default(1); $table->string('first_name')->nullable(); $table->string('last_name')->nullable(); $table->timestamps(); $table->softDeletes();
             });
             Schema::connection('school')->create('roles', function ($table): void {
                 $table->id(); $table->string('name'); $table->string('guard_name'); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamps();
@@ -374,8 +511,8 @@ final class TenantApiContextSecurityTest extends TestCase
     private function seedContexts(): void
     {
         DB::connection('mysql')->table('schools')->insert([
-            ['id' => 1, 'code' => 'MMBOWEN01', 'database_name' => $this->schoolA, 'created_at' => now(), 'updated_at' => now()],
-            ['id' => 2, 'code' => 'MMBOWEN02', 'database_name' => $this->schoolB, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 1, 'code' => 'MMBOWEN01', 'database_name' => $this->schoolA, 'status' => 1, 'installed' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'code' => 'MMBOWEN02', 'database_name' => $this->schoolB, 'status' => 1, 'installed' => true, 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::connection('mysql')->table('users')->insert([
             ['id' => 10, 'school_id' => 1, 'first_name' => 'Tenant', 'last_name' => 'Actor', 'created_at' => now(), 'updated_at' => now()],
@@ -384,13 +521,15 @@ final class TenantApiContextSecurityTest extends TestCase
         ]);
         $this->seedTenant($this->schoolA, 1, 10, 'school-a-token');
         $this->seedTenant($this->schoolB, 2, 20, 'school-b-token');
+        Config::set('database.connections.school', $this->sqlite($this->schoolA));
+        DB::purge('school');
     }
 
     private function seedTenant(string $database, int $schoolId, int $userId, string $token): void
     {
         Config::set('database.connections.school', $this->sqlite($database));
         DB::purge('school');
-        DB::connection('school')->table('users')->insert(['id' => $userId, 'school_id' => $schoolId, 'first_name' => 'Tenant', 'last_name' => 'Actor', 'created_at' => now(), 'updated_at' => now()]);
+        DB::connection('school')->table('users')->insert(['id' => $userId, 'school_id' => $schoolId, 'status' => 1, 'first_name' => 'Tenant', 'last_name' => 'Actor', 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('school')->table('roles')->insert(['id' => 1, 'name' => 'Student', 'guard_name' => 'web', 'school_id' => $schoolId, 'created_at' => now(), 'updated_at' => now()]);
         DB::connection('school')->table('model_has_roles')->insert(['role_id' => 1, 'model_type' => User::class, 'model_id' => $userId]);
         DB::connection('school')->table('personal_access_tokens')->insert(['id' => 1, 'tokenable_type' => User::class, 'tokenable_id' => $userId, 'name' => 'test', 'token' => hash('sha256', $token), 'abilities' => json_encode(['student-api']), 'created_at' => now(), 'updated_at' => now()]);
@@ -399,5 +538,35 @@ final class TenantApiContextSecurityTest extends TestCase
     private function sqlite(string $database): array
     {
         return ['driver' => 'sqlite', 'database' => $database, 'prefix' => '', 'foreign_key_constraints' => true];
+    }
+
+    private function establishTenantSession(Request $request, int $schoolId, int $tenantUserId): void
+    {
+        $school = School::on('mysql')->findOrFail($schoolId);
+        $request->session()->put(Auth::getName(), $tenantUserId);
+        $request->session()->put('db_connection_name', 'school');
+        $request->session()->put('school_database_name', $school->database_name);
+
+        app(TenantConnectionScope::class)->forSchool($school, function () use ($request, $school, $tenantUserId): void {
+            $user = User::on('school')->findOrFail($tenantUserId);
+            app(TrustedTenantContextService::class)->establishTenantLoginAssertion($request, $school, $user);
+        });
+        Auth::forgetUser();
+    }
+
+    private function addTenantStaff(string $database, int $userId, int $schoolId, string $role): void
+    {
+        Config::set('database.connections.school', $this->sqlite($database));
+        DB::purge('school');
+        DB::connection('school')->table('users')->insert([
+            'id' => $userId, 'school_id' => $schoolId, 'status' => 1,
+            'first_name' => 'Tenant', 'last_name' => 'Staff', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $roleId = DB::connection('school')->table('roles')->insertGetId([
+            'name' => $role, 'guard_name' => 'web', 'school_id' => $schoolId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('school')->table('model_has_roles')->insert([
+            'role_id' => $roleId, 'model_type' => User::class, 'model_id' => $userId,
+        ]);
     }
 }

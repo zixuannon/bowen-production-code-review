@@ -6,6 +6,7 @@ use App\Repositories\FormField\FormFieldsInterface;
 use App\Repositories\SystemSetting\SystemSettingInterface;
 use App\Repositories\User\UserInterface;
 use App\Services\CachingService;
+use App\Services\TrustedTenantContextService;
 use App\Services\ResponseService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -100,6 +101,7 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         session(['logout_time' => now()]);
+        $request->session()->forget(TrustedTenantContextService::TENANT_SESSION_ASSERTION);
         $user = Auth::user();
         DB::table('users')->where('email', $user->email)->update(['two_factor_secret' => null, 'two_factor_expires_at' => null]);
         Auth::logout();

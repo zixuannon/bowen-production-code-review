@@ -21,7 +21,66 @@ final class TrustedTenantContextService
 {
     private const REQUEST_ACTIVE = '_trusted_tenant_context_active';
 
+    /**
+     * Server-session assertion created only after a canonical School Code
+     * login has authenticated a user inside the registered tenant database.
+     * It is intentionally distinct from the legacy raw database session key:
+     * the latter is routing state, never authorization proof.
+     */
+    public const TENANT_SESSION_ASSERTION = 'trusted_tenant_login_assertion';
+
     public function __construct(private readonly TenantConnectionScope $connections) {}
+
+    /**
+     * Bind a successful tenant login to one canonical School, one registered
+     * tenant database and one active tenant-local User for this session.
+     */
+    public function establishTenantLoginAssertion(Request $request, School $school, User $user): void
+    {
+        $this->assertActiveInstalledSchool($school);
+
+        if (! $request->hasSession()
+            || (int) $user->getKey() <= 0
+            || (int) $user->getRawOriginal('school_id') !== (int) $school->id
+            || ! $this->isActiveTenantUser($user)) {
+            throw new AuthorizationException('The tenant login identity cannot be trusted.');
+        }
+
+        $database = trim((string) $school->database_name);
+        if ($database === '') {
+            throw new AuthorizationException('The tenant database is not registered.');
+        }
+
+        $request->session()->put(self::TENANT_SESSION_ASSERTION, [
+            'version' => 1,
+            'school_id' => (int) $school->id,
+            'database_name' => $database,
+            'tenant_user_id' => (int) $user->getKey(),
+            'tenant_user_school_id' => (int) $user->getRawOriginal('school_id'),
+            // Laravel's authenticated session was regenerated before this is
+            // written, so a copied assertion cannot be replayed in another
+            // browser session.
+            'session_id' => (string) $request->session()->getId(),
+        ]);
+    }
+
+    /** Remove tenant routing and trust data whenever a tenant session ends. */
+    public function clearTenantLoginAssertion(Request $request): void
+    {
+        if (! $request->hasSession()) {
+            return;
+        }
+
+        $request->session()->forget([
+            self::TENANT_SESSION_ASSERTION,
+            'school_database_name',
+            'db_connection_name',
+            Auth::getName(),
+            'user_id',
+            'user_email',
+        ]);
+        Auth::forgetUser();
+    }
 
     /**
      * Returns the trusted tenant target for the current request only after this
@@ -103,33 +162,38 @@ final class TrustedTenantContextService
             });
         }
 
+        $assertion = $this->tenantAssertion($request);
+        if ($assertion === null) {
+            // Releases before this compatibility fix created no signed tenant
+            // assertion. Only entry routes may clear that stale session so a
+            // user can authenticate again; all protected routes fail closed.
+            if ($this->isTenantRecoveryEntryRequest($request)) {
+                $this->clearTenantLoginAssertion($request);
+
+                return $this->connections->preserve(function () use ($callback): mixed {
+                    DB::setDefaultConnection('mysql');
+
+                    return $callback();
+                });
+            }
+
+            throw new AuthorizationException('The tenant session assertion is missing or invalid.');
+        }
+
+        if (! hash_equals($assertion['database_name'], $database)
+            || $request->session()->get('db_connection_name') !== 'school'
+            || (string) $request->session()->getId() !== $assertion['session_id']
+            || (string) $request->session()->get(Auth::getName()) !== (string) $assertion['tenant_user_id']) {
+            throw new AuthorizationException('The tenant session assertion does not match the current session.');
+        }
+
         $school = $this->schoolForDatabase($database);
-        $actorId = $request->session()->get(Auth::getName());
-        if (!is_numeric($actorId)) {
-            // Guests must never be switched into a tenant from an old session value.
-            return $this->connections->preserve(function () use ($callback): mixed {
-                DB::setDefaultConnection('mysql');
-
-                return $callback();
-            });
+        if ((int) $school->id !== $assertion['school_id']) {
+            throw new AuthorizationException('The tenant session assertion targets a different School.');
         }
+        $this->assertActiveInstalledSchool($school);
 
-        // App\Models\User resolves its connection from db_connection_name in
-        // the session.  This pre-scope registry lookup must not use that
-        // model: a retained tenant session intentionally says "school", but
-        // TenantConnectionScope has not configured that connection yet.
-        // Pin the lookup to Central mysql without changing session identity.
-        $actor = DB::connection('mysql')->table('users')
-            ->select(['id', 'school_id'])
-            ->where('id', (int) $actorId)
-            ->whereNull('deleted_at')
-            ->first();
-
-        if (!$actor || $actor->school_id === null || (int) $actor->school_id !== (int) $school->id) {
-            throw new AuthorizationException('The authenticated actor is not authorized for the requested School context.');
-        }
-
-        return $this->connections->forSchool($school, function () use ($request, $callback, $school): mixed {
+        return $this->connections->forSchool($school, function () use ($request, $callback, $school, $assertion): mixed {
             $priorConnectionName = $request->session()->get('db_connection_name');
             $request->session()->put('db_connection_name', 'school');
             $request->attributes->set(self::REQUEST_ACTIVE, true);
@@ -137,6 +201,17 @@ final class TrustedTenantContextService
             Auth::forgetUser();
 
             try {
+                $tenantUser = User::on('school')
+                    ->whereKey($assertion['tenant_user_id'])
+                    ->where('school_id', $school->id)
+                    ->first();
+                if (! $tenantUser
+                    || ! $this->isActiveTenantUser($tenantUser)
+                    || (int) $tenantUser->getRawOriginal('school_id') !== $assertion['tenant_user_school_id']) {
+                    throw new AuthorizationException('The tenant login identity is no longer valid.');
+                }
+                Auth::setUser($tenantUser);
+
                 return $callback();
             } finally {
                 Auth::forgetUser();
@@ -230,6 +305,55 @@ final class TrustedTenantContextService
         }
 
         return $schools->first();
+    }
+
+    /** @return array{school_id:int,database_name:string,tenant_user_id:int,tenant_user_school_id:int,session_id:string}|null */
+    private function tenantAssertion(Request $request): ?array
+    {
+        if (! $request->hasSession()) {
+            return null;
+        }
+
+        $assertion = $request->session()->get(self::TENANT_SESSION_ASSERTION);
+        if (! is_array($assertion)
+            || ($assertion['version'] ?? null) !== 1
+            || filter_var($assertion['school_id'] ?? null, FILTER_VALIDATE_INT) === false
+            || filter_var($assertion['tenant_user_id'] ?? null, FILTER_VALIDATE_INT) === false
+            || filter_var($assertion['tenant_user_school_id'] ?? null, FILTER_VALIDATE_INT) === false
+            || (int) $assertion['school_id'] <= 0
+            || (int) $assertion['tenant_user_id'] <= 0
+            || (int) $assertion['tenant_user_school_id'] <= 0
+            || trim((string) ($assertion['database_name'] ?? '')) === ''
+            || trim((string) ($assertion['session_id'] ?? '')) === '') {
+            return null;
+        }
+
+        return [
+            'school_id' => (int) $assertion['school_id'],
+            'database_name' => trim((string) $assertion['database_name']),
+            'tenant_user_id' => (int) $assertion['tenant_user_id'],
+            'tenant_user_school_id' => (int) $assertion['tenant_user_school_id'],
+            'session_id' => (string) $assertion['session_id'],
+        ];
+    }
+
+    private function assertActiveInstalledSchool(School $school): void
+    {
+        if ((int) $school->getRawOriginal('status') !== 1
+            || (int) $school->getRawOriginal('installed') !== 1) {
+            throw new AuthorizationException('The requested School is not active and installed.');
+        }
+    }
+
+    private function isActiveTenantUser(User $user): bool
+    {
+        return (int) $user->getRawOriginal('status') === 1
+            && $user->getRawOriginal('deleted_at') === null;
+    }
+
+    private function isTenantRecoveryEntryRequest(Request $request): bool
+    {
+        return $request->is('/') || $request->is('login');
     }
 
     private function apiFamily(Request $request): string

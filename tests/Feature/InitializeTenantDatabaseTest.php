@@ -46,6 +46,8 @@ class InitializeTenantDatabaseTest extends TestCase
             ->update(['database_name' => 'isolated-' . bin2hex(random_bytes(8))]);
         DB::connection('mysql')->table('schools')->where('id', 1)->update([
             'database_name' => $tenantDatabase,
+            'status' => 1,
+            'installed' => 1,
             'deleted_at' => null,
             'updated_at' => now(),
         ]);
@@ -95,6 +97,11 @@ class InitializeTenantDatabaseTest extends TestCase
         session(['school_database_name' => $tenantDatabase]);
         $request = Request::create('/tenant-context-probe');
         $request->setLaravelSession(app('session.store'));
+        $request->session()->put('db_connection_name', 'school');
+        $tenantSchool = School::on('mysql')->findOrFail(1);
+        $tenantUser = User::on('school')->findOrFail($centralId);
+        app(\App\Services\TrustedTenantContextService::class)
+            ->establishTenantLoginAssertion($request, $tenantSchool, $tenantUser);
 
         app(InitializeTenantDatabase::class)->handle($request, function () {
             $this->assertSame('school', DB::getDefaultConnection());

@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use App\Models\Role;
 use App\Services\CentralFinanceSchoolStaffIdentityService;
+use App\Services\TrustedTenantContextService;
 
 class LoginController extends Controller
 {
@@ -86,6 +87,11 @@ class LoginController extends Controller
         }
 
         if ($request->code) {
+            // A fresh canonical School Code login supersedes any prior tenant
+            // session assertion. It is reissued only after tenant credentials
+            // and the tenant user's School relationship are verified below.
+            app(TrustedTenantContextService::class)->clearTenantLoginAssertion($request);
+
             // Retrieve the school's database connection info
             $school = School::on('mysql')->whereCanonicalCode($request->code)->where('installed', 1)->first();
           
@@ -150,6 +156,15 @@ class LoginController extends Controller
                 session(['db_connection_name' => 'school']);
                 Session::put('school_database_name', $school->database_name);
                 session(['school_database_name' => $school->database_name]);
+                try {
+                    app(TrustedTenantContextService::class)
+                        ->establishTenantLoginAssertion($request, $school, $user);
+                } catch (\Illuminate\Auth\Access\AuthorizationException) {
+                    Auth::logout();
+                    app(TrustedTenantContextService::class)->clearTenantLoginAssertion($request);
+
+                    return back()->withErrors(['email' => 'This account is not active for the selected School.']);
+                }
                 Session::forget(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
                 $staffUuid = (string) ($user->getRawOriginal('central_finance_source_uuid') ?? '');
                 if ($staffUuid !== '' && Str::isUuid($staffUuid)) {
@@ -198,6 +213,7 @@ class LoginController extends Controller
         } else {
             // Attempt login on the main connection
             DB::setDefaultConnection('mysql');
+            app(TrustedTenantContextService::class)->clearTenantLoginAssertion($request);
             Session::forget('school_database_name');
             Session::flush();
             Session::put('school_database_name', null);
