@@ -5,7 +5,7 @@ use App\Http\Controllers\CentralFinancePendingCollectionController;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use App\Models\CentralFinanceLedgerEntry;
-use App\Models\CentralFinanceCollectionHandoverBatch; use App\Models\CentralFinanceDataClassification; use App\Models\CentralFinanceFundAccount; use App\Models\CentralFinancePayment; use App\Models\CentralFinancePendingCollection; use App\Models\CentralFinanceReceivable; use App\Models\CentralFinanceStudentProfile; use App\Models\CentralFinanceUser; use App\Models\School; use App\Services\CentralFinanceCollectionHandoverService; use App\Services\CentralFinanceDataIsolationService; use App\Services\CentralFinanceFundAccountBalanceService; use App\Services\CentralFinanceHeadFinanceHandoverConfirmService; use App\Services\CentralFinancePaymentService; use App\Services\CentralFinancePendingCollectionConfirmationService; use App\Services\CentralFinancePendingCollectionService; use App\Services\CentralFinanceReceivableSyncService; use App\Services\CentralFinanceWorkspaceService; use Carbon\CarbonImmutable; use Illuminate\Auth\Access\AuthorizationException; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Config; use Illuminate\Support\Facades\DB; use Illuminate\Support\Facades\Schema; use Illuminate\Support\Facades\Session; use Illuminate\Support\Str; use InvalidArgumentException; use Tests\TestCase;
+use App\Models\CentralFinanceCollectionHandoverBatch; use App\Models\CentralFinanceDataClassification; use App\Models\CentralFinanceFundAccount; use App\Models\CentralFinancePayment; use App\Models\CentralFinancePendingCollection; use App\Models\CentralFinanceReceivable; use App\Models\CentralFinanceStudentProfile; use App\Models\CentralFinanceUser; use App\Models\School; use App\Services\CentralFinanceCollectionHandoverService; use App\Services\CentralFinanceDataIsolationService; use App\Services\CentralFinanceFundAccountAdministrationService; use App\Services\CentralFinanceFundAccountBalanceService; use App\Services\CentralFinanceHeadFinanceHandoverConfirmService; use App\Services\CentralFinancePaymentService; use App\Services\CentralFinancePendingCollectionConfirmationService; use App\Services\CentralFinancePendingCollectionService; use App\Services\CentralFinanceReceivableSyncService; use App\Services\CentralFinanceWorkspaceService; use Carbon\CarbonImmutable; use Illuminate\Auth\Access\AuthorizationException; use Illuminate\Database\Schema\Blueprint; use Illuminate\Support\Facades\Config; use Illuminate\Support\Facades\DB; use Illuminate\Support\Facades\Schema; use Illuminate\Support\Facades\Session; use Illuminate\Support\Str; use InvalidArgumentException; use Tests\TestCase;
 
 class CentralFinanceReceivablePaymentTest extends TestCase {
  private string $central; private string $a; private string $b; private CentralFinanceUser $head; private CentralFinanceUser $accountant; private CentralFinanceFundAccount $hq; private CentralFinanceFundAccount $zix; private CentralFinanceStudentProfile $zixProfile; private CentralFinanceStudentProfile $timeProfile;
@@ -139,6 +139,62 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $timeReceivable=$this->receivable($this->timeProfile);
   $this->expectException(ModelNotFoundException::class);
   app(CentralFinancePendingCollectionController::class)->review($this->timeProfile->id,$timeReceivable->id);
+ }
+ public function test_front_desk_collection_destination_scope_is_not_fund_account_administration_scope(): void {
+  $isolation=app(CentralFinanceDataIsolationService::class);
+  Config::set('database.connections.school.database',$this->a); DB::purge('school');
+  $isolation->classify($this->head,1,'school',1,CentralFinanceDataClassification::QA_TEST,'Permanent QA School.');
+  $isolation->classify($this->head,1,'student',1,CentralFinanceDataClassification::QA_TEST,'QA student fixture.');
+  $isolation->classify($this->head,1,'student_profile',$this->zixProfile->id,CentralFinanceDataClassification::QA_TEST,'QA student profile.');
+  $zixReceivable=$this->receivable($this->zixProfile);
+  $isolation->classify($this->head,1,'receivable',$zixReceivable->id,CentralFinanceDataClassification::QA_TEST,'QA receivable.');
+
+  $qaBank=$this->account('ZIX-QA-BANK','Zixuan QA Bank','school',1);
+  $wrongCurrency=$this->account('ZIX-QA-USD','Zixuan QA USD Bank','school',1);
+  $wrongCurrency->update(['currency'=>'USD']);
+  $inactive=$this->account('ZIX-QA-INACTIVE','Zixuan inactive QA Bank','school',1);
+  $inactive->update(['is_active'=>false,'status'=>CentralFinanceFundAccount::STATUS_INACTIVE]);
+  $unallocated=$this->account('ZIX-QA-UNALLOCATED','Zixuan unallocated QA Bank','hq',null);
+  foreach ([$qaBank,$wrongCurrency,$inactive,$unallocated] as $account) {
+   $isolation->classify($this->head,1,'fund_account',$account->id,CentralFinanceDataClassification::QA_TEST,'QA account scope regression fixture.');
+  }
+  $timeBank=$this->account('TIM-OFFICIAL-BANK','Timecity Official Bank','school',2);
+
+  $front=CentralFinanceUser::on('mysql')->findOrFail(300);
+  $this->actingAs($front); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  $view=app(CentralFinancePendingCollectionController::class)->review($this->zixProfile->id,$zixReceivable->id);
+  $this->assertSame('central-finance.pending-collections.review',$view->name());
+  $this->assertSame([$qaBank->id],$view->getData()['accounts']->pluck('id')->all());
+  $this->assertSame([],app(CentralFinanceWorkspaceService::class)->accessibleAccountsForSchoolWorkflow($front,1)->pluck('id')->all());
+
+  $school=School::on('mysql')->findOrFail(1);
+  $administrator=app(CentralFinanceFundAccountAdministrationService::class);
+  $scopeBefore=DB::connection('mysql')->table('central_finance_user_school_scopes')->where('user_id',200)->orderBy('school_id')->get()->map(fn ($row)=>(array)$row)->all();
+  $openingBefore=(float)$qaBank->opening_balance;
+  $allocationBefore=DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->where('fund_account_id',$qaBank->id)->orderBy('school_id')->get()->map(fn ($row)=>(array)$row)->all();
+  try { $administrator->updateMasterData($front,$school,$qaBank,['account_name'=>'Forbidden','account_type'=>'bank','reason'=>'Forbidden']); $this->fail('Front Desk must not administer a Fund Account.'); } catch (AuthorizationException) { $this->assertTrue(true); }
+  try { $administrator->adjustOpeningBalance($front,$school,$qaBank,1,'2026-09-26','Forbidden'); $this->fail('Front Desk must not adjust opening balance.'); } catch (AuthorizationException) { $this->assertTrue(true); }
+  try { $administrator->syncSchoolAllocations($front,$school,$qaBank,[['school_id'=>1,'is_active'=>true]],'Forbidden'); $this->fail('Front Desk must not allocate Fund Accounts.'); } catch (AuthorizationException) { $this->assertTrue(true); }
+  $this->assertSame($openingBefore,(float)$qaBank->fresh()->opening_balance);
+  $this->assertSame($allocationBefore,DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->where('fund_account_id',$qaBank->id)->orderBy('school_id')->get()->map(fn ($row)=>(array)$row)->all());
+  $this->assertSame($scopeBefore,DB::connection('mysql')->table('central_finance_user_school_scopes')->where('user_id',200)->orderBy('school_id')->get()->map(fn ($row)=>(array)$row)->all());
+  $this->assertTrue(app(\App\Services\CentralFinanceFundAccountScopeService::class)->canOperate($this->head,$qaBank,1));
+
+  DB::connection('mysql')->table('users')->insert(['id'=>301,'first_name'=>'Timecity','last_name'=>'Front Desk','school_id'=>2,'central_finance_principal_type'=>'school_staff_identity','created_at'=>now(),'updated_at'=>now()]);
+  DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>'00000000-0000-4000-8000-000000000302','school_id'=>2,'tenant_user_uuid'=>'00000000-0000-4000-8000-000000000303','central_user_id'=>301,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  DB::connection('mysql')->table('finance_group_users')->insert(['id'=>3,'group_id'=>1,'central_user_id'=>301,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>3,'school_id'=>2,'scope_type'=>'SCHOOL','capability'=>'view_reports','scope_key'=>'school:2','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>301,'school_id'=>2,'can_view'=>1,'can_operate'=>0,'can_submit_collections'=>1,'created_at'=>now(),'updated_at'=>now()]);
+  $timeFront=CentralFinanceUser::on('mysql')->findOrFail(301);
+  $timeReceivable=$this->receivable($this->timeProfile);
+  $this->actingAs($timeFront); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,2);
+  $timeView=app(CentralFinancePendingCollectionController::class)->review($this->timeProfile->id,$timeReceivable->id);
+  $timeAccountIds=$timeView->getData()['accounts']->pluck('id')->all();
+  $this->assertContains($timeBank->id,$timeAccountIds);
+  $this->assertNotContains($qaBank->id,$timeAccountIds);
+  $this->assertNotContains($wrongCurrency->id,$view->getData()['accounts']->pluck('id')->all());
+  $this->assertNotContains($inactive->id,$view->getData()['accounts']->pluck('id')->all());
+  $this->assertNotContains($unallocated->id,$view->getData()['accounts']->pluck('id')->all());
  }
  public function test_qa_front_desk_needs_no_toggle_but_cannot_request_one_and_head_finance_can_deliberately_include_qa_pending(): void {
   $isolation=app(CentralFinanceDataIsolationService::class); Config::set('database.connections.school.database',$this->a); DB::purge('school');
