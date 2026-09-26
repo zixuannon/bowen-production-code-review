@@ -23,6 +23,7 @@ final class CentralFinancePendingCollectionService
         private readonly CentralFinanceSchoolCutoverService $cutovers,
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceDocumentAuditService $audits,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     public function submit(CentralFinanceUser $actor, int $profileId, int $receivableId, float $amount, string $method, CarbonImmutable $collectedAt, string $idempotencyReference, ?int $intendedFundAccountId = null, ?string $paymentReference = null, ?string $note = null): CentralFinancePendingCollection
@@ -51,6 +52,7 @@ final class CentralFinancePendingCollectionService
             if ($intendedFundAccountId !== null) {
                 $intended = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($intendedFundAccountId);
                 $this->availability->assertAccountAvailableForSchool($intended, (int) $school->id);
+                $this->dataIsolation->assertFundAccountMatchesSchoolWorkflow((int) $school->id, (int) $intended->id);
                 if ($method === self::METHOD_BANK_TRANSFER && $intended->account_type !== 'bank') {
                     throw new InvalidArgumentException('Bank Transfer requires an active Bank Fund Account.');
                 }
@@ -69,6 +71,7 @@ final class CentralFinancePendingCollectionService
                 'payment_method' => $method, 'payment_reference' => $paymentReference ? trim($paymentReference) : null, 'note' => $note ? trim($note) : null,
                 'collected_at' => $collectedAt, 'collected_by' => $actor->id, 'submitted_by' => $actor->id, 'submitted_at' => now(),
             ]);
+            $this->dataIsolation->inheritWorkflowClassification($actor, (int) $school->id, 'pending_collection', (int) $pending->id);
             $this->audits->record($actor, $pending, 'pending_collection', 'submitted', null, null, $this->snapshot($pending));
             return $pending;
         });

@@ -37,12 +37,12 @@ final class CentralFinancePendingCollectionController extends Controller
         }
         abort_unless($school !== null, 403);
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
-        $schoolQaTest = $this->dataIsolation->isQaTestSchool((int) $school->id);
         $pendingQuery = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable'])
             ->where(['school_id' => $school->id, 'collected_by' => $actor->id]);
-        // A scoped Front Desk can see its own QA workflow in a QA School.
-        // Official dashboards and reports remain filtered by default.
-        $this->dataIsolation->apply($pendingQuery, 'pending_collection', $includeQaTest || $schoolQaTest);
+        // Front Desk workflow visibility follows only the trusted current
+        // School. QA/Test Schools see their explicit QA workflow; Official
+        // Schools retain the normal Official-only filter and no QA toggle.
+        $this->dataIsolation->applySchoolWorkflow($pendingQuery, 'pending_collection', (int) $school->id);
         $pending = $pendingQuery->latest('submitted_at')->paginate(20)->withQueryString();
         return view('central-finance.pending-collections.front-desk-index', compact('school', 'pending', 'includeQaTest', 'canIncludeQaTest'));
     }
@@ -58,12 +58,12 @@ final class CentralFinancePendingCollectionController extends Controller
         abort_unless($school !== null, 403);
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
         $profileQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
-        $this->dataIsolation->apply($profileQuery, 'student_profile');
+        $this->dataIsolation->applySchoolWorkflow($profileQuery, 'student_profile', (int) $school->id);
         $profile = $profileQuery->findOrFail($profile);
         $receivableQuery = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
-        $this->dataIsolation->apply($receivableQuery, 'receivable');
+        $this->dataIsolation->applySchoolWorkflow($receivableQuery, 'receivable', (int) $school->id);
         $receivable = $receivableQuery->findOrFail($receivable);
-        $accounts = $this->workspace->collectionBankAccounts($actor, (int) $school->id, $this->dataIsolation->isQaTestSchool((int) $school->id))
+        $accounts = $this->workspace->collectionBankAccountsForSchoolWorkflow($actor, (int) $school->id)
             ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
         $attemptUuid = (string) Str::uuid();
         session()->put(self::ATTEMPTS_SESSION_KEY.'.'.$attemptUuid, [

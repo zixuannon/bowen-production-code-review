@@ -137,6 +137,50 @@ final class CentralFinanceDataIsolationService
         return $query;
     }
 
+    /**
+     * Apply the non-optional visibility contract for a School-owned workflow.
+     *
+     * A permanent QA School may work only with its explicitly classified QA
+     * records. A Production School keeps the normal Official-only filter.
+     * Callers obtain $schoolId from a trusted operating context; this helper
+     * deliberately accepts no request flag or user-controlled classification.
+     */
+    public function applySchoolWorkflow(Builder $query, string $subjectType, int $schoolId): Builder
+    {
+        if (!$this->isQaTestSchool($schoolId)) {
+            return $this->apply($query, $subjectType);
+        }
+
+        return $this->applyExactClassification($query, $subjectType, 'central', CentralFinanceDataClassification::QA_TEST);
+    }
+
+    /**
+     * Tenant metadata equivalent of applySchoolWorkflow(). It prevents a QA
+     * School workflow from treating unclassified or Official tenant data as a
+     * QA fixture merely because the School itself is QA/Test.
+     */
+    public function applyTenantMetadataForSchoolWorkflow(Builder|QueryBuilder $query, string $subjectType, int $schoolId, string $subjectColumn = 'id'): Builder|QueryBuilder
+    {
+        if (!$this->isQaTestSchool($schoolId)) {
+            return $this->applyTenantMetadata($query, $subjectType, $schoolId, false, $subjectColumn);
+        }
+        if (!isset(self::TENANT_SUBJECTS[$subjectType])) {
+            throw new RuntimeException("Unsupported tenant classification subject: {$subjectType}");
+        }
+        if (!$this->schemaAvailable()) {
+            if (app()->environment('production')) {
+                throw new RuntimeException('Central Finance data isolation schema is missing.');
+            }
+            return $query;
+        }
+
+        return $query->whereIn($subjectColumn, CentralFinanceDataClassification::on('mysql')
+            ->where('subject_scope', $this->tenantScope($schoolId))
+            ->where('subject_type', $subjectType)
+            ->where('classification', CentralFinanceDataClassification::QA_TEST)
+            ->select('subject_id'));
+    }
+
     public function classification(string $subjectType, int $subjectId, string $subjectScope = 'central'): string
     {
         if (!$this->schemaAvailable()) {
@@ -424,6 +468,48 @@ final class CentralFinanceDataIsolationService
         return $this->classification('school', $schoolId) === CentralFinanceDataClassification::QA_TEST;
     }
 
+    /**
+     * A QA School can only select an explicitly QA/Test Fund Account; an
+     * Official School can only select an Official account. Allocation, active
+     * state, currency and actor scope are still enforced by their canonical
+     * services before this classification boundary is reached.
+     */
+    public function assertFundAccountMatchesSchoolWorkflow(int $schoolId, int $fundAccountId): void
+    {
+        $classification = $this->classification('fund_account', $fundAccountId);
+        if ($this->isQaTestSchool($schoolId)) {
+            if ($classification !== CentralFinanceDataClassification::QA_TEST) {
+                throw new AuthorizationException('A QA/Test School may only use an explicitly QA/Test Fund Account.');
+            }
+            return;
+        }
+
+        if ($classification !== CentralFinanceDataClassification::PRODUCTION) {
+            throw new AuthorizationException('An Official School may only use an Official Fund Account.');
+        }
+    }
+
+    /**
+     * New Central workflow records inherit QA/Test classification only from a
+     * trusted QA School. Production records intentionally remain unclassified
+     * (and therefore Production-compatible) to avoid broad data rewriting.
+     */
+    public function inheritWorkflowClassification(CentralFinanceUser $actor, int $schoolId, string $subjectType, int $subjectId): void
+    {
+        if (!$this->isQaTestSchool($schoolId)) {
+            return;
+        }
+
+        $this->classify(
+            $actor,
+            $schoolId,
+            $subjectType,
+            $subjectId,
+            CentralFinanceDataClassification::QA_TEST,
+            'Inherited from the trusted QA/Test School workflow.',
+        );
+    }
+
     public function classify(CentralFinanceUser $actor, int $schoolId, string $subjectType, int $subjectId, string $classification, string $reason): CentralFinanceDataClassification
     {
         if ((!isset(self::SUBJECTS[$subjectType]) && !isset(self::TENANT_SUBJECTS[$subjectType])) || !in_array($classification, CentralFinanceDataClassification::VALUES, true)) {
@@ -496,6 +582,31 @@ final class CentralFinanceDataIsolationService
             ]);
 
             return $record->fresh();
+        });
+    }
+
+    /** @param Builder<\Illuminate\Database\Eloquent\Model> $query */
+    private function applyExactClassification(Builder $query, string $subjectType, string $subjectScope, string $classification): Builder
+    {
+        $subject = self::SUBJECTS[$subjectType] ?? null;
+        if ($subject === null) {
+            throw new RuntimeException("Unsupported Central Finance classification subject: {$subjectType}");
+        }
+        if (!$this->schemaAvailable()) {
+            if (app()->environment('production')) {
+                throw new RuntimeException('Central Finance data isolation schema is missing.');
+            }
+            return $query;
+        }
+
+        $qualifiedId = $query->getModel()->qualifyColumn($query->getModel()->getKeyName());
+
+        return $query->whereExists(function (QueryBuilder $classificationQuery) use ($subjectScope, $subjectType, $classification, $qualifiedId): void {
+            $classificationQuery->selectRaw('1')->from(self::TABLE.' as cf_workflow_classification')
+                ->where('cf_workflow_classification.subject_scope', $subjectScope)
+                ->where('cf_workflow_classification.subject_type', $subjectType)
+                ->where('cf_workflow_classification.classification', $classification)
+                ->whereColumn('cf_workflow_classification.subject_id', $qualifiedId);
         });
     }
 

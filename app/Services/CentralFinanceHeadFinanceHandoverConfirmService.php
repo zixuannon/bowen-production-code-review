@@ -21,6 +21,7 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
         private readonly CentralFinanceDocumentAuditService $audits,
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceFundAccountScopeService $accountScopes,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     public function confirm(CentralFinanceUser $actor, int $batchId, CentralFinanceFundAccount $account, string $actualAmount, string $reason, ?CarbonImmutable $confirmedAt = null): CentralFinanceCollectionHandoverBatch
@@ -56,6 +57,7 @@ final class CentralFinanceHeadFinanceHandoverConfirmService
     {
         if (!$account->exists || !$account->getRawOriginal('is_active')) throw new InvalidArgumentException('Fund Account is not active.');
         $this->availability->assertAccountAvailableForSchool($account, (int) $batch->school_id);
+        $this->dataIsolation->assertFundAccountMatchesSchoolWorkflow((int) $batch->school_id, (int) $account->id);
         $this->accountScopes->assertCanOperate($actor, $account, (int) $batch->school_id);
         if (strtoupper((string) $account->currency) !== strtoupper((string) $batch->currency)) throw new InvalidArgumentException('Fund Account is outside the handover currency.');
     }

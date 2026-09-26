@@ -212,6 +212,21 @@ final class CentralFinanceWorkspaceService
     }
 
     /**
+     * Account choices for a trusted School workflow. This is intentionally
+     * distinct from an authorized Head Finance history filter: a QA School
+     * receives only explicitly QA/Test accounts, never Official accounts.
+     *
+     * @return Collection<int, CentralFinanceFundAccount>
+     */
+    public function accessibleAccountsForSchoolWorkflow(CentralFinanceUser $actor, int $schoolId): Collection
+    {
+        $query = $this->accounts->visibleAccounts($actor, $schoolId, true)->active()->orderBy('account_name');
+        $this->dataIsolation->applySchoolWorkflow($query, 'fund_account', $schoolId);
+
+        return $query->get();
+    }
+
+    /**
      * Read models are School-scoped, not Fund-Account-operation-scoped.
      * A School Accountant may read the school's Ledger/Audit trail in order to
      * reconcile work performed by the finance team, while every write continues
@@ -244,6 +259,20 @@ final class CentralFinanceWorkspaceService
                 ->where('school_id', $schoolId)->effective())
             ->orderBy('account_name');
         $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
+        return $query->get();
+    }
+
+    /** @return Collection<int, CentralFinanceFundAccount> */
+    public function collectionBankAccountsForSchoolWorkflow(CentralFinanceUser $actor, int $schoolId): Collection
+    {
+        $this->assertCanSubmitCollectionsSchool($actor, $schoolId);
+        $query = CentralFinanceFundAccount::on('mysql')->active()
+            ->where('account_type', 'bank')
+            ->whereHas('schoolAllocations', fn (Builder $allocations) => $allocations
+                ->where('school_id', $schoolId)->effective())
+            ->orderBy('account_name');
+        $this->dataIsolation->applySchoolWorkflow($query, 'fund_account', $schoolId);
+
         return $query->get();
     }
 

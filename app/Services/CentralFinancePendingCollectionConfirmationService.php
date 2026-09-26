@@ -12,13 +12,14 @@ use InvalidArgumentException;
 /** Head Finance confirmation adapter. The canonical payment service remains the only money-posting path. */
 final class CentralFinancePendingCollectionConfirmationService
 {
-    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinanceSchoolCutoverService $cutovers, private readonly CentralFinancePaymentService $payments, private readonly CentralFinanceDocumentAuditService $audits, private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability) {}
+    public function __construct(private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinanceSchoolCutoverService $cutovers, private readonly CentralFinancePaymentService $payments, private readonly CentralFinanceDocumentAuditService $audits, private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability, private readonly CentralFinanceDataIsolationService $dataIsolation) {}
 
     public function confirm(CentralFinanceUser $actor, int $pendingId, CentralFinanceFundAccount $actualAccount, CarbonImmutable $confirmedAt, string $reason, bool $viaHandover = false): CentralFinancePendingCollection
     {
         if (trim($reason) === '') throw new InvalidArgumentException('A confirmation reason is required.');
         return DB::connection('mysql')->transaction(function () use ($actor, $pendingId, $actualAccount, $confirmedAt, $reason, $viaHandover): CentralFinancePendingCollection {
             $pending = CentralFinancePendingCollection::on('mysql')->lockForUpdate()->findOrFail($pendingId);
+            $this->dataIsolation->assertWorkflowWritable('pending_collection', (int) $pending->id);
             $this->workspace->assertHeadFinance($actor);
             $this->workspace->assertCanOperateSchool($actor, (int) $pending->school_id);
             $this->cutovers->assertCentralWritesAllowed((int) $pending->school_id);
@@ -26,6 +27,7 @@ final class CentralFinancePendingCollectionConfirmationService
             if (!in_array($pending->status, [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD], true)) throw new InvalidArgumentException('Only a submitted or held collection can be confirmed.');
             $actualAccount = CentralFinanceFundAccount::on('mysql')->active()->lockForUpdate()->findOrFail($actualAccount->id);
             $this->availability->assertAccountAvailableForSchool($actualAccount, (int) $pending->school_id);
+            $this->dataIsolation->assertFundAccountMatchesSchoolWorkflow((int) $pending->school_id, (int) $actualAccount->id);
             if (strtoupper((string) $actualAccount->currency) !== strtoupper((string) $pending->currency)) {
                 throw new InvalidArgumentException('Fund Account currency does not match the Pending Collection.');
             }

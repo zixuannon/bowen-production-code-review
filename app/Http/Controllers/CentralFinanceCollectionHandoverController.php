@@ -49,12 +49,17 @@ final class CentralFinanceCollectionHandoverController extends Controller
         $school = $isHeadFinance
             ? $this->workspace->assertCanOperateSchool($actor, (int) $school->id)
             : $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $school->id);
-        $workflowIncludeQaTest = $includeQaTest || (!$isHeadFinance && $this->dataIsolation->isQaTestSchool((int) $school->id));
+        $schoolQaTest = $this->dataIsolation->isQaTestSchool((int) $school->id);
+        $workflowIncludeQaTest = $includeQaTest || (!$isHeadFinance && $schoolQaTest);
 
         $batchQuery = CentralFinanceCollectionHandoverBatch::on('mysql')
             ->with(['items.pendingCollection.studentProfile'])
             ->where('school_id', $school->id);
-        $this->dataIsolation->apply($batchQuery, 'collection_handover', $workflowIncludeQaTest);
+        if (!$isHeadFinance && $schoolQaTest) {
+            $this->dataIsolation->applySchoolWorkflow($batchQuery, 'collection_handover', (int) $school->id);
+        } else {
+            $this->dataIsolation->apply($batchQuery, 'collection_handover', $workflowIncludeQaTest);
+        }
         if (!$isHeadFinance) {
             $batchQuery->where('collector_id', $actor->id);
         }
@@ -67,7 +72,9 @@ final class CentralFinanceCollectionHandoverController extends Controller
         $eligiblePending = collect();
         $accounts = collect();
         if ($isHeadFinance) {
-            $accounts = $this->workspace->accessibleAccounts($actor, (int) $school->id, $workflowIncludeQaTest);
+            $accounts = $schoolQaTest
+                ? $this->workspace->accessibleAccountsForSchoolWorkflow($actor, (int) $school->id)
+                : $this->workspace->accessibleAccounts($actor, (int) $school->id, $workflowIncludeQaTest);
         } else {
             $occupiedPendingIds = CentralFinanceCollectionHandoverItem::on('mysql')
                 ->where('status', '!=', CentralFinanceCollectionHandoverItem::REMOVED)
@@ -82,7 +89,11 @@ final class CentralFinanceCollectionHandoverController extends Controller
                 ->where('status', CentralFinancePendingCollection::SUBMITTED)
                 ->whereNotIn('id', $occupiedPendingIds)
                 ->orderBy('submitted_at');
-            $this->dataIsolation->apply($eligiblePending, 'pending_collection', $workflowIncludeQaTest);
+            if ($schoolQaTest) {
+                $this->dataIsolation->applySchoolWorkflow($eligiblePending, 'pending_collection', (int) $school->id);
+            } else {
+                $this->dataIsolation->apply($eligiblePending, 'pending_collection', $workflowIncludeQaTest);
+            }
             $eligiblePending = $eligiblePending->get();
         }
 
@@ -157,7 +168,7 @@ final class CentralFinanceCollectionHandoverController extends Controller
 
     public function confirm(Request $request, CentralFinanceCollectionHandoverBatch $batch): RedirectResponse
     {
-        $this->dataIsolation->assertProduction('collection_handover', (int) $batch->id);
+        $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
         $data = $request->validate([
             'fund_account_id' => ['required', 'integer'],
             'actual_received_amount' => ['required', 'numeric', 'gte:0'],

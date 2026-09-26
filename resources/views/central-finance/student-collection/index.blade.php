@@ -30,7 +30,7 @@
                 @php($totals = $profile->currency_totals ?? [])
                 @php($hasReceivables = collect($totals)->contains(fn ($total) => (float) ($total['due'] ?? 0) > 0))
                 @php($hasOutstanding = collect($totals)->contains(fn ($total) => (float) ($total['outstanding'] ?? 0) > 0))
-                @php($profileCanCollect = $canCollect && (bool) $profile->production_eligible)
+                @php($profileCanCollect = $canCollect && (bool) $profile->workflow_eligible)
                 <tr>
                     <td data-label="{{ __('Student') }}"><span class="cf-primary-line">{{ $profile->student_name }}</span><span class="cf-secondary-line">{{ __('Student Code') }}: {{ $profile->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $profile->admission_no ?: '—' }}</span></td>
                     <td data-label="{{ __('Class') }}">{{ trim($profile->class_name.' '.$profile->section_name) ?: '—' }}</td>

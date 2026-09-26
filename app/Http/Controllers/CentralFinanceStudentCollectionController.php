@@ -18,6 +18,7 @@ use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -55,16 +56,17 @@ final class CentralFinanceStudentCollectionController extends Controller
         if ($school === null) {
             return view('central-finance.student-collection.index', compact('school', 'schools', 'schoolFinanceFacade', 'includeQaTest', 'canIncludeQaTest'));
         }
+        $schoolQaTest = $this->dataIsolation->isQaTestSchool((int) $school->id);
 
         $search = trim((string) $request->query('search', ''));
         $class = trim((string) $request->query('class', ''));
         $profilesQuery = CentralFinanceStudentProfile::on('mysql')
-            ->with(['receivables' => function ($query) use ($includeQaTest): void {
-                $this->dataIsolation->apply($query, 'receivable', $includeQaTest);
+            ->with(['receivables' => function ($query) use ($includeQaTest, $school, $schoolQaTest): void {
+                $this->applySchoolRecordFilter($query, 'receivable', (int) $school->id, $schoolQaTest, $includeQaTest);
             }])
             ->where('school_id', $school->id);
-        $this->dataIsolation->apply($profilesQuery, 'student_profile', $includeQaTest);
-        $this->dataIsolation->applyTenantMetadata($profilesQuery, 'student', (int) $school->id, $includeQaTest, 'tenant_student_id');
+        $this->applySchoolRecordFilter($profilesQuery, 'student_profile', (int) $school->id, $schoolQaTest, $includeQaTest);
+        $this->applyStudentMetadataFilter($profilesQuery, (int) $school->id, $schoolQaTest, $includeQaTest);
         $profiles = $profilesQuery
             ->when($class !== '', fn ($query) => $query->where('class_name', $class))
             ->when($search !== '', fn ($query) => $query->where(function ($nested) use ($search): void {
@@ -79,12 +81,11 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->withQueryString();
         $profiles->getCollection()->each(function (CentralFinanceStudentProfile $profile) use ($school): void {
             $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
-            $profile->setAttribute('production_eligible', $this->dataIsolation->isProduction('student_profile', (int) $profile->id)
-                && $this->dataIsolation->isTenantMetadataProduction('student', (int) $school->id, (int) $profile->tenant_student_id));
+            $profile->setAttribute('workflow_eligible', $this->profileIsWorkflowEligible($profile, (int) $school->id));
         });
         $classesQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
-        $this->dataIsolation->apply($classesQuery, 'student_profile', $includeQaTest);
-        $this->dataIsolation->applyTenantMetadata($classesQuery, 'student', (int) $school->id, $includeQaTest, 'tenant_student_id');
+        $this->applySchoolRecordFilter($classesQuery, 'student_profile', (int) $school->id, $schoolQaTest, $includeQaTest);
+        $this->applyStudentMetadataFilter($classesQuery, (int) $school->id, $schoolQaTest, $includeQaTest);
         $classes = $classesQuery->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name');
         $canCollect = $this->canCollect($actor, $school->id);
         $canSubmitPending = $this->canSubmitPending($actor, $school->id);
@@ -96,19 +97,23 @@ final class CentralFinanceStudentCollectionController extends Controller
     public function show(int $profile): View
     {
         $actor = $this->actor();
-        $profile = CentralFinanceStudentProfile::on('mysql')->findOrFail($profile);
-        $school = $this->workspace->assertCanViewSchool($actor, (int) $profile->school_id);
-        $profile->load(['receivables' => fn ($query) => $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy'])]);
+        $unfilteredProfile = CentralFinanceStudentProfile::on('mysql')->findOrFail($profile);
+        $school = $this->workspace->assertCanViewSchool($actor, (int) $unfilteredProfile->school_id);
+        $profile = $this->profileForSchool($profile, (int) $school->id);
+        $schoolQaTest = $this->dataIsolation->isQaTestSchool((int) $school->id);
+        $profile->load(['receivables' => function ($query) use ($school, $schoolQaTest): void {
+            $this->applySchoolRecordFilter($query, 'receivable', (int) $school->id, $schoolQaTest, false);
+            $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy']);
+        }]);
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
         // Direct read URLs do not mutate the selected operating context. A
         // write remains available only when this profile belongs to the
         // actor's current, explicitly selected School.
         $currentSchool = $this->workspace->currentSchool($actor);
         $isCurrentSchool = $currentSchool !== null && (int) $currentSchool->id === (int) $school->id;
-        $productionEligible = $this->dataIsolation->isProduction('student_profile', (int) $profile->id)
-            && $this->dataIsolation->isTenantMetadataProduction('student', (int) $school->id, (int) $profile->tenant_student_id);
-        $canCollect = $productionEligible && $isCurrentSchool && $this->canCollect($actor, $school->id);
-        $canSubmitPending = $productionEligible && $isCurrentSchool && $this->canSubmitPending($actor, $school->id);
+        $workflowEligible = $this->profileIsWorkflowEligible($profile, (int) $school->id);
+        $canCollect = $workflowEligible && $isCurrentSchool && $this->canCollect($actor, $school->id);
+        $canSubmitPending = $workflowEligible && $isCurrentSchool && $this->canSubmitPending($actor, $school->id);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
         $optionalItems = collect();
@@ -136,7 +141,7 @@ final class CentralFinanceStudentCollectionController extends Controller
         $receivable = $this->collectableReceivable($receivable, $profile);
         $attemptUuid = (string) Str::uuid();
         $this->storeAttempt($attemptUuid, $actor, $school->id, $profile->id, $receivable->id);
-        $accounts = $this->workspace->accessibleAccounts($actor, $school->id)
+        $accounts = $this->workspace->accessibleAccountsForSchoolWorkflow($actor, $school->id)
             ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
@@ -221,7 +226,7 @@ final class CentralFinanceStudentCollectionController extends Controller
     {
         $actor = $this->actor();
         $school = $this->workspace->requireOperatingSchool($actor);
-        $this->dataIsolation->assertProduction('school', (int) $school->id);
+        $this->dataIsolation->assertWorkflowWritable('school', (int) $school->id);
         $this->workspace->assertHeadFinance($actor);
         $this->cutovers->assertCentralWritesAllowed($school->id);
         return [$actor, $school];
@@ -237,8 +242,9 @@ final class CentralFinanceStudentCollectionController extends Controller
     private function profileForSchool(int $profileId, int $schoolId): CentralFinanceStudentProfile
     {
         $query = CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId);
-        $this->dataIsolation->apply($query, 'student_profile');
-        $this->dataIsolation->applyTenantMetadata($query, 'student', $schoolId, false, 'tenant_student_id');
+        $schoolQaTest = $this->dataIsolation->isQaTestSchool($schoolId);
+        $this->applySchoolRecordFilter($query, 'student_profile', $schoolId, $schoolQaTest, false);
+        $this->applyStudentMetadataFilter($query, $schoolId, $schoolQaTest, false);
         return $query->findOrFail($profileId);
     }
 
@@ -247,14 +253,46 @@ final class CentralFinanceStudentCollectionController extends Controller
         $query = CentralFinanceReceivable::on('mysql')->where('school_id', $profile->school_id)
             ->where('student_profile_id', $profile->id)
             ->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
-        $this->dataIsolation->apply($query, 'receivable');
+        $this->applySchoolRecordFilter($query, 'receivable', (int) $profile->school_id, $this->dataIsolation->isQaTestSchool((int) $profile->school_id), false);
         return $query->findOrFail($receivableId);
+    }
+
+    private function profileIsWorkflowEligible(CentralFinanceStudentProfile $profile, int $schoolId): bool
+    {
+        try {
+            $this->dataIsolation->assertWorkflowWritable('student_profile', (int) $profile->id);
+
+            return $this->dataIsolation->isTenantMetadataWorkflowWritable('student', $schoolId, (int) $profile->tenant_student_id);
+        } catch (AuthorizationException) {
+            return false;
+        }
+    }
+
+    private function applySchoolRecordFilter($query, string $subjectType, int $schoolId, bool $schoolQaTest, bool $includeQaTest): void
+    {
+        if ($query instanceof Relation) {
+            $query = $query->getQuery();
+        }
+        if ($schoolQaTest) {
+            $this->dataIsolation->applySchoolWorkflow($query, $subjectType, $schoolId);
+            return;
+        }
+        $this->dataIsolation->apply($query, $subjectType, $includeQaTest);
+    }
+
+    private function applyStudentMetadataFilter($query, int $schoolId, bool $schoolQaTest, bool $includeQaTest): void
+    {
+        if ($schoolQaTest) {
+            $this->dataIsolation->applyTenantMetadataForSchoolWorkflow($query, 'student', $schoolId, 'tenant_student_id');
+            return;
+        }
+        $this->dataIsolation->applyTenantMetadata($query, 'student', $schoolId, $includeQaTest, 'tenant_student_id');
     }
 
     private function canCollect(CentralFinanceUser $actor, int $schoolId): bool
     {
         try {
-            $this->dataIsolation->assertProduction('school', $schoolId);
+            $this->dataIsolation->assertWorkflowWritable('school', $schoolId);
             $this->workspace->assertCanOperateSchool($actor, $schoolId);
             $this->workspace->assertHeadFinance($actor);
             return $this->cutovers->allowsCentralWrites($schoolId);
@@ -266,7 +304,7 @@ final class CentralFinanceStudentCollectionController extends Controller
     private function canSubmitPending(CentralFinanceUser $actor, int $schoolId): bool
     {
         try {
-            $this->dataIsolation->assertProduction('school', $schoolId);
+            $this->dataIsolation->assertWorkflowWritable('school', $schoolId);
             $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
             return $this->cutovers->allowsCentralWrites($schoolId);
         } catch (AuthorizationException) {
@@ -280,7 +318,7 @@ final class CentralFinanceStudentCollectionController extends Controller
         $actor = $this->actor();
         $school = $this->workspace->currentSchool($actor);
         abort_unless($school !== null, 403);
-        $this->dataIsolation->assertProduction('school', (int) $school->id);
+        $this->dataIsolation->assertWorkflowWritable('school', (int) $school->id);
         try {
             $this->workspace->assertCanOperateSchool($actor, $school->id);
             $this->workspace->assertHeadFinance($actor);

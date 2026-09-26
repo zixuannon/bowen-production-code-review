@@ -20,6 +20,7 @@ final class CentralFinanceCollectionHandoverService
         private readonly CentralFinanceWorkspaceService $workspace,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
         private readonly CentralFinanceDocumentAuditService $audits,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
     public function create(CentralFinanceUser $actor, string $channel, string $currency, string $reference, string $idempotencyKey, string $declaredAmount, ?string $note = null): CentralFinanceCollectionHandoverBatch
@@ -47,6 +48,7 @@ final class CentralFinanceCollectionHandoverService
                 'idempotency_key' => hash('sha256', $idempotencyKey), 'declared_handed_over_amount' => $declaredAmount,
                 'expected_amount' => 0, 'status' => CentralFinanceCollectionHandoverBatch::DRAFT, 'note' => $note,
             ]);
+            $this->dataIsolation->inheritWorkflowClassification($actor, (int) $school->id, 'collection_handover', (int) $batch->id);
             $this->audits->record($actor, $batch, 'collection_handover', 'draft', null, null, $batch->toArray());
             return $batch;
         });
