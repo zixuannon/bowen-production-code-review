@@ -27,6 +27,7 @@
             <dt>{{ __('Reference') }}</dt><dd>{{ $pending->payment_reference ?: '—' }}</dd>
             <dt>{{ __('Remarks') }}</dt><dd>{{ $pending->note ?: '—' }}</dd>
             @if($pending->status === 'confirmed')
+                <dt>{{ __('Finance Confirmed At') }}</dt><dd>{{ $pending->confirmed_at?->timezone('Asia/Yangon')->format('Y-m-d H:i') ?? '—' }}</dd>
                 <dt>{{ __('Official Receipt') }}</dt><dd>{{ $pending->confirmedPayment?->receipt?->receipt_no ?? '—' }}</dd>
             @endif
         </dl>

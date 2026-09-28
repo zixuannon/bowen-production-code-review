@@ -45,6 +45,35 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $rejected=app(CentralFinancePendingCollectionService::class)->reject($this->head,$held->id,'Cash count did not reconcile');
  $this->assertSame(CentralFinancePendingCollection::REJECTED,$rejected->status); $this->assertSame(1,CentralFinancePayment::on('mysql')->count());
  }
+ public function test_submitted_and_held_collections_reserve_the_receivable_without_posting_or_over_collection(): void {
+  $r=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  $pending=app(CentralFinancePendingCollectionService::class);
+  $first=$pending->submit($front,$this->zixProfile->id,$r->id,400,'Bank Transfer',$this->at(),'RESERVE-1',$this->hq->id,'RESERVE-1');
+  app(CentralFinancePendingCollectionService::class)->hold($this->head,$first->id,'Awaiting bank evidence');
+  $second=$pending->submit($front,$this->zixProfile->id,$r->id,600,'Bank Transfer',$this->at(),'RESERVE-2',$this->hq->id,'RESERVE-2');
+  $retry=$pending->submit($front,$this->zixProfile->id,$r->id,400,'Bank Transfer',$this->at(),'RESERVE-1',$this->hq->id,'RESERVE-1');
+  $this->assertSame($first->id,$retry->id);
+  try { $pending->submit($front,$this->zixProfile->id,$r->id,0.01,'Bank Transfer',$this->at(),'RESERVE-OVER',$this->hq->id,'RESERVE-OVER'); $this->fail('Submitted and held amounts must reserve the available receivable balance.'); }
+  catch (InvalidArgumentException $exception) { $this->assertStringContainsString('available amount',$exception->getMessage()); }
+  $r->refresh();
+  $this->assertSame(CentralFinanceReceivable::OPEN,$r->status);
+  $this->assertSame(0.0,(float)$r->amount_paid);
+  $this->assertSame(1000.0,(float)CentralFinancePendingCollection::on('mysql')->whereIn('id',[$first->id,$second->id])->sum('amount'));
+  $this->assertSame(0,CentralFinancePayment::on('mysql')->count());
+ $this->assertSame(0,DB::connection('mysql')->table('central_finance_receipts')->count());
+ $this->assertSame(0,DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+ }
+ public function test_student_collection_read_model_shows_pending_and_available_amounts_without_mislabeling_them_as_paid(): void {
+  $r=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  app(CentralFinancePendingCollectionService::class)->submit($front,$this->zixProfile->id,$r->id,400,'Bank Transfer',$this->at(),'READ-MODEL-RESERVE',$this->hq->id,'READ-MODEL-RESERVE');
+  $this->actingAs($front);
+  $view=app(CentralFinanceStudentCollectionController::class)->show($this->zixProfile->id);
+  $receivable=$view->getData()['profile']->receivables->sole();
+  $this->assertSame(0.0,(float)$receivable->amount_paid);
+  $this->assertSame(400.0,(float)$receivable->pending_confirmation_amount);
+  $this->assertSame(1000.0,$view->getData()['profile']->currency_totals['MMK']['outstanding']);
+  $this->assertSame(600.0,$view->getData()['profile']->currency_totals['MMK']['available_to_collect']);
+ }
  public function test_cash_pending_collection_cannot_be_directly_confirmed_before_a_cash_handover(): void {
   $r=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
   $pending=app(CentralFinancePendingCollectionService::class)->submit($front,$this->zixProfile->id,$r->id,100,'Cash',$this->at(),'CASH-HO-1',null,'CASH-HO-1');

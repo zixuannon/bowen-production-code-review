@@ -40,8 +40,21 @@ final class CentralFinancePendingCollectionService
         return DB::connection('mysql')->transaction(function () use ($actor, $school, $profileId, $receivableId, $amount, $method, $collectedAt, $idempotencyReference, $intendedFundAccountId, $paymentReference, $note): CentralFinancePendingCollection {
             $profile = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)->lockForUpdate()->findOrFail($profileId);
             $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->lockForUpdate()->findOrFail($receivableId);
-            if (!in_array($receivable->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true) || (float) $receivable->amount_paid + $amount > (float) $receivable->amount_due) {
-                throw new InvalidArgumentException('Pending collection exceeds the current receivable outstanding balance.');
+            $key = hash('sha256', 'pending-collection|'.$school->id.'|'.$receivable->id.'|'.$idempotencyReference);
+            // An exact retry must converge even after the receivable becomes
+            // fully reserved or paid.  The receivable lock serializes all
+            // create/confirm paths for this balance.
+            $existing = CentralFinancePendingCollection::on('mysql')->where('idempotency_key', $key)->lockForUpdate()->first();
+            if ($existing) return $existing;
+            if (!in_array($receivable->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true)) {
+                throw new InvalidArgumentException('Only an open or partially paid receivable can accept a pending collection.');
+            }
+            $reserved = (float) CentralFinancePendingCollection::on('mysql')
+                ->where('receivable_id', $receivable->id)
+                ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])
+                ->sum('amount');
+            if ((float) $receivable->amount_paid + $reserved + $amount > (float) $receivable->amount_due) {
+                throw new InvalidArgumentException('Pending collection exceeds the available amount after submitted or held collections.');
             }
             if ($method === self::METHOD_BANK_TRANSFER && $intendedFundAccountId === null) {
                 throw new InvalidArgumentException('Bank Transfer requires the intended Bank Fund Account.');
@@ -60,9 +73,6 @@ final class CentralFinancePendingCollectionService
                     throw new InvalidArgumentException('The intended Fund Account currency does not match the receivable.');
                 }
             }
-            $key = hash('sha256', 'pending-collection|'.$school->id.'|'.$receivable->id.'|'.$idempotencyReference);
-            $existing = CentralFinancePendingCollection::on('mysql')->where('idempotency_key', $key)->lockForUpdate()->first();
-            if ($existing) return $existing;
             $pending = CentralFinancePendingCollection::on('mysql')->create([
                 'school_id' => $school->id, 'student_profile_id' => $profile->id, 'receivable_id' => $receivable->id,
                 'intended_fund_account_id' => $intendedFundAccountId, 'idempotency_key' => $key,

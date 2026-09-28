@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\FinanceGroupTenantUnavailableException;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinancePayment;
+use App\Models\CentralFinancePendingCollection;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
@@ -79,6 +80,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             ->orderBy('student_name')
             ->paginate(20)
             ->withQueryString();
+        $this->attachPendingConfirmationAmounts($profiles->getCollection(), (int) $school->id, $schoolQaTest, $includeQaTest);
         $profiles->getCollection()->each(function (CentralFinanceStudentProfile $profile) use ($school): void {
             $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
             $profile->setAttribute('workflow_eligible', $this->profileIsWorkflowEligible($profile, (int) $school->id));
@@ -105,6 +107,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             $this->applySchoolRecordFilter($query, 'receivable', (int) $school->id, $schoolQaTest, false);
             $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy']);
         }]);
+        $this->attachPendingConfirmationAmounts(collect([$profile]), (int) $school->id, $schoolQaTest, false);
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
         // Direct read URLs do not mutate the selected operating context. A
         // write remains available only when this profile belongs to the
@@ -287,6 +290,29 @@ final class CentralFinanceStudentCollectionController extends Controller
             return;
         }
         $this->dataIsolation->applyTenantMetadata($query, 'student', $schoolId, $includeQaTest, 'tenant_student_id');
+    }
+
+    /**
+     * Pending collections reserve collection capacity but are never treated as
+     * canonical paid money.  The read model exposes both values explicitly.
+     */
+    private function attachPendingConfirmationAmounts(iterable $profiles, int $schoolId, bool $schoolQaTest, bool $includeQaTest): void
+    {
+        $receivables = collect($profiles)->flatMap(fn (CentralFinanceStudentProfile $profile) => $profile->receivables)->values();
+        if ($receivables->isEmpty()) return;
+
+        $query = CentralFinancePendingCollection::on('mysql')
+            ->selectRaw('receivable_id, SUM(amount) AS pending_confirmation_amount')
+            ->where('school_id', $schoolId)
+            ->whereIn('receivable_id', $receivables->pluck('id')->all())
+            ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
+        $this->applySchoolRecordFilter($query, 'pending_collection', $schoolId, $schoolQaTest, $includeQaTest);
+        $reserved = $query->groupBy('receivable_id')->pluck('pending_confirmation_amount', 'receivable_id');
+
+        $receivables->each(fn (CentralFinanceReceivable $receivable) => $receivable->setAttribute(
+            'pending_confirmation_amount',
+            (float) ($reserved[$receivable->id] ?? 0),
+        ));
     }
 
     private function canCollect(CentralFinanceUser $actor, int $schoolId): bool

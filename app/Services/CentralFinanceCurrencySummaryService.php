@@ -43,9 +43,17 @@ final class CentralFinanceCurrencySummaryService
             $currency = CentralFinanceCurrency::normalize((string) $receivable->currency);
             $due = (float) $receivable->amount_due;
             $paid = (float) $receivable->amount_paid;
+            // A submitted/held collection has not yet become a canonical
+            // Payment.  Keep it distinct from paid/outstanding so reporting
+            // remains accounting-correct while the collection UI can reserve
+            // the remaining amount and prevent a second declaration.
+            $pending = max(0.0, (float) ($receivable->pending_confirmation_amount ?? 0));
+            $outstanding = max(0, $due - $paid);
             $totals[$currency]['due'] += $due;
             $totals[$currency]['paid'] += $paid;
-            $totals[$currency]['outstanding'] += max(0, $due - $paid);
+            $totals[$currency]['outstanding'] += $outstanding;
+            $totals[$currency]['pending_confirmation'] += $pending;
+            $totals[$currency]['available_to_collect'] += max(0, $outstanding - $pending);
         }
         return $totals;
     }
@@ -84,6 +92,7 @@ final class CentralFinanceCurrencySummaryService
     {
         return collect(CentralFinanceCurrency::ALLOWED)->mapWithKeys(fn (string $currency) => [$currency => [
             'due' => 0.0, 'paid' => 0.0, 'outstanding' => 0.0,
+            'pending_confirmation' => 0.0, 'available_to_collect' => 0.0,
         ]])->all();
     }
 }

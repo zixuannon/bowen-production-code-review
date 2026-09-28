@@ -63,6 +63,13 @@ final class CentralFinancePendingCollectionController extends Controller
         $receivableQuery = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
         $this->dataIsolation->applySchoolWorkflow($receivableQuery, 'receivable', (int) $school->id);
         $receivable = $receivableQuery->findOrFail($receivable);
+        $pendingReservationQuery = CentralFinancePendingCollection::on('mysql')
+            ->where(['school_id' => $school->id, 'receivable_id' => $receivable->id])
+            ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
+        $this->dataIsolation->applySchoolWorkflow($pendingReservationQuery, 'pending_collection', (int) $school->id);
+        $pendingReservation = (float) $pendingReservationQuery->sum('amount');
+        $receivable->setAttribute('pending_confirmation_amount', $pendingReservation);
+        $receivable->setAttribute('available_to_collect', max(0, (float) $receivable->amount_due - (float) $receivable->amount_paid - $pendingReservation));
         $accounts = $this->workspace->collectionBankAccountsForSchoolWorkflow($actor, (int) $school->id)
             ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
         $attemptUuid = (string) Str::uuid();

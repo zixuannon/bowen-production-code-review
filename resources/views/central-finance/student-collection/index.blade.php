@@ -21,23 +21,25 @@
             <div class="form-group col-md-3"><button class="btn cf-primary-action btn-block">{{ __('Search') }}</button></div>
         </form>
 
-        @if(!$canCollect)<div class="alert alert-warning">{{ __('This School is read-only until Central cutover and operating scope are active. Student financial information remains available.') }}</div>@endif
+        @if(!$canCollect && !$canSubmitPending)<div class="alert alert-warning">{{ __('This School is read-only until Central cutover and operating scope are active. Student financial information remains available.') }}</div>@elseif(!$canCollect)<div class="alert alert-info">{{ __('Front Desk collections are submitted for Head Finance confirmation. A pending collection is not yet an official Payment, Receipt, Ledger entry, or Fund Account balance change.') }}</div>@endif
 
         <div class="card"><div class="card-body">
             <div class="d-flex flex-wrap justify-content-between align-items-center mb-3"><div><h5 class="mb-1">{{ __('Students') }}</h5></div><span class="cf-context-chip">{{ $profiles->total() }} {{ __('Students') }}</span></div>
-            <div class="table-responsive"><table class="table cf-data-table cf-mobile-card-table mb-0"><thead><tr><th>{{ __('Student') }}</th><th>{{ __('Class') }}</th><th>{{ __('Guardian') }}</th><th>{{ __('Due') }}</th><th>{{ __('Paid') }}</th><th>{{ __('Outstanding') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
+            <div class="table-responsive"><table class="table cf-data-table cf-mobile-card-table mb-0"><thead><tr><th>{{ __('Student') }}</th><th>{{ __('Class') }}</th><th>{{ __('Guardian') }}</th><th>{{ __('Due') }}</th><th>{{ __('Confirmed paid') }}</th><th>{{ __('Pending finance confirmation') }}</th><th>{{ __('Official outstanding') }}</th><th>{{ __('Available to collect') }}</th><th>{{ __('Status') }}</th><th>{{ __('Action') }}</th></tr></thead><tbody>
             @forelse($profiles as $profile)
                 @php($totals = $profile->currency_totals ?? [])
                 @php($hasReceivables = collect($totals)->contains(fn ($total) => (float) ($total['due'] ?? 0) > 0))
                 @php($hasOutstanding = collect($totals)->contains(fn ($total) => (float) ($total['outstanding'] ?? 0) > 0))
-                @php($profileCanCollect = $canCollect && (bool) $profile->workflow_eligible)
+                @php($profileCanCollect = ($canCollect || $canSubmitPending) && (bool) $profile->workflow_eligible)
                 <tr>
                     <td data-label="{{ __('Student') }}"><span class="cf-primary-line">{{ $profile->student_name }}</span><span class="cf-secondary-line">{{ __('Student Code') }}: {{ $profile->student_code ?: '—' }} · {{ __('Gr Number') }}: {{ $profile->admission_no ?: '—' }}</span></td>
                     <td data-label="{{ __('Class') }}">{{ trim($profile->class_name.' '.$profile->section_name) ?: '—' }}</td>
                     <td data-label="{{ __('Guardian') }}"><span class="cf-primary-line">{{ $profile->guardian_name ?: '—' }}</span><span class="cf-secondary-line">{{ $profile->guardian_mobile ?: '—' }}</span></td>
                     <td data-label="{{ __('Due') }}">@forelse($totals as $currency => $total)<span class="d-block">{{ number_format($total['due'],2) }} {{ $currency }}</span>@empty — @endforelse</td>
-                    <td data-label="{{ __('Paid') }}">@forelse($totals as $currency => $total)<span class="d-block">{{ number_format($total['paid'],2) }} {{ $currency }}</span>@empty — @endforelse</td>
-                    <td data-label="{{ __('Outstanding') }}">@forelse($totals as $currency => $total)<strong class="d-block">{{ number_format($total['outstanding'],2) }} {{ $currency }}</strong>@empty — @endforelse</td>
+                    <td data-label="{{ __('Confirmed paid') }}">@forelse($totals as $currency => $total)<span class="d-block">{{ number_format($total['paid'],2) }} {{ $currency }}</span>@empty — @endforelse</td>
+                    <td data-label="{{ __('Pending finance confirmation') }}">@forelse($totals as $currency => $total)<span class="d-block text-warning">{{ number_format($total['pending_confirmation'],2) }} {{ $currency }}</span>@empty — @endforelse</td>
+                    <td data-label="{{ __('Official outstanding') }}">@forelse($totals as $currency => $total)<strong class="d-block">{{ number_format($total['outstanding'],2) }} {{ $currency }}</strong>@empty — @endforelse</td>
+                    <td data-label="{{ __('Available to collect') }}">@forelse($totals as $currency => $total)<strong class="d-block text-info">{{ number_format($total['available_to_collect'],2) }} {{ $currency }}</strong>@empty — @endforelse</td>
                     <td data-label="{{ __('Status') }}"><span class="badge cf-status-badge badge-{{ $hasOutstanding ? 'warning' : ($hasReceivables ? 'success' : 'light') }}">{{ $hasOutstanding ? __('Outstanding') : ($hasReceivables ? __('Paid') : __('No receivables')) }}</span></td>
                     <td data-label=""><a class="btn btn-sm {{ $profileCanCollect && $hasOutstanding ? 'cf-primary-action' : 'btn-outline-primary' }}" href="{{ route('central-finance.student-collection.show', $profile->id) }}">{{ $profileCanCollect && $hasOutstanding ? __('Collect') : __('View') }}</a></td>
                 </tr>

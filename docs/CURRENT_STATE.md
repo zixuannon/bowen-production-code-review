@@ -1,5 +1,15 @@
 # eSchool Current State
 
+## Front Desk → Head Finance collection lifecycle clarity — local candidate
+
+- Baseline: `7edca8210d79b531c1810037e5f86faf47ec4ebd`; no Production data, deployment, cache, or service state was changed.
+- A submitted or held Front Desk collection now reserves the remaining receivable amount under the same locked Central Finance transaction.  An exact retry is idempotent; a second declaration that would exceed `amount_due - canonical amount_paid - submitted/held reservations` is rejected before any canonical Payment, Receipt, Ledger, or Fund Account effect.
+- Student collection views now distinguish **Confirmed paid**, **Pending finance confirmation**, **Official outstanding**, and **Available to collect**.  Pending is deliberately not treated as paid or as a Finance-report total.
+- Head Finance review locks a Bank Transfer to the Front Desk-declared eligible Bank Fund Account.  The reviewer supplies only the mandatory confirmation reason, or holds/rejects if the evidence/account is invalid; Cash remains confirmation-through-handover only.  Collection lists/receipts show collected, submitted, and (after confirmation) Finance-confirmed timestamps in Asia/Yangon.
+- Targeted lifecycle, account V2, workspace, transfer, and Blade compilation regression passes: 77 tests / 510 assertions.  The only output warnings are existing PHPUnit XML and PHP 8.5 PDO deprecations.  Production rollout is a separate Human Gate and must use a fresh verified backup plus authenticated read-only QA before any confirmation is submitted.
+
+Last updated: 2026-09-28
+
 ## QA staff onboarding visibility + multi-role selection — Production deployed
 
 - Exact immutable Production release: `35652d8e2ae7d996f72aa4bfaed8043bae310094`, a descendant of the preceding active release `2c61a70ca0c474199e58c644bd9173ae7438a42c`.
