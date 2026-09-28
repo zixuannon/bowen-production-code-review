@@ -48,7 +48,7 @@ final class CentralFinanceReceiptViewModelFactory
                 // never the generic SaaS placeholder.  Keep the fallback in
                 // the view model too, so a stale persistent-storage logo
                 // fails safely in the browser/thermal-print renderer.
-                'logo_url' => $rawLogo === '' ? $logoFallbackUrl : $this->logoUrl($rawLogo),
+                'logo_url' => $this->logoUrl($rawLogo, $logoFallbackUrl),
                 'logo_fallback_url' => $logoFallbackUrl,
             ],
             receipt: [
@@ -92,22 +92,33 @@ final class CentralFinanceReceiptViewModelFactory
         );
     }
 
-    private function logoUrl(string $path): string
+    private function logoUrl(string $path, ?string $fallback = null): string
     {
-        if ($path === '') return asset('assets/vertical-logo.svg');
+        $fallback ??= asset('assets/vertical-logo.svg');
+        if ($path === '') return $fallback;
         // Keep this contract aligned with the authenticated school header:
         // relative public-disk values become /storage URLs, while already
         // public storage paths and external URLs are never rewritten.
-        if (preg_match('#^https?://#i', $path) || str_starts_with($path, '/')) return $path;
-        if (str_starts_with($path, 'storage/')) return url('/'.$path);
+        if (preg_match('#^https?://#i', $path)) return $path;
+        if (str_starts_with($path, '/') && ! str_starts_with($path, '/storage/')) return $path;
+
+        $relativePath = str_starts_with($path, '/storage/')
+            ? substr($path, strlen('/storage/'))
+            : (str_starts_with($path, 'storage/') ? substr($path, strlen('storage/')) : $path);
+
+        // A legacy School row can retain a storage path after the shared
+        // branding object has been removed. Resolve that stale reference on
+        // the server rather than relying on inline JavaScript (which a CSP
+        // may block) to replace a successfully rendered placeholder image.
+        if (! Storage::disk('public')->exists($relativePath)) return $fallback;
 
         // Receipts can be opened or printed outside the normal dashboard
         // navigation. Anchor a storage-relative School logo to the configured
         // application origin and use the file's stable modification time to
         // invalidate a stale static-image response after a release switch.
-        $url = url(Storage::url($path));
+        $url = url(Storage::url($relativePath));
         try {
-            $version = Storage::disk('public')->lastModified($path);
+            $version = Storage::disk('public')->lastModified($relativePath);
             return $version > 0 ? $url.'?v='.$version : $url;
         } catch (\Throwable) {
             return $url;

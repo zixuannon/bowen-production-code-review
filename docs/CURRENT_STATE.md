@@ -3,8 +3,8 @@
 ## Central Finance receipt branding fallback — local candidate
 
 - Baseline: immutable Production release `3df57abe49cdd6a75cdf223a707d34b678214c2d`. This presentation-only candidate keeps a School's uploaded logo when it is available and safely falls back to the Bowen School master Logo when a Bowen School has no logo or its persisted logo cannot load.
-- The canonical Bowen set is `MMBOWEN01–04`; external Schools retain the existing eSchool fallback. The receipt never uses the generic SaaS placeholder for a Bowen School.
-- No Finance record, School record, storage object, permission, configuration, or database schema is changed. Targeted branding/receipt checks and Blade compilation pass: 11 tests / 35 assertions (only pre-existing PHPUnit/PHP 8.5 deprecation notices).
+- The canonical Bowen set is `MMBOWEN01–04`; external Schools retain the existing eSchool fallback. The receipt never uses the generic SaaS placeholder for a Bowen School, including where a legacy `schools.logo` value remains but the referenced shared-storage file is gone.
+- No Finance record, School record, storage object, permission, configuration, or database schema is changed. Targeted branding/receipt checks and Blade compilation pass: 12 tests / 36 assertions (only pre-existing PHPUnit/PHP 8.5 deprecation notices).
 - Production rollout is a separate Human Gate and requires an immutable release plus read-only receipt browser/thermal-print QA.
 
 Last updated: 2026-09-28

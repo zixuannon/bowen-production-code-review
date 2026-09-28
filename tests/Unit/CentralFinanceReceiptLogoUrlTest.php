@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\CentralFinanceReceiptViewModelFactory;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 final class CentralFinanceReceiptLogoUrlTest extends TestCase
@@ -10,6 +11,9 @@ final class CentralFinanceReceiptLogoUrlTest extends TestCase
     /** @dataProvider logoPaths */
     public function test_receipt_logo_url_uses_the_same_safe_storage_contract(string $path, string $expected): void
     {
+        Storage::fake('public');
+        Storage::disk('public')->put('school/zixuan.jpg', 'image');
+
         $method = new \ReflectionMethod(CentralFinanceReceiptViewModelFactory::class, 'logoUrl');
         $url = $method->invoke(app(CentralFinanceReceiptViewModelFactory::class), $path);
 
@@ -38,5 +42,16 @@ final class CentralFinanceReceiptLogoUrlTest extends TestCase
             'external-url' => ['https://cdn.example.test/zixuan.jpg', 'https://cdn.example.test/zixuan.jpg'],
             'fallback-only-without-a-logo' => ['', '/assets/vertical-logo.svg'],
         ];
+    }
+
+    public function test_missing_persisted_school_logo_uses_the_supplied_bowen_fallback_before_rendering(): void
+    {
+        Storage::fake('public');
+        $method = new \ReflectionMethod(CentralFinanceReceiptViewModelFactory::class, 'logoUrl');
+        $fallback = asset('assets/bowen-school/bowen-logo.jpg');
+
+        $url = $method->invoke(app(CentralFinanceReceiptViewModelFactory::class), 'super-admin/school/removed-logo.jpg', $fallback);
+
+        $this->assertSame($fallback, $url);
     }
 }
