@@ -76,6 +76,9 @@ final class ProductionMigrationGuard
             'database/migrations/2026_09_18_000002_create_central_finance_pre_go_live_reset_manifests.php',
             'database/migrations/2026_09_18_000003_create_central_finance_content_translations.php',
         ],
+        'finance:migrate-payment-corrections' => [
+            'database/migrations/2026_09_28_000001_add_payment_correction_fields_and_reversals.php',
+        ],
     ];
 
     /**

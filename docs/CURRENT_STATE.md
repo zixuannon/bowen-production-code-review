@@ -28,7 +28,7 @@
   payment lifecycle coverage passed: 26 tests / 155 assertions; localization
   contract passed: 8 tests / 1,885 assertions; Blade templates cached and
   cleared successfully; `git diff --check` passed.  The full local suite now
-  passes: 945 tests / 7,313 assertions / 0 failures / 0 errors / 34 skips.
+  passes: 949 tests / 7,330 assertions / 0 failures / 0 errors / 34 skips.
   The previous `school_testing` failure was a stale local MySQL service plus
   sandbox-local-network restriction, not an application or Production grant.
   `artisan test` drops the parent memory override when it starts its bare-PHP
@@ -37,7 +37,10 @@
   aligned with the deployed Pending Collection lifecycle without weakening
   its authorization or direct-posting retirement guarantees.
 - This candidate includes one additive **central-only** migration for refund
-  fields and payment reversals.  Production rollout remains a Human Gate and
+  fields and payment reversals.  Its exact-path `finance:migrate-payment-corrections`
+  runner verifies the Central schema and migration registry before it writes,
+  applies only that one migration, verifies the resulting constraints, and is
+  idempotent on a repeat run. Production rollout remains a Human Gate and
   requires migration preflight, verified backup, immutable release, and
   authenticated read-only QA before any Refund/Reversal is submitted.
 
