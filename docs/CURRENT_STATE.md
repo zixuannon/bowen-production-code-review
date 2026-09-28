@@ -2,7 +2,7 @@
 
 ## Finance Layer 4 — Date Contract + Official Finance Go-Live Foundation — local candidate
 
-- Baseline: `1ce52fca9de5ea6831a774a38e2edb8ab4de0d2`; branch
+- Baseline: `1ce52fca9de5ea683a1a774a38e2edb8ab4de0d2`; branch
   `codex/finance-layer4-date-go-live-foundation`.  This local candidate has
   not changed Production code, data, configuration, cache, or services.
 - Central Finance now uses one strict, non-future Yangon `YYYY-MM-DD`
@@ -17,6 +17,10 @@
   the recorded timestamp and immutable ID.  The UI distinguishes selected
   period movement from the current account-level physical balance; no new
   reporting, chart, month, year, or semester feature was introduced.
+- The Group Import V3 preview table now shows the normalized `Transaction
+  Date` alongside each row, so the business date validated during preview is
+  visible before confirmation. This is presentation-only; preview remains
+  zero-write and the posting path is unchanged.
 - Group-owned Fund Account onboarding records holder/custodian metadata and
   audited account-level opening balance dates.  The new
   `docs/finance/OFFICIAL_FINANCE_GO_LIVE_CHECKLIST.md` documents the exact
@@ -31,6 +35,9 @@
   a separate Human Gate and must use the approved immutable-release, backup,
   migration-preflight and read-only QA process. This candidate has no schema
   migration and does not create a Fund Account or other financial record.
+- Local browser gate: desktop and 390px verified Import V3, Income, Expense,
+  overview, refund/reversal, 80mm receipt/reprint, and account-statement date
+  display with disposable local records only. Production remained read-only.
 
 Last updated: 2026-09-28
 

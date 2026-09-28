@@ -62,4 +62,12 @@ final class CentralFinanceCollectionLifecycleViewTest extends TestCase
         $this->assertStringContainsString('Receipt Issued At', $document);
         $this->assertStringContainsString('does not create another payment when reprinted', $document);
     }
+
+    public function test_group_import_preview_exposes_the_transaction_date_that_will_drive_posting(): void
+    {
+        $view = file_get_contents(resource_path('views/central-finance/group-import/index.blade.php'));
+
+        $this->assertStringContainsString("<th>{{ __('Transaction Date') }}</th>", $view);
+        $this->assertStringContainsString("data-label=\"{{ __('Transaction Date') }}\">{{ \$row->normalized_data['transaction_date'] ?? '—' }}", $view);
+    }
 }

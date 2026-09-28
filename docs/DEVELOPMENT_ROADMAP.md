@@ -11,7 +11,9 @@
   current physical account balance is distinct from filtered period movement.
 - [x] Official Fund Account onboarding/checklist and QA/Test readiness
   exclusion; no fake account, balance, allocation, or Finance transaction.
-- [x] Local targeted and complete regression.
+- [x] Local targeted and complete regression, plus Desktop/390px browser
+  verification of the date controls, V3 preview, receipt, statement, and
+  overview.
 - [ ] Production deployment remains a separate Human Gate.
 
 ## Central Chart of Accounts + Group Finance Import V3 — local candidate
