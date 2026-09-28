@@ -38,6 +38,8 @@ final class CentralFinanceDataIsolationService
         'import_batch' => ['table' => 'central_finance_import_batches', 'school' => 'school_id'],
         'group_import_batch' => ['table' => 'central_finance_group_import_batches', 'school' => null],
         'payment' => ['table' => 'central_finance_payments', 'school' => 'school_id'],
+        'payment_refund' => ['table' => 'central_finance_payment_refunds', 'school' => 'school_id'],
+        'payment_reversal' => ['table' => 'central_finance_payment_reversals', 'school' => 'school_id'],
         'receipt' => ['table' => 'central_finance_receipts', 'school' => 'school_id'],
         'ledger' => ['table' => 'central_finance_ledger_entries', 'school' => 'school_id'],
         'expense' => ['table' => 'central_finance_expenses', 'school' => 'school_id'],

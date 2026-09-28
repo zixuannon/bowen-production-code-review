@@ -1255,11 +1255,14 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/receivables/{receivable}/adjustments', [CentralFinanceWorkspaceController::class, 'adjustReceivable'])->name('central-finance.receivables.adjustments.store');
     Route::get('central-finance/student-ledger', [CentralFinanceWorkspaceController::class, 'studentLedger'])->name('central-finance.student-ledger');
     Route::get('central-finance/payments', [CentralFinanceWorkspaceController::class, 'paymentHistory'])->name('central-finance.payments.index');
+    Route::get('central-finance/payments/{payment}', [CentralFinanceWorkspaceController::class, 'paymentDetail'])->name('central-finance.payments.show');
     Route::get('central-finance/payments/export/{format}', [CentralFinanceWorkspaceController::class, 'exportPayments'])->whereIn('format', ['csv','xlsx'])->name('central-finance.payments.export');
     Route::get('central-finance/payments/{payment}/receipt', [CentralFinanceWorkspaceController::class, 'receipt'])->name('central-finance.payments.receipt');
     Route::get('central-finance/payments/{payment}/refunds/{refund}', [CentralFinanceWorkspaceController::class, 'refundDetail'])->name('central-finance.payments.refunds.show');
+    Route::get('central-finance/payments/{payment}/reversals/{reversal}', [CentralFinanceWorkspaceController::class, 'reversalDetail'])->name('central-finance.payments.reversals.show');
     Route::post('central-finance/payments', [CentralFinanceWorkspaceController::class, 'collect'])->name('central-finance.payments.store');
     Route::post('central-finance/payments/{payment}/refund', [CentralFinanceWorkspaceController::class, 'refundPayment'])->name('central-finance.payments.refund');
+    Route::post('central-finance/payments/{payment}/reversal', [CentralFinanceWorkspaceController::class, 'reversePayment'])->name('central-finance.payments.reversal');
     Route::get('central-finance/payment-import/template', [CentralFinanceWorkspaceController::class, 'paymentImportTemplate'])->name('central-finance.payment-import.template');
     Route::post('central-finance/payment-import/preview', [CentralFinanceWorkspaceController::class, 'previewPaymentImport'])->name('central-finance.payment-import.preview');
     Route::post('central-finance/payment-import/{batch}/confirm', [CentralFinanceWorkspaceController::class, 'confirmPaymentImport'])->name('central-finance.payment-import.confirm');

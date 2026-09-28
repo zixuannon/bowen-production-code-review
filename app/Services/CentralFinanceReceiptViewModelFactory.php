@@ -14,7 +14,7 @@ final class CentralFinanceReceiptViewModelFactory
     public function make(CentralFinancePayment $payment, School $school): CentralFinanceReceiptViewModel
     {
         $payment->loadMissing([
-            'receipt', 'refunds.fundAccount', 'receivable.studentProfile',
+            'receipt', 'refunds.fundAccount', 'refunds.refundedBy', 'reversal.fundAccount', 'reversal.reversedBy', 'receivable.studentProfile',
             'receivable.payments.refunds', 'fundAccount', 'receivedBy',
         ]);
 
@@ -88,7 +88,19 @@ final class CentralFinanceReceiptViewModelFactory
                 'amount' => (float) $refund->amount,
                 'currency' => $refund->currency,
                 'reason' => $refund->reason,
+                'method' => $refund->refund_method,
+                'effective_date' => $refund->effective_date,
+                'actor' => $refund->refundedBy?->full_name,
             ])->values()->all(),
+            reversal: $payment->reversal ? [
+                'id' => $payment->reversal->id,
+                'date' => $payment->reversal->effective_date,
+                'reference' => $payment->reversal->reversal_reference ?: '—',
+                'amount' => (float) $payment->reversal->amount,
+                'currency' => $payment->reversal->currency,
+                'reason' => $payment->reversal->reason,
+                'actor' => $payment->reversal->reversedBy?->full_name,
+            ] : null,
         );
     }
 

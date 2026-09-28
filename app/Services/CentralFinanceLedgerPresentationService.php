@@ -114,7 +114,8 @@ final class CentralFinanceLedgerPresentationService
     {
         return match ($documentType) {
             'central_finance_payment', 'central_payment' => __('Student Payment'),
-            'central_finance_payment_refund', 'central_payment_refund' => __('Payment Refund / Reversal'),
+            'central_finance_payment_refund', 'central_payment_refund' => __('Payment Refund'),
+            'central_finance_payment_reversal', 'central_payment_reversal' => __('Payment Reversal'),
             'central_finance_expense', 'expense' => __('Expense'),
             'central_finance_other_income', 'other_income' => __('Income'),
             'central_finance_reimbursement', 'reimbursement' => __('Reimbursement'),
@@ -175,7 +176,8 @@ final class CentralFinanceLedgerPresentationService
     {
         return match ($sourceType) {
             'central_payment' => ['label' => __('Student Payment'), 'query' => fn (string $id) => CentralFinancePayment::on('mysql')->where('payment_uuid', $id)->first()],
-            'central_payment_refund' => ['label' => __('Payment Refund / Reversal'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
+            'central_payment_refund' => ['label' => __('Payment Refund'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
+            'central_payment_reversal' => ['label' => __('Payment Reversal'), 'query' => fn (string $id) => \App\Models\CentralFinancePaymentReversal::on('mysql')->where('reversal_uuid', $id)->first()],
             'central_expense', 'central_expense_void' => ['label' => $sourceType === 'central_expense_void' ? __('Expense Reversal') : __('Expense'), 'query' => fn (string $id) => CentralFinanceExpense::on('mysql')->withTrashed()->where('expense_uuid', $id)->first()],
             'central_other_income', 'central_other_income_void' => ['label' => $sourceType === 'central_other_income_void' ? __('Income Reversal') : __('Income'), 'query' => fn (string $id) => CentralFinanceOtherIncome::on('mysql')->withTrashed()->where('income_uuid', $id)->first()],
             'central_internal_transfer', 'central_internal_transfer_reversal' => ['label' => $sourceType === 'central_internal_transfer_reversal' ? __('Internal Transfer Reversal') : __('Internal Transfer'), 'query' => fn (string $id) => CentralFinanceInternalTransfer::on('mysql')->with(['sourceAccount', 'destinationAccount'])->where('transfer_uuid', $id)->first()],
@@ -201,7 +203,7 @@ final class CentralFinanceLedgerPresentationService
     {
         if ($model === null) return 'unresolved';
         if (method_exists($model, 'trashed') && $model->trashed()) return 'reversed';
-        if (str_ends_with($sourceType, '_void') || $sourceType === 'central_payment_refund') return 'reversal';
+        if (str_ends_with($sourceType, '_void') || in_array($sourceType, ['central_payment_refund', 'central_payment_reversal'], true)) return 'reversal';
         return (string) ($model->status ?? 'posted');
     }
 

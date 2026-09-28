@@ -32,6 +32,7 @@ use App\Services\CentralFinanceInternalTransferService;
 use App\Services\CentralFinanceOperatingDocumentService;
 use App\Services\CentralFinancePaymentService;
 use App\Services\CentralFinancePaymentRefundService;
+use App\Services\CentralFinancePaymentReversalService;
 use App\Services\CentralFinanceReceivableAdjustmentService;
 use App\Services\CentralFinancePaymentImportService;
 use App\Services\CentralFinanceExpenseImportService;
@@ -76,6 +77,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinanceFundAccountScopeService $accountScopes,
         private readonly CentralFinancePaymentService $payments,
         private readonly CentralFinancePaymentRefundService $refunds,
+        private readonly CentralFinancePaymentReversalService $reversals,
         private readonly CentralFinanceReceivableAdjustmentService $receivableAdjustments,
         private readonly CentralFinancePaymentImportService $paymentImports,
         private readonly CentralFinanceExpenseImportService $expenseImports,
@@ -265,12 +267,41 @@ final class CentralFinanceWorkspaceController extends Controller
         return view('central-finance.receipt', compact('actor', 'school', 'document', 'receipt', 'audits'));
     }
 
+    /** Immutable payment detail is the only correction-action surface. */
+    public function paymentDetail(int $payment): View
+    {
+        [$actor, $school, $document, $receipt, $audits] = $this->receiptData($payment);
+        $document->loadMissing('refunds.refundedBy', 'reversal.reversedBy');
+        $canCorrect = false;
+        try {
+            [, $operatingSchool] = $this->currentCorrectionContext();
+            $canCorrect = (int) $operatingSchool->id === (int) $school->id
+                && $this->dataIsolation->isWorkflowWritable('payment', (int) $document->id)
+                && $this->cutovers->allowsCentralWrites((int) $school->id);
+        } catch (AuthorizationException) {
+            // Read-only detail remains available to the existing authorized scope.
+        }
+        $refundTotal = (float) $document->refunds->sum('amount');
+        $remainingRefundable = $document->reversal ? 0.0 : max(0, (float) $document->amount - $refundTotal);
+        $refundToken = 'ui-payment-refund-'.Str::uuid();
+        $reversalToken = 'ui-payment-reversal-'.Str::uuid();
+        return view('central-finance.payment-detail', compact('actor', 'school', 'document', 'receipt', 'audits', 'canCorrect', 'refundTotal', 'remainingRefundable', 'refundToken', 'reversalToken'));
+    }
+
     public function refundDetail(int $payment, int $refund): View
     {
         [$actor, $school, $document, $receipt, $audits] = $this->receiptData($payment);
         $refundDocument = $document->refunds->firstWhere('id', $refund);
         abort_unless($refundDocument !== null, 404);
         return view('central-finance.payment-refund-detail', compact('actor', 'school', 'document', 'receipt', 'refundDocument', 'audits'));
+    }
+
+    public function reversalDetail(int $payment, int $reversal): View
+    {
+        [$actor, $school, $document, $receipt, $audits] = $this->receiptData($payment);
+        $reversalDocument = $document->reversal;
+        abort_unless($reversalDocument !== null && (int) $reversalDocument->id === $reversal, 404);
+        return view('central-finance.payment-reversal-detail', compact('actor', 'school', 'document', 'receipt', 'reversalDocument', 'audits'));
     }
 
     public function receivableDetail(int $receivable): View
@@ -599,13 +630,21 @@ final class CentralFinanceWorkspaceController extends Controller
 
     public function refundPayment(Request $request, int $payment): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
-        $data = $request->validate(['fund_account_id' => ['required', 'integer'], 'amount' => ['required', 'numeric', 'gt:0'], 'reason' => ['required', 'string', 'max:2000'], 'refund_reference' => ['nullable', 'string', 'max:100']]);
+        [$actor, $school] = $this->currentCorrectionContext();
+        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0'], 'refund_method' => ['required', 'string', 'max:40'], 'effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'], 'refund_reference' => ['nullable', 'string', 'max:100'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-payment-refund-[A-Za-z0-9_.:-]{2,100}$/']]);
         $document = CentralFinancePayment::on('mysql')->where('school_id', $school->id)->findOrFail($payment);
-        $account = CentralFinanceFundAccount::on('mysql')->findOrFail($data['fund_account_id']);
-        $this->assertProductionSubjects([['payment', (int) $document->id], ['fund_account', (int) $account->id]]);
-        $this->refunds->refund($actor, $document->id, $account, (float) $data['amount'], $data['reason'], CarbonImmutable::now(), $this->workspace->idempotencyReference('ui-payment-refund'), $data['refund_reference'] ?? null);
+        $account = CentralFinanceFundAccount::on('mysql')->findOrFail($document->fund_account_id);
+        $this->refunds->refund($actor, $document->id, $account, (float) $data['amount'], $data['refund_method'], CarbonImmutable::parse($data['effective_date'], 'Asia/Yangon')->startOfDay(), $data['reason'], CarbonImmutable::now(), $data['idempotency_key'], $data['refund_reference'] ?? null);
         return back()->with('success', __('Central payment refund recorded.'));
+    }
+
+    public function reversePayment(Request $request, int $payment): RedirectResponse
+    {
+        [$actor, $school] = $this->currentCorrectionContext();
+        $data = $request->validate(['effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'], 'reversal_reference' => ['nullable', 'string', 'max:100'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-payment-reversal-[A-Za-z0-9_.:-]{2,100}$/']]);
+        $document = CentralFinancePayment::on('mysql')->where('school_id', $school->id)->findOrFail($payment);
+        $this->reversals->reverse($actor, $document->id, CarbonImmutable::parse($data['effective_date'], 'Asia/Yangon')->startOfDay(), $data['reason'], CarbonImmutable::now(), $data['idempotency_key'], $data['reversal_reference'] ?? null);
+        return back()->with('success', __('Central payment reversal recorded.'));
     }
 
     public function adjustReceivable(Request $request, int $receivable): RedirectResponse
@@ -881,6 +920,27 @@ final class CentralFinanceWorkspaceController extends Controller
         return [$actor, $school];
     }
 
+    /**
+     * Payment corrections are Head-Finance-only and may use a trusted QA
+     * School selection. This is intentionally narrower than normal operating
+     * context: no School staff or request-controlled QA toggle gains access.
+     *
+     * @return array{0: CentralFinanceUser, 1: \App\Models\School}
+     */
+    private function currentCorrectionContext(): array
+    {
+        $actor = $this->actor();
+        $this->workspace->assertHeadFinance($actor);
+        $school = $this->workspace->currentSchool($actor, true);
+        if ($school === null) {
+            throw new AuthorizationException('Select an authorized School before correcting a Central payment.');
+        }
+        $school = $this->workspace->assertCanOperateSchool($actor, (int) $school->id);
+        $this->dataIsolation->assertWorkflowWritable('school', (int) $school->id);
+
+        return [$actor, $school];
+    }
+
     /** @return array{0: CentralFinanceUser, 1: CentralFinanceFundAccount} */
     private function currentGroupAccountContext(int $fundAccountId): array
     {
@@ -1122,7 +1182,11 @@ final class CentralFinanceWorkspaceController extends Controller
         if ($profiles instanceof LengthAwarePaginator) {
             $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         }
-        $payments=$this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt','refunds','receivable.studentProfile','fundAccount'])->latest('paid_at')->paginate(25, ['*'], 'payments_page')->withQueryString();
+        $paymentsQuery = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt', 'refunds', 'reversal', 'receivable.studentProfile', 'fundAccount']);
+        if ($page === 'payments' && $request->string('view')->toString() === 'refunds') {
+            $paymentsQuery->where(fn ($query) => $query->whereHas('refunds')->orWhereHas('reversal'));
+        }
+        $payments=$paymentsQuery->latest('paid_at')->paginate(25, ['*'], 'payments_page')->withQueryString();
         $paymentProfileQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
         if ($paymentProfileQuery) {
             $this->dataIsolation->apply($paymentProfileQuery, 'student_profile');
@@ -1526,7 +1590,7 @@ final class CentralFinanceWorkspaceController extends Controller
         // exact QA School receipt, but still cannot use a guessed ID to cross
         // a School boundary.
         $document = CentralFinancePayment::on('mysql')->with([
-            'receipt', 'refunds.fundAccount', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
+            'receipt', 'refunds.fundAccount', 'refunds.refundedBy', 'reversal.fundAccount', 'reversal.reversedBy', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
         ])->findOrFail($payment);
         $school = $this->workspace->assertCanViewSchool($actor, (int) $document->school_id);
         // The scoped workspace collection intentionally selects only identity
@@ -1543,6 +1607,9 @@ final class CentralFinanceWorkspaceController extends Controller
             ->where(function ($query) use ($document): void {
                 $query->where(fn ($paymentAudit) => $paymentAudit->where('document_type', 'central_payment')->where('document_id', $document->id))
                     ->orWhere(fn ($refundAudit) => $refundAudit->where('document_type', 'central_payment_refund')->whereIn('document_id', $document->refunds->pluck('id')));
+                if ($document->reversal) {
+                    $query->orWhere(fn ($reversalAudit) => $reversalAudit->where('document_type', 'central_payment_reversal')->where('document_id', $document->reversal->id));
+                }
             })->latest()->get();
         return [$actor, $school, $document, $this->receiptViewModels->make($document, $school), $audits];
     }

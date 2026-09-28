@@ -16,6 +16,7 @@ final readonly class CentralFinanceReceiptViewModel
      * @param array<string,mixed> $payment
      * @param array<string,mixed> $fundAccount
      * @param list<array<string,mixed>> $refunds
+     * @param array<string,mixed>|null $reversal
      */
     public function __construct(
         public int $paymentId,
@@ -25,5 +26,6 @@ final readonly class CentralFinanceReceiptViewModel
         public array $payment,
         public array $fundAccount,
         public array $refunds,
+        public ?array $reversal,
     ) {}
 }

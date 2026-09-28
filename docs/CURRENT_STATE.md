@@ -1,5 +1,43 @@
 # eSchool Current State
 
+## Finance Phase 2A — Refund / Payment Reversal — local candidate
+
+- Read-only release inspection confirmed the active immutable Production
+  release is `6b583ee7a9df803b0a711346420af9527e35c2c0`.  This candidate is a
+  descendant of that exact release; nothing in this phase has been deployed or
+  written to Production.
+- Refunds remain immutable, partial-or-full correction documents bound to the
+  original active Fund Account and currency.  They now require a Head Finance
+  actor, a stable submitted form token, method, effective date, reference
+  (when supplied), and an audit reason.  The Payment row lock plus the unique
+  idempotency key makes a retry or double-submit return the same correction,
+  never a second Ledger or balance effect.
+- Payment Reversal V1 is a separate immutable document and route.  It is
+  Head-Finance-only, full-payment-only, retains the original Payment/Receipt,
+  and appends one money-out / negative-operating-income Ledger effect on the
+  original Fund Account.  A prior Refund blocks a Reversal; a Reversal blocks
+  every later Refund; a second Reversal is rejected.
+- Payment Detail is now the only correction-action surface.  The history page
+  is read-only and shows original, refunded, reversal, remaining-refundable,
+  date, actor, reason and document links.  Dedicated Refund/Reversal
+  confirmation text replaces the ambiguous generic confirmation wording.
+- Trusted Zixuan `qa_test` classification is inherited to Refund/Reversal
+  documents and their Ledger effects; official totals remain filtered.  No
+  QA toggle or extra authority is exposed to School staff.
+- Targeted Finance regression passed: 70 tests / 435 assertions; dedicated
+  payment lifecycle coverage passed: 26 tests / 155 assertions; localization
+  contract passed: 8 tests / 1,885 assertions; Blade templates cached and
+  cleared successfully; `git diff --check` passed.  The aggregate suite is
+  environment-blocked by the existing `school_testing` permission failure
+  (10 `FeeModelAccessorTest` failures) and its established 128 MB
+  subprocess limit, not by this candidate.
+- This candidate includes one additive **central-only** migration for refund
+  fields and payment reversals.  Production rollout remains a Human Gate and
+  requires migration preflight, verified backup, immutable release, and
+  authenticated read-only QA before any Refund/Reversal is submitted.
+
+Last updated: 2026-09-28
+
 ## Kindergarten Gate A canonical-code closure — local candidate
 
 - Baseline: immutable Production release

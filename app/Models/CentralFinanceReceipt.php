@@ -11,4 +11,5 @@ class CentralFinanceReceipt extends Model {
     protected static function booted(): void { static::updating(static fn(): never => throw new RuntimeException('Central Finance receipts are immutable.')); static::deleting(static fn(): never => throw new RuntimeException('Central Finance receipts are immutable.')); }
     public function payment(): BelongsTo { return $this->belongsTo(CentralFinancePayment::class, 'payment_id'); }
     public function refunds(): HasMany { return $this->hasMany(CentralFinancePaymentRefund::class, 'original_receipt_id'); }
+    public function reversal(): HasOne { return $this->hasOne(CentralFinancePaymentReversal::class, 'original_receipt_id'); }
 }

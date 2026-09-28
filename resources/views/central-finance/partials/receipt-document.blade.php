@@ -40,9 +40,12 @@
     <div class="central-receipt__section"><p class="central-receipt__section-title">{{ __('Refund / reversal history') }}</p><dl>
         @foreach($receipt->refunds as $refund)
             <dt>{{ $refund['date']?->timezone('Asia/Yangon')->format('Y-m-d H:i') }} · {{ $refund['reference'] }}</dt>
-            <dd>{{ number_format($refund['amount'],2) }} {{ $refund['currency'] }} · {{ $refund['reason'] }}</dd>
+            <dd>{{ number_format($refund['amount'],2) }} {{ $refund['currency'] }} · {{ $refund['method'] ?: '—' }} · {{ $refund['actor'] ?: '—' }} · {{ $refund['reason'] }}</dd>
         @endforeach
     </dl></div>
+@endif
+@if($receipt->reversal)
+    <div class="central-receipt__section"><p class="central-receipt__section-title">{{ __('Payment reversal history') }}</p><dl><dt>{{ $receipt->reversal['date']?->timezone('Asia/Yangon')->format('Y-m-d') }} · {{ $receipt->reversal['reference'] }}</dt><dd>{{ number_format($receipt->reversal['amount'],2) }} {{ $receipt->reversal['currency'] }} · {{ $receipt->reversal['actor'] ?: '—' }} · {{ $receipt->reversal['reason'] }}</dd></dl></div>
 @endif
 
 @if($audits->isNotEmpty())
