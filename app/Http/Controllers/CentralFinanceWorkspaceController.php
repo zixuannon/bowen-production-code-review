@@ -1520,20 +1520,25 @@ final class CentralFinanceWorkspaceController extends Controller
     /** @return array{0:CentralFinanceUser,1:\App\Models\School,2:CentralFinancePayment,3:CentralFinanceReceiptViewModel,4:\Illuminate\Support\Collection} */
     private function receiptData(int $payment): array
     {
-        [$actor, $school] = $this->currentReadSchool();
+        $actor = $this->actor();
+        // Resolve the owning School from the canonical Payment rather than
+        // from an Official-only account list.  A trusted actor may open an
+        // exact QA School receipt, but still cannot use a guessed ID to cross
+        // a School boundary.
+        $document = CentralFinancePayment::on('mysql')->with([
+            'receipt', 'refunds.fundAccount', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
+        ])->findOrFail($payment);
+        $school = $this->workspace->assertCanViewSchool($actor, (int) $document->school_id);
         // The scoped workspace collection intentionally selects only identity
         // columns (id/name/code). A receipt also needs non-financial School
         // presentation fields, so rehydrate this *already-authorized* School
         // from the trusted central registry rather than weakening the scope
         // query or falling back to a generic logo.
         $school = School::on('mysql')->findOrFail($school->id);
-        $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor)
+            || $this->dataIsolation->isQaTestSchool((int) $school->id);
         $accounts = $this->workspace->readableAccounts($actor, $school->id, $includeQaTest);
-        $document = CentralFinancePayment::on('mysql')->with([
-            'receipt', 'refunds.fundAccount', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
-        ])->where('school_id', $school->id)
-            ->whereIn('fund_account_id', $accounts->pluck('id'))
-            ->findOrFail($payment);
+        abort_unless($accounts->pluck('id')->contains((int) $document->fund_account_id), 404);
         $audits = CentralFinanceDocumentAudit::on('mysql')->where('school_id', $school->id)
             ->where(function ($query) use ($document): void {
                 $query->where(fn ($paymentAudit) => $paymentAudit->where('document_type', 'central_payment')->where('document_id', $document->id))

@@ -1,5 +1,15 @@
 # eSchool Current State
 
+## Collection receipt access + direct collection retirement — local candidate
+
+- Baseline: immutable Production release `30374c387a2e1cc0837c4363c1c7ccfe10a311f1`.  This local implementation does not alter Production data, configuration, services, or the existing Zixuan QA collection records.
+- The canonical receipt route now resolves the owning School from the immutable Payment record, applies the established school-scope authorization first, then derives QA visibility from the trusted School classification.  This permits an authorized Zixuan QA user to view/print a receipt backed by a Zixuan QA Fund Account without making that account visible to Official schools or across schools.
+- The old Head Finance direct-collection endpoint is retired: normal UI now points Front Desk to pending-collection submission and Head Finance to pending review; direct GET redirects to that review queue and direct POST returns HTTP 410 before creating a Payment, Receipt, Ledger entry, or Fund Account effect.  Bank Transfer and Cash lifecycle control remains in the pending/handover → Head Finance confirmation flow.
+- No schema migration is required. Targeted lifecycle, workspace, Fund Account V2, transfer, and Blade compilation regression passes: 81 tests / 517 assertions; only existing PHPUnit XML and PHP 8.5 PDO deprecation notices remain.
+- Production rollout remains a Human Gate: require a fresh verified backup, immutable release integrity check, and authenticated read-only QA.  Do not submit or reconfirm the existing Zixuan QA fixture during deployment QA.
+
+Last updated: 2026-09-28
+
 ## Front Desk → Head Finance collection lifecycle clarity — local candidate
 
 - Baseline: `7edca8210d79b531c1810037e5f86faf47ec4ebd`; no Production data, deployment, cache, or service state was changed.

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\FinanceGroupTenantUnavailableException;
-use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinancePayment;
 use App\Models\CentralFinancePendingCollection;
 use App\Models\CentralFinanceReceivable;
@@ -12,11 +11,9 @@ use App\Models\CentralFinanceUser;
 use App\Services\CentralFinanceCurrencySummaryService;
 use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceOptionalFeeAssignmentService;
-use App\Services\CentralFinancePaymentService;
 use App\Services\CentralFinanceReceiptViewModelFactory;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceWorkspaceService;
-use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -27,18 +24,15 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
- * Student-first collection flow.  It deliberately delegates every money
- * mutation to CentralFinancePaymentService, which owns canonical receipt and
- * ledger posting semantics.
+ * Student-first collection read model. Front Desk collection declarations
+ * and Head Finance confirmations have their own explicit lifecycle routes.
  */
 final class CentralFinanceStudentCollectionController extends Controller
 {
-    private const ATTEMPTS_SESSION_KEY = 'central_finance_student_collection_attempts';
     private const OPTIONAL_ATTEMPTS_SESSION_KEY = 'central_finance_student_optional_item_attempts';
 
     public function __construct(
         private readonly CentralFinanceWorkspaceService $workspace,
-        private readonly CentralFinancePaymentService $payments,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
         private readonly CentralFinanceCurrencySummaryService $currencySummaries,
         private readonly CentralFinanceReceiptViewModelFactory $receiptViewModels,
@@ -137,49 +131,20 @@ final class CentralFinanceStudentCollectionController extends Controller
         return view('central-finance.student-collection.show', compact('school', 'profile', 'canCollect', 'canSubmitPending', 'cutoverStatus', 'schoolFinanceFacade', 'optionalItems', 'optionalAttemptUuid'));
     }
 
-    public function review(int $profile, int $receivable): View
+    /**
+     * Direct posting has been retired.  The Front Desk declares a collection
+     * first; Head Finance reviews that immutable declaration in the pending
+     * collection workspace.  Keep a safe redirect for old GET bookmarks.
+     */
+    public function review(int $profile, int $receivable): RedirectResponse
     {
-        [$actor, $school] = $this->operatingContext();
-        $profile = $this->profileForSchool($profile, $school->id);
-        $receivable = $this->collectableReceivable($receivable, $profile);
-        $attemptUuid = (string) Str::uuid();
-        $this->storeAttempt($attemptUuid, $actor, $school->id, $profile->id, $receivable->id);
-        $accounts = $this->workspace->accessibleAccountsForSchoolWorkflow($actor, $school->id)
-            ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
-        $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
-        $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
-
-        return view('central-finance.student-collection.review', compact('school', 'profile', 'receivable', 'accounts', 'attemptUuid', 'cutoverStatus', 'schoolFinanceFacade'));
+        return redirect()->route('central-finance.pending-collections.index')
+            ->with('warning', __('Direct collection posting is retired. Review the Front Desk pending collection instead.'));
     }
 
     public function collect(Request $request, int $profile, int $receivable): RedirectResponse
     {
-        [$actor, $school] = $this->operatingContext();
-        $profile = $this->profileForSchool($profile, $school->id);
-        $receivable = $this->collectableReceivable($receivable, $profile);
-        $data = $request->validate([
-            'payment_attempt_uuid' => ['required', 'uuid'],
-            'fund_account_id' => ['required', 'integer'],
-            'amount' => ['required', 'numeric', 'gt:0'],
-            'payment_method' => ['required', 'string', 'max:40'],
-            'payment_reference' => ['nullable', 'string', 'max:100'],
-            'note' => ['nullable', 'string', 'max:2000'],
-        ]);
-        $this->assertAttempt($data['payment_attempt_uuid'], $actor, $school->id, $profile->id, $receivable->id);
-        $account = CentralFinanceFundAccount::on('mysql')->findOrFail($data['fund_account_id']);
-        $result = $this->payments->collect(
-            $actor,
-            $receivable->id,
-            $account,
-            (float) $data['amount'],
-            $data['payment_method'],
-            CarbonImmutable::now(),
-            'student-collection-'.$data['payment_attempt_uuid'],
-            $data['payment_reference'] ?: null,
-            $data['note'] ?: null,
-        );
-
-        return redirect()->route('central-finance.student-collection.success', $result['payment']->id);
+        abort(410, __('Direct collection posting is retired. Submit a pending collection and let Head Finance confirm it.'));
     }
 
     public function success(int $payment): View
@@ -224,17 +189,6 @@ final class CentralFinanceStudentCollectionController extends Controller
         return [$actor, $school];
     }
 
-    /** @return array{0: CentralFinanceUser, 1: \App\Models\School} */
-    private function operatingContext(): array
-    {
-        $actor = $this->actor();
-        $school = $this->workspace->requireOperatingSchool($actor);
-        $this->dataIsolation->assertWorkflowWritable('school', (int) $school->id);
-        $this->workspace->assertHeadFinance($actor);
-        $this->cutovers->assertCentralWritesAllowed($school->id);
-        return [$actor, $school];
-    }
-
     private function actor(): CentralFinanceUser
     {
         $user = Auth::user();
@@ -249,15 +203,6 @@ final class CentralFinanceStudentCollectionController extends Controller
         $this->applySchoolRecordFilter($query, 'student_profile', $schoolId, $schoolQaTest, false);
         $this->applyStudentMetadataFilter($query, $schoolId, $schoolQaTest, false);
         return $query->findOrFail($profileId);
-    }
-
-    private function collectableReceivable(int $receivableId, CentralFinanceStudentProfile $profile): CentralFinanceReceivable
-    {
-        $query = CentralFinanceReceivable::on('mysql')->where('school_id', $profile->school_id)
-            ->where('student_profile_id', $profile->id)
-            ->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
-        $this->applySchoolRecordFilter($query, 'receivable', (int) $profile->school_id, $this->dataIsolation->isQaTestSchool((int) $profile->school_id), false);
-        return $query->findOrFail($receivableId);
     }
 
     private function profileIsWorkflowEligible(CentralFinanceStudentProfile $profile, int $schoolId): bool
@@ -353,21 +298,6 @@ final class CentralFinanceStudentCollectionController extends Controller
         }
         $this->cutovers->assertCentralWritesAllowed($school->id);
         return [$actor, $school];
-    }
-
-    private function storeAttempt(string $attemptUuid, CentralFinanceUser $actor, int $schoolId, int $profileId, int $receivableId): void
-    {
-        session()->put(self::ATTEMPTS_SESSION_KEY.'.'.$attemptUuid, compact('schoolId', 'profileId', 'receivableId') + ['actorId' => $actor->id]);
-    }
-
-    private function assertAttempt(string $attemptUuid, CentralFinanceUser $actor, int $schoolId, int $profileId, int $receivableId): void
-    {
-        $attempt = session(self::ATTEMPTS_SESSION_KEY.'.'.$attemptUuid);
-        abort_unless(is_array($attempt)
-            && (int) ($attempt['actorId'] ?? 0) === (int) $actor->id
-            && (int) ($attempt['schoolId'] ?? 0) === $schoolId
-            && (int) ($attempt['profileId'] ?? 0) === $profileId
-            && (int) ($attempt['receivableId'] ?? 0) === $receivableId, 403);
     }
 
     private function storeOptionalAttempt(string $attemptUuid, CentralFinanceUser $actor, int $schoolId, int $profileId): void

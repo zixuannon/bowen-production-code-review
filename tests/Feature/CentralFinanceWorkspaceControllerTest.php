@@ -332,8 +332,9 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         }
         $this->assertStringContainsString('currency_totals', $index);
         $this->assertStringContainsString('currency_totals', $show);
-        $this->assertStringContainsString("route('central-finance.student-collection.review'", $show);
-        $this->assertStringContainsString("route('central-finance.student-collection.collect'", $review);
+        $this->assertStringContainsString("route('central-finance.pending-collections.review'", $show);
+        $this->assertStringContainsString("route('central-finance.pending-collections.index')", $show);
+        $this->assertStringNotContainsString("route('central-finance.student-collection.review'", $show);
         $this->assertStringNotContainsString("route('central-finance.payments.store')", $index);
     }
 
