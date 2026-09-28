@@ -1,5 +1,14 @@
 # eSchool Current State
 
+## Central Finance receipt branding fallback — local candidate
+
+- Baseline: immutable Production release `3df57abe49cdd6a75cdf223a707d34b678214c2d`. This presentation-only candidate keeps a School's uploaded logo when it is available and safely falls back to the Bowen School master Logo when a Bowen School has no logo or its persisted logo cannot load.
+- The canonical Bowen set is `MMBOWEN01–04`; external Schools retain the existing eSchool fallback. The receipt never uses the generic SaaS placeholder for a Bowen School.
+- No Finance record, School record, storage object, permission, configuration, or database schema is changed. Targeted branding/receipt checks and Blade compilation pass: 11 tests / 35 assertions (only pre-existing PHPUnit/PHP 8.5 deprecation notices).
+- Production rollout is a separate Human Gate and requires an immutable release plus read-only receipt browser/thermal-print QA.
+
+Last updated: 2026-09-28
+
 ## Confirmed Finance Receipt 80mm presentation — local candidate
 
 - Baseline: immutable Production release `c40af34116ae5de2db45148f09bd7ca62d340134`. This candidate changes only the presentation and print stylesheet of the already-authorized canonical receipt; it does not change Payment, Receipt, Ledger, Fund Account, authorization, or Finance workflow data.

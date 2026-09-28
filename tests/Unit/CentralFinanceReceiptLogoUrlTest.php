@@ -21,6 +21,14 @@ final class CentralFinanceReceiptLogoUrlTest extends TestCase
         $this->assertSame($expected, parse_url($url, PHP_URL_PATH));
     }
 
+    public function test_receipt_document_uses_the_authorized_school_brand_fallback(): void
+    {
+        $document = (string) file_get_contents(resource_path('views/central-finance/partials/receipt-document.blade.php'));
+
+        $this->assertStringContainsString('$receipt->school[\'logo_fallback_url\']', $document);
+        $this->assertStringNotContainsString("asset('assets/vertical-logo.svg')", $document);
+    }
+
     public static function logoPaths(): array
     {
         return [

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CentralFinancePayment;
 use App\Models\School;
+use App\Support\SchoolBranding;
 use App\ViewModels\CentralFinanceReceiptViewModel;
 use Illuminate\Support\Facades\Storage;
 
@@ -30,6 +31,11 @@ final class CentralFinanceReceiptViewModelFactory
         $refundTotal = (float) $payment->refunds->sum('amount');
         $refundStatus = $refundTotal <= 0 ? 'none' : ($refundTotal + 0.00001 >= (float) $payment->amount ? 'refunded' : 'partial_refund');
         $rawLogo = trim((string) $school->getRawOriginal('logo'));
+        [, $logoFallback] = SchoolBranding::logoFallbacks(
+            $school->getRawOriginal('code'),
+            true
+        );
+        $logoFallbackUrl = asset($logoFallback);
 
         return new CentralFinanceReceiptViewModel(
             paymentId: $payment->id,
@@ -37,7 +43,13 @@ final class CentralFinanceReceiptViewModelFactory
                 'name' => $school->name,
                 'address' => $school->getAttribute('address') ?: null,
                 'phone' => $school->getAttribute('support_phone') ?: null,
-                'logo_url' => $this->logoUrl($rawLogo),
+                // A Central receipt is an official School document.  Bowen
+                // Schools without a custom upload must use the Bowen brand,
+                // never the generic SaaS placeholder.  Keep the fallback in
+                // the view model too, so a stale persistent-storage logo
+                // fails safely in the browser/thermal-print renderer.
+                'logo_url' => $rawLogo === '' ? $logoFallbackUrl : $this->logoUrl($rawLogo),
+                'logo_fallback_url' => $logoFallbackUrl,
             ],
             receipt: [
                 'number' => $payment->receipt?->receipt_no ?? '—',

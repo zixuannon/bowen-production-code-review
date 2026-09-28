@@ -4,7 +4,7 @@ namespace App\Support;
 
 final class SchoolBranding
 {
-    private const BOWEN_SCHOOL_CODES = ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03'];
+    private const BOWEN_SCHOOL_CODES = ['MMBOWEN01', 'MMBOWEN02', 'MMBOWEN03', 'MMBOWEN04'];
 
     /** Global Bowen administrators have no school context. */
     public static function logoFallbacks(?string $canonicalCode, bool $hasSchoolContext): array

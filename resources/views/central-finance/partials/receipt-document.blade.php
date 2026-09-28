@@ -1,5 +1,5 @@
 <div class="central-receipt__brand">
-    <img src="{{ $receipt->school['logo_url'] }}" alt="{{ $receipt->school['name'] }} logo" onerror="this.onerror=null;this.src='{{ asset('assets/vertical-logo.svg') }}';">
+    <img src="{{ $receipt->school['logo_url'] }}" alt="{{ $receipt->school['name'] }} logo" onerror="this.onerror=null;this.src='{{ $receipt->school['logo_fallback_url'] }}';">
     <div class="central-receipt__school">{{ $receipt->school['name'] }}</div>
     @if($receipt->school['address'])<div>{{ $receipt->school['address'] }}</div>@endif
     @if($receipt->school['phone'])<div>{{ $receipt->school['phone'] }}</div>@endif
