@@ -1,5 +1,22 @@
 # eSchool Current State
 
+## Kindergarten Gate A canonical-code closure — local candidate
+
+- Baseline: immutable Production release
+  `76402dc7c7f2d6ec57e69540a752b0b2c1062ee2`.
+- The trusted Gate A runtime allowlist used by Student Profile sync,
+  Receivable sync, and read-only legacy-cutover reconciliation now accepts
+  `MMBOWEN04`, not the retired Kindergarten code `SCH202620`.
+- Historical migration mappings keep the legacy code where they are needed to
+  identify already-completed historical work; they are deliberately outside
+  this runtime input change.  No School, tenant, Finance record, role, scope,
+  schema, or Production configuration is changed.
+- Characterization coverage proves `MMBOWEN04` resolves through the fixed
+  runtime scope and `SCH202620` is rejected as a runtime command input.
+  Production rollout remains a separate Human Gate.
+
+Last updated: 2026-09-28
+
 ## Central Finance receipt branding fallback — local candidate
 
 - Baseline: immutable Production release `3df57abe49cdd6a75cdf223a707d34b678214c2d`. This presentation-only candidate keeps a School's uploaded logo when it is available and safely falls back to the Bowen School master Logo when a Bowen School has no logo or its persisted logo cannot load.

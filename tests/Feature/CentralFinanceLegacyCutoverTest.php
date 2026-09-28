@@ -26,7 +26,7 @@ class CentralFinanceLegacyCutoverTest extends TestCase
             ['id'=>1,'code'=>'MMBOWEN01','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
             ['id'=>2,'code'=>'MMBOWEN02','database_name'=>$this->b,'installed'=>true,'status'=>'active'],
             ['id'=>3,'code'=>'MMBOWEN03','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
-            ['id'=>4,'code'=>'SCH202620','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
+            ['id'=>4,'code'=>'MMBOWEN04','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
             ['id'=>5,'code'=>'SCH202621','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
             ['id'=>6,'code'=>'SCH202631','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
             ['id'=>7,'code'=>'SCH202632','database_name'=>$this->a,'installed'=>true,'status'=>'active'],
@@ -58,6 +58,15 @@ class CentralFinanceLegacyCutoverTest extends TestCase
         $scope = app(CentralFinanceGateASchoolScope::class);
         $this->assertSame(['MMBOWEN01', 'MMBOWEN02'], $scope->resolve(['MMBOWEN01', 'MMBOWEN02'])->pluck('code')->all());
         $this->assertSame(CentralFinanceGateASchoolScope::ACTIVE_CODES, $scope->resolve()->pluck('code')->all());
+
+        $this->assertSame(['MMBOWEN04'], $scope->resolve(['MMBOWEN04'])->pluck('code')->all());
+        try {
+            $scope->resolve(['SCH202620']);
+            $this->fail('The retired Kindergarten code must not be accepted as a Gate A runtime input.');
+        } catch (\Illuminate\Auth\Access\AuthorizationException) {
+            // Expected: runtime commands accept current canonical codes only.
+        }
+
         $this->expectException(\Illuminate\Auth\Access\AuthorizationException::class);
         $scope->resolve(['SCH20261']);
     }

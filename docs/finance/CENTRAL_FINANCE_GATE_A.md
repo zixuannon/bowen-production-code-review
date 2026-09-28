@@ -12,7 +12,7 @@ Finance cutover.
 - Trusted-registry Student Profile reconciliation and an explicit future
   backfill/sync command.
 - A fixed active-school code allowlist: `MMBOWEN01`, `MMBOWEN02`,
-  `MMBOWEN03`, `SCH202620`, `SCH202621`, `SCH202631`, `SCH202632`.
+  `MMBOWEN03`, `MMBOWEN04`, `SCH202621`, `SCH202631`, `SCH202632`.
 - A read-only legacy-cutover inventory/reconciliation command. It has no
   execute mode and cannot write a migration manifest or Finance document.
 
