@@ -41,7 +41,18 @@
                         ->resolveTrustedSession($centralStaffContext);
                 }
                 $centralFinanceActor = $centralWorkspace->actor($centralFinanceActor);
-                $centralAccessibleSchools = $centralWorkspace->accessibleSchools($centralFinanceActor);
+                // A tenant-bound School Finance identity is already limited to
+                // its one trusted School by the session assertion, Central
+                // identity and School scope checks.  Its QA/Test School must
+                // remain visible here so an explicitly granted Front Desk can
+                // reach the narrow collection workspace.  This is navigation
+                // only: every School workflow still applies its exact QA/Test
+                // classification filter and the identity cannot select an
+                // Official or another School's data.
+                $centralAccessibleSchools = $centralWorkspace->accessibleSchools(
+                    $centralFinanceActor,
+                    $centralStaffContext !== null,
+                );
                 $hasCentralFinanceIdentity = $centralStaffContext !== null
                     ? $centralAccessibleSchools->contains('id', (int) ($centralStaffContext['school_id'] ?? 0))
                     : $centralAccessibleSchools->isNotEmpty();

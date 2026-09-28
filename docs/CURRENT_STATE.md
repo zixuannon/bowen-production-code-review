@@ -1,5 +1,23 @@
 # eSchool Current State
 
+## QA staff onboarding visibility + multi-role selection — Production deployed
+
+- Exact immutable Production release: `35652d8e2ae7d996f72aa4bfaed8043bae310094`, a descendant of the preceding active release `2c61a70ca0c474199e58c644bd9173ae7438a42c`.
+- The School Admin Finance Staff Onboarding view now uses the same classification-aware Staff query as the Staff list.  A QA/Test School sees only its own `qa_test` Staff; official Schools retain their official-only operating view.  The POST action reuses the identical eligible-Staff predicate, so a direct request cannot select a hidden Staff row.
+- Staff create/edit role controls are explicit multi-select checkboxes (`role_ids[]`); edit hydration selects every existing role instead of collapsing the Staff member to one role.  The onboarding flow continues to retain roles and does not grant Central Finance scope by itself.
+- Fresh Central + eight-tenant backup: `/root/backups/eschool_pitr_full_20260928T035801Z_a14747`; all nine compressed database dumps passed gzip and SHA-256 verification before release creation.  No migration, Finance write, role/scope grant, or business-data mutation was part of deployment.
+- Release guard, runtime-link guard, active symlink, marker and manifest all resolve to the exact commit.  PHP-FPM 8.3 received one graceful reload after configuration, route and compiled-view cache refresh.  Homepage/login returned HTTP 200 and the released frontend asset hash matched the immutable release.
+
+Last updated: 2026-09-28
+
+## QA Front Desk sidebar visibility — local candidate
+
+- A read-only Production authorization trace confirms Zixuan Front Desk `zixuany228+frontdesk@gmail.com` has an active tenant role, active Central-to-tenant identity, active Bowen Group membership, and Zixuan `can_view=1` / `can_submit_collections=1` scope.
+- The remaining defect is presentation-only: the sidebar obtained `accessibleSchools()` without QA visibility, then treated a properly scoped QA School Staff identity as absent.  The local candidate passes `includeQaTest` only for that already trusted, tenant-bound staff session.  It exposes the narrow School Finance collection navigation, but does not expose Official data, other Schools, account administration, reporting, or Head Finance operations.
+- Targeted sidebar, onboarding, and School Staff identity tests pass: 17 tests / 150 assertions.  Production deployment remains a separate Human Gate.
+
+Last updated: 2026-09-28
+
 ## Tenant-only staff identity compatibility — local candidate
 
 - Baseline: active Production commit
