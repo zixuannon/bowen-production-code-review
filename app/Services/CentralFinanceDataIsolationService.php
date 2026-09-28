@@ -174,11 +174,15 @@ final class CentralFinanceDataIsolationService
             return $query;
         }
 
-        return $query->whereIn($subjectColumn, CentralFinanceDataClassification::on('mysql')
+        $qaSubjectIds = CentralFinanceDataClassification::on('mysql')
             ->where('subject_scope', $this->tenantScope($schoolId))
             ->where('subject_type', $subjectType)
             ->where('classification', CentralFinanceDataClassification::QA_TEST)
-            ->select('subject_id'));
+            ->pluck('subject_id')
+            ->map(static fn ($subjectId): int => (int) $subjectId)
+            ->all();
+
+        return $query->whereIn($subjectColumn, $qaSubjectIds);
     }
 
     public function classification(string $subjectType, int $subjectId, string $subjectScope = 'central'): string
@@ -246,6 +250,22 @@ final class CentralFinanceDataIsolationService
         $this->assertTrustedTenantConnection($schoolId, $subjectType);
 
         return $this->applyTenantMetadata($query, $subjectType, $schoolId, $includeQaTest, $subjectColumn);
+    }
+
+    /**
+     * Apply the trusted-tenant guard and the canonical QA-School workflow
+     * visibility rule together. A permanent QA School may list only its
+     * explicitly classified QA/Test records; Official Schools keep the
+     * Official-only tenant filter.
+     */
+    public function applyTenantForSchoolWorkflow(Builder|QueryBuilder $query, string $subjectType, int $schoolId, string $subjectColumn = 'id'): Builder|QueryBuilder
+    {
+        if (!$this->schemaAvailable() && !app()->environment('production')) {
+            return $query;
+        }
+        $this->assertTrustedTenantConnection($schoolId, $subjectType);
+
+        return $this->applyTenantMetadataForSchoolWorkflow($query, $subjectType, $schoolId, $subjectColumn);
     }
 
     /** Exclude classified central identities and tenant staff linked to them. */

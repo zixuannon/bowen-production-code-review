@@ -164,6 +164,19 @@ final class GoLiveTenantMasterDataIsolationTest extends TestCase
         $this->assertFalse($this->isolation->isTenantMetadataWorkflowWritable('student', 17, 1));
     }
 
+    public function test_qa_school_workflow_lists_only_explicitly_classified_qa_staff(): void
+    {
+        $this->isolation->classify($this->actor, 17, 'school', 17, 'qa_test', 'Permanent QA School.');
+        $this->isolation->classify($this->actor, 17, 'staff', 2, 'qa_test', 'Reusable QA Front Desk fixture.');
+
+        $this->useTenant($this->bahanDatabase);
+        $staff = DB::connection('school')->table('users');
+        $this->isolation->applyTenantForSchoolWorkflow($staff, 'staff', 17);
+
+        $this->assertSame([2], $staff->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->assertSame(2, DB::connection('school')->table('users')->count(), 'Tenant staff history must remain intact.');
+    }
+
     private function createTenant(string $database): void
     {
         $this->useTenant($database);
