@@ -4,20 +4,48 @@
 
 @section('css')
 <style>
-    .central-receipt { max-width: 820px; margin: 0 auto; }
-    .central-receipt__brand { display:flex; gap:1rem; align-items:center; }
-    .central-receipt__brand img { width:64px; height:64px; object-fit:contain; }
-    .central-receipt__number { font-size:1.25rem; font-weight:700; letter-spacing:.04em; }
-    .central-receipt__amount { font-size:1.1rem; font-weight:700; }
-    @page { size:A4; margin:14mm; }
-    @media print { .sidebar,.navbar,.header,.footer,.page-header,.btn,.central-receipt__actions{display:none!important}.content-wrapper,.main-panel{margin:0!important;padding:0!important;width:100%!important}.central-receipt,.card,.card-body{max-width:none!important;border:0!important;box-shadow:none!important;padding:0!important}body{color:#000!important;background:#fff!important}.badge{border:1px solid #000!important;color:#000!important;background:#fff!important} }
+    @page { size: 80mm auto; margin: 0; }
+    .central-receipt-page { padding: 1.5rem !important; }
+    .central-receipt {
+        width: 80mm;
+        max-width: 100%;
+        margin: 0 auto;
+        background: #fff;
+        color: #000;
+        font: 12px/1.35 Arial, sans-serif;
+    }
+    .central-receipt .card-body { padding: 5mm !important; }
+    .central-receipt__brand,
+    .central-receipt h1 { text-align: center; margin: 0 0 5px; }
+    .central-receipt__brand img { width: 13mm; height: 13mm; object-fit: contain; display: block; margin: 0 auto 3px; }
+    .central-receipt__school { font-weight: 700; font-size: 13px; }
+    .central-receipt h1 { font-size: 16px; font-weight: 700; }
+    .central-receipt__status { text-align: center; font-weight: 700; border: 1px solid #000; padding: 4px; margin: 8px 0; }
+    .central-receipt__status.is-partial { background: #eee; }
+    .central-receipt__number { text-align: center; font-weight: 700; letter-spacing: .03em; overflow-wrap: anywhere; }
+    .central-receipt dl { margin: 0; }
+    .central-receipt dt { font-weight: 700; margin-top: 6px; }
+    .central-receipt dd { margin: 0; overflow-wrap: anywhere; }
+    .central-receipt__amount { font-size: 15px; font-weight: 700; }
+    .central-receipt__section { border-top: 1px dashed #000; margin-top: 10px; padding-top: 8px; }
+    .central-receipt__section-title { font-weight: 700; margin: 0 0 4px; }
+    .central-receipt__audit { font-size: 10px; }
+    .central-receipt__audit-row { border-top: 1px dotted #777; margin-top: 4px; padding-top: 4px; }
+    .central-receipt__notice { border-top: 1px dashed #000; padding-top: 6px; margin: 10px 0 0; font-size: 10px; }
+    @media print {
+        body * { visibility: hidden; }
+        .central-receipt-page, .central-receipt-page * { visibility: visible; }
+        .central-receipt-page { position: absolute; left: 0; top: 0; width: 80mm; padding: 0 !important; }
+        .central-receipt { width: 80mm; margin: 0; box-shadow: none !important; border: 0 !important; }
+        .central-receipt .card-body { padding: 4mm !important; }
+        .central-receipt__actions { display: none !important; }
+    }
 </style>
 @endsection
 
 @section('content')
-<div class="content-wrapper"><div class="central-receipt card"><div class="card-body p-4">
-    @include('central-finance.partials.receipt-document', ['receipt' => $receipt])
-    <h6 class="mt-4">{{ __('Audit timeline') }}</h6><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>{{ __('When') }}</th><th>{{ __('Action') }}</th><th>{{ __('Reason') }}</th></tr></thead><tbody>@forelse($audits as $audit)<tr><td>{{ $audit->created_at?->format('Y-m-d H:i') }}</td><td>{{ __($audit->action) }}</td><td>{{ $audit->reason ?: __('System recorded') }}</td></tr>@empty<tr><td colspan="3" class="text-muted">{{ __('Historical audit entries were not available for this receipt.') }}</td></tr>@endforelse</tbody></table></div>
-    <div class="central-receipt__actions d-flex justify-content-between mt-4"><a class="btn btn-outline-secondary" href="{{ route('central-finance.payments.index') }}">{{ __('Back to payment history') }}</a><div><span class="small text-muted mr-2">{{ __('PDF: NOT IMPLEMENTED — P1') }}</span><button type="button" class="btn btn-theme" onclick="window.print()">{{ __('打印收据') }}</button></div></div>
+<div class="content-wrapper central-receipt-page"><div class="central-receipt card"><div class="card-body">
+    @include('central-finance.partials.receipt-document', ['receipt' => $receipt, 'audits' => $audits])
+    <div class="central-receipt__actions mt-3 no-print"><a class="btn btn-outline-secondary" href="{{ route('central-finance.payments.index') }}">{{ __('Back to payment history') }}</a><button type="button" class="btn btn-theme float-right" onclick="window.print()">{{ __('打印收据') }}</button></div>
 </div></div></div>
 @endsection

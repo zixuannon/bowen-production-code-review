@@ -1,5 +1,14 @@
 # eSchool Current State
 
+## Confirmed Finance Receipt 80mm presentation — local candidate
+
+- Baseline: immutable Production release `c40af34116ae5de2db45148f09bd7ca62d340134`. This candidate changes only the presentation and print stylesheet of the already-authorized canonical receipt; it does not change Payment, Receipt, Ledger, Fund Account, authorization, or Finance workflow data.
+- The confirmed Central Finance receipt now uses the same 80mm, vertical thermal-paper contract as the Front Desk Collection Receipt. It carries the official receipt number, `Finance Confirmed` status, receipt date/time in Asia/Yangon, student, receivable, this payment, cumulative paid, outstanding, method, reference, collector, Fund Account, refund/reversal history, and compact audit timeline.
+- Reprint remains a `window.print()` presentation action only. It cannot create a new Payment, Receipt, Ledger effect, Fund Account effect, or change the official balance.
+- Targeted receipt, lifecycle, workspace, and Blade compilation checks pass: 59 tests / 386 assertions. Production rollout is a separate Human Gate and requires only read-only browser/thermal-print QA against an existing receipt.
+
+Last updated: 2026-09-28
+
 ## Collection receipt access + direct collection retirement — local candidate
 
 - Baseline: immutable Production release `30374c387a2e1cc0837c4363c1c7ccfe10a311f1`.  This local implementation does not alter Production data, configuration, services, or the existing Zixuan QA collection records.

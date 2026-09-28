@@ -48,4 +48,17 @@ final class CentralFinanceCollectionLifecycleViewTest extends TestCase
         $this->assertStringContainsString("__('Submitted')", $frontDeskView);
         $this->assertStringContainsString('Finance Confirmed At', $receiptView);
     }
+
+    public function test_confirmed_finance_receipt_uses_the_same_80mm_thermal_contract_as_the_collection_receipt(): void
+    {
+        $receiptView = file_get_contents(resource_path('views/central-finance/receipt.blade.php'));
+        $document = file_get_contents(resource_path('views/central-finance/partials/receipt-document.blade.php'));
+
+        $this->assertStringContainsString('@page { size: 80mm auto; margin: 0; }', $receiptView);
+        $this->assertStringContainsString('width: 80mm;', $receiptView);
+        $this->assertStringContainsString('window.print()', $receiptView);
+        $this->assertStringContainsString('Finance Confirmed', $document);
+        $this->assertStringContainsString('Receipt Date/Time', $document);
+        $this->assertStringContainsString('does not create another payment when reprinted', $document);
+    }
 }
