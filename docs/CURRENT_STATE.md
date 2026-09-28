@@ -27,10 +27,15 @@
 - Targeted Finance regression passed: 70 tests / 435 assertions; dedicated
   payment lifecycle coverage passed: 26 tests / 155 assertions; localization
   contract passed: 8 tests / 1,885 assertions; Blade templates cached and
-  cleared successfully; `git diff --check` passed.  The aggregate suite is
-  environment-blocked by the existing `school_testing` permission failure
-  (10 `FeeModelAccessorTest` failures) and its established 128 MB
-  subprocess limit, not by this candidate.
+  cleared successfully; `git diff --check` passed.  The full local suite now
+  passes: 945 tests / 7,313 assertions / 0 failures / 0 errors / 34 skips.
+  The previous `school_testing` failure was a stale local MySQL service plus
+  sandbox-local-network restriction, not an application or Production grant.
+  `artisan test` drops the parent memory override when it starts its bare-PHP
+  subprocess; direct locked PHPUnit at 1024 MB executed the complete suite
+  with a 231 MB peak.  The obsolete Student Finance source contract was
+  aligned with the deployed Pending Collection lifecycle without weakening
+  its authorization or direct-posting retirement guarantees.
 - This candidate includes one additive **central-only** migration for refund
   fields and payment reversals.  Production rollout remains a Human Gate and
   requires migration preflight, verified backup, immutable release, and

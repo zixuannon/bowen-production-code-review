@@ -37,15 +37,20 @@ final class ZixuanStudentFinanceCutoverUxContractTest extends TestCase
         $this->assertStringNotContainsString('FeesPaid', $show);
     }
 
-    public function test_workspace_student_search_accepts_canonical_student_code_without_changing_payment_service(): void
+    public function test_workspace_student_search_keeps_canonical_lookup_and_uses_the_pending_collection_lifecycle(): void
     {
         $root = dirname(__DIR__, 2);
         $controller = (string) file_get_contents($root.'/app/Http/Controllers/CentralFinanceWorkspaceController.php');
         $collection = (string) file_get_contents($root.'/app/Http/Controllers/CentralFinanceStudentCollectionController.php');
+        $pending = (string) file_get_contents($root.'/app/Http/Controllers/CentralFinancePendingCollectionController.php');
 
         $this->assertGreaterThanOrEqual(3, substr_count($controller, "->orWhere('student_code'"));
         $this->assertStringContainsString('->where(\'school_id\', $school->id)', $collection);
-        $this->assertStringContainsString('CentralFinancePaymentService $payments', $collection);
-        $this->assertStringContainsString('student-collection-', $collection);
+        $this->assertStringContainsString("route('central-finance.pending-collections.index')", $collection);
+        $this->assertStringContainsString('abort(410, __(\'Direct collection posting is retired.', $collection);
+        $this->assertStringNotContainsString('CentralFinancePaymentService', $collection);
+        $this->assertStringContainsString('CentralFinancePendingCollectionService $pending', $pending);
+        $this->assertStringContainsString('CentralFinancePendingCollectionConfirmationService $confirmation', $pending);
+        $this->assertStringContainsString('function submit(Request $request, int $profile, int $receivable)', $pending);
     }
 }
