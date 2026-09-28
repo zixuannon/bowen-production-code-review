@@ -6,6 +6,8 @@ use App\Support\CentralFinanceCurrency;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -26,7 +28,12 @@ final class CentralFinancePendingCollection extends Model
         'collected_by', 'submitted_by', 'submitted_at', 'reviewed_by', 'reviewed_at', 'review_reason',
         'confirmed_by', 'confirmed_at',
     ];
-    protected $casts = ['amount' => 'decimal:4', 'collected_at' => 'datetime', 'submitted_at' => 'datetime', 'reviewed_at' => 'datetime', 'confirmed_at' => 'datetime'];
+    protected $casts = ['amount' => 'decimal:4', 'submitted_at' => 'datetime', 'reviewed_at' => 'datetime', 'confirmed_at' => 'datetime'];
+    /** A Front Desk collection is a Yangon business-time declaration. */
+    protected function collectedAt(): Attribute { return Attribute::make(
+        get: fn (?string $value) => $value === null ? null : CarbonImmutable::parse($value, 'Asia/Yangon'),
+        set: fn ($value) => $value === null ? null : CarbonImmutable::parse((string) $value, 'Asia/Yangon')->format('Y-m-d H:i:s'),
+    ); }
 
     protected static function booted(): void
     {

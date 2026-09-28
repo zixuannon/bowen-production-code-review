@@ -5,11 +5,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Carbon\CarbonImmutable;
 use RuntimeException;
 class CentralFinancePayment extends Model {
     protected $connection='mysql';
     protected $fillable=['payment_uuid','school_id','receivable_id','fund_account_id','idempotency_key','payment_reference','payment_method','note','currency','amount','paid_at','received_by'];
-    protected $casts=['amount'=>'decimal:4','paid_at'=>'datetime'];
+    protected $casts=['amount'=>'decimal:4'];
+    /** Payment timestamps are stored and reported as Yangon business time. */
+    protected function paidAt(): Attribute { return Attribute::make(
+        get: fn (?string $value) => $value === null ? null : CarbonImmutable::parse($value, 'Asia/Yangon'),
+        set: fn ($value) => $value === null ? null : CarbonImmutable::parse((string) $value, 'Asia/Yangon')->format('Y-m-d H:i:s'),
+    ); }
     protected static function booted(): void { static::creating(function (self $payment): void { $payment->currency = CentralFinanceCurrency::normalize((string) $payment->currency); }); static::updating(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); static::deleting(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); }
     public function receivable(): BelongsTo { return $this->belongsTo(CentralFinanceReceivable::class, 'receivable_id'); }
     public function receipt(): HasOne { return $this->hasOne(CentralFinanceReceipt::class, 'payment_id'); }

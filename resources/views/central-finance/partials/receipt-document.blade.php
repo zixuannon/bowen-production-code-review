@@ -8,7 +8,8 @@
 <p class="central-receipt__status {{ $receipt->receipt['payment_status'] === 'paid' ? '' : 'is-partial' }}">{{ __('Finance Confirmed') }} · {{ $receipt->receipt['payment_status'] === 'paid' ? __('已结清') : __('部分缴费') }}</p>
 <dl>
     <dt>{{ __('Official Receipt No.') }}</dt><dd class="central-receipt__number">{{ $receipt->receipt['number'] }}</dd>
-    <dt>{{ __('Receipt Date/Time') }}</dt><dd>{{ $receipt->receipt['issued_at']?->timezone('Asia/Yangon')->format('Y-m-d H:i') ?? '—' }}</dd>
+    <dt>{{ __('Payment Effective Date') }}</dt><dd>{{ $receipt->payment['effective_date']?->format('Y-m-d') ?? '—' }}</dd>
+    <dt>{{ __('Receipt Issued At') }}</dt><dd>{{ $receipt->receipt['issued_at']?->format('Y-m-d H:i') ?? '—' }}</dd>
     <dt>{{ __('Currency') }}</dt><dd>{{ $receipt->payment['currency'] }}</dd>
 </dl>
 

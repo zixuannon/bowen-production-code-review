@@ -67,6 +67,7 @@ final class CentralFinanceReceiptViewModelFactory
                 'currency' => $payment->currency,
                 'due' => $due,
                 'this_payment' => (float) $payment->amount,
+                'effective_date' => $payment->paid_at,
                 'paid_at_receipt' => $paidAtReceipt,
                 'outstanding_at_receipt' => (float) max(0, $due - $paidAtReceipt),
                 'payment_method' => $payment->payment_method,

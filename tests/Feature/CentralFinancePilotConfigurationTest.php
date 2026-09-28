@@ -57,6 +57,7 @@ final class CentralFinancePilotConfigurationTest extends TestCase
             '2026_08_25_000004_add_readiness_approval_audit_to_central_finance_school_cutovers.php',
             '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
+            '2026_09_14_000003_create_central_finance_data_classifications.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -129,7 +130,31 @@ final class CentralFinancePilotConfigurationTest extends TestCase
             ->firstWhere('key', 'fund_accounts');
 
         $this->assertSame('blocked', $check['status']);
-        $this->assertStringContainsString('Allocate at least one active Central', $check['reason']);
+        $this->assertStringContainsString('Allocate at least one active official Central', $check['reason']);
+    }
+
+    public function test_qa_fund_account_cannot_satisfy_official_cutover_readiness(): void
+    {
+        $admin = app(CentralFinanceFundAccountAdministrationService::class);
+        $account = $admin->createGroupAccount($this->headFinance, FinanceGroup::on('mysql')->sole()->id, [
+            'account_code' => 'QA-CASH', 'account_name' => 'QA only cash', 'currency' => 'MMK',
+            'opening_balance' => 0, 'opening_balance_date' => '2026-08-21', 'opening_reason' => 'QA-only opening',
+        ]);
+        $admin->syncSchoolAllocations($this->headFinance, null, $account, [[
+            'school_id' => $this->zixuan->id, 'is_active' => true,
+        ]], 'QA-only allocation');
+        DB::connection('mysql')->table('central_finance_data_classifications')->insert([
+            'classification_uuid' => (string) \Illuminate\Support\Str::uuid(), 'school_id' => null,
+            'subject_scope' => 'central', 'subject_type' => 'fund_account', 'subject_id' => $account->id,
+            'classification' => 'qa_test', 'reason' => 'Automated QA fixture', 'classified_by' => $this->headFinance->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $check = collect(app(CentralFinanceCutoverReadinessService::class)->checklist($this->zixuan))
+            ->firstWhere('key', 'fund_accounts');
+
+        $this->assertSame('blocked', $check['status']);
+        $this->assertStringContainsString('official Central', $check['reason']);
     }
 
     public function test_only_head_finance_can_create_or_adjust_and_adjustments_are_audited_without_income_or_ledger(): void

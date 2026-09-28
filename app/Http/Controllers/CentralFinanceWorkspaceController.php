@@ -47,6 +47,7 @@ use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceReceiptViewModelFactory;
 use App\ViewModels\CentralFinanceReceiptViewModel;
 use App\Support\CentralFinanceCurrency;
+use App\Support\CentralFinanceBusinessDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -58,6 +59,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\CentralPaymentImportTemplateExport;
@@ -198,7 +200,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $this->ledgerPresentation->decorate(collect([$entry]));
         $related = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)
             ->where('source_id', $entry->source_id)
-            ->where('id', '!=', $entry->id)->orderBy('occurred_at')->get();
+            ->where('id', '!=', $entry->id)->orderBy('entry_date')->orderBy('occurred_at')->orderBy('id')->get();
         $this->ledgerPresentation->decorate($related);
         return view('central-finance.ledger-detail', compact('actor', 'school', 'entry', 'related'));
     }
@@ -370,17 +372,17 @@ final class CentralFinanceWorkspaceController extends Controller
         $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
         $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->readableAccounts($actor, $school?->id);
         $filters = $this->validatedReadFilters($request, $school, $accounts);
-        $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('occurred_at')->get();
+        $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('entry_date')->orderBy('occurred_at')->orderBy('id')->get();
         $schoolNames = $schools->pluck('name', 'id'); $operators = CentralFinanceUser::on('mysql')->whereIn('id', $entries->pluck('created_by')->filter()->unique())->get()->mapWithKeys(fn ($user) => [$user->id => $user->full_name]);
         $categories = $this->ledgerCategoryNames($entries);
         $this->ledgerPresentation->decorate($entries);
         $rows = $entries->map(fn ($entry) => [
-            $entry->occurred_at?->format('Y-m-d H:i'), $schoolNames[$entry->school_id] ?? '', trim(($entry->fundAccount?->account_name ?? '').' · '.($entry->fundAccount?->account_code ?? '')),
+            $entry->entry_date?->format('Y-m-d'), $entry->occurred_at?->format('Y-m-d H:i'), $schoolNames[$entry->school_id] ?? '', trim(($entry->fundAccount?->account_name ?? '').' · '.($entry->fundAccount?->account_code ?? '')),
             $entry->direction_label, max((float) $entry->money_in, (float) $entry->money_out), $entry->operating_label,
             $categories[$entry->source_type.':'.$entry->source_id] ?? '', $entry->readable_source, $entry->readable_document_number,
             $operators[$entry->created_by] ?? '', $entry->currency, $entry->memo,
         ])->all();
-        return $this->downloadReadExport(new CentralFinanceReadExport('Standard Ledger', ['Date / Time','School','Fund Account','Direction','Amount','Operating Classification','Category','Source','Reference','Operator','Currency','Description'], $rows), 'central_standard_ledger', $format);
+        return $this->downloadReadExport(new CentralFinanceReadExport('Standard Ledger', ['Transaction Date','Recorded At','School','Fund Account','Direction','Amount','Operating Classification','Category','Source','Reference','Operator','Currency','Description'], $rows), 'central_standard_ledger', $format);
     }
 
     /** Payment/receipt export intentionally contains no guardian/contact data. */
@@ -396,7 +398,7 @@ final class CentralFinanceWorkspaceController extends Controller
             $payment->receivable?->studentProfile?->admission_no, $payment->fundAccount?->account_code, $payment->fundAccount?->account_name,
             $payment->payment_reference, $payment->receipt?->receipt_no, $payment->payment_method, $payment->currency, (float) $payment->amount,
         ])->all();
-        return $this->downloadReadExport(new CentralFinanceReadExport('Payment Receipts', ['Paid At','School','Student','Student Code','Fund Account Code','Fund Account','Payment Reference','Receipt No','Method','Currency','Amount'], $rows), 'central_payment_receipts', $format);
+        return $this->downloadReadExport(new CentralFinanceReadExport('Payment Receipts', ['Payment Effective Date','School','Student','Student Code','Fund Account Code','Fund Account','Payment Reference','Receipt No','Method','Currency','Amount'], $rows), 'central_payment_receipts', $format);
     }
 
     /** Export uses exactly the scoped read model rendered by each worklist. */
@@ -421,7 +423,7 @@ final class CentralFinanceWorkspaceController extends Controller
         })->all();
         $title = $type === 'expense' ? 'Central Expenses' : 'Central Income';
         return $this->downloadReadExport(new CentralFinanceReadExport($title, [
-            'Date','School','Fund Account ID','Category','Payment Method','Reference','Payee / Payer','Currency','Amount','Operator','Status','Description',
+            'Transaction Date','School','Fund Account ID','Category','Payment Method','Reference','Payee / Payer','Currency','Amount','Operator','Status','Description',
         ], $rows), $type === 'expense' ? 'central_expenses' : 'central_other_income', $format);
     }
 
@@ -432,7 +434,7 @@ final class CentralFinanceWorkspaceController extends Controller
         abort_unless($accounts->contains('id', $fundAccount), 404);
         $filters = $this->validatedReadFilters($request, $school, $accounts); $filters['fund_account_id'] = $fundAccount;
         $account = $accounts->firstWhere('id', $fundAccount);
-        $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('occurred_at')->get();
+        $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('entry_date')->orderBy('occurred_at')->orderBy('id')->get();
         $schoolNames = $schools->pluck('name', 'id');
         $moneyIn = (float) $entries->sum('money_in'); $moneyOut = (float) $entries->sum('money_out');
         // A filtered report may omit historic rows; closing remains the canonical full account balance.
@@ -445,7 +447,7 @@ final class CentralFinanceWorkspaceController extends Controller
             'Transaction', $entry->entry_date?->format('Y-m-d'), $schoolNames[$entry->school_id] ?? '', $account->account_code, $account->account_name,
             $entry->source_type, $entry->reference_no, $entry->currency, null, (float) $entry->money_in, (float) $entry->money_out, null,
         ];
-        return $this->downloadReadExport(new CentralFinanceReadExport('Fund Account Report', ['Record','Date','School','Account Code','Fund Account','Source','Reference','Currency','Opening Balance','Money In','Money Out','Closing Balance'], $rows), 'central_fund_account_report_'.$account->account_code, $format);
+        return $this->downloadReadExport(new CentralFinanceReadExport('Fund Account Report', ['Record','Transaction Date','School','Account Code','Fund Account','Source','Reference','Currency','Opening Balance','Money In','Money Out','Current Physical Balance'], $rows), 'central_fund_account_report_'.$account->account_code, $format);
     }
 
     /** A statement export retains the canonical opening-plus-Ledger balance. */
@@ -474,7 +476,7 @@ final class CentralFinanceWorkspaceController extends Controller
         }
 
         return $this->downloadReadExport(new CentralFinanceReadExport('Fund Account Statement', [
-            'Record','Date','Source','Description','Operator','Reference','Currency','Money In','Money Out','Running Balance',
+            'Record','Transaction Date','Source','Description','Operator','Reference','Currency','Money In','Money Out','Running Balance',
         ], $rows), 'central_fund_account_statement_'.$account->account_code, $format);
     }
 
@@ -534,12 +536,13 @@ final class CentralFinanceWorkspaceController extends Controller
             'owner_holder' => ['nullable', 'string', 'max:191'],
             'account_name' => ['required', 'string', 'max:191'], 'currency' => ['required', Rule::in(CentralFinanceCurrency::ALLOWED)],
             'english_name' => ['nullable', 'string', 'max:2000'],
-            'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date'],
+            'opening_balance' => ['required', 'numeric', 'min:0'], 'opening_balance_date' => ['required', 'date_format:Y-m-d'],
             'opening_reason' => ['required', 'string', 'max:2000'],
             'account_type' => ['required', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])],
             'bank_name' => ['nullable', 'string', 'max:191'], 'masked_account_identifier' => ['nullable', 'string', 'max:80'],
             'custodian_user_id' => ['nullable', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+        $data['opening_balance_date'] = $this->transactionDate($data['opening_balance_date'], 'opening_balance_date')->toDateString();
         $account = $this->accountAdministration->createGroupAccount($actor, (int) $data['group_id'], $data);
         app(\App\Services\CentralFinanceBusinessContentTranslationService::class)->saveEnglish($actor, 'fund_account', $account->id, null, $account->account_name, (string) $request->input('english_name'), (string) $data['opening_reason']);
 
@@ -607,7 +610,8 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
         $this->dataIsolation->assertProduction('fund_account', $fundAccount);
-        $data = $request->validate(['amount' => ['required', 'numeric', 'not_in:0'], 'effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000']]);
+        $data = $request->validate(['amount' => ['required', 'numeric', 'not_in:0'], 'effective_date' => ['required', 'date_format:Y-m-d'], 'reason' => ['required', 'string', 'max:2000']]);
+        $data['effective_date'] = $this->transactionDate($data['effective_date'], 'effective_date')->toDateString();
         $this->accountAdministration->adjustOpeningBalance($actor, null, $account, (float) $data['amount'], $data['effective_date'], $data['reason']);
         return back()->with('success', __('Central Fund Account opening balance adjustment audited.'));
     }
@@ -631,19 +635,19 @@ final class CentralFinanceWorkspaceController extends Controller
     public function refundPayment(Request $request, int $payment): RedirectResponse
     {
         [$actor, $school] = $this->currentCorrectionContext();
-        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0'], 'refund_method' => ['required', 'string', 'max:40'], 'effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'], 'refund_reference' => ['nullable', 'string', 'max:100'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-payment-refund-[A-Za-z0-9_.:-]{2,100}$/']]);
+        $data = $request->validate(['amount' => ['required', 'numeric', 'gt:0'], 'refund_method' => ['required', 'string', 'max:40'], 'effective_date' => ['required', 'date_format:Y-m-d'], 'reason' => ['required', 'string', 'max:2000'], 'refund_reference' => ['nullable', 'string', 'max:100'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-payment-refund-[A-Za-z0-9_.:-]{2,100}$/']]);
         $document = CentralFinancePayment::on('mysql')->where('school_id', $school->id)->findOrFail($payment);
         $account = CentralFinanceFundAccount::on('mysql')->findOrFail($document->fund_account_id);
-        $this->refunds->refund($actor, $document->id, $account, (float) $data['amount'], $data['refund_method'], CarbonImmutable::parse($data['effective_date'], 'Asia/Yangon')->startOfDay(), $data['reason'], CarbonImmutable::now(), $data['idempotency_key'], $data['refund_reference'] ?? null);
+        $this->refunds->refund($actor, $document->id, $account, (float) $data['amount'], $data['refund_method'], $this->transactionDate($data['effective_date'], 'effective_date'), $data['reason'], CarbonImmutable::now(), $data['idempotency_key'], $data['refund_reference'] ?? null);
         return back()->with('success', __('Central payment refund recorded.'));
     }
 
     public function reversePayment(Request $request, int $payment): RedirectResponse
     {
         [$actor, $school] = $this->currentCorrectionContext();
-        $data = $request->validate(['effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'], 'reversal_reference' => ['nullable', 'string', 'max:100'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-payment-reversal-[A-Za-z0-9_.:-]{2,100}$/']]);
+        $data = $request->validate(['effective_date' => ['required', 'date_format:Y-m-d'], 'reason' => ['required', 'string', 'max:2000'], 'reversal_reference' => ['nullable', 'string', 'max:100'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-payment-reversal-[A-Za-z0-9_.:-]{2,100}$/']]);
         $document = CentralFinancePayment::on('mysql')->where('school_id', $school->id)->findOrFail($payment);
-        $this->reversals->reverse($actor, $document->id, CarbonImmutable::parse($data['effective_date'], 'Asia/Yangon')->startOfDay(), $data['reason'], CarbonImmutable::now(), $data['idempotency_key'], $data['reversal_reference'] ?? null);
+        $this->reversals->reverse($actor, $document->id, $this->transactionDate($data['effective_date'], 'effective_date'), $data['reason'], CarbonImmutable::now(), $data['idempotency_key'], $data['reversal_reference'] ?? null);
         return back()->with('success', __('Central payment reversal recorded.'));
     }
 
@@ -752,20 +756,25 @@ final class CentralFinanceWorkspaceController extends Controller
     public function expense(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
-        $data = $request->validate(['category_id'=>['required','integer'],'fund_account_id'=>['required','integer'],'amount'=>['required','numeric','gt:0'],'payment_method'=>['required','string','max:40'],'reference_no'=>['nullable','string','max:100'],'description'=>['nullable','string','max:2000']]);
+        // Preserve the existing direct-write contract while the normal UI
+        // supplies an explicit Transaction Date. Older approved clients get
+        // today's Yangon business date rather than an audit timestamp.
+        $request->mergeIfMissing(['transaction_date' => CentralFinanceBusinessDate::today()->toDateString()]);
+        $data = $request->validate(['category_id'=>['required','integer'],'fund_account_id'=>['required','integer'],'amount'=>['required','numeric','gt:0'],'payment_method'=>['required','string','max:40'],'transaction_date'=>['required','date_format:Y-m-d'],'reference_no'=>['nullable','string','max:100'],'description'=>['nullable','string','max:2000']]);
         $account = CentralFinanceFundAccount::on('mysql')->findOrFail($data['fund_account_id']);
         $this->assertProductionSubjects([['category', (int) $data['category_id']], ['fund_account', (int) $account->id]]);
-        $this->documents->createExpense($actor, $school->id, (int) $data['category_id'], $account, (float) $data['amount'], $data['payment_method'], CarbonImmutable::now(), $this->workspace->idempotencyReference('ui-expense'), $data['reference_no'] ?? null, $data['description'] ?? null);
+        $this->documents->createExpense($actor, $school->id, (int) $data['category_id'], $account, (float) $data['amount'], $data['payment_method'], $this->transactionDate($data['transaction_date']), $this->workspace->idempotencyReference('ui-expense'), $data['reference_no'] ?? null, $data['description'] ?? null);
         return back()->with('success', __('Central expense recorded.'));
     }
 
     public function otherIncome(Request $request): RedirectResponse
     {
         [$actor, $school] = $this->currentOperatingContext();
-        $data = $request->validate(['category_id'=>['required','integer'],'fund_account_id'=>['required','integer'],'amount'=>['required','numeric','gt:0'],'payment_method'=>['required','string','max:40'],'reference_no'=>['nullable','string','max:100'],'payer'=>['nullable','string','max:191'],'description'=>['nullable','string','max:2000']]);
+        $request->mergeIfMissing(['transaction_date' => CentralFinanceBusinessDate::today()->toDateString()]);
+        $data = $request->validate(['category_id'=>['required','integer'],'fund_account_id'=>['required','integer'],'amount'=>['required','numeric','gt:0'],'payment_method'=>['required','string','max:40'],'transaction_date'=>['required','date_format:Y-m-d'],'reference_no'=>['nullable','string','max:100'],'payer'=>['nullable','string','max:191'],'description'=>['nullable','string','max:2000']]);
         $account = CentralFinanceFundAccount::on('mysql')->findOrFail($data['fund_account_id']);
         $this->assertProductionSubjects([['category', (int) $data['category_id']], ['fund_account', (int) $account->id]]);
-        $this->documents->createOtherIncome($actor, $school->id, (int) $data['category_id'], $account, (float) $data['amount'], $data['payment_method'], CarbonImmutable::now(), $this->workspace->idempotencyReference('ui-income'), $data['reference_no'] ?? null, $data['payer'] ?? null, $data['description'] ?? null);
+        $this->documents->createOtherIncome($actor, $school->id, (int) $data['category_id'], $account, (float) $data['amount'], $data['payment_method'], $this->transactionDate($data['transaction_date']), $this->workspace->idempotencyReference('ui-income'), $data['reference_no'] ?? null, $data['payer'] ?? null, $data['description'] ?? null);
         return back()->with('success', __('Central income recorded.'));
     }
 
@@ -1075,7 +1084,7 @@ final class CentralFinanceWorkspaceController extends Controller
             $filters['fund_account_id'] = $requestedAccountId;
         }
         $filteredLedger=$this->scopedLedgerQuery($school, $schools, $accounts, $filters);
-        $ledger=(clone $filteredLedger)->latest('occurred_at')->paginate(25)->withQueryString();
+        $ledger=(clone $filteredLedger)->orderByDesc('entry_date')->orderByDesc('occurred_at')->orderByDesc('id')->paginate(25)->withQueryString();
         $filteredLedgerEntries = (clone $filteredLedger)->get();
         $currencyTotals = $this->currencySummaries->ledger($filteredLedgerEntries);
         $physicalAccountTotals = $this->balances->physicalSummaryByCurrency($accounts);
@@ -1547,13 +1556,13 @@ final class CentralFinanceWorkspaceController extends Controller
         if (!empty($filters['to'])) $canonicalInRange->whereDate('entry_date', '<=', $filters['to']);
         $running = $openingBalance;
         $runningBalances = [];
-        $canonicalInRange->orderBy('occurred_at')->orderBy('id')->get()->each(function (CentralFinanceLedgerEntry $entry) use (&$running, &$runningBalances): void {
+        $canonicalInRange->orderBy('entry_date')->orderBy('occurred_at')->orderBy('id')->get()->each(function (CentralFinanceLedgerEntry $entry) use (&$running, &$runningBalances): void {
             $running += (float) $entry->money_in - (float) $entry->money_out;
             $runningBalances[$entry->id] = round($running, 4);
         });
 
         $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)
-            ->orderByDesc('occurred_at')->orderByDesc('id')->get();
+            ->orderByDesc('entry_date')->orderByDesc('occurred_at')->orderByDesc('id')->get();
         $entries->each(fn (CentralFinanceLedgerEntry $entry) => $entry->setAttribute('running_balance', $runningBalances[$entry->id] ?? $openingBalance));
 
         return [$openingBalance, $entries];
@@ -1675,6 +1684,15 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         abort_unless(in_array($format, ['xlsx','csv'], true), 404);
         return Excel::download($export, $basename.'_'.now()->format('Ymd_His').'.'.$format, $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX);
+    }
+
+    private function transactionDate(string $value, string $field = 'transaction_date'): CarbonImmutable
+    {
+        try {
+            return CentralFinanceBusinessDate::parse($value);
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([$field => [$exception->getMessage()]]);
+        }
     }
 
     /** @return \Illuminate\Support\Collection<int,CentralFinanceFundAccount> */

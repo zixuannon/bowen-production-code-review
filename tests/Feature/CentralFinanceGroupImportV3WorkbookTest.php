@@ -35,6 +35,7 @@ class CentralFinanceGroupImportV3WorkbookTest extends TestCase
             $this->assertSame(['Import', 'Schools', 'Chart of Accounts', 'Account Allocations', 'Fund Accounts', 'Fund Allocations', 'By Currency', 'By School', 'Validation'], $workbook->getSheetNames());
             $sheet = $workbook->getSheetByName('Import');
             $this->assertSame(CentralFinanceGroupImportTemplateV3Export::HEADINGS, $sheet->rangeToArray('A1:P1')[0]);
+            $this->assertSame('交易日期 / Transaction Date', $sheet->getCell('B1')->getValue());
             foreach (['A', 'D', 'G', 'I', 'K'] as $column) $this->assertSame('', $sheet->getCell($column.'2')->getCalculatedValue());
             $this->assertSame(16, count($this->template()->headings()));
             $this->assertSame('hidden', $workbook->getSheetByName('Validation')->getSheetState());

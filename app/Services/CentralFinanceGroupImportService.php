@@ -18,6 +18,7 @@ use App\Models\FinanceGroupSchool;
 use App\Models\FinanceGroupUser;
 use App\Models\School;
 use App\Support\CentralFinanceCurrency;
+use App\Support\CentralFinanceBusinessDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
@@ -256,7 +257,7 @@ final class CentralFinanceGroupImportService
                     $source = $entry['status'] === 'Duplicate' ? $this->sourceFor($data) : null;
                     if ($entry['status'] === 'New') {
                         $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail((int) $data['fund_account_id']);
-                        $occurredAt = CarbonImmutable::parse((string) $data['transaction_date'], 'Asia/Yangon');
+                        $occurredAt = CentralFinanceBusinessDate::parse((string) $data['transaction_date']);
                         try {
                             if ($data['document_type'] === 'expense') {
                                 $source = $this->documents->createExpense($actor, (int) $data['school_id'], (int) $data['category_id'], $account, (float) $data['amount'], (string) $data['payment_method'], $occurredAt, (string) $data['idempotency_key'], (string) $data['reference_no'], $this->description($data), $data['claimant'] ?: null);
@@ -431,7 +432,9 @@ final class CentralFinanceGroupImportService
     private function normaliseRow(array $row): array
     {
         if (array_key_exists(CentralFinanceGroupImportTemplateV3Export::HEADINGS[0], $row)) {
-            $cells = array_map(fn ($heading) => $row[$heading] ?? null, CentralFinanceGroupImportTemplateV3Export::HEADINGS);
+            $cells = array_map(fn ($index) => $row[CentralFinanceGroupImportTemplateV3Export::HEADINGS[$index]]
+                ?? $row[CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS[$index]]
+                ?? null, array_keys(CentralFinanceGroupImportTemplateV3Export::HEADINGS));
             $normal = $this->normaliseRow(['School Code'=>$cells[3], '校区'=>$cells[2], '日期'=>$cells[1],
                 '报销人'=>$cells[4], '摘要'=>$cells[5], 'Category Code'=>$cells[7], 'Fund Account Code'=>$cells[9],
                 '付款方式'=>$cells[11], '收入'=>$cells[12], '支出'=>$cells[13], 'Reference / 单据号'=>$cells[14], '备注'=>$cells[15]]);
@@ -444,7 +447,7 @@ final class CentralFinanceGroupImportService
         $type = $income !== null && $income > 0 && ($expense === null || $expense == 0.0) ? 'other_income' : (($expense !== null && $expense > 0 && ($income === null || $income == 0.0)) ? 'expense' : null);
         return [
             'school_code' => trim((string) ($row['School Code'] ?? '')), 'school_label' => trim((string) ($row['校区'] ?? '')),
-            'transaction_date' => $this->date($row['日期'] ?? null), 'claimant' => trim((string) ($row['报销人'] ?? '')),
+            'transaction_date' => $this->date($row['交易日期 / Transaction Date'] ?? $row['Transaction Date'] ?? $row['日期'] ?? $row['Date'] ?? null), 'claimant' => trim((string) ($row['报销人'] ?? '')),
             'summary' => trim((string) ($row['摘要'] ?? '')), 'fund_account_code' => trim((string) ($row['Fund Account Code'] ?? '')),
             'fund_account_type' => trim((string) ($row['Fund Account Type'] ?? '')), 'account_owner' => trim((string) ($row['Account Owner'] ?? '')),
             'category_code' => trim((string) ($row['Category Code'] ?? '')), 'payment_method' => trim((string) ($row['付款方式'] ?? '')),
@@ -473,10 +476,9 @@ final class CentralFinanceGroupImportService
         if (!in_array($data['payment_method'], FeesPaymentService::PAYMENT_METHODS, true)) return $error('PAYMENT_METHOD_INVALID', '付款方式 must be selected from the supported canonical list.');
         if (!preg_match('/^[A-Za-z0-9_.:-]{1,100}$/', $data['reference_no'])) return $error('REFERENCE_INVALID', 'Reference / 单据号 is required and invalid.');
         try {
-            $date = CarbonImmutable::createFromFormat('!Y-m-d', (string) $data['transaction_date'], 'Asia/Yangon');
-            if (!$date || $date->format('Y-m-d') !== $data['transaction_date']) throw new InvalidArgumentException('Invalid date.');
+            CentralFinanceBusinessDate::parse((string) $data['transaction_date']);
             if (empty($data['v3'])) CentralFinanceCurrency::assertCanonical($data['currency']);
-        } catch (\Throwable) { return $error('DATE_OR_CURRENCY_INVALID', '日期 must be a real YYYY-MM-DD date and Currency must be canonical.'); }
+        } catch (\Throwable) { return $error('DATE_OR_CURRENCY_INVALID', 'Transaction Date / 日期 must be a real YYYY-MM-DD date, cannot be in the future, and Currency must be canonical.'); }
         $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->first();
         if (!$account || $data['fund_account_code'] !== $account->account_code) return $error('FUND_ACCOUNT_UNKNOWN', 'Fund Account Code must be an exact active canonical account code.');
         if (!$this->dataIsolation->isProduction('fund_account', (int) $account->id)) return $error('QA_TEST_FUND_ACCOUNT', 'QA/Test or archived Fund Accounts cannot be used for Production Group Import.');

@@ -609,6 +609,21 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         $this->assertSame(0, DB::table('central_finance_receipts')->count());
     }
 
+    public function test_group_import_accepts_legacy_date_header_and_new_transaction_date_header(): void
+    {
+        $category = $this->centralCategory('income', '4001', 'Tuition');
+        $modern = $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $category, 'DATE-HEADER-MODERN', 100, 0);
+        unset($modern['日期']);
+        $modern['Transaction Date'] = '2026-09-02';
+        $this->assertSame(1, $this->preview([$modern])->new_rows);
+
+        $legacyV3 = array_combine(
+            \App\Exports\CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS,
+            array_values($this->v3Row($category, 1, 'DATE-HEADER-LEGACY', 100, null)),
+        );
+        $this->assertSame(1, $this->preview([$legacyV3])->new_rows);
+    }
+
     public function test_v3_template_lookup_uses_the_current_account_code_without_rewriting_history(): void
     {
         $category = $this->centralCategory('income', '0101', 'Tuition');

@@ -11,6 +11,15 @@ final class CentralFinanceGroupImportTemplateV3Export implements WithMultipleShe
     public const VERSION = 'group-finance-v3';
     public const ENTRY_ROWS = 250;
     public const HEADINGS = [
+        '序号 / No.', '交易日期 / Transaction Date', '校区 / Campus', '学校代码 / School Code',
+        '报销人/经办人 / Claimant / Handler', '摘要 / Description', '科目类型 / Account Type',
+        '科目代码 / Account Code', '科目名称 / Account Name', '资金账户代码 / Fund Account Code',
+        '资金账户名称 / Fund Account Name', '付款方式 / Payment Method', '收入金额 / Incoming',
+        '支出金额 / Outgoing', '参考编号 / Reference No.', '备注 / Remarks',
+    ];
+
+    /** Header emitted by V3 workbooks before the business-date contract. */
+    public const LEGACY_HEADINGS = [
         '序号 / No.', '日期 / Date', '校区 / Campus', '学校代码 / School Code',
         '报销人/经办人 / Claimant / Handler', '摘要 / Description', '科目类型 / Account Type',
         '科目代码 / Account Code', '科目名称 / Account Name', '资金账户代码 / Fund Account Code',

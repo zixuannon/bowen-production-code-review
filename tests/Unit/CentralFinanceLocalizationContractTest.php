@@ -118,7 +118,7 @@ class CentralFinanceLocalizationContractTest extends TestCase
 
         foreach ([
             'Group and School scope', 'The School is not an active Finance Group member.',
-            'Active Central Fund Account allocation', 'Allocate at least one active Central / Group Fund Account to this School.',
+            'Active official Central Fund Account allocation', 'Allocate at least one active official Central / Group Fund Account to this School. QA/Test accounts cannot satisfy go-live readiness.',
             'Opening Balance audit', 'Every active Fund Account needs a signed initial opening-balance audit matching its configured balance.',
             'Central Head Finance', 'An authorized Head Finance user must have active Group and School operate scope.',
             'School Accountant', 'An active School Accountant finance identity with School operate scope is required.',

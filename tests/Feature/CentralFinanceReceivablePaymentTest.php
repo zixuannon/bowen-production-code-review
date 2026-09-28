@@ -110,6 +110,32 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $rejected=app(CentralFinancePendingCollectionService::class)->reject($this->head,$held->id,'Cash count did not reconcile');
  $this->assertSame(CentralFinancePendingCollection::REJECTED,$rejected->status); $this->assertSame(1,CentralFinancePayment::on('mysql')->count());
  }
+ public function test_pending_collection_keeps_front_desk_collection_date_when_confirmed_in_a_later_period(): void {
+  $receivable=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  $collectedAt=CarbonImmutable::parse('2026-05-31 23:45:00','Asia/Yangon');
+  $confirmedAt=CarbonImmutable::parse('2026-06-01 09:15:00','Asia/Yangon');
+  $pending=app(CentralFinancePendingCollectionService::class)->submit($front,$this->zixProfile->id,$receivable->id,100,'Bank Transfer',$collectedAt,'DATE-BOUNDARY-1',$this->hq->id,'DATE-BOUNDARY-1');
+  $confirmed=app(CentralFinancePendingCollectionConfirmationService::class)->confirm($this->head,$pending->id,$this->hq,$confirmedAt,'Verified after bank close.');
+  $payment=CentralFinancePayment::on('mysql')->findOrFail($confirmed->confirmed_payment_id);
+  $receipt=$payment->receipt()->firstOrFail();
+  $ledger=CentralFinanceLedgerEntry::on('mysql')->where('source_type','central_payment')->sole();
+  $this->assertSame('2026-05-31',$payment->paid_at->timezone('Asia/Yangon')->toDateString());
+  $this->assertSame('2026-06-01',$confirmed->confirmed_at->timezone('Asia/Yangon')->toDateString());
+  $this->assertSame('2026-06-01',$receipt->issued_at->toDateString());
+  $this->assertSame('2026-05-31',$ledger->entry_date->toDateString());
+ }
+ public function test_pending_collection_keeps_december_business_date_when_confirmed_in_january(): void {
+  $receivable=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  $collectedAt=CarbonImmutable::parse('2026-12-31 23:45:00','Asia/Yangon');
+  $confirmedAt=CarbonImmutable::parse('2027-01-01 09:15:00','Asia/Yangon');
+  $pending=app(CentralFinancePendingCollectionService::class)->submit($front,$this->zixProfile->id,$receivable->id,100,'Bank Transfer',$collectedAt,'DATE-BOUNDARY-2',$this->hq->id,'DATE-BOUNDARY-2');
+  $confirmed=app(CentralFinancePendingCollectionConfirmationService::class)->confirm($this->head,$pending->id,$this->hq,$confirmedAt,'Verified after year end.');
+  $payment=CentralFinancePayment::on('mysql')->findOrFail($confirmed->confirmed_payment_id);
+  $ledger=CentralFinanceLedgerEntry::on('mysql')->where('source_type','central_payment')->sole();
+  $this->assertSame('2026-12-31',$payment->paid_at->timezone('Asia/Yangon')->toDateString());
+  $this->assertSame('2027-01-01',$confirmed->confirmed_at->timezone('Asia/Yangon')->toDateString());
+  $this->assertSame('2026-12-31',$ledger->entry_date->toDateString());
+ }
  public function test_submitted_and_held_collections_reserve_the_receivable_without_posting_or_over_collection(): void {
   $r=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
   $pending=app(CentralFinancePendingCollectionService::class);

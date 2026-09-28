@@ -4,6 +4,18 @@
 
 Production is a Human Gate.
 
+### Finance Layer 4 date and official go-live gate
+
+Before an official School moves to `CENTRAL`, use
+`docs/finance/OFFICIAL_FINANCE_GO_LIVE_CHECKLIST.md`.  Confirm every
+Transaction Date is a real, non-future `YYYY-MM-DD` Yangon business date.
+Front Desk collection time is the canonical Payment/Ledger date; Head Finance
+confirmation and official-receipt issuance are audit timestamps and must not
+silently move a transaction into another accounting period.  A QA/Test Fund
+Account or allocation never satisfies official cutover readiness.  Do not
+create a placeholder account, opening balance, allocation, payment, or Ledger
+row to pass the gate.
+
 ### Central Chart of Accounts / Group Import V3 candidate
 
 See `docs/CENTRAL_CHART_OF_ACCOUNTS_V3_MIGRATION_PLAN.md` before preparing a

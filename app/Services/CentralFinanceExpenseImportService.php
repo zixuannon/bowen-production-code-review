@@ -16,6 +16,7 @@ use InvalidArgumentException;
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use App\Support\CentralFinanceCurrency;
+use App\Support\CentralFinanceBusinessDate;
 
 /**
  * Direct historical-expense importer. `报销人` is immutable Expense metadata;
@@ -70,7 +71,7 @@ final class CentralFinanceExpenseImportService
                     $category = $this->category((int) $batch->school_id, $data);
                     $this->expenses->createExpense(
                         $actor, (int) $batch->school_id, $category->id, $account, (float) $data['amount'],
-                        (string) $data['payment_method'], CarbonImmutable::parse((string) $data['expense_date'], 'Asia/Yangon'),
+                        (string) $data['payment_method'], CentralFinanceBusinessDate::parse((string) $data['expense_date']),
                         'import:'.$batch->token.':'.$row['row_number'], (string) $data['reference_no'],
                         $this->description($data), $data['reimbursed_by'] ?: null,
                     );
@@ -107,7 +108,7 @@ final class CentralFinanceExpenseImportService
     private function validateRow(CentralFinanceUser $actor, string $schoolName, ?string $schoolCode, array $data, array &$projected): array
     {
         $errors = [];
-        try { CarbonImmutable::parse((string) $data['expense_date'], 'Asia/Yangon'); } catch (\Throwable) { $errors[] = '日期 is invalid.'; }
+        try { CentralFinanceBusinessDate::parse((string) $data['expense_date']); } catch (\Throwable) { $errors[] = 'Transaction Date / 日期 must be a real YYYY-MM-DD date and cannot be in the future.'; }
         if ($data['summary'] === '') $errors[] = '摘要 is required.';
         if ($data['school_label'] === '' || !in_array(mb_strtolower($data['school_label']), array_filter([mb_strtolower($schoolName), mb_strtolower((string) $schoolCode)]), true)) $errors[] = '校区 must match the selected Central School.';
         if ($data['fund_account_code'] === '') $errors[] = 'Fund Account Code is required.';

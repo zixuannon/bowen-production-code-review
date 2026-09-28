@@ -30,7 +30,7 @@
                 <div class="card-body d-flex flex-column">
                     <span class="badge badge-light align-self-start mb-2">{{ __('Step 1') }}</span>
                     <h2 class="h5" id="group-import-download-title">{{ __('Download template') }}</h2>
-                    <p class="text-muted flex-grow-1">{{ __('Start from Template V3. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically.') }}</p>
+                    <p class="text-muted flex-grow-1">{{ __('Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically.') }}</p>
                     <a id="group-import-template-link" class="btn btn-outline-primary" data-template-url="{{ route('central-finance.group-import.template') }}" href="{{ route('central-finance.group-import.template', ['finance_group_id' => $groups->first()->id]) }}">{{ __('group-import.download_template_v3') }}</a>
                 </div>
             </section>

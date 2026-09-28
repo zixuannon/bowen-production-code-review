@@ -58,7 +58,8 @@ final class CentralFinanceCollectionLifecycleViewTest extends TestCase
         $this->assertStringContainsString('width: 80mm;', $receiptView);
         $this->assertStringContainsString('window.print()', $receiptView);
         $this->assertStringContainsString('Finance Confirmed', $document);
-        $this->assertStringContainsString('Receipt Date/Time', $document);
+        $this->assertStringContainsString('Payment Effective Date', $document);
+        $this->assertStringContainsString('Receipt Issued At', $document);
         $this->assertStringContainsString('does not create another payment when reprinted', $document);
     }
 }

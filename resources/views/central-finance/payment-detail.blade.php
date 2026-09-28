@@ -28,7 +28,7 @@
             <input type="hidden" name="idempotency_key" value="{{ $refundToken }}">
             <div class="form-group"><label>{{ __('Requested refund amount') }}</label><input name="amount" type="number" min="0.01" max="{{ $remainingRefundable }}" step="0.0001" class="form-control" required></div>
             <div class="form-group"><label>{{ __('Refund method') }}</label><input name="refund_method" maxlength="40" class="form-control" required></div>
-            <div class="form-group"><label>{{ __('Effective date') }}</label><input name="effective_date" type="date" value="{{ now('Asia/Yangon')->toDateString() }}" class="form-control" required></div>
+            <div class="form-group"><label>{{ __('Transaction Date') }}</label><input name="effective_date" type="date" max="{{ now('Asia/Yangon')->toDateString() }}" value="{{ now('Asia/Yangon')->toDateString() }}" class="form-control" required></div>
             <div class="form-group"><label>{{ __('Reference') }}</label><input name="refund_reference" maxlength="100" class="form-control"></div>
             <div class="form-group"><label>{{ __('Reason') }}</label><textarea name="reason" maxlength="2000" class="form-control" required></textarea></div>
             <button class="btn btn-warning">{{ __('Confirm Refund') }}</button>
@@ -39,14 +39,14 @@
         @else<form method="POST" action="{{ route('central-finance.payments.reversal', $document->id) }}" data-lifecycle-confirm data-lifecycle-title="{{ __('Confirm Full Reversal') }}" data-lifecycle-notice="{{ __('Reversal corrects an invalid, duplicate, or mistakenly confirmed Payment. It does not mean money is physically returned to the parent/customer.') }}" data-lifecycle-confirm-label="{{ __('Confirm Full Reversal') }}" data-lifecycle-object="{{ $receipt->receipt['number'] }}" data-lifecycle-amount="{{ number_format($document->amount,2) }} {{ $document->currency }}" data-lifecycle-source-destination="{{ $receipt->fundAccount['name'] }}" data-lifecycle-current-status="{{ __('Confirmed payment') }}" data-lifecycle-result="{{ __('Full append-only payment reversal') }}">@csrf
             <input type="hidden" name="idempotency_key" value="{{ $reversalToken }}">
             <p><strong>{{ __('Full reversal amount') }}:</strong> {{ number_format($document->amount,2) }} {{ $document->currency }}</p>
-            <div class="form-group"><label>{{ __('Effective date') }}</label><input name="effective_date" type="date" value="{{ now('Asia/Yangon')->toDateString() }}" class="form-control" required></div>
+            <div class="form-group"><label>{{ __('Transaction Date') }}</label><input name="effective_date" type="date" max="{{ now('Asia/Yangon')->toDateString() }}" value="{{ now('Asia/Yangon')->toDateString() }}" class="form-control" required></div>
             <div class="form-group"><label>{{ __('Reference') }}</label><input name="reversal_reference" maxlength="100" class="form-control"></div>
             <div class="form-group"><label>{{ __('Reason') }}</label><textarea name="reason" maxlength="2000" class="form-control" required></textarea></div>
             <button class="btn btn-danger">{{ __('Confirm Full Reversal') }}</button>
         </form>@endif</div></div></div>
     </div>
     @endif
-    <div class="card"><div class="card-body"><h5>{{ __('Correction history') }}</h5><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>{{ __('Type') }}</th><th>{{ __('Date') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Method') }}</th><th>{{ __('Actor') }}</th><th>{{ __('Reason') }}</th><th></th></tr></thead><tbody>
+    <div class="card"><div class="card-body"><h5>{{ __('Correction history') }}</h5><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>{{ __('Type') }}</th><th>{{ __('Transaction Date') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Method') }}</th><th>{{ __('Actor') }}</th><th>{{ __('Reason') }}</th><th></th></tr></thead><tbody>
     @forelse($document->refunds as $refund)<tr><td>{{ __('Refund') }}</td><td>{{ $refund->effective_date?->format('Y-m-d') ?: $refund->refunded_at?->format('Y-m-d') }}</td><td>{{ number_format($refund->amount,2) }} {{ $refund->currency }}</td><td>{{ $refund->refund_method ?: '—' }}</td><td>{{ $refund->refundedBy?->full_name ?: '—' }}</td><td>{{ $refund->reason }}</td><td><a href="{{ route('central-finance.payments.refunds.show', [$document->id, $refund->id]) }}">{{ __('Details') }}</a></td></tr>@empty @if(!$document->reversal)<tr><td colspan="7" class="text-muted">{{ __('No corrections have been recorded.') }}</td></tr>@endif @endforelse
     @if($document->reversal)<tr><td>{{ __('Full reversal') }}</td><td>{{ $document->reversal->effective_date?->format('Y-m-d') }}</td><td>{{ number_format($document->reversal->amount,2) }} {{ $document->reversal->currency }}</td><td>—</td><td>{{ $document->reversal->reversedBy?->full_name ?: '—' }}</td><td>{{ $document->reversal->reason }}</td><td><a href="{{ route('central-finance.payments.reversals.show', [$document->id, $document->reversal->id]) }}">{{ __('Details') }}</a></td></tr>@endif
     </tbody></table></div></div></div>

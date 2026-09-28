@@ -1,5 +1,19 @@
 # eSchool Finance V2 Roadmap
 
+## Finance Layer 4 — Date Contract + Official Go-Live Foundation — local candidate
+
+- [x] One strict Yangon `YYYY-MM-DD` non-future Transaction Date contract for
+  Group Import V3, manual Income/Expense, opening adjustments, Refund and
+  Reversal; legacy V3 `Date` header is accepted only for compatibility.
+- [x] Front Desk collection date remains the Payment and Ledger business date;
+  Head Finance confirmation and receipt issuance remain separate audit times.
+- [x] Ledger/statement period ordering and display use canonical `entry_date`;
+  current physical account balance is distinct from filtered period movement.
+- [x] Official Fund Account onboarding/checklist and QA/Test readiness
+  exclusion; no fake account, balance, allocation, or Finance transaction.
+- [x] Local targeted and complete regression.
+- [ ] Production deployment remains a separate Human Gate.
+
 ## Central Chart of Accounts + Group Finance Import V3 — local candidate
 
 - [x] Five-type Group CoA, manual text code, explicit multi-School allocation

@@ -41,7 +41,14 @@ final class CentralFinancePendingCollectionConfirmationService
                 if ($actualAccount->account_type !== 'cash') throw new InvalidArgumentException('Cash handover requires an active Cash Fund Account.');
             }
             $before = $pending->only(['status','confirmed_payment_id','confirmed_by','confirmed_at']);
-            $result = $this->payments->collect($actor, (int) $pending->receivable_id, $actualAccount, (float) $pending->amount, (string) $pending->payment_method, $confirmedAt, 'pending-collection:'.$pending->pending_collection_uuid, $pending->payment_reference, $pending->note);
+            // The DB timestamp is a Yangon wall-clock collection timestamp.
+            // Reparse the stored value in that business timezone instead of
+            // converting an ORM/default-timezone cast across midnight.
+            $collectedAt = CarbonImmutable::parse((string) $pending->getRawOriginal('collected_at'), 'Asia/Yangon');
+            // Confirmation is an audit/review event.  The canonical Payment
+            // and Ledger must keep the actual Front Desk collection time as
+            // their accounting date, including across a period boundary.
+            $result = $this->payments->collect($actor, (int) $pending->receivable_id, $actualAccount, (float) $pending->amount, (string) $pending->payment_method, $collectedAt, 'pending-collection:'.$pending->pending_collection_uuid, $pending->payment_reference, $pending->note, $confirmedAt);
             $pending->update(['status' => CentralFinancePendingCollection::CONFIRMED, 'confirmed_payment_id' => $result['payment']->id, 'confirmed_by' => $actor->id, 'confirmed_at' => $confirmedAt, 'reviewed_by' => $actor->id, 'reviewed_at' => $confirmedAt, 'review_reason' => trim($reason)]);
             $this->audits->record($actor, $pending, 'pending_collection', 'confirmed', trim($reason), $before, $pending->only(['status','confirmed_payment_id','confirmed_by','confirmed_at']));
             return $pending->fresh();

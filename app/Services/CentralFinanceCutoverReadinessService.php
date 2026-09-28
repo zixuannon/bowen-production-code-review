@@ -20,6 +20,7 @@ final class CentralFinanceCutoverReadinessService
         private readonly CentralFinanceConfigurationAuthorizationService $authorization,
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $accountAvailability,
         private readonly CentralFinanceFundAccountScopeService $accountScopes,
+        private readonly CentralFinanceDataIsolationService $dataIsolation,
         private readonly CentralFinanceStudentProfileSyncService $studentProfiles,
         private readonly CentralFinanceReceivableSyncService $receivables,
     ) {}
@@ -47,8 +48,12 @@ final class CentralFinanceCutoverReadinessService
                 ->whereIn('group_id', $groupIds)
                 ->whereHas('schoolAllocations', fn ($allocations) => $allocations
                     ->where('school_id', $school->id)->effective())
-                ->get();
-        $checks[] = $this->check('fund_accounts', 'Active Central Fund Account allocation', !$accounts->isEmpty(), 'Allocate at least one active Central / Group Fund Account to this School.');
+                ->get()
+                // QA/Test accounts exercise QA workflows only. They must not
+                // satisfy an official School's Central Finance go-live gate.
+                ->filter(fn (CentralFinanceFundAccount $account): bool => $this->dataIsolation->isProduction('fund_account', (int) $account->id))
+                ->values();
+        $checks[] = $this->check('fund_accounts', 'Active official Central Fund Account allocation', !$accounts->isEmpty(), 'Allocate at least one active official Central / Group Fund Account to this School. QA/Test accounts cannot satisfy go-live readiness.');
 
         $headIsAssigned = false;
         $accountantIsAssigned = false;

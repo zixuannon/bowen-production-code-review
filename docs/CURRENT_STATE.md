@@ -1,5 +1,39 @@
 # eSchool Current State
 
+## Finance Layer 4 — Date Contract + Official Finance Go-Live Foundation — local candidate
+
+- Baseline: `1ce52fca9de5ea6831a774a38e2edb8ab4de0d2`; branch
+  `codex/finance-layer4-date-go-live-foundation`.  This local candidate has
+  not changed Production code, data, configuration, cache, or services.
+- Central Finance now uses one strict, non-future Yangon `YYYY-MM-DD`
+  Transaction Date contract for V3 Group Import, manual Income/Expense,
+  opening-balance effective dates, and Refund/Reversal effective dates.
+  Legacy V3 `日期 / Date` headers remain accepted as compatibility input.
+- A Front Desk collection keeps its original `collected_at` as the canonical
+  Payment and Ledger business date even when Head Finance confirms it in a
+  later month or year.  Confirmation and official-receipt issuance remain
+  distinct audit timestamps, both visible on the official reprint.
+- Ledger/statement ordering and period filters use `entry_date` followed by
+  the recorded timestamp and immutable ID.  The UI distinguishes selected
+  period movement from the current account-level physical balance; no new
+  reporting, chart, month, year, or semester feature was introduced.
+- Group-owned Fund Account onboarding records holder/custodian metadata and
+  audited account-level opening balance dates.  The new
+  `docs/finance/OFFICIAL_FINANCE_GO_LIVE_CHECKLIST.md` documents the exact
+  official account, allocation, identity, reconciliation and approval
+  prerequisites. QA/Test Fund Accounts are excluded from official cutover
+  readiness and cannot make a School appear ready.
+- Local verification passes: date/import/collection/Fund Account/cutover
+  targeted regression 122 tests / 828 assertions; localization and thermal
+  receipt contract 12 tests / 1,926 assertions; complete PHPUnit suite 954
+  tests / 7,368 assertions, 0 failures/errors, 34 pre-existing skips. PHP
+  8.5 PDO and PHPUnit XML deprecation notices remain. Production rollout is
+  a separate Human Gate and must use the approved immutable-release, backup,
+  migration-preflight and read-only QA process. This candidate has no schema
+  migration and does not create a Fund Account or other financial record.
+
+Last updated: 2026-09-28
+
 ## Finance Phase 2A — Refund / Payment Reversal — local candidate
 
 - Read-only release inspection confirmed the active immutable Production
