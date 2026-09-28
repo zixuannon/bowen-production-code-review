@@ -1591,7 +1591,10 @@ window.staffEvents = {
         }
 
         $('#edit_school_id').val(row.support_school_id).trigger('change');
-        $('#edit_role_id').val((row.roles || []).map(role => role.id)).trigger('change');
+        const staffRoleIds = new Set((row.roles || []).map(role => String(role.id)));
+        $('#edit-role-options input[name="role_ids[]"]').each(function () {
+            $(this).prop('checked', staffRoleIds.has(String(this.value)));
+        });
         $('#edit_staff_image').attr('src', row.image);
         $('.edit-dob').val(moment(row.dob_org, 'YYYY-MM-DD').format('DD-MM-YYYY'));
         

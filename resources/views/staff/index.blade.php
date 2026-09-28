@@ -24,12 +24,21 @@
                         <form class="pt-3 create-staff-form" id="create-form" action="{{ route('staff.store') }}" method="POST" novalidate="novalidate">
                             <div class="row">
                                 <div class="form-group col-sm-12 col-md-4">
-                                    <label for="role_id">{{ __('role') }} <span class="text-danger">*</span></label>
-                                    <select name="role_ids[]" id="role_id" class="form-control" multiple required>
-                                        @foreach($roles as $role)
-                                            <option value="{{$role->id}}">{{$role->name}}</option>
-                                        @endforeach
-                                    </select>
+                                    <fieldset class="mb-0" aria-describedby="create-role-help">
+                                        <legend class="col-form-label pt-0">{{ __('role') }} <span class="text-danger">*</span></legend>
+                                        <p id="create-role-help" class="small text-muted mb-2">{{ __('Select one or more roles. Each selected role will be assigned to this Staff member.') }}</p>
+                                        <div id="create-role-options" class="d-flex flex-wrap gap-3">
+                                            @foreach($roles as $role)
+                                                <div class="form-check mr-3 mb-2">
+                                                    <label class="form-check-label" for="create-role-{{ $role->id }}">
+                                                        <input class="form-check-input" type="checkbox" name="role_ids[]" id="create-role-{{ $role->id }}" value="{{ $role->id }}">
+                                                        <i class="input-helper" aria-hidden="true"></i>
+                                                        {{ $role->name }}
+                                                    </label>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </fieldset>
                                 </div>
                                 <div class="form-group col-sm-12 col-md-4">
                                     <label for="first_name">{{ __('first_name') }} <span class="text-danger">*</span></label>
@@ -409,12 +418,21 @@
                             <div class="modal-body">
                                 <div class="row">
                                     <div class="form-group col-sm-12 col-md-4">
-                                        <label for="edit_role_id">{{ __('role') }} <span class="text-danger">*</span></label>
-                                        <select name="role_ids[]" id="edit_role_id" class="form-control" multiple required>
-                                            @foreach($roles as $role)
-                                                <option value="{{$role->id}}">{{$role->name}}</option>
-                                            @endforeach
-                                        </select>
+                                        <fieldset class="mb-0" aria-describedby="edit-role-help">
+                                            <legend class="col-form-label pt-0">{{ __('role') }} <span class="text-danger">*</span></legend>
+                                            <p id="edit-role-help" class="small text-muted mb-2">{{ __('Select one or more roles. Existing roles remain selected until you change them.') }}</p>
+                                            <div id="edit-role-options" class="d-flex flex-wrap gap-3">
+                                                @foreach($roles as $role)
+                                                    <div class="form-check mr-3 mb-2">
+                                                        <label class="form-check-label" for="edit-role-{{ $role->id }}">
+                                                            <input class="form-check-input" type="checkbox" name="role_ids[]" id="edit-role-{{ $role->id }}" value="{{ $role->id }}">
+                                                            <i class="input-helper" aria-hidden="true"></i>
+                                                            {{ $role->name }}
+                                                        </label>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </fieldset>
                                     </div>
                                     <div class="form-group col-sm-12 col-md-4">
                                         <label for="edit_first_name">{{ __('first_name') }} <span class="text-danger">*</span></label>

@@ -32,13 +32,38 @@ final class StaffFinanceOnboardingContractTest extends TestCase
         $root = dirname(__DIR__, 2);
         $javascript = (string) file_get_contents($root.'/public/assets/js/custom/bootstrap-table/actionEvents.js');
 
-        $this->assertStringContainsString(
-            "$('#edit_role_id').val((row.roles || []).map(role => role.id)).trigger('change');",
-            $javascript,
-        );
+        $this->assertStringContainsString('const staffRoleIds = new Set((row.roles || []).map(role => String(role.id)));', $javascript);
+        $this->assertStringContainsString("$('#edit-role-options input[name=\"role_ids[]\"]')", $javascript);
+        $this->assertStringContainsString("$(this).prop('checked', staffRoleIds.has(String(this.value)));", $javascript);
         // Driver/Helper remains intentionally single-role; Staff must be the
         // only handler using the full role array.
         $this->assertSame(1, substr_count($javascript, "$('#edit_role_id').val(row.roles[0].id);"));
+    }
+
+    public function test_qa_school_onboarding_uses_the_same_classification_aware_staff_workflow_filter(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root.'/app/Http/Controllers/StaffRoleOnboardingController.php');
+
+        $this->assertStringContainsString('applyTenantForSchoolWorkflow($query, \'staff\'', $controller);
+        $this->assertStringContainsString('$this->eligibleStaffQuery($actor)->get(', $controller);
+        $this->assertStringContainsString('$this->eligibleStaffQuery($actor)', $controller);
+        $this->assertStringContainsString('direct POST', $controller);
+    }
+
+    public function test_staff_role_ui_uses_tap_friendly_multi_role_checkboxes(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $view = (string) file_get_contents($root.'/resources/views/staff/index.blade.php');
+        $translations = (string) file_get_contents($root.'/resources/lang/zh-cn.json');
+
+        $this->assertStringContainsString('id="create-role-options"', $view);
+        $this->assertStringContainsString('id="edit-role-options"', $view);
+        $this->assertSame(2, substr_count($view, 'type="checkbox" name="role_ids[]"'));
+        $this->assertStringContainsString('Select one or more roles.', $view);
+        $this->assertStringNotContainsString('id="role_id" class="form-control" multiple', $view);
+        $this->assertStringNotContainsString('id="edit_role_id" class="form-control" multiple', $view);
+        $this->assertStringContainsString('"可同时勾选多个角色', $translations);
     }
 
     public function test_finance_group_grants_filter_by_tenant_role_and_require_audit_reason(): void

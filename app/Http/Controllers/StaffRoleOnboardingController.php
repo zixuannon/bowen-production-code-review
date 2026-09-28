@@ -20,19 +20,8 @@ final class StaffRoleOnboardingController extends Controller
         ResponseService::noFeatureThenRedirect('Staff Management');
         ResponseService::noPermissionThenRedirect('staff-edit');
 
-        $query = User::on('school')
-            ->where('school_id', $actor->school_id)
-            ->where('status', 1)
-            ->whereNull('deleted_at')
-            ->whereHas('staff')
-            ->with('roles')
-            ->orderBy('first_name')
-            ->orderBy('last_name');
-        app(CentralFinanceDataIsolationService::class)
-            ->applyTenant($query, 'staff', (int) $actor->school_id, false, 'users.id');
-
         return view('staff.finance-onboarding', [
-            'staff' => $query->get(['id', 'first_name', 'last_name', 'email', 'school_id', 'status']),
+            'staff' => $this->eligibleStaffQuery($actor)->get(['id', 'first_name', 'last_name', 'email', 'school_id', 'status']),
             'roleDescriptions' => TenantStaffRoleOnboardingService::roleDescriptions(),
         ]);
     }
@@ -49,9 +38,10 @@ final class StaffRoleOnboardingController extends Controller
             'reason' => ['required', 'string', 'max:2000'],
         ]);
 
-        $staff = User::on('school')
-            ->where('school_id', $actor->school_id)
-            ->whereHas('staff')
+        // Use exactly the same classification-aware candidate set as the
+        // rendered selector. This prevents a direct POST from onboarding a
+        // Staff record that is hidden by the School's data-scope rules.
+        $staff = $this->eligibleStaffQuery($actor)
             ->findOrFail((int) $data['staff_id']);
         $onboarding->assign($actor, $staff, $data['roles'], $data['reason']);
 
@@ -65,5 +55,26 @@ final class StaffRoleOnboardingController extends Controller
         abort_unless($actor && $actor->school_id && $actor->hasRole('School Admin'), 403);
 
         return $actor;
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Builder<User> */
+    private function eligibleStaffQuery(User $actor): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = User::on('school')
+            ->where('school_id', $actor->school_id)
+            ->where('status', 1)
+            ->whereNull('deleted_at')
+            ->whereHas('staff')
+            ->with('roles')
+            ->orderBy('first_name')
+            ->orderBy('last_name');
+
+        // Zixuan is the permanent QA School. Its staff workflows must use
+        // the same explicit QA/Test visibility rule as Staff Management;
+        // Official Schools retain the production-only rule.
+        app(CentralFinanceDataIsolationService::class)
+            ->applyTenantForSchoolWorkflow($query, 'staff', (int) $actor->school_id, 'users.id');
+
+        return $query;
     }
 }

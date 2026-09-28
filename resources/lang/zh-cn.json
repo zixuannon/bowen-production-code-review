@@ -230,6 +230,8 @@
     "vertical_logo": "竖版 Logo",
     "favicon": "网站图标 (Favicon)",
     "role": "角色",
+    "Select one or more roles. Each selected role will be assigned to this Staff member.": "可同时勾选多个角色，系统会将所有勾选角色分配给该教职工。",
+    "Select one or more roles. Existing roles remain selected until you change them.": "可同时勾选多个角色；已有角色会保持勾选，除非你主动修改。",
     "app_settings": "应用设置",
     "Student/Guardian App Settings": "学生/监护人端应用设置",
     "teacher_app_settings": "教师端应用设置",
