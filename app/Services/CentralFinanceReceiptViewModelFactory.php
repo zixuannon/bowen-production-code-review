@@ -30,6 +30,12 @@ final class CentralFinanceReceiptViewModelFactory
             $outstanding = CentralFinanceDecimal::max(CentralFinanceDecimal::subtract((string) $line->outstanding_before_snapshot, (string) $line->amount), '0');
             return [
                 'description' => $line->description_snapshot ?: ($line->receivable?->description ?: '—'),
+                // Allocation lines are immutable payment evidence.  Preserve
+                // the item quantity and unit price here rather than looking
+                // back to a mutable Fee Setup record when a receipt is
+                // reprinted later.
+                'unit_price' => $line->unit_price_snapshot === null ? null : CentralFinanceDecimal::normalize((string) $line->unit_price_snapshot),
+                'quantity' => max(1, (int) ($line->quantity_snapshot ?? 1)),
                 'gross' => CentralFinanceDecimal::normalize((string) $line->gross_amount_snapshot),
                 'promotion' => CentralFinanceDecimal::normalize((string) $line->promotion_amount_snapshot),
                 'due' => CentralFinanceDecimal::normalize((string) $line->net_due_snapshot),
@@ -52,6 +58,8 @@ final class CentralFinanceReceiptViewModelFactory
             $due = CentralFinanceDecimal::normalize((string) ($receivable?->amount_due ?? $payment->amount));
             $lines = collect([[
                 'description' => $receivable?->description ?: '—',
+                'unit_price' => $receivable?->unit_price_snapshot === null ? null : CentralFinanceDecimal::normalize((string) $receivable->unit_price_snapshot),
+                'quantity' => max(1, (int) ($receivable?->quantity_snapshot ?? 1)),
                 'gross' => CentralFinanceDecimal::normalize((string) ($receivable?->source_amount_due ?? $due)),
                 'promotion' => CentralFinanceDecimal::max(CentralFinanceDecimal::subtract((string) ($receivable?->source_amount_due ?? $due), $due), '0'),
                 'due' => $due,

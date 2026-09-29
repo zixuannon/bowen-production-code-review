@@ -434,6 +434,24 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   catch (InvalidArgumentException $exception) { $this->assertStringContainsString('reserved',$exception->getMessage()); }
   $this->assertSame(1,CentralFinancePendingCollection::on('mysql')->count()); $this->assertSame(0,CentralFinancePayment::on('mysql')->count()); $this->assertSame(0,CentralFinanceLedgerEntry::on('mysql')->count());
  }
+ public function test_quantity_priced_optional_line_is_immutable_through_payment_allocation_and_receipt(): void {
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
+  $receivable=$this->receivable($this->zixProfile);
+  // Compulsory tuition is projected with the fixed one-unit default.
+  $this->assertSame(1,(int) $receivable->quantity_snapshot);
+  $receivable->update(['description'=>'Uniform','source_amount_due'=>'100000.0000','amount_due'=>'100000.0000','unit_price_snapshot'=>'50000.0000','quantity_snapshot'=>2]);
+  $payment=app(CentralFinancePaymentService::class)->collect($this->head,$receivable->id,$this->zix,'100000.0000','Cash',$this->at(),'P0-UNIFORM-X2','P0-UNIFORM-X2')['payment'];
+  $line=$payment->allocations()->sole();
+  $this->assertSame('50000.0000',(string) $line->unit_price_snapshot); $this->assertSame(2,(int) $line->quantity_snapshot); $this->assertSame('100000.0000',(string) $line->gross_amount_snapshot); $this->assertSame('100000.0000',(string) $line->amount);
+  // A later mutable receivable projection cannot change the allocation or
+  // receipt because both use immutable payment-allocation snapshots.
+  $receivable->update(['unit_price_snapshot'=>'75000.0000']); $line->refresh();
+  $receipt=app(\App\Services\CentralFinanceReceiptViewModelFactory::class)->make($payment->fresh(['allocations.receivable.studentProfile','fundAccount','receipt','receivedBy','refunds','reversal']), School::on('mysql')->findOrFail(1));
+  $this->assertSame('50000.0000',(string) $receipt->payment['lines'][0]['unit_price']); $this->assertSame(2,$receipt->payment['lines'][0]['quantity']); $this->assertSame('100000.0000',(string) $receipt->payment['lines'][0]['gross']);
+  $html=view('central-finance.partials.receipt-document', ['receipt'=>$receipt, 'audits'=>collect()])->render();
+  $this->assertStringContainsString('50,000.00 MMK',$html); $this->assertStringContainsString('100,000.00 MMK',$html);
+ }
  public function test_unidentified_deposit_changes_physical_balance_once_then_matching_only_settles_the_receivable(): void {
   (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
   (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
