@@ -20,6 +20,7 @@ class CentralFinancePayment extends Model {
     protected static function booted(): void { static::creating(function (self $payment): void { $payment->currency = CentralFinanceCurrency::normalize((string) $payment->currency); }); static::updating(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); static::deleting(static fn(): never => throw new RuntimeException('Central Finance payments are immutable.')); }
     public function receivable(): BelongsTo { return $this->belongsTo(CentralFinanceReceivable::class, 'receivable_id'); }
     public function receipt(): HasOne { return $this->hasOne(CentralFinanceReceipt::class, 'payment_id'); }
+    public function allocations(): HasMany { return $this->hasMany(CentralFinancePaymentAllocation::class, 'payment_id'); }
     public function refunds(): HasMany { return $this->hasMany(CentralFinancePaymentRefund::class, 'payment_id'); }
     public function reversal(): HasOne { return $this->hasOne(CentralFinancePaymentReversal::class, 'payment_id'); }
     public function fundAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'fund_account_id'); }

@@ -9,6 +9,7 @@ use App\Models\CentralFinanceUser;
 use App\Support\CentralFinanceDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -53,12 +54,25 @@ final class CentralFinanceReceivableAdjustmentService
         return $this->record($actor, $receivableId, self::PROMOTION, CentralFinanceDecimal::subtract('0', $discountAmount), $reason, $effectiveDate, $recordedAt, $key);
     }
 
-    private function record(CentralFinanceUser $actor, int $receivableId, string $type, ?string $delta, string $reason, CarbonImmutable $effectiveDate, CarbonImmutable $recordedAt, string $key): CentralFinanceReceivableAdjustment
+    /** Internal seam used only after PromotionService validates a Front Desk selector choice. */
+    public function applyPromotionDuringFeeSetup(CentralFinanceUser $actor, int $receivableId, string $discountAmount, string $reason, CarbonImmutable $effectiveDate, CarbonImmutable $recordedAt, string $key): CentralFinanceReceivableAdjustment
+    {
+        $discountAmount = CentralFinanceDecimal::normalize($discountAmount);
+        if (CentralFinanceDecimal::compare($discountAmount, '0') <= 0) throw new InvalidArgumentException('Promotion discount must be greater than zero.');
+        return $this->record($actor, $receivableId, self::PROMOTION, CentralFinanceDecimal::subtract('0', $discountAmount), $reason, $effectiveDate, $recordedAt, $key, true);
+    }
+
+    private function record(CentralFinanceUser $actor, int $receivableId, string $type, ?string $delta, string $reason, CarbonImmutable $effectiveDate, CarbonImmutable $recordedAt, string $key, bool $fromFeeSetup = false): CentralFinanceReceivableAdjustment
     {
         if (!in_array($type, [self::PROMOTION, self::WAIVER, self::CORRECTION, self::VOID], true) || trim($reason) === '' || mb_strlen(trim($reason)) > 2000 || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $key)) throw new InvalidArgumentException('Receivable lifecycle input is invalid.');
-        return DB::connection('mysql')->transaction(function () use ($actor, $receivableId, $type, $delta, $reason, $effectiveDate, $recordedAt, $key): CentralFinanceReceivableAdjustment {
+        return DB::connection('mysql')->transaction(function () use ($actor, $receivableId, $type, $delta, $reason, $effectiveDate, $recordedAt, $key, $fromFeeSetup): CentralFinanceReceivableAdjustment {
             $receivable = CentralFinanceReceivable::on('mysql')->lockForUpdate()->findOrFail($receivableId);
-            $this->workspace->assertHeadFinance($actor); $this->schools->assertCanOperate($actor, (int) $receivable->school_id);
+            if ($fromFeeSetup) {
+                if ($type !== self::PROMOTION) throw new InvalidArgumentException('Only approved Promotions may be selected during Student Fee Setup.');
+                $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $receivable->school_id);
+            } else {
+                $this->workspace->assertHeadFinance($actor); $this->schools->assertCanOperate($actor, (int) $receivable->school_id);
+            }
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $receivable->school_id);
             $this->dataIsolation->assertWorkflowWritable('receivable', (int) $receivable->id);
             $idempotencyKey = hash('sha256', implode('|', ['receivable-lifecycle', $receivable->school_id, $receivable->id, $key]));
@@ -81,6 +95,11 @@ final class CentralFinanceReceivableAdjustmentService
 
     private function activeReservationTotal(CentralFinanceReceivable $receivable): string
     {
+        if (Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) {
+            return \App\Models\CentralFinancePendingCollectionAllocation::on('mysql')->where('receivable_id', $receivable->id)
+                ->whereHas('pendingCollection', fn ($query) => $query->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]))
+                ->lockForUpdate()->pluck('amount')->reduce(static fn (string $total, mixed $amount): string => CentralFinanceDecimal::add($total, (string) $amount), CentralFinanceDecimal::normalize('0'));
+        }
         return CentralFinancePendingCollection::on('mysql')->where('receivable_id', $receivable->id)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])->lockForUpdate()->pluck('amount')->reduce(static fn (string $total, mixed $amount): string => CentralFinanceDecimal::add($total, (string) $amount), CentralFinanceDecimal::normalize('0'));
     }
 

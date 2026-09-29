@@ -36,11 +36,13 @@ final class CentralFinanceDataIsolationService
         'promotion' => ['table' => 'central_finance_promotions', 'school' => null],
         'promotion_application' => ['table' => 'central_finance_promotion_applications', 'school' => 'school_id'],
         'pending_collection' => ['table' => 'central_finance_pending_collections', 'school' => 'school_id'],
+        'pending_collection_allocation' => ['table' => 'central_finance_pending_collection_allocations', 'school' => 'school_id'],
         'collection_handover' => ['table' => 'central_finance_collection_handover_batches', 'school' => 'school_id'],
         'fund_handover' => ['table' => 'central_finance_fund_handovers', 'school' => 'school_id'],
         'import_batch' => ['table' => 'central_finance_import_batches', 'school' => 'school_id'],
         'group_import_batch' => ['table' => 'central_finance_group_import_batches', 'school' => null],
         'payment' => ['table' => 'central_finance_payments', 'school' => 'school_id'],
+        'payment_allocation' => ['table' => 'central_finance_payment_allocations', 'school' => 'school_id'],
         'payment_refund' => ['table' => 'central_finance_payment_refunds', 'school' => 'school_id'],
         'payment_reversal' => ['table' => 'central_finance_payment_reversals', 'school' => 'school_id'],
         'receipt' => ['table' => 'central_finance_receipts', 'school' => 'school_id'],
@@ -50,6 +52,8 @@ final class CentralFinanceDataIsolationService
         'internal_transfer' => ['table' => 'central_finance_internal_transfers', 'school' => 'school_id'],
         'reimbursement' => ['table' => 'central_finance_reimbursement_requests', 'school' => 'school_id'],
         'hq_funding' => ['table' => 'central_finance_hq_funding_requests', 'school' => 'school_id'],
+        'unidentified_deposit' => ['table' => 'central_finance_unidentified_deposits', 'school' => null],
+        'unidentified_deposit_allocation' => ['table' => 'central_finance_unidentified_deposit_allocations', 'school' => 'school_id'],
     ];
 
     /** @var array<string, array{table:string,staff_relation?:bool}> */

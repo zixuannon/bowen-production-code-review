@@ -130,13 +130,17 @@ final class CentralFinanceReceivableSyncService
     {
         $this->assertSourceRow($row);
         $currency = \App\Support\CentralFinanceCurrency::normalize((string) $row['currency']);
-        $payload = ['profile_source_uuid' => strtolower((string) $profile->source_uuid), 'source_id' => (string) $row['source_id'], 'description' => (string) $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount' => (float) $row['amount'], 'updated_at' => $row['updated_at']->utc()->format('Y-m-d\\TH:i:s.u\\Z')];
-        return DB::connection('mysql')->transaction(function () use ($profile, $row, $payload, $currency): CentralFinanceReceivable {
+        $hasCollectionV2Snapshots = Schema::connection('mysql')->hasColumn('central_finance_receivables', 'unit_price_snapshot')
+            && Schema::connection('mysql')->hasColumn('central_finance_receivables', 'quantity_snapshot');
+        $payload = ['profile_source_uuid' => strtolower((string) $profile->source_uuid), 'source_id' => (string) $row['source_id'], 'description' => (string) $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount' => (float) $row['amount'], 'unit_price' => (float) ($row['unit_price'] ?? $row['amount']), 'quantity' => max(1, (int) ($row['quantity'] ?? 1)), 'updated_at' => $row['updated_at']->utc()->format('Y-m-d\\TH:i:s.u\\Z')];
+        return DB::connection('mysql')->transaction(function () use ($profile, $row, $payload, $currency, $hasCollectionV2Snapshots): CentralFinanceReceivable {
             [$event, $duplicate] = $this->beginEvent($profile, (string) $row['source_id'], $payload);
             $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id']])->lockForUpdate()->first();
             if ($duplicate && $receivable !== null) return $receivable;
             if ($receivable === null) {
-                $receivable = CentralFinanceReceivable::on('mysql')->create(['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()]);
+                $values = ['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()];
+                if ($hasCollectionV2Snapshots) $values += ['unit_price_snapshot' => $row['unit_price'] ?? $row['amount'], 'quantity_snapshot' => max(1, (int) ($row['quantity'] ?? 1))];
+                $receivable = CentralFinanceReceivable::on('mysql')->create($values);
                 $this->complete($event, 'created');
                 return $receivable;
             }
@@ -158,7 +162,9 @@ final class CentralFinanceReceivableSyncService
                 $this->complete($event, 'blocked_paid', 'paid_receivable_source_conflict');
                 return $receivable;
             }
-            $receivable->fill(['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()])->save();
+            $values = ['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()];
+            if ($hasCollectionV2Snapshots) $values += ['unit_price_snapshot' => $row['unit_price'] ?? $row['amount'], 'quantity_snapshot' => max(1, (int) ($row['quantity'] ?? 1))];
+            $receivable->fill($values)->save();
             $this->complete($event, 'updated');
             return $receivable;
         });
@@ -219,7 +225,9 @@ final class CentralFinanceReceivableSyncService
             && $receivable->description === $row['description']
             && optional($receivable->due_date)->format('Y-m-d') === $row['due_date']
             && strtoupper((string) $receivable->currency) === strtoupper($row['currency'])
-            && (float) ($receivable->source_amount_due ?? $receivable->amount_due) === (float) $row['amount'];
+            && (float) ($receivable->source_amount_due ?? $receivable->amount_due) === (float) $row['amount']
+            && (float) ($receivable->unit_price_snapshot ?? $row['unit_price'] ?? $row['amount']) === (float) ($row['unit_price'] ?? $row['amount'])
+            && (int) ($receivable->quantity_snapshot ?? 1) === max(1, (int) ($row['quantity'] ?? 1));
     }
 
     /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable} $row */

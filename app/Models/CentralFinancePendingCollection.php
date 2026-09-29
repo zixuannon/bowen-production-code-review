@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\CentralFinanceCurrency;
+use App\Support\CentralFinanceDecimal;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -40,7 +41,9 @@ final class CentralFinancePendingCollection extends Model
         static::creating(function (self $collection): void {
             $collection->pending_collection_uuid ??= (string) Str::uuid();
             $collection->currency = CentralFinanceCurrency::normalize((string) $collection->currency);
-            if ((float) $collection->amount <= 0) throw new InvalidArgumentException('Pending collection amount is invalid.');
+            if (CentralFinanceDecimal::compare((string) $collection->amount, '0') <= 0) {
+                throw new InvalidArgumentException('Pending collection amount is invalid.');
+            }
         });
         static::updating(function (self $collection): void {
             if ($collection->getRawOriginal('status') === self::CONFIRMED) {
@@ -56,5 +59,6 @@ final class CentralFinancePendingCollection extends Model
     public function confirmedPayment(): BelongsTo { return $this->belongsTo(CentralFinancePayment::class, 'confirmed_payment_id'); }
     public function collectedBy(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'collected_by'); }
     public function confirmedBy(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'confirmed_by'); }
+    public function allocations(): HasMany { return $this->hasMany(CentralFinancePendingCollectionAllocation::class, 'pending_collection_id'); }
     public function handoverItems(): HasMany { return $this->hasMany(CentralFinanceCollectionHandoverItem::class, 'pending_collection_id'); }
 }

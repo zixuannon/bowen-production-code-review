@@ -45,7 +45,7 @@
                                 {{ $row->studentProfile?->student_name }}
                                 <small class="d-block text-muted">{{ $row->studentProfile?->student_code }}</small>
                             </td>
-                            <td>{{ $row->receivable?->description ?? '—' }}</td>
+                            <td>@if($row->relationLoaded('allocations') && $row->allocations->isNotEmpty())@foreach($row->allocations as $allocation)<span class="d-block">{{ $allocation->receivable?->description ?: $allocation->description_snapshot }} · {{ number_format($allocation->amount, 2) }} {{ $allocation->currency }}</span>@endforeach@else{{ $row->receivable?->description ?? '—' }}@endif</td>
                             <td>{{ number_format($row->amount, 2) }} {{ $row->currency }}</td>
                             <td>
                                 {{ $row->payment_method }}

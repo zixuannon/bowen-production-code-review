@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\FinanceGroupTenantUnavailableException;
 use App\Models\CentralFinancePayment;
 use App\Models\CentralFinancePendingCollection;
+use App\Models\CentralFinancePendingCollectionAllocation;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
@@ -14,12 +15,14 @@ use App\Services\CentralFinanceOptionalFeeAssignmentService;
 use App\Services\CentralFinanceReceiptViewModelFactory;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Support\CentralFinanceDecimal;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -100,7 +103,15 @@ final class CentralFinanceStudentCollectionController extends Controller
         $schoolQaTest = $this->dataIsolation->isQaTestSchool((int) $school->id);
         $profile->load(['receivables' => function ($query) use ($school, $schoolQaTest): void {
             $this->applySchoolRecordFilter($query, 'receivable', (int) $school->id, $schoolQaTest, false);
-            $query->orderBy('due_date')->with(['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy']);
+            $relations = ['payments.receipt', 'payments.refunds', 'payments.fundAccount', 'payments.receivedBy'];
+            if (Schema::connection('mysql')->hasTable('central_finance_payment_allocations')) {
+                $relations = array_merge($relations, [
+                    'paymentAllocations.payment.receipt', 'paymentAllocations.payment.refunds',
+                    'paymentAllocations.payment.fundAccount', 'paymentAllocations.payment.receivedBy',
+                ]);
+            }
+            if (Schema::connection('mysql')->hasTable('central_finance_promotion_applications')) $relations[] = 'promotionApplication';
+            $query->orderBy('due_date')->with($relations);
         }]);
         $this->attachPendingConfirmationAmounts(collect([$profile]), (int) $school->id, $schoolQaTest, false);
         $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables));
@@ -151,13 +162,17 @@ final class CentralFinanceStudentCollectionController extends Controller
     public function success(int $payment): View
     {
         [$actor, $school] = $this->readContext();
-        $payment = CentralFinancePayment::on('mysql')->with(['receipt', 'receivable.studentProfile', 'fundAccount', 'receivedBy'])
+        $relations = ['receipt', 'receivable.studentProfile', 'fundAccount', 'receivedBy'];
+        if (Schema::connection('mysql')->hasTable('central_finance_payment_allocations')) $relations[] = 'allocations.receivable.studentProfile';
+        $payment = CentralFinancePayment::on('mysql')->with($relations)
             ->where('school_id', $school->id)->findOrFail($payment);
         $receipt = $this->receiptViewModels->make($payment, $school);
         $cutoverStatus = $this->cutovers->statusForSchool((int) $school->id);
         $schoolFinanceFacade = $this->workspace->usesSchoolFinanceFacade($actor);
 
-        return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt', 'cutoverStatus', 'schoolFinanceFacade'));
+        $continueProfileId = $payment->receivable?->student_profile_id
+            ?? ($payment->relationLoaded('allocations') ? $payment->allocations->first()?->receivable?->student_profile_id : null);
+        return view('central-finance.student-collection.success', compact('school', 'payment', 'receipt', 'cutoverStatus', 'schoolFinanceFacade', 'continueProfileId'));
     }
 
     public function addOptionalItems(Request $request, int $profile): RedirectResponse
@@ -168,13 +183,17 @@ final class CentralFinanceStudentCollectionController extends Controller
             'optional_attempt_uuid' => ['required', 'uuid'],
             'optional_fee_ids' => ['required', 'array', 'min:1'],
             'optional_fee_ids.*' => ['required', 'integer'],
+            'optional_fee_quantities' => ['nullable', 'array'],
+            'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1'],
+            'promotions' => ['nullable', 'array'],
+            'promotions.*' => ['nullable', 'integer', 'min:1'],
         ]);
         $attempt = $this->assertOptionalAttempt($data['optional_attempt_uuid'], $actor, $school->id, $profile->id);
         if (!empty($attempt['receivableIds'])) {
             return redirect()->route('central-finance.student-collection.show', $profile->id)
                 ->with('success', __('Optional fee items are already available in Student Collection.'));
         }
-        $receivables = $this->optionalFees->add($actor, $profile, $data['optional_fee_ids']);
+        $receivables = $this->optionalFees->add($actor, $profile, $data['optional_fee_ids'], $data['optional_fee_quantities'] ?? [], $data['promotions'] ?? []);
         session()->put(self::OPTIONAL_ATTEMPTS_SESSION_KEY.'.'.$data['optional_attempt_uuid'].'.receivableIds', $receivables->pluck('id')->all());
 
         return redirect()->route('central-finance.student-collection.show', $profile->id)
@@ -247,17 +266,26 @@ final class CentralFinanceStudentCollectionController extends Controller
         $receivables = collect($profiles)->flatMap(fn (CentralFinanceStudentProfile $profile) => $profile->receivables)->values();
         if ($receivables->isEmpty()) return;
 
-        $query = CentralFinancePendingCollection::on('mysql')
-            ->selectRaw('receivable_id, SUM(amount) AS pending_confirmation_amount')
-            ->where('school_id', $schoolId)
-            ->whereIn('receivable_id', $receivables->pluck('id')->all())
-            ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
-        $this->applySchoolRecordFilter($query, 'pending_collection', $schoolId, $schoolQaTest, $includeQaTest);
+        if (Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) {
+            $query = CentralFinancePendingCollectionAllocation::on('mysql')
+                ->selectRaw('receivable_id, SUM(amount) AS pending_confirmation_amount')
+                ->where('school_id', $schoolId)
+                ->whereIn('receivable_id', $receivables->pluck('id')->all())
+                ->whereHas('pendingCollection', fn ($pending) => $pending->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]));
+            $this->applySchoolRecordFilter($query, 'pending_collection_allocation', $schoolId, $schoolQaTest, $includeQaTest);
+        } else {
+            $query = CentralFinancePendingCollection::on('mysql')
+                ->selectRaw('receivable_id, SUM(amount) AS pending_confirmation_amount')
+                ->where('school_id', $schoolId)
+                ->whereIn('receivable_id', $receivables->pluck('id')->all())
+                ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
+            $this->applySchoolRecordFilter($query, 'pending_collection', $schoolId, $schoolQaTest, $includeQaTest);
+        }
         $reserved = $query->groupBy('receivable_id')->pluck('pending_confirmation_amount', 'receivable_id');
 
         $receivables->each(fn (CentralFinanceReceivable $receivable) => $receivable->setAttribute(
             'pending_confirmation_amount',
-            (float) ($reserved[$receivable->id] ?? 0),
+            CentralFinanceDecimal::normalize((string) ($reserved[$receivable->id] ?? '0')),
         ));
     }
 

@@ -21,6 +21,7 @@ class CentralFinanceLedgerEntry extends Model
     public const TYPE_OPERATING_INCOME_REVERSAL = 'operating_income_reversal';
     public const TYPE_OPERATING_EXPENSE_REVERSAL = 'operating_expense_reversal';
     public const TYPE_INTERNAL_TRANSFER = 'internal_transfer';
+    public const TYPE_UNIDENTIFIED_DEPOSIT = 'unidentified_deposit';
 
     protected $connection = 'mysql';
 

@@ -6,6 +6,7 @@ use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\School;
 use App\Models\User;
+use App\Support\CentralFinanceDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,7 @@ final class CentralFinanceLedgerService
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
     ) {}
 
-    public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
+    public function recordOperatingIncome(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string|float|int $amount, CarbonImmutable $occurredAt, ?string $referenceNo = null, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
     {
         return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME, $amount, $occurredAt, $referenceNo, $operating, $memo);
     }
@@ -117,7 +118,7 @@ final class CentralFinanceLedgerService
         });
     }
 
-    private function recordSingle(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $amount, CarbonImmutable $occurredAt, ?string $referenceNo, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
+    private function recordSingle(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, string|float|int $amount, CarbonImmutable $occurredAt, ?string $referenceNo, bool $operating = true, ?string $memo = null): CentralFinanceLedgerEntry
     {
         $this->assertSource($sourceType, $sourceId);
         $this->assertPositiveAmount($amount);
@@ -163,7 +164,7 @@ final class CentralFinanceLedgerService
         ));
     }
 
-    private function append(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, float $moneyIn, float $moneyOut, float $operatingIncome, float $operatingExpense, CarbonImmutable $occurredAt, ?string $referenceNo, ?string $memo = null): CentralFinanceLedgerEntry
+    private function append(User $actor, CentralFinanceFundAccount $account, int $schoolId, string $sourceType, string $sourceId, string $sourceLine, string $type, string|float|int $moneyIn, string|float|int $moneyOut, string|float|int $operatingIncome, string|float|int $operatingExpense, CarbonImmutable $occurredAt, ?string $referenceNo, ?string $memo = null): CentralFinanceLedgerEntry
     {
         try {
             return CentralFinanceLedgerEntry::on('mysql')->create([
@@ -210,9 +211,15 @@ final class CentralFinanceLedgerService
         }
     }
 
-    private function assertPositiveAmount(float $amount): void
+    private function assertPositiveAmount(string|float|int $amount): void
     {
-        if ($amount <= 0 || !is_finite($amount)) {
+        if (is_string($amount)) {
+            if (CentralFinanceDecimal::compare($amount, '0') <= 0) {
+                throw new InvalidArgumentException('Central Ledger amount must be positive and finite.');
+            }
+            return;
+        }
+        if ($amount <= 0 || !is_finite((float) $amount)) {
             throw new InvalidArgumentException('Central Ledger amount must be positive and finite.');
         }
     }

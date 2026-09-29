@@ -7,12 +7,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class CentralFinanceReceivable extends Model {
     public const OPEN='open'; public const PARTIAL='partial'; public const PAID='paid'; public const WAIVED='waived'; public const CANCELLED='cancelled'; public const VOIDED='voided';
     protected $connection='mysql';
-    protected $fillable=['receivable_uuid','school_id','student_profile_id','source_type','source_id','description','due_date','currency','amount_due','source_amount_due','finance_adjustment_amount','amount_paid','status','source_updated_at','source_created_at','last_synced_at'];
-    protected $casts=['due_date'=>'date','source_updated_at'=>'datetime','source_created_at'=>'datetime','last_synced_at'=>'datetime','amount_due'=>'decimal:4','source_amount_due'=>'decimal:4','finance_adjustment_amount'=>'decimal:4','amount_paid'=>'decimal:4'];
+    protected $fillable=['receivable_uuid','school_id','student_profile_id','source_type','source_id','description','unit_price_snapshot','quantity_snapshot','due_date','currency','amount_due','source_amount_due','finance_adjustment_amount','amount_paid','status','source_updated_at','source_created_at','last_synced_at'];
+    protected $casts=['due_date'=>'date','source_updated_at'=>'datetime','source_created_at'=>'datetime','last_synced_at'=>'datetime','unit_price_snapshot'=>'decimal:4','quantity_snapshot'=>'integer','amount_due'=>'decimal:4','source_amount_due'=>'decimal:4','finance_adjustment_amount'=>'decimal:4','amount_paid'=>'decimal:4'];
     protected static function booted(): void { static::creating(function (self $receivable): void { $receivable->currency = CentralFinanceCurrency::normalize((string) $receivable->currency); }); }
     public function studentProfile(): BelongsTo { return $this->belongsTo(CentralFinanceStudentProfile::class, 'student_profile_id'); }
     public function school(): BelongsTo { return $this->belongsTo(School::class, 'school_id'); }
     public function payments(): HasMany { return $this->hasMany(CentralFinancePayment::class, 'receivable_id'); }
+    public function paymentAllocations(): HasMany { return $this->hasMany(CentralFinancePaymentAllocation::class, 'receivable_id'); }
+    public function pendingCollectionAllocations(): HasMany { return $this->hasMany(CentralFinancePendingCollectionAllocation::class, 'receivable_id'); }
     public function adjustments(): HasMany { return $this->hasMany(CentralFinanceReceivableAdjustment::class, 'receivable_id'); }
     public function promotionApplication(): \Illuminate\Database\Eloquent\Relations\HasOne { return $this->hasOne(CentralFinancePromotionApplication::class, 'receivable_id'); }
 }

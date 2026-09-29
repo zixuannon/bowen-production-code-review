@@ -4,30 +4,67 @@ namespace App\Services;
 
 use App\Models\CentralFinancePayment;
 use App\Models\School;
+use App\Support\CentralFinanceDecimal;
 use App\Support\SchoolBranding;
 use App\ViewModels\CentralFinanceReceiptViewModel;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Schema;
 
 /** Creates the one canonical, read-only data contract used by Central receipts. */
 final class CentralFinanceReceiptViewModelFactory
 {
     public function make(CentralFinancePayment $payment, School $school): CentralFinanceReceiptViewModel
     {
-        $payment->loadMissing([
+        $relations = [
             'receipt', 'refunds.fundAccount', 'refunds.refundedBy', 'reversal.fundAccount', 'reversal.reversedBy', 'receivable.studentProfile',
             'receivable.payments.refunds', 'fundAccount', 'receivedBy',
-        ]);
+        ];
+        if (Schema::connection('mysql')->hasTable('central_finance_payment_allocations')) {
+            $relations[] = 'allocations.receivable.studentProfile';
+        }
+        $payment->loadMissing($relations);
 
         $receivable = $payment->receivable;
-        $payments = $receivable?->payments
-            ?->sortBy(fn (CentralFinancePayment $item) => sprintf('%s-%010d', $item->paid_at?->format('Y-m-d H:i:s.u') ?? '', $item->id));
-        $paidAtReceipt = 0.0;
-        foreach ($payments ?? [] as $item) {
-            $paidAtReceipt += (float) $item->amount;
-            if ((int) $item->id === (int) $payment->id) break;
+        $allocations = $payment->relationLoaded('allocations') ? $payment->allocations->sortBy('id')->values() : collect();
+        $lines = $allocations->map(function ($line): array {
+            $outstanding = CentralFinanceDecimal::max(CentralFinanceDecimal::subtract((string) $line->outstanding_before_snapshot, (string) $line->amount), '0');
+            return [
+                'description' => $line->description_snapshot ?: ($line->receivable?->description ?: '—'),
+                'gross' => CentralFinanceDecimal::normalize((string) $line->gross_amount_snapshot),
+                'promotion' => CentralFinanceDecimal::normalize((string) $line->promotion_amount_snapshot),
+                'due' => CentralFinanceDecimal::normalize((string) $line->net_due_snapshot),
+                'this_payment' => CentralFinanceDecimal::normalize((string) $line->amount),
+                'paid_at_receipt' => CentralFinanceDecimal::add((string) $line->paid_before_snapshot, (string) $line->amount),
+                'outstanding_at_receipt' => $outstanding,
+            ];
+        });
+        if ($lines->isEmpty()) {
+            // Pre-P0 one-receivable Payments retain their established receipt
+            // presentation even before the additive allocation backfill runs.
+            $payments = $receivable?->payments
+                ?->sortBy(fn (CentralFinancePayment $item) => sprintf('%s-%010d', $item->paid_at?->format('Y-m-d H:i:s.u') ?? '', $item->id));
+            $paidAtReceipt = CentralFinanceDecimal::normalize('0');
+            foreach ($payments ?? [] as $item) {
+                $paidAtReceipt = CentralFinanceDecimal::add($paidAtReceipt, (string) $item->amount);
+                if ((int) $item->id === (int) $payment->id) break;
+            }
+            if (CentralFinanceDecimal::compare($paidAtReceipt, '0') <= 0) $paidAtReceipt = CentralFinanceDecimal::normalize((string) $payment->amount);
+            $due = CentralFinanceDecimal::normalize((string) ($receivable?->amount_due ?? $payment->amount));
+            $lines = collect([[
+                'description' => $receivable?->description ?: '—',
+                'gross' => CentralFinanceDecimal::normalize((string) ($receivable?->source_amount_due ?? $due)),
+                'promotion' => CentralFinanceDecimal::max(CentralFinanceDecimal::subtract((string) ($receivable?->source_amount_due ?? $due), $due), '0'),
+                'due' => $due,
+                'this_payment' => CentralFinanceDecimal::normalize((string) $payment->amount),
+                'paid_at_receipt' => $paidAtReceipt,
+                'outstanding_at_receipt' => CentralFinanceDecimal::max(CentralFinanceDecimal::subtract($due, $paidAtReceipt), '0'),
+            ]]);
         }
-        if ($paidAtReceipt <= 0) $paidAtReceipt = (float) $payment->amount;
-        $due = (float) ($receivable?->amount_due ?? $payment->amount);
+        $studentReceivable = $allocations->first()?->receivable ?? $receivable;
+        $sum = fn (string $field): string => $lines->reduce(fn (string $total, array $line): string => CentralFinanceDecimal::add($total, (string) $line[$field]), CentralFinanceDecimal::normalize('0'));
+        $due = $sum('due');
+        $paidAtReceipt = $sum('paid_at_receipt');
+        $outstandingAtReceipt = $sum('outstanding_at_receipt');
         $refundTotal = (float) $payment->refunds->sum('amount');
         $refundStatus = $refundTotal <= 0 ? 'none' : ($refundTotal + 0.00001 >= (float) $payment->amount ? 'refunded' : 'partial_refund');
         $rawLogo = trim((string) $school->getRawOriginal('logo'));
@@ -54,22 +91,23 @@ final class CentralFinanceReceiptViewModelFactory
             receipt: [
                 'number' => $payment->receipt?->receipt_no ?? '—',
                 'issued_at' => $payment->receipt?->issued_at ?? $payment->paid_at,
-                'payment_status' => $paidAtReceipt + 0.00001 >= $due ? 'paid' : 'partial',
+                'payment_status' => CentralFinanceDecimal::compare($outstandingAtReceipt, '0') <= 0 ? 'paid' : 'partial',
                 'refund_status' => $refundStatus,
             ],
             student: [
-                'name' => $receivable?->studentProfile?->student_name ?: '—',
-                'admission_no' => $receivable?->studentProfile?->admission_no ?: '—',
-                'class_section' => trim(($receivable?->studentProfile?->class_name ?? '').(($receivable?->studentProfile?->section_name ?? '') ? ' · '.$receivable->studentProfile->section_name : '')) ?: '—',
+                'name' => $studentReceivable?->studentProfile?->student_name ?: '—',
+                'admission_no' => $studentReceivable?->studentProfile?->admission_no ?: '—',
+                'class_section' => trim(($studentReceivable?->studentProfile?->class_name ?? '').(($studentReceivable?->studentProfile?->section_name ?? '') ? ' · '.$studentReceivable->studentProfile->section_name : '')) ?: '—',
             ],
             payment: [
-                'description' => $receivable?->description ?: '—',
+                'description' => $lines->count() === 1 ? $lines->first()['description'] : __('Multiple receivables'),
                 'currency' => $payment->currency,
                 'due' => $due,
-                'this_payment' => (float) $payment->amount,
+                'this_payment' => CentralFinanceDecimal::normalize((string) $payment->amount),
                 'effective_date' => $payment->paid_at,
                 'paid_at_receipt' => $paidAtReceipt,
-                'outstanding_at_receipt' => (float) max(0, $due - $paidAtReceipt),
+                'outstanding_at_receipt' => $outstandingAtReceipt,
+                'lines' => $lines->all(),
                 'payment_method' => $payment->payment_method,
                 'reference' => $payment->payment_reference ?: '—',
                 'collected_by' => $payment->received_by ? optional($payment->receivedBy)->full_name : '—',

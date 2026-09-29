@@ -30,16 +30,27 @@ final class CentralFinanceOptionalFeeAssignmentService
         private readonly StudentFeeAssignmentService $assignments,
         private readonly CentralFinanceReceivableSyncService $receivables,
         private readonly CentralFinanceDataIsolationService $dataIsolation,
+        private readonly CentralFinancePromotionService $promotions,
     ) {}
 
     /** @return Collection<int, object> */
     public function eligible(CentralFinanceUser $actor, CentralFinanceStudentProfile $profile): Collection
     {
-        return $this->withinTenant($actor, $profile, function (Students $student): Collection {
+        $items = $this->withinTenant($actor, $profile, function (Students $student): Collection {
             $student->loadMissing('session_year');
+            $qaSchool = $this->dataIsolation->isQaTestSchool((int) $student->school_id);
             return $this->assignments->availableAdditionalItems($student)
-                ->filter(fn ($item): bool => $this->dataIsolation->isTenantMetadataProduction('fee_item', (int) $student->school_id, (int) $item->id)
-                    && $this->dataIsolation->isTenantMetadataProduction('fee', (int) $student->school_id, (int) $item->fees_id))
+                // The source adapter has already constrained the rows to the
+                // trusted tenant and class.  Zixuan's explicit QA School may
+                // use only its own QA fixtures; every other School stays
+                // Official-only.  Do not apply the old Official predicate a
+                // second time and make a legitimate QA item disappear.
+                ->filter(fn ($item): bool => ($qaSchool
+                        ? $this->dataIsolation->isTenantMetadataWorkflowWritable('fee_item', (int) $student->school_id, (int) $item->id)
+                        : $this->dataIsolation->isTenantMetadataProduction('fee_item', (int) $student->school_id, (int) $item->id))
+                    && ($qaSchool
+                        ? $this->dataIsolation->isTenantMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
+                        : $this->dataIsolation->isTenantMetadataProduction('fee', (int) $student->school_id, (int) $item->fees_id)))
                 ->map(fn ($item) => (object) [
                 'id' => (int) $item->id,
                 'name' => (string) ($item->fee?->name ?: 'Optional fee'),
@@ -49,19 +60,28 @@ final class CentralFinanceOptionalFeeAssignmentService
                 'academic_year_id' => (int) $student->session_year_id,
                 'academic_year' => (string) ($student->session_year?->name ?: $student->session_year_id),
                 'class_id' => (int) $student->class_id,
+                'quantity_enabled' => (bool) ($item->quantity_enabled ?? false),
             ])->values();
         });
+        $effectiveDate = \Carbon\CarbonImmutable::now('Asia/Yangon');
+        return $items->map(function (object $item) use ($actor, $profile, $effectiveDate): object {
+            $item->promotions = $this->promotions->eligibleForFeeSetup($actor, (int) $profile->school_id, (int) $item->id, $effectiveDate)
+                ->map(fn ($promotion) => (object) ['id' => (int) $promotion->id, 'name' => (string) $promotion->name, 'code' => (string) $promotion->code, 'type' => (string) $promotion->discount_type, 'value' => (string) $promotion->discount_value])
+                ->values();
+            return $item;
+        })->values();
     }
 
     /** @param list<mixed> $requestedTemplateIds @return Collection<int, CentralFinanceReceivable> */
-    public function add(CentralFinanceUser $actor, CentralFinanceStudentProfile $profile, array $requestedTemplateIds): Collection
+    public function add(CentralFinanceUser $actor, CentralFinanceStudentProfile $profile, array $requestedTemplateIds, array $requestedQuantities = [], array $requestedPromotions = []): Collection
     {
         $selected = collect($requestedTemplateIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
         if ($selected->isEmpty()) {
             throw ValidationException::withMessages(['optional_fee_ids' => __('Select at least one eligible optional item.')]);
         }
 
-        $sourceIds = $this->withinTenant($actor, $profile, function (Students $student) use ($selected): array {
+        $promotions = $this->canonicalPromotionSelection($selected, $requestedPromotions);
+        $sourceIds = $this->withinTenant($actor, $profile, function (Students $student) use ($selected, $requestedQuantities): array {
             $configured = $this->assignments->configuredAdditionalItems($student)->keyBy('id');
             if ($selected->diff($configured->keys())->isNotEmpty()) {
                 throw ValidationException::withMessages(['optional_fee_ids' => __('Selected optional items are not valid for this Student.')]);
@@ -77,7 +97,8 @@ final class CentralFinanceOptionalFeeAssignmentService
             $new = $selected->map(fn (int $id) => (string) $id)->diff($locked)->map(fn (string $id) => (int) $id)->values();
 
             if ($new->isNotEmpty()) {
-                $draft = $this->assignments->saveAdditionalDraft($student, $student->user, $new->all());
+                $quantities = collect($requestedQuantities)->only($new->map(fn (int $id) => (string) $id)->all())->all();
+                $draft = $this->assignments->saveAdditionalDraft($student, $student->user, $new->all(), $quantities);
                 $this->assignments->confirm($student, $student->user, $draft->uuid);
             }
 
@@ -99,7 +120,29 @@ final class CentralFinanceOptionalFeeAssignmentService
             throw ValidationException::withMessages(['optional_fee_ids' => __('The optional item was saved but is awaiting Central Receivable synchronization. Retry this action after synchronization succeeds.')]);
         }
 
-        return collect($sourceIds)->map(fn (string $id) => $rows->get($id))->values();
+        $effectiveDate = \Carbon\CarbonImmutable::now('Asia/Yangon');
+        foreach ($promotions as $sourceId => $promotionId) {
+            $receivable = $rows->get((string) $sourceId);
+            if ($receivable === null) throw ValidationException::withMessages(['promotions' => __('Selected Promotion is awaiting Central Receivable synchronization.')]);
+            $this->promotions->applyFromFeeSetup($actor, (int) $receivable->id, $promotionId, (int) $sourceId, $effectiveDate, $effectiveDate, 'fee-setup:'.$profile->school_id.':'.$profile->id.':'.$sourceId.':'.$promotionId);
+        }
+        return collect($sourceIds)->map(fn (string $id) => $rows->get($id)?->fresh())->filter()->values();
+    }
+
+    /** @param Collection<int,int> $selected @param array<mixed> $requested @return array<int,int> */
+    private function canonicalPromotionSelection(Collection $selected, array $requested): array
+    {
+        $allowed = $selected->map(fn (int $id) => (string) $id)->flip();
+        $result = [];
+        foreach ($requested as $sourceId => $promotionId) {
+            $sourceId = (int) $sourceId;
+            if ($sourceId < 1 || !$allowed->has((string) $sourceId)) throw ValidationException::withMessages(['promotions' => __('A Promotion may be selected only for an item included in this Fee Setup.')]);
+            if ($promotionId === null || $promotionId === '') continue;
+            $promotionId = (int) $promotionId;
+            if ($promotionId < 1) throw ValidationException::withMessages(['promotions' => __('The selected Promotion is invalid.')]);
+            $result[$sourceId] = $promotionId;
+        }
+        return $result;
     }
 
     /** @template T @param callable(Students):T $operation @return T */

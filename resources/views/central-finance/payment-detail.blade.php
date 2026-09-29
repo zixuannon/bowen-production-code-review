@@ -45,6 +45,8 @@
             <button class="btn btn-danger">{{ __('Confirm Full Reversal') }}</button>
         </form>@endif</div></div></div>
     </div>
+    @elseif($correctionUnavailableReason)
+    <div class="alert alert-secondary">{{ $correctionUnavailableReason }}</div>
     @endif
     <div class="card"><div class="card-body"><h5>{{ __('Correction history') }}</h5><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>{{ __('Type') }}</th><th>{{ __('Transaction Date') }}</th><th>{{ __('Amount') }}</th><th>{{ __('Method') }}</th><th>{{ __('Actor') }}</th><th>{{ __('Reason') }}</th><th></th></tr></thead><tbody>
     @forelse($document->refunds as $refund)<tr><td>{{ __('Refund') }}</td><td>{{ $refund->effective_date?->format('Y-m-d') ?: $refund->refunded_at?->format('Y-m-d') }}</td><td>{{ number_format($refund->amount,2) }} {{ $refund->currency }}</td><td>{{ $refund->refund_method ?: '—' }}</td><td>{{ $refund->refundedBy?->full_name ?: '—' }}</td><td>{{ $refund->reason }}</td><td><a href="{{ route('central-finance.payments.refunds.show', [$document->id, $refund->id]) }}">{{ __('Details') }}</a></td></tr>@empty @if(!$document->reversal)<tr><td colspan="7" class="text-muted">{{ __('No corrections have been recorded.') }}</td></tr>@endif @endforelse

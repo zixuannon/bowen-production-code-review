@@ -393,6 +393,58 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $migration->down(); foreach(['central_finance_promotions','central_finance_promotion_school_allocations','central_finance_promotion_applications'] as $table) $this->assertFalse(Schema::connection('mysql')->hasTable($table));
   $migration->up(); $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_promotion_applications'));
  }
+ public function test_collection_v2_migration_is_additive_and_backfills_one_immutable_line_per_legacy_document(): void {
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  $receivable=$this->receivable($this->zixProfile);
+  $payment=app(CentralFinancePaymentService::class)->collect($this->head,$receivable->id,$this->zix,100,'Cash',$this->at(),'P0-MIG-PAY','P0-MIG-PAY')['payment'];
+  $pending=app(CentralFinancePendingCollectionService::class)->submit(CentralFinanceUser::on('mysql')->findOrFail(300),$this->zixProfile->id,$receivable->id,100,'Bank Transfer',$this->at(),'P0-MIG-PENDING',$this->hq->id,'P0-MIG-PENDING');
+  $migration=require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'); $migration->up();
+  foreach(['central_finance_payment_allocations','central_finance_pending_collection_allocations','central_finance_unidentified_deposits','central_finance_unidentified_deposit_allocations','central_finance_promotion_fee_allocations'] as $table) $this->assertTrue(Schema::connection('mysql')->hasTable($table));
+  $this->assertTrue(Schema::connection('mysql')->hasColumns('central_finance_receivables',['unit_price_snapshot','quantity_snapshot']));
+  $this->assertSame(1,DB::connection('mysql')->table('central_finance_payment_allocations')->where('payment_id',$payment->id)->count());
+  $this->assertSame(1,DB::connection('mysql')->table('central_finance_pending_collection_allocations')->where('pending_collection_id',$pending->id)->count());
+  $before=DB::connection('mysql')->table('central_finance_payment_allocations')->where('payment_id',$payment->id)->first(); $migration->up(); $after=DB::connection('mysql')->table('central_finance_payment_allocations')->where('payment_id',$payment->id)->first();
+  $this->assertSame($before->allocation_uuid,$after->allocation_uuid);
+  $migration->down(); $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_payment_allocations')); $this->assertFalse(Schema::connection('mysql')->hasColumn('central_finance_receivables','unit_price_snapshot'));
+  $migration->up(); $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_payment_allocations'));
+}
+ public function test_collection_v2_creates_one_parent_payment_receipt_and_ledger_for_explicit_multi_receivable_allocations(): void {
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
+  Config::set('database.connections.school.database',$this->a); DB::purge('school');
+  DB::connection('school')->table('fees')->insert(['id'=>2,'name'=>'Zixuan Activity','due_date'=>'2026-09-02','created_at'=>now(),'updated_at'=>now()]);
+  DB::connection('school')->table('fees_class_types')->insert(['id'=>2,'fees_id'=>2,'class_id'=>1,'amount'=>500,'optional'=>0,'fee_currency'=>'MMK','created_at'=>now(),'updated_at'=>now()]);
+  $rows=app(CentralFinanceReceivableSyncService::class)->syncProfile($this->zixProfile); $receivables=CentralFinanceReceivable::on('mysql')->where('student_profile_id',$this->zixProfile->id)->orderBy('id')->get();
+  $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  $pending=app(CentralFinancePendingCollectionService::class)->submitAllocations($front,$this->zixProfile->id,[['receivable_id'=>$receivables[0]->id,'amount'=>'100.0000'],['receivable_id'=>$receivables[1]->id,'amount'=>'200.0000']],'Bank Transfer',$this->at(),'P0-MULTI-PENDING',$this->hq->id,'P0-MULTI-REF');
+  $this->assertNull($pending->receivable_id); $this->assertSame('300.0000',(string)$pending->amount); $this->assertSame(2,$pending->allocations()->count()); $this->assertSame(0,CentralFinancePayment::on('mysql')->count());
+  app(CentralFinancePendingCollectionConfirmationService::class)->confirm($this->head,$pending->id,$this->hq,$this->at(),'Confirmed multi allocation.');
+  $payment=CentralFinancePayment::on('mysql')->sole(); $this->assertNull($payment->receivable_id); $this->assertSame('300.0000',(string)$payment->amount); $this->assertSame(2,$payment->allocations()->count()); $this->assertSame(1,DB::connection('mysql')->table('central_finance_receipts')->count()); $this->assertSame(1,DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+  $lines=$payment->allocations()->orderBy('id')->get(); $this->assertSame('100.0000',(string)$lines[0]->amount); $this->assertSame('200.0000',(string)$lines[1]->amount); $this->assertNotNull($lines[0]->description_snapshot); $this->assertSame(1,(int)$lines[0]->quantity_snapshot);
+  $this->assertSame('100.0000',(string)$receivables[0]->fresh()->amount_paid); $this->assertSame('200.0000',(string)$receivables[1]->fresh()->amount_paid);
+  $receipt=app(\App\Services\CentralFinanceReceiptViewModelFactory::class)->make($payment->fresh(['allocations.receivable.studentProfile','fundAccount','receipt','receivedBy','refunds','reversal']), School::on('mysql')->findOrFail(1));
+  $this->assertSame(2,count($receipt->payment['lines'])); $this->assertSame('300.0000',number_format($receipt->payment['this_payment'],4,'.',''));
+  try { app(\App\Services\CentralFinancePaymentRefundService::class)->refund($this->head,$payment->id,$this->hq,1,'Cash',$this->at(),'Must not infer a line.',$this->at(),'P0-MULTI-REFUND'); $this->fail('A multi-receivable parent must not enter the legacy refund path.'); }
+  catch (InvalidArgumentException $exception) { $this->assertStringContainsString('multi-receivable',$exception->getMessage()); }
+ }
+ public function test_pending_reference_is_rejected_before_a_future_head_finance_confirmation_can_fail(): void {
+  $receivable=$this->receivable($this->zixProfile); $front=CentralFinanceUser::on('mysql')->findOrFail(300); Session::put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY,1);
+  app(CentralFinancePendingCollectionService::class)->submit($front,$this->zixProfile->id,$receivable->id,100,'Bank Transfer',$this->at(),'P0-REFERENCE-FIRST',$this->hq->id,'BANK-REF-P0');
+  try { app(CentralFinancePendingCollectionService::class)->submit($front,$this->zixProfile->id,$receivable->id,100,'Bank Transfer',$this->at(),'P0-REFERENCE-SECOND',$this->hq->id,'BANK-REF-P0'); $this->fail('A reference already reserved by a pending collection must fail before confirmation.'); }
+  catch (InvalidArgumentException $exception) { $this->assertStringContainsString('reserved',$exception->getMessage()); }
+  $this->assertSame(1,CentralFinancePendingCollection::on('mysql')->count()); $this->assertSame(0,CentralFinancePayment::on('mysql')->count()); $this->assertSame(0,CentralFinanceLedgerEntry::on('mysql')->count());
+ }
+ public function test_unidentified_deposit_changes_physical_balance_once_then_matching_only_settles_the_receivable(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
+  (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $receivable=$this->receivable($this->zixProfile); $service=app(\App\Services\CentralFinanceUnidentifiedDepositService::class);
+  $deposit=$service->record($this->head,$this->hq,'250.0000',$this->at(),'P0-UNIDENTIFIED-1','BANK-UNIDENTIFIED-1','Unknown bank sender.');
+  $retry=$service->record($this->head,$this->hq,'250.0000',$this->at(),'P0-UNIDENTIFIED-1','BANK-UNIDENTIFIED-1','Unknown bank sender.');
+  $this->assertSame($deposit->id,$retry->id); $ledger=CentralFinanceLedgerEntry::on('mysql')->sole(); $this->assertNull($ledger->school_id); $this->assertSame('250.0000',(string)$ledger->money_in); $this->assertSame('0.0000',(string)$ledger->operating_income);
+  $allocation=$service->match($this->head,$deposit->id,$receivable->id,'250.0000',$this->at(),'Matched by remittance advice.','P0-UNIDENTIFIED-MATCH-1');
+  $this->assertSame('250.0000',(string)$allocation->amount); $this->assertSame(1,CentralFinanceLedgerEntry::on('mysql')->count()); $this->assertSame(0,CentralFinancePayment::on('mysql')->count()); $this->assertSame('250.0000',(string)$receivable->fresh()->amount_paid); $this->assertSame('applied',$deposit->fresh()->status);
+ }
  private function receivable(CentralFinanceStudentProfile $p): CentralFinanceReceivable { app(CentralFinanceReceivableSyncService::class)->syncProfile($p);return CentralFinanceReceivable::on('mysql')->where('student_profile_id',$p->id)->firstOrFail(); }
  private function at():CarbonImmutable{return CarbonImmutable::parse('2026-08-21 10:00','Asia/Yangon');}
  private function profile(int $school,string $uuid,?int $tenantStudentId=null):CentralFinanceStudentProfile{return CentralFinanceStudentProfile::on('mysql')->create(['school_id'=>$school,'tenant_student_id'=>$tenantStudentId ?? $school,'source_uuid'=>$uuid,'class_id'=>1,'class_section_id'=>1,'student_name'=>'Student '.$school,'enrollment_status'=>'active','source_updated_at'=>now(),'last_synced_at'=>now()]);}

@@ -54,4 +54,25 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('function executeAsTenantIdentity', $identity);
         $this->assertStringContainsString("'central_finance_source_uuid' => \$identity->tenant_user_uuid", $identity);
     }
+
+    public function test_front_desk_selects_only_existing_applicable_promotions_during_fee_setup(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root.'/app/Http/Controllers/CentralFinanceStudentCollectionController.php');
+        $optionalFees = (string) file_get_contents($root.'/app/Services/CentralFinanceOptionalFeeAssignmentService.php');
+        $promotions = (string) file_get_contents($root.'/app/Services/CentralFinancePromotionService.php');
+        $view = (string) file_get_contents($root.'/resources/views/central-finance/student-collection/show.blade.php');
+
+        $this->assertStringContainsString("'promotions' => ['nullable', 'array']", $controller);
+        $this->assertStringContainsString('eligibleForFeeSetup', $optionalFees);
+        $this->assertStringContainsString('applyFromFeeSetup', $optionalFees);
+        $this->assertStringNotContainsString('->define(', $optionalFees);
+        $this->assertStringNotContainsString('applyCorrection', $optionalFees);
+        $this->assertStringNotContainsString('applyWaiver', $optionalFees);
+        $this->assertStringContainsString('assertCanSubmitCollectionsSchool', $promotions);
+        $this->assertStringContainsString("CentralFinancePromotion::ACTIVE", $promotions);
+        $this->assertStringContainsString('fee_scope', $promotions);
+        $this->assertStringContainsString('name="promotions[{{ $item->id }}]"', $view);
+        $this->assertStringContainsString('already-approved applicable Promotion', $view);
+    }
 }

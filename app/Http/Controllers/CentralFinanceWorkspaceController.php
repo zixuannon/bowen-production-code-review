@@ -298,10 +298,12 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         [$actor, $school, $document, $receipt, $audits] = $this->receiptData($payment);
         $document->loadMissing('refunds.refundedBy', 'reversal.reversedBy');
-        $canCorrect = false;
+        // Layer 2 corrections are still one-receivable documents.  Never let
+        // their legacy services attempt to infer a line inside a P0 parent.
+        $canCorrect = $document->receivable_id !== null;
         try {
             [, $operatingSchool] = $this->currentCorrectionContext();
-            $canCorrect = (int) $operatingSchool->id === (int) $school->id
+            $canCorrect = $canCorrect && (int) $operatingSchool->id === (int) $school->id
                 && $this->dataIsolation->isWorkflowWritable('payment', (int) $document->id)
                 && $this->cutovers->allowsCentralWrites((int) $school->id);
         } catch (AuthorizationException) {
@@ -311,7 +313,10 @@ final class CentralFinanceWorkspaceController extends Controller
         $remainingRefundable = $document->reversal ? 0.0 : max(0, (float) $document->amount - $refundTotal);
         $refundToken = 'ui-payment-refund-'.Str::uuid();
         $reversalToken = 'ui-payment-reversal-'.Str::uuid();
-        return view('central-finance.payment-detail', compact('actor', 'school', 'document', 'receipt', 'audits', 'canCorrect', 'refundTotal', 'remainingRefundable', 'refundToken', 'reversalToken'));
+        $correctionUnavailableReason = $document->receivable_id === null
+            ? __('Refund and reversal for a multi-receivable parent payment require the allocation-aware correction release. This payment remains read-only until then.')
+            : null;
+        return view('central-finance.payment-detail', compact('actor', 'school', 'document', 'receipt', 'audits', 'canCorrect', 'refundTotal', 'remainingRefundable', 'refundToken', 'reversalToken', 'correctionUnavailableReason'));
     }
 
     public function refundDetail(int $payment, int $refund): View
@@ -422,11 +427,11 @@ final class CentralFinanceWorkspaceController extends Controller
         $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
         $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->readableAccounts($actor, $school?->id);
         $filters = $this->validatedReadFilters($request, $school, $accounts);
-        $payments = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt','receivable.studentProfile','fundAccount'])->orderBy('paid_at')->get();
+        $payments = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with($this->paymentReadRelations(false))->orderBy('paid_at')->get();
         $schoolNames = $schools->pluck('name', 'id');
         $rows = $payments->map(fn ($payment) => [
-            $payment->paid_at?->format('Y-m-d H:i'), $schoolNames[$payment->school_id] ?? '', $payment->receivable?->studentProfile?->student_name,
-            $payment->receivable?->studentProfile?->admission_no, $payment->fundAccount?->account_code, $payment->fundAccount?->account_name,
+            $payment->paid_at?->format('Y-m-d H:i'), $schoolNames[$payment->school_id] ?? '', $payment->receivable?->studentProfile?->student_name ?? ($payment->relationLoaded('allocations') ? $payment->allocations->first()?->receivable?->studentProfile?->student_name : null),
+            $payment->receivable?->studentProfile?->admission_no ?? ($payment->relationLoaded('allocations') ? $payment->allocations->first()?->receivable?->studentProfile?->admission_no : null), $payment->fundAccount?->account_code, $payment->fundAccount?->account_name,
             $payment->payment_reference, $payment->receipt?->receipt_no, $payment->payment_method, $payment->currency, (float) $payment->amount,
         ])->all();
         return $this->downloadReadExport(new CentralFinanceReadExport('Payment Receipts', ['Payment Effective Date','School','Student','Student Code','Fund Account Code','Fund Account','Payment Reference','Receipt No','Method','Currency','Amount'], $rows), 'central_payment_receipts', $format);
@@ -1241,7 +1246,7 @@ final class CentralFinanceWorkspaceController extends Controller
         if ($profiles instanceof LengthAwarePaginator) {
             $profiles->getCollection()->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         }
-        $paymentsQuery = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with(['receipt', 'refunds', 'reversal', 'receivable.studentProfile', 'fundAccount']);
+        $paymentsQuery = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with($this->paymentReadRelations());
         if ($page === 'payments' && $request->string('view')->toString() === 'refunds') {
             $paymentsQuery->where(fn ($query) => $query->whereHas('refunds')->orWhereHas('reversal'));
         }
@@ -1647,7 +1652,15 @@ final class CentralFinanceWorkspaceController extends Controller
         if (!empty($filters['fund_account_id'])) $query->where('fund_account_id', (int) $filters['fund_account_id']);
         if (!empty($filters['from'])) $query->whereDate('paid_at', '>=', $filters['from']);
         if (!empty($filters['to'])) $query->whereDate('paid_at', '<=', $filters['to']);
-        if (!empty($filters['student'])) $query->whereHas('receivable.studentProfile', fn ($profile) => $profile->where(fn ($nested) => $nested->where('student_name','like',"%{$filters['student']}%")->orWhere('admission_no','like',"%{$filters['student']}%")));
+        if (!empty($filters['student'])) {
+            $query->where(function ($payments) use ($filters): void {
+                $student = fn ($profile) => $profile->where(fn ($nested) => $nested->where('student_name', 'like', "%{$filters['student']}%")->orWhere('admission_no', 'like', "%{$filters['student']}%"));
+                $payments->whereHas('receivable.studentProfile', $student);
+                if (Schema::connection('mysql')->hasTable('central_finance_payment_allocations')) {
+                    $payments->orWhereHas('allocations.receivable.studentProfile', $student);
+                }
+            });
+        }
         if (!empty($filters['reference'])) $query->where('payment_reference','like',"%{$filters['reference']}%");
         if (!empty($filters['currency'])) $query->where('currency', $filters['currency']);
         if (!empty($filters['receipt_no'])) $query->whereHas('receipt', fn ($receipt) => $receipt->where('receipt_no', 'like', "%{$filters['receipt_no']}%"));
@@ -1664,9 +1677,7 @@ final class CentralFinanceWorkspaceController extends Controller
         // from an Official-only account list.  A trusted actor may open an
         // exact QA School receipt, but still cannot use a guessed ID to cross
         // a School boundary.
-        $document = CentralFinancePayment::on('mysql')->with([
-            'receipt', 'refunds.fundAccount', 'refunds.refundedBy', 'reversal.fundAccount', 'reversal.reversedBy', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy',
-        ])->findOrFail($payment);
+        $document = CentralFinancePayment::on('mysql')->with($this->paymentReadRelations())->findOrFail($payment);
         $school = $this->workspace->assertCanViewSchool($actor, (int) $document->school_id);
         // The scoped workspace collection intentionally selects only identity
         // columns (id/name/code). A receipt also needs non-financial School
@@ -1687,6 +1698,17 @@ final class CentralFinanceWorkspaceController extends Controller
                 }
             })->latest()->get();
         return [$actor, $school, $document, $this->receiptViewModels->make($document, $school), $audits];
+    }
+
+    /** @return list<string> */
+    private function paymentReadRelations(bool $withCorrections = true): array
+    {
+        $relations = ['receipt', 'receivable.studentProfile', 'receivable.payments.refunds', 'fundAccount', 'receivedBy'];
+        if ($withCorrections) $relations = array_merge($relations, ['refunds.fundAccount', 'refunds.refundedBy', 'reversal.fundAccount', 'reversal.reversedBy']);
+        if (Schema::connection('mysql')->hasTable('central_finance_payment_allocations')) {
+            $relations[] = 'allocations.receivable.studentProfile';
+        }
+        return $relations;
     }
 
     /**

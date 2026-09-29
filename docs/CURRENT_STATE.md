@@ -1,5 +1,19 @@
 # eSchool Current State
 
+## P0 — Finance Collection V2 Complete — integrated local candidate
+
+- Baseline: verified local Finance Layer 3 `64148b6a25ba841c49625d1a78757dacb8893de1`. Layer 3 is not being released independently; this is one integrated local-only candidate and Production has not been changed.
+- Student Fee Setup is the only Front Desk Promotion application point. Front Desk can select an existing active, applicable Promotion with the fee item, but cannot define, edit, waive, correct, void, or enter a manual discount. Head Finance retains Promotion definition/lifecycle authority, and the existing Layer 3 promotion snapshot and audit service is reused.
+- Receivables preserve immutable unit-price, quantity, gross, promotion, net, paid, and outstanding snapshots. A Front Desk declaration can allocate one parent pending collection to several same-student, same-currency receivables. Head Finance confirmation creates exactly one canonical Payment, Receipt, Ledger effect and Fund Account balance movement for that parent; allocation rows never duplicate physical money.
+- Reused school-reference validation now rejects a duplicate or reserved Payment reference when Front Desk submits the collection, before it can surface as a later Head Finance confirmation error. Existing historical pending records remain protected and return a validation failure rather than a 500.
+- Group-owned Unidentified Deposits record physical Group-held money without a School operating-income attribution. Later matching is idempotent and settles the chosen School receivable with allocation/audit evidence but no second Payment, Receipt, Ledger, or Fund Account effect. Deposit and allocation models are append-only.
+- The exact-path `finance:migrate-collection-v2` runner enumerates only active canonical School registry entries and fail-closes on an unsafe/duplicate registry or partial migration state. The local browser schema exposed a real MySQL 64-character default-index-name failure in the P0 migration; all new indexes now use explicit short names. The exact P0 central migration was rerun successfully against the disposable local browser database after that fix. The pre-existing local Layer 3 database had tables without its migration record, so the runner correctly refused to treat that state as a valid all-tenant rehearsal; no Production database was inspected or changed.
+- Regression: targeted Collection V2 + promotion + localization passes, 49 tests / 2,315 assertions; full PHPUnit passes, 968 tests / 7,608 assertions, zero failures/errors, 34 pre-existing skips (one existing PHP deprecation and one PHPUnit XML deprecation). `artisan test` still inherits the repository 128 MB subprocess limit; direct PHPUnit at 1 GB completed with a 241 MB peak. Blade cache and `git diff --check` pass.
+- Browser QA passes locally without financial form submission: Layer 3 promotion/receivable regression and P0 Unidentified Deposits form at 1440px and 390px; all exercised requests were 200 with no console/page/404/500 errors. The P0 browser check uses the additive local migration only.
+- Production remains a Human Gate: run immutable-release ancestry/diff guard, verified backup, exact runner preflight and execution, schema/data verification, graceful runtime activation where required, and read-only authenticated QA. No commit, push, deploy, or Production data change has occurred.
+
+Last updated: 2026-09-29
+
 ## Finance Layer 3 — Receivable lifecycle — local candidate ready for Production gate
 
 - Baseline: `9ce2339a03d0191926d6969d63cb5b10b4a56ca3`; Production has not

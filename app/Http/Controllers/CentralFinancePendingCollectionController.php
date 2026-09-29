@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinancePendingCollection;
+use App\Models\CentralFinancePendingCollectionAllocation;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Services\CentralFinancePendingCollectionConfirmationService;
@@ -11,12 +12,16 @@ use App\Services\CentralFinancePendingCollectionService;
 use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceWorkspaceService;
 use App\Services\FinanceOperatingContextService;
+use App\Support\CentralFinanceDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use InvalidArgumentException;
 
 /** Thin HTTP adapter: Front Desk can declare a collection; only Head Finance confirms it. */
 final class CentralFinancePendingCollectionController extends Controller
@@ -50,47 +55,85 @@ final class CentralFinancePendingCollectionController extends Controller
 
     public function review(int $profile, int $receivable): View
     {
-        $actor = $this->workspace->actor(Auth::user());
-        $school = $this->workspace->currentSchool($actor);
-        if ($school === null) {
-            $school = $this->operatingContext->currentSchool(Auth::user());
-            if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
-        }
-        abort_unless($school !== null, 403);
-        $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
-        $profileQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
-        $this->dataIsolation->applySchoolWorkflow($profileQuery, 'student_profile', (int) $school->id);
-        $profile = $profileQuery->findOrFail($profile);
-        $receivableQuery = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL]);
-        $this->dataIsolation->applySchoolWorkflow($receivableQuery, 'receivable', (int) $school->id);
-        $receivable = $receivableQuery->findOrFail($receivable);
-        $pendingReservationQuery = CentralFinancePendingCollection::on('mysql')
-            ->where(['school_id' => $school->id, 'receivable_id' => $receivable->id])
-            ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
-        $this->dataIsolation->applySchoolWorkflow($pendingReservationQuery, 'pending_collection', (int) $school->id);
-        $pendingReservation = (float) $pendingReservationQuery->sum('amount');
-        $receivable->setAttribute('pending_confirmation_amount', $pendingReservation);
-        $receivable->setAttribute('available_to_collect', max(0, (float) $receivable->amount_due - (float) $receivable->amount_paid - $pendingReservation));
-        $accounts = $this->workspace->collectionBankAccountsForSchoolWorkflow($actor, (int) $school->id)
-            ->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivable->currency));
-        $attemptUuid = (string) Str::uuid();
-        session()->put(self::ATTEMPTS_SESSION_KEY.'.'.$attemptUuid, [
-            'actor_id' => $actor->id, 'school_id' => $school->id, 'profile_id' => $profile->id, 'receivable_id' => $receivable->id,
-        ]);
-        return view('central-finance.pending-collections.review', compact('school', 'profile', 'receivable', 'accounts', 'attemptUuid'));
+        return $this->reviewForReceivables($profile, [$receivable]);
+    }
+
+    public function reviewMultiple(Request $request, int $profile): View
+    {
+        $data = $request->validate(['receivable_ids' => ['required', 'array', 'min:1'], 'receivable_ids.*' => ['required', 'integer']]);
+        return $this->reviewForReceivables($profile, $data['receivable_ids']);
     }
 
     public function submit(Request $request, int $profile, int $receivable): RedirectResponse
     {
+        $request->merge(['allocations' => [$receivable => $request->input('amount')]]);
+        return $this->submitMultiple($request, $profile);
+    }
+
+    public function submitMultiple(Request $request, int $profile): RedirectResponse
+    {
         $actor = $this->workspace->actor(Auth::user());
         $this->dataIsolation->assertWorkflowWritable('student_profile', $profile);
-        $this->dataIsolation->assertWorkflowWritable('receivable', $receivable);
-        $data = $request->validate(['pending_attempt_uuid' => ['required', 'uuid'], 'amount' => ['required', 'numeric', 'gt:0'], 'payment_method' => ['required', 'string', 'max:40'], 'payment_reference' => ['nullable', 'string', 'max:100'], 'intended_fund_account_id' => ['nullable', 'integer'], 'note' => ['nullable', 'string', 'max:2000']]);
+        $data = $request->validate(['pending_attempt_uuid' => ['required', 'uuid'], 'allocations' => ['required', 'array', 'min:1'], 'allocations.*' => ['required', 'regex:/^[0-9]+(?:\\.[0-9]{1,4})?$/'], 'payment_method' => ['required', 'string', 'max:40'], 'payment_reference' => ['nullable', 'string', 'max:100'], 'intended_fund_account_id' => ['nullable', 'integer'], 'note' => ['nullable', 'string', 'max:2000']]);
         $attempt = session()->get(self::ATTEMPTS_SESSION_KEY.'.'.$data['pending_attempt_uuid']);
-        abort_unless(is_array($attempt) && (int) ($attempt['actor_id'] ?? 0) === $actor->id && (int) ($attempt['profile_id'] ?? 0) === $profile && (int) ($attempt['receivable_id'] ?? 0) === $receivable, 403);
-        $pending = $this->pending->submit($actor, $profile, $receivable, (float) $data['amount'], $data['payment_method'], CarbonImmutable::now(), 'front-desk:'.$data['pending_attempt_uuid'], $data['intended_fund_account_id'] ?? null, $data['payment_reference'] ?? null, $data['note'] ?? null);
+        $selected = collect($attempt['receivable_ids'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $submitted = collect($data['allocations'])->mapWithKeys(fn ($amount, $id) => [(int) $id => (string) $amount])->sortKeys();
+        abort_unless(is_array($attempt) && (int) ($attempt['actor_id'] ?? 0) === $actor->id && (int) ($attempt['profile_id'] ?? 0) === $profile && $selected === $submitted->keys()->values()->all(), 403);
+        $lines = $submitted->map(fn (string $amount, int $receivableId) => ['receivable_id' => $receivableId, 'amount' => $amount])->values()->all();
+        try {
+            $pending = $this->pending->submitAllocations($actor, $profile, $lines, $data['payment_method'], CarbonImmutable::now('Asia/Yangon'), 'front-desk:'.$data['pending_attempt_uuid'], $data['intended_fund_account_id'] ?? null, $data['payment_reference'] ?? null, $data['note'] ?? null);
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['collection' => $exception->getMessage()]);
+        }
         return redirect()->route('central-finance.pending-collections.collection-receipt', $pending)
             ->with('success', __('Collection Receipt created: :no. Finance confirmation is still pending.', ['no' => $pending->acknowledgement_no]));
+    }
+
+    /** @param list<mixed> $requestedReceivableIds */
+    private function reviewForReceivables(int $profileId, array $requestedReceivableIds): View
+    {
+        $actor = $this->workspace->actor(Auth::user());
+        $school = $this->workspace->currentSchool($actor) ?? $this->operatingContext->currentSchool(Auth::user());
+        if ($school !== null) session()->put(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY, $school->id);
+        abort_unless($school !== null, 403);
+        $this->workspace->assertCanSubmitCollectionsSchool($actor, $school->id);
+        $profileQuery = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id);
+        $this->dataIsolation->applySchoolWorkflow($profileQuery, 'student_profile', (int) $school->id);
+        $profile = $profileQuery->findOrFail($profileId);
+        $ids = collect($requestedReceivableIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->sort()->values()->all();
+        abort_if($ids === [], 422, __('Select at least one receivable.'));
+        $query = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->whereIn('status', [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL])->whereIn('id', $ids);
+        $this->dataIsolation->applySchoolWorkflow($query, 'receivable', (int) $school->id);
+        $receivables = $query->orderBy('id')->get();
+        if ($receivables->count() !== count($ids) || $receivables->pluck('currency')->map(fn ($currency) => strtoupper((string) $currency))->unique()->count() !== 1) abort(422, __('Selected receivables must belong to one Student and currency.'));
+        foreach ($receivables as $receivable) {
+            $pending = $this->pendingReservation((int) $school->id, (int) $receivable->id);
+            $receivable->setAttribute('pending_confirmation_amount', $pending);
+            $receivable->setAttribute('available_to_collect', CentralFinanceDecimal::max(
+                CentralFinanceDecimal::subtract(
+                    CentralFinanceDecimal::subtract((string) $receivable->amount_due, (string) $receivable->amount_paid),
+                    (string) $pending,
+                ),
+                '0',
+            ));
+        }
+        $accounts = $this->workspace->collectionBankAccountsForSchoolWorkflow($actor, (int) $school->id)->filter(fn (CentralFinanceFundAccount $account) => strtoupper($account->currency) === strtoupper($receivables->first()->currency));
+        $attemptUuid = (string) Str::uuid();
+        session()->put(self::ATTEMPTS_SESSION_KEY.'.'.$attemptUuid, ['actor_id' => $actor->id, 'school_id' => $school->id, 'profile_id' => $profile->id, 'receivable_ids' => $ids]);
+        $receivable = $receivables->first(); // Backward-compatible view data for legacy direct route tests.
+        return view('central-finance.pending-collections.review', compact('school', 'profile', 'receivable', 'receivables', 'accounts', 'attemptUuid'));
+    }
+
+    private function pendingReservation(int $schoolId, int $receivableId): string
+    {
+        if (Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) {
+            $query = CentralFinancePendingCollectionAllocation::on('mysql')->where(['school_id' => $schoolId, 'receivable_id' => $receivableId])->whereHas('pendingCollection', fn ($pending) => $pending->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]));
+            $this->dataIsolation->applySchoolWorkflow($query, 'pending_collection_allocation', $schoolId);
+            return CentralFinanceDecimal::normalize((string) $query->sum('amount'));
+        }
+        $query = CentralFinancePendingCollection::on('mysql')->where(['school_id' => $schoolId, 'receivable_id' => $receivableId])->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
+        $this->dataIsolation->applySchoolWorkflow($query, 'pending_collection', $schoolId);
+        return CentralFinanceDecimal::normalize((string) $query->sum('amount'));
     }
 
     public function headFinanceIndex(Request $request): View
@@ -107,7 +150,9 @@ final class CentralFinancePendingCollectionController extends Controller
         }
         abort_unless($school !== null, 403);
         $this->workspace->assertHeadFinance($actor);
-        $pendingQuery = CentralFinancePendingCollection::on('mysql')->with(['studentProfile', 'receivable', 'intendedFundAccount', 'collectedBy'])
+        $relations = ['studentProfile', 'receivable', 'intendedFundAccount', 'collectedBy'];
+        if (Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) $relations[] = 'allocations.receivable';
+        $pendingQuery = CentralFinancePendingCollection::on('mysql')->with($relations)
             ->where('school_id', $school->id)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
         $this->dataIsolation->apply($pendingQuery, 'pending_collection', $includeQaTest);
         $pending = $pendingQuery->latest('submitted_at')->paginate(30)->withQueryString();
@@ -137,7 +182,14 @@ final class CentralFinancePendingCollectionController extends Controller
         $this->dataIsolation->assertWorkflowWritable('pending_collection', (int) $pending->id);
         $data = $request->validate(['fund_account_id' => ['required', 'integer'], 'reason' => ['required', 'string', 'max:2000']]);
         $account = CentralFinanceFundAccount::on('mysql')->findOrFail((int) $data['fund_account_id']);
-        $this->confirmation->confirm($actor, $pending->id, $account, CarbonImmutable::now(), $data['reason']);
+        try {
+            $this->confirmation->confirm($actor, $pending->id, $account, CarbonImmutable::now(), $data['reason']);
+        } catch (InvalidArgumentException $exception) {
+            // Existing pre-V2 declarations can legitimately expose a bad
+            // reference at confirmation.  Preserve the document and return
+            // a normal actionable validation response, never a 500.
+            throw ValidationException::withMessages(['confirmation' => $exception->getMessage()]);
+        }
         return back()->with('success', __('Pending collection confirmed and official receipt issued.'));
     }
 
@@ -149,7 +201,9 @@ final class CentralFinancePendingCollectionController extends Controller
         if (!$this->workspace->canReviewPendingCollections($actor) && (int) $pending->collected_by !== (int) $actor->id) {
             abort(403);
         }
-        $pending->load(['studentProfile', 'receivable', 'intendedFundAccount', 'collectedBy', 'confirmedBy', 'confirmedPayment.receipt']);
+        $relations = ['studentProfile', 'receivable', 'intendedFundAccount', 'collectedBy', 'confirmedBy', 'confirmedPayment.receipt'];
+        if (Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) $relations[] = 'allocations.receivable';
+        $pending->load($relations);
         return view('central-finance.pending-collections.collection-receipt', compact('pending', 'school'));
     }
 

@@ -8,6 +8,7 @@ use App\Models\StudentFeeAssignment;
 use App\Models\StudentFeeAssignmentItem;
 use App\Models\Students;
 use App\Models\User;
+use App\Support\CentralFinanceDecimal;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -97,7 +98,7 @@ final class StudentFeeAssignmentService
     }
 
     /** @param list<mixed> $requestedOptionalIds */
-    public function saveDraft(Students $student, User $actor, array $requestedOptionalIds): StudentFeeAssignment
+    public function saveDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = []): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         $available = $this->availableItems($student);
@@ -108,7 +109,8 @@ final class StudentFeeAssignmentService
         }
 
         $selected = $available->filter(fn (FeesClassType $item) => !(bool) $item->optional || $optionalIds->contains((int) $item->id));
-        return DB::transaction(function () use ($student, $selected): StudentFeeAssignment {
+        $quantities = $this->validatedOptionalQuantities($selected, $optionalQuantities);
+        return DB::transaction(function () use ($student, $selected, $quantities): StudentFeeAssignment {
             $assignment = $this->latestDraft($student) ?? StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
                 'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student), 'assignment_type' => StudentFeeAssignment::INITIAL, 'status' => StudentFeeAssignment::DRAFT,
@@ -116,14 +118,14 @@ final class StudentFeeAssignmentService
             // Drafts are the only mutable records. Confirmed snapshots are never rebuilt.
             $assignment->items()->delete();
             foreach ($selected as $template) {
-                $assignment->items()->create($this->snapshot($template));
+                $assignment->items()->create($this->snapshot($template, $quantities[(int) $template->id] ?? 1));
             }
             return $assignment->fresh('items');
         });
     }
 
     /** @param list<mixed> $requestedOptionalIds */
-    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds): StudentFeeAssignment
+    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = []): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         $optional = $this->availableAdditionalItems($student)->keyBy('id');
@@ -131,13 +133,15 @@ final class StudentFeeAssignmentService
         if ($selected->isEmpty() || $selected->diff($optional->keys())->isNotEmpty()) {
             throw ValidationException::withMessages(['optional_fee_ids' => 'Select one eligible optional fee for this Student.']);
         }
-        return DB::transaction(function () use ($student, $selected, $optional): StudentFeeAssignment {
+        $selectedItems = $selected->map(fn (int $id) => $optional->get($id));
+        $quantities = $this->validatedOptionalQuantities($selectedItems, $optionalQuantities);
+        return DB::transaction(function () use ($student, $selected, $optional, $quantities): StudentFeeAssignment {
             $assignment = StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
                 'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student),
                 'assignment_type' => StudentFeeAssignment::ADDITIONAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
-            foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id)));
+            foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id), $quantities[(int) $id]));
             return $assignment->fresh('items');
         });
     }
@@ -181,25 +185,66 @@ final class StudentFeeAssignmentService
         return $assignment;
     }
 
-    private function snapshot(FeesClassType $template): array
+    private function snapshot(FeesClassType $template, int $quantity = 1): array
     {
+        if ($quantity < 1 || ($quantity > 1 && !(bool) ($template->quantity_enabled ?? false))) {
+            throw ValidationException::withMessages(['optional_fee_quantities' => 'The selected Fee Item does not allow the requested quantity.']);
+        }
         $currency = strtoupper((string) ($template->fee_currency ?: $template->fee?->currency ?: 'MMK'));
-        $rate = $currency === 'MMK' ? 1.0 : (float) $template->fee_exchange_rate_snapshot;
-        if ($rate <= 0) throw ValidationException::withMessages(['fee_setup' => 'Fee Setup FX snapshot is required before assignment.']);
-        $amountMmk = (float) ($template->fee_amount_mmk > 0 ? $template->fee_amount_mmk : $template->amount);
-        $original = $currency === 'MMK'
-            ? $amountMmk
-            : (float) ($template->fee_original_amount > 0 ? $template->fee_original_amount : $amountMmk / $rate);
+        $rate = $currency === 'MMK' ? '1.00000000' : trim((string) ($template->getRawOriginal('fee_exchange_rate_snapshot') ?? '0'));
+        if (!preg_match('/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/', $rate) || bccomp($rate, '0', 8) <= 0) {
+            throw ValidationException::withMessages(['fee_setup' => 'Fee Setup FX snapshot is required before assignment.']);
+        }
+        $rawMmk = CentralFinanceDecimal::normalize((string) ($template->getRawOriginal('fee_amount_mmk') ?? '0'));
+        $unitMmk = CentralFinanceDecimal::compare($rawMmk, '0') > 0
+            ? $rawMmk
+            : CentralFinanceDecimal::normalize((string) ($template->getRawOriginal('amount') ?? '0'));
+        $rawOriginal = CentralFinanceDecimal::normalize((string) ($template->getRawOriginal('fee_original_amount') ?? '0'));
+        $unitOriginal = $currency === 'MMK'
+            ? $unitMmk
+            : (CentralFinanceDecimal::compare($rawOriginal, '0') > 0 ? $rawOriginal : bcdiv($unitMmk, $rate, CentralFinanceDecimal::SCALE));
+        $lineOriginal = bcmul($unitOriginal, (string) $quantity, CentralFinanceDecimal::SCALE);
+        $lineMmk = bcmul($unitMmk, (string) $quantity, CentralFinanceDecimal::SCALE);
         return [
             'uuid' => (string) Str::uuid(), 'fee_id' => $template->fees_id, 'fees_class_type_id' => $template->id,
             'fees_type_id' => $template->fees_type_id, 'description_snapshot' => (string) ($template->fee?->name ?: 'Assigned fee'),
-            'due_date_snapshot' => $template->fee?->getRawOriginal('due_date'), 'amount_snapshot' => $original,
+            'due_date_snapshot' => $template->fee?->getRawOriginal('due_date'), 'amount_snapshot' => $lineOriginal,
+            'unit_price_snapshot' => $unitOriginal, 'quantity_snapshot' => $quantity,
             'currency_snapshot' => $currency, 'exchange_rate_snapshot' => $rate,
-            'amount_mmk_snapshot' => $amountMmk, 'optional_snapshot' => (bool) $template->optional,
+            'amount_mmk_snapshot' => $lineMmk, 'optional_snapshot' => (bool) $template->optional,
             // Preserve the legacy Central identity: Student + FeesClassType.id.
             'source_type' => StudentFeeAssignmentItem::FEES_CLASS_TYPE, 'source_id' => (string) $template->id,
             'status' => StudentFeeAssignmentItem::ACTIVE,
         ];
+    }
+
+    /** @param iterable<FeesClassType> $selected @param array<mixed> $requested */
+    private function validatedOptionalQuantities(iterable $selected, array $requested): array
+    {
+        $quantities = [];
+        foreach ($selected as $template) {
+            $id = (int) $template->id;
+            // Compulsory lines are always exactly one. Browser input can only
+            // select quantities for optional items and is never authoritative.
+            if (!(bool) $template->optional) {
+                $quantities[$id] = 1;
+                continue;
+            }
+            $raw = $requested[$id] ?? $requested[(string) $id] ?? 1;
+            if (!is_int($raw) && !is_string($raw) && !is_float($raw)) {
+                throw ValidationException::withMessages(['optional_fee_quantities' => 'Fee quantity must be a positive whole number.']);
+            }
+            $raw = trim((string) $raw);
+            if (!preg_match('/^[1-9][0-9]*$/', $raw)) {
+                throw ValidationException::withMessages(['optional_fee_quantities' => 'Fee quantity must be a positive whole number.']);
+            }
+            $quantity = (int) $raw;
+            if ($quantity > 1 && !(bool) ($template->quantity_enabled ?? false)) {
+                throw ValidationException::withMessages(['optional_fee_quantities' => 'This Fee Item is not configured for multiple quantities.']);
+            }
+            $quantities[$id] = $quantity;
+        }
+        return $quantities;
     }
 
     private function assertStudentShape(Students $student): void

@@ -13,7 +13,8 @@ final readonly class CentralFinanceReceiptViewModel
      * @param array<string,mixed> $school
      * @param array<string,mixed> $receipt
      * @param array<string,mixed> $student
-     * @param array<string,mixed> $payment
+     * @param array<string,mixed> $payment Includes immutable allocation lines
+     *     when a parent Payment settles multiple Receivables.
      * @param array<string,mixed> $fundAccount
      * @param list<array<string,mixed>> $refunds
      * @param array<string,mixed>|null $reversal

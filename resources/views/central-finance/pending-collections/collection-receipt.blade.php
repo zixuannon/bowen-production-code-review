@@ -16,7 +16,7 @@
             <dt>{{ __('School') }}</dt><dd>{{ $school->name }}</dd>
             <dt>{{ __('Student') }}</dt><dd>{{ $pending->studentProfile?->student_name ?? '—' }}</dd>
             <dt>{{ __('Student Code') }}</dt><dd>{{ $pending->studentProfile?->student_code ?? '—' }}</dd>
-            <dt>{{ __('Fee / Receivable') }}</dt><dd>{{ $pending->receivable?->description ?? '—' }}</dd>
+            <dt>{{ __('Fee / Receivable allocations') }}</dt><dd>@if($pending->relationLoaded('allocations') && $pending->allocations->isNotEmpty())@foreach($pending->allocations as $allocation)<span class="d-block">{{ $allocation->receivable?->description ?: $allocation->description_snapshot }} — {{ number_format($allocation->amount, 2) }} {{ $allocation->currency }}</span>@endforeach@else{{ $pending->receivable?->description ?? '—' }}@endif</dd>
             <dt>{{ __('Amount') }}</dt><dd>{{ number_format((float) $pending->amount, 2) }} {{ $pending->currency }}</dd>
             <dt>{{ __('Payment Method') }}</dt><dd>{{ __($pending->payment_method) }}</dd>
             @if($pending->payment_method === 'Bank Transfer')

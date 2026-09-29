@@ -20,6 +20,9 @@
 </dl></div>
 
 <div class="central-receipt__section"><p class="central-receipt__section-title">{{ __('Payment') }}</p><dl>
+    @if(count($receipt->payment['lines'] ?? []) > 1)
+    <dt>{{ __('Receivable allocations') }}</dt><dd><table class="table table-sm mb-0"><thead><tr><th>{{ __('Receivable') }}</th><th>{{ __('Gross') }}</th><th>{{ __('Promotion') }}</th><th>{{ __('Net due') }}</th><th>{{ __('This payment') }}</th><th>{{ __('Outstanding') }}</th></tr></thead><tbody>@foreach($receipt->payment['lines'] as $line)<tr><td>{{ $line['description'] }}</td><td>{{ number_format($line['gross'],2) }}</td><td>{{ number_format($line['promotion'],2) }}</td><td>{{ number_format($line['due'],2) }}</td><td>{{ number_format($line['this_payment'],2) }}</td><td>{{ number_format($line['outstanding_at_receipt'],2) }}</td></tr>@endforeach</tbody></table></dd>
+    @endif
     <dt>{{ __('Receivable') }}</dt><dd>{{ $receipt->payment['description'] }}</dd>
     <dt>{{ __('应缴') }}</dt><dd>{{ number_format($receipt->payment['due'],2) }} {{ $receipt->payment['currency'] }}</dd>
     <dt>{{ __('本次付款') }}</dt><dd class="central-receipt__amount">{{ number_format($receipt->payment['this_payment'],2) }} {{ $receipt->payment['currency'] }}</dd>

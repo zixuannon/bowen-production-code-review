@@ -39,6 +39,12 @@ final class CentralFinanceDecimal
         return bccomp(self::normalize($left), self::normalize($right), self::SCALE);
     }
 
+    /** Return the greater exact amount without falling back to PHP floats. */
+    public static function max(string|int $left, string|int $right): string
+    {
+        return self::compare($left, $right) >= 0 ? self::normalize($left) : self::normalize($right);
+    }
+
     /** Percentage is expressed as a human-readable value, e.g. 10 = 10%. */
     public static function percentageOf(string|int $amount, string|int $percentage): string
     {

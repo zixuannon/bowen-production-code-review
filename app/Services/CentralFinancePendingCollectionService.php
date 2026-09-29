@@ -3,13 +3,17 @@
 namespace App\Services;
 
 use App\Models\CentralFinancePendingCollection;
+use App\Models\CentralFinancePendingCollectionAllocation;
 use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinancePayment;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
+use App\Support\CentralFinanceDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -26,10 +30,23 @@ final class CentralFinancePendingCollectionService
         private readonly CentralFinanceDataIsolationService $dataIsolation,
     ) {}
 
-    public function submit(CentralFinanceUser $actor, int $profileId, int $receivableId, float $amount, string $method, CarbonImmutable $collectedAt, string $idempotencyReference, ?int $intendedFundAccountId = null, ?string $paymentReference = null, ?string $note = null): CentralFinancePendingCollection
+    public function submit(CentralFinanceUser $actor, int $profileId, int $receivableId, string|float $amount, string $method, CarbonImmutable $collectedAt, string $idempotencyReference, ?int $intendedFundAccountId = null, ?string $paymentReference = null, ?string $note = null): CentralFinancePendingCollection
+    {
+        return $this->submitAllocations($actor, $profileId, [['receivable_id' => $receivableId, 'amount' => (string) $amount]], $method, $collectedAt, $idempotencyReference, $intendedFundAccountId, $paymentReference, $note);
+    }
+
+    /**
+     * Creates one parent collection declaration with explicit, immutable
+     * line allocations. No canonical Payment, Receipt, Ledger, or Fund
+     * Account effect exists until Head Finance confirms this parent document.
+     *
+     * @param list<array{receivable_id:mixed,amount:mixed}> $requestedAllocations
+     */
+    public function submitAllocations(CentralFinanceUser $actor, int $profileId, array $requestedAllocations, string $method, CarbonImmutable $collectedAt, string $idempotencyReference, ?int $intendedFundAccountId = null, ?string $paymentReference = null, ?string $note = null): CentralFinancePendingCollection
     {
         $method = trim($method);
-        if ($amount <= 0 || !is_finite($amount) || !in_array($method, [self::METHOD_CASH, self::METHOD_BANK_TRANSFER], true) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference)) {
+        $allocations = $this->canonicalAllocations($requestedAllocations);
+        if (!in_array($method, [self::METHOD_CASH, self::METHOD_BANK_TRANSFER], true) || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference)) {
             throw new InvalidArgumentException('Pending collection input is invalid.');
         }
         $school = $this->workspace->currentSchool($actor);
@@ -37,25 +54,49 @@ final class CentralFinancePendingCollectionService
         $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $school->id);
         $this->cutovers->assertCentralWritesAllowed((int) $school->id);
 
-        return DB::connection('mysql')->transaction(function () use ($actor, $school, $profileId, $receivableId, $amount, $method, $collectedAt, $idempotencyReference, $intendedFundAccountId, $paymentReference, $note): CentralFinancePendingCollection {
+        return DB::connection('mysql')->transaction(function () use ($actor, $school, $profileId, $allocations, $method, $collectedAt, $idempotencyReference, $intendedFundAccountId, $paymentReference, $note): CentralFinancePendingCollection {
             $profile = CentralFinanceStudentProfile::on('mysql')->where('school_id', $school->id)->lockForUpdate()->findOrFail($profileId);
-            $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $school->id, 'student_profile_id' => $profile->id])->lockForUpdate()->findOrFail($receivableId);
-            $key = hash('sha256', 'pending-collection|'.$school->id.'|'.$receivable->id.'|'.$idempotencyReference);
-            // An exact retry must converge even after the receivable becomes
-            // fully reserved or paid.  The receivable lock serializes all
-            // create/confirm paths for this balance.
+            $key = hash('sha256', 'pending-collection-v2|'.$school->id.'|'.$profile->id.'|'.$idempotencyReference);
             $existing = CentralFinancePendingCollection::on('mysql')->where('idempotency_key', $key)->lockForUpdate()->first();
             if ($existing) return $existing;
-            if (!in_array($receivable->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true)) {
-                throw new InvalidArgumentException('Only an open or partially paid receivable can accept a pending collection.');
+            // Preserve retry convergence for an in-flight client using the
+            // pre-V2 single-receivable key. It cannot manufacture a second
+            // parent document after the collection has already been posted.
+            if (count($allocations) === 1) {
+                $legacyKey = hash('sha256', 'pending-collection|'.$school->id.'|'.$allocations[0]['receivable_id'].'|'.$idempotencyReference);
+                $legacy = CentralFinancePendingCollection::on('mysql')->where('idempotency_key', $legacyKey)->lockForUpdate()->first();
+                if ($legacy) return $legacy;
             }
-            $reserved = (float) CentralFinancePendingCollection::on('mysql')
-                ->where('receivable_id', $receivable->id)
-                ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])
-                ->sum('amount');
-            if ((float) $receivable->amount_paid + $reserved + $amount > (float) $receivable->amount_due) {
-                throw new InvalidArgumentException('Pending collection exceeds the available amount after submitted or held collections.');
+
+            $receivableIds = collect($allocations)->pluck('receivable_id')->sort()->values()->all();
+            $receivablesQuery = CentralFinanceReceivable::on('mysql')
+                ->where('school_id', $school->id)->where('student_profile_id', $profile->id)
+                ->whereIn('id', $receivableIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            if (Schema::connection('mysql')->hasTable('central_finance_promotion_applications')) {
+                $receivablesQuery = CentralFinanceReceivable::on('mysql')->with('promotionApplication')
+                    ->where('school_id', $school->id)->where('student_profile_id', $profile->id)
+                    ->whereIn('id', $receivableIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             }
+            $receivables = $receivablesQuery;
+            if ($receivables->count() !== count($allocations)) throw new AuthorizationException('Every selected receivable must belong to the current Student and School.');
+            $currencies = $receivables->pluck('currency')->map(fn ($currency) => strtoupper((string) $currency))->unique();
+            if ($currencies->count() !== 1) throw new InvalidArgumentException('A Collection V2 parent payment cannot mix currencies.');
+            $classifications = $receivables->keys()->map(fn (int $id) => $this->dataIsolation->classification('receivable', $id))->unique();
+            if ($classifications->count() !== 1) throw new InvalidArgumentException('A Collection V2 parent payment cannot mix QA/Test and Official receivables.');
+            foreach ($allocations as $allocation) {
+                $receivable = $receivables->get($allocation['receivable_id']);
+                $this->dataIsolation->assertWorkflowWritable('receivable', (int) $receivable->id);
+                if (!in_array($receivable->status, [CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL], true)) {
+                    throw new InvalidArgumentException('Only open or partially paid receivables can accept a pending collection.');
+                }
+                $reserved = $this->reservedAmount((int) $receivable->id);
+                $available = CentralFinanceDecimal::subtract(CentralFinanceDecimal::subtract((string) $receivable->amount_due, (string) $receivable->amount_paid), $reserved);
+                if (CentralFinanceDecimal::compare($allocation['amount'], $available) > 0) {
+                    throw new InvalidArgumentException('A requested allocation exceeds this receivable’s available amount.');
+                }
+            }
+            $currency = $currencies->first();
+            $total = collect($allocations)->reduce(fn (string $sum, array $line): string => CentralFinanceDecimal::add($sum, $line['amount']), CentralFinanceDecimal::normalize('0'));
             if ($method === self::METHOD_BANK_TRANSFER && $intendedFundAccountId === null) {
                 throw new InvalidArgumentException('Bank Transfer requires the intended Bank Fund Account.');
             }
@@ -69,22 +110,83 @@ final class CentralFinancePendingCollectionService
                 if ($method === self::METHOD_BANK_TRANSFER && $intended->account_type !== 'bank') {
                     throw new InvalidArgumentException('Bank Transfer requires an active Bank Fund Account.');
                 }
-                if (strtoupper((string) $intended->currency) !== strtoupper((string) $receivable->currency)) {
-                    throw new InvalidArgumentException('The intended Fund Account currency does not match the receivable.');
+                if (strtoupper((string) $intended->currency) !== $currency) {
+                    throw new InvalidArgumentException('The intended Fund Account currency does not match the selected receivables.');
+                }
+            }
+            $paymentReference = $paymentReference === null ? null : trim($paymentReference);
+            if ($paymentReference === '') $paymentReference = null;
+            if ($paymentReference !== null) {
+                if (CentralFinancePayment::on('mysql')->where(['school_id' => $school->id, 'payment_reference' => $paymentReference])->exists()) {
+                    throw new InvalidArgumentException('Payment reference is already used for this School. Use the existing Payment or correct the reference before submitting.');
+                }
+                if (CentralFinancePendingCollection::on('mysql')->where('school_id', $school->id)->where('payment_reference', $paymentReference)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])->exists()) {
+                    throw new InvalidArgumentException('Payment reference is already reserved by a pending collection for this School.');
                 }
             }
             $pending = CentralFinancePendingCollection::on('mysql')->create([
-                'school_id' => $school->id, 'student_profile_id' => $profile->id, 'receivable_id' => $receivable->id,
+                'school_id' => $school->id, 'student_profile_id' => $profile->id, 'receivable_id' => count($allocations) === 1 ? $allocations[0]['receivable_id'] : null,
                 'intended_fund_account_id' => $intendedFundAccountId, 'idempotency_key' => $key,
                 'acknowledgement_no' => 'PCA-'.$school->id.'-'.strtoupper(Str::random(12)),
-                'status' => CentralFinancePendingCollection::SUBMITTED, 'amount' => $amount, 'currency' => $receivable->currency,
-                'payment_method' => $method, 'payment_reference' => $paymentReference ? trim($paymentReference) : null, 'note' => $note ? trim($note) : null,
+                'status' => CentralFinancePendingCollection::SUBMITTED, 'amount' => $total, 'currency' => $currency,
+                'payment_method' => $method, 'payment_reference' => $paymentReference, 'note' => $note ? trim($note) : null,
                 'collected_at' => $collectedAt, 'collected_by' => $actor->id, 'submitted_by' => $actor->id, 'submitted_at' => now(),
             ]);
             $this->dataIsolation->inheritWorkflowClassification($actor, (int) $school->id, 'pending_collection', (int) $pending->id);
+            foreach ($allocations as $allocation) {
+                $receivable = $receivables->get($allocation['receivable_id']);
+                if (!Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) continue;
+                $gross = CentralFinanceDecimal::normalize((string) ($receivable->source_amount_due ?? $receivable->amount_due));
+                $promotion = $receivable->promotionApplication?->discount_amount ?? '0';
+                $line = CentralFinancePendingCollectionAllocation::on('mysql')->create([
+                    'pending_collection_id' => $pending->id, 'receivable_id' => $receivable->id,
+                    'school_id' => $school->id, 'student_profile_id' => $profile->id,
+                    'description_snapshot' => $receivable->description,
+                    'unit_price_snapshot' => $receivable->unit_price_snapshot,
+                    'quantity_snapshot' => max(1, (int) ($receivable->quantity_snapshot ?? 1)),
+                    'gross_amount_snapshot' => $gross, 'promotion_amount_snapshot' => $promotion,
+                    'net_due_snapshot' => $receivable->amount_due, 'paid_before_snapshot' => $receivable->amount_paid,
+                    'outstanding_before_snapshot' => CentralFinanceDecimal::subtract((string) $receivable->amount_due, (string) $receivable->amount_paid),
+                    'amount' => $allocation['amount'], 'currency' => $currency,
+                ]);
+                $this->dataIsolation->inheritWorkflowClassification($actor, (int) $school->id, 'pending_collection_allocation', (int) $line->id);
+            }
             $this->audits->record($actor, $pending, 'pending_collection', 'submitted', null, null, $this->snapshot($pending));
             return $pending;
         });
+    }
+
+    /** @param list<array{receivable_id:mixed,amount:mixed}> $requested @return list<array{receivable_id:int,amount:string}> */
+    private function canonicalAllocations(array $requested): array
+    {
+        if ($requested === []) throw new InvalidArgumentException('Select at least one receivable allocation.');
+        $result = [];
+        foreach ($requested as $line) {
+            $id = (int) ($line['receivable_id'] ?? 0);
+            if ($id < 1 || isset($result[$id])) throw new InvalidArgumentException('Each receivable may appear only once in a parent collection.');
+            $amount = CentralFinanceDecimal::normalize((string) ($line['amount'] ?? ''));
+            if (CentralFinanceDecimal::compare($amount, '0') <= 0) throw new InvalidArgumentException('Each collection allocation must be greater than zero.');
+            $result[$id] = ['receivable_id' => $id, 'amount' => $amount];
+        }
+        ksort($result, SORT_NUMERIC);
+        return array_values($result);
+    }
+
+    private function reservedAmount(int $receivableId): string
+    {
+        // Existing installations remain readable/testable while the additive
+        // P0 migration is being rehearsed.  Once the allocation table exists
+        // it is the only reservation source for new and migrated documents.
+        if (!Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) {
+            $amounts = CentralFinancePendingCollection::on('mysql')->where('receivable_id', $receivableId)
+                ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])
+                ->lockForUpdate()->pluck('amount');
+            return $amounts->reduce(fn (string $sum, mixed $amount): string => CentralFinanceDecimal::add($sum, (string) $amount), CentralFinanceDecimal::normalize('0'));
+        }
+        $amounts = CentralFinancePendingCollectionAllocation::on('mysql')->where('receivable_id', $receivableId)
+            ->whereHas('pendingCollection', fn ($query) => $query->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]))
+            ->lockForUpdate()->pluck('amount');
+        return $amounts->reduce(fn (string $sum, mixed $amount): string => CentralFinanceDecimal::add($sum, (string) $amount), CentralFinanceDecimal::normalize('0'));
     }
 
     public function hold(CentralFinanceUser $actor, int $pendingId, string $reason): CentralFinancePendingCollection { return $this->review($actor, $pendingId, CentralFinancePendingCollection::HELD, $reason); }

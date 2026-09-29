@@ -66,6 +66,8 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 'source_scope' => 'legacy_class_fee',
                 'due_date'=>$r->due_date ? (string)$r->due_date : null,'currency'=>strtoupper((string)(($hasCurrency ? $r->fee_currency : null) ?: 'MMK')),
                 'amount'=>(float)$r->amount,
+                'unit_price'=>(float)$r->amount,
+                'quantity'=>1,
                 'created_at'=>CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) $r->source_created_at),
                 'updated_at'=>CentralFinanceSchoolCutoverService::parseFreshStartBusinessTime((string) ($r->updated_at ?? $r->source_created_at)),
             ])->all();
@@ -110,6 +112,8 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 'due_date' => $row->due_date_snapshot ? (string) $row->due_date_snapshot : null,
                 'currency' => strtoupper((string) $row->currency_snapshot),
                 'amount' => (float) $row->amount_snapshot,
+                'unit_price' => (float) ($row->unit_price_snapshot ?? $row->amount_snapshot),
+                'quantity' => max(1, (int) ($row->quantity_snapshot ?? 1)),
                 'created_at' => $at,
                 'updated_at' => $at,
             ];

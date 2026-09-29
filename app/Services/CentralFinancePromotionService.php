@@ -9,6 +9,7 @@ use App\Models\CentralFinanceUser;
 use App\Models\CentralFinanceDocumentAudit;
 use App\Models\FinanceGroupSchool;
 use App\Support\CentralFinanceDecimal;
+use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ final class CentralFinancePromotionService
         private readonly CentralFinanceConfigurationAuthorizationService $configuration,
         private readonly CentralFinanceReceivableAdjustmentService $adjustments,
         private readonly CentralFinanceDataIsolationService $dataIsolation,
+        private readonly CentralFinanceWorkspaceService $workspace,
     ) {}
 
     /** @param list<int> $schoolIds */
@@ -52,18 +54,62 @@ final class CentralFinancePromotionService
     public function eligibleFor(CentralFinanceUser $actor, CentralFinanceReceivable $receivable, CarbonImmutable $date): \Illuminate\Support\Collection
     {
         $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $receivable->school);
+        return $this->eligibleForSchool((int) $receivable->school_id, null, $date);
+    }
+
+    /**
+     * Front Desk can see only approved definitions that match its trusted
+     * School/Fee Setup item. It receives no definition-management authority.
+     */
+    public function eligibleForFeeSetup(CentralFinanceUser $actor, int $schoolId, int $feesClassTypeId, CarbonImmutable $date): \Illuminate\Support\Collection
+    {
+        $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
+        return $this->eligibleForSchool($schoolId, $feesClassTypeId, $date);
+    }
+
+    /** @return \Illuminate\Support\Collection<int, CentralFinancePromotion> */
+    private function eligibleForSchool(int $schoolId, ?int $feesClassTypeId, CarbonImmutable $date): \Illuminate\Support\Collection
+    {
+        $schoolClassification = $this->dataIsolation->classification('school', $schoolId);
         return CentralFinancePromotion::on('mysql')->where('status', CentralFinancePromotion::ACTIVE)
             ->whereDate('valid_from', '<=', $date->toDateString())
             ->where(function ($q) use ($date): void { $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', $date->toDateString()); })
-            ->whereHas('allocations', fn ($q) => $q->where('school_id', $receivable->school_id)->where('status', 'active'))
-            ->orderBy('code')->get();
+            ->whereHas('allocations', fn ($q) => $q->where('school_id', $schoolId)->where('status', 'active'))
+            ->where(function ($query) use ($schoolId, $feesClassTypeId): void {
+                $query->where('fee_scope', 'all_approved_fees');
+                if ($feesClassTypeId !== null) {
+                    $query->orWhereExists(function ($fee) use ($schoolId, $feesClassTypeId): void {
+                        $fee->selectRaw('1')->from('central_finance_promotion_fee_allocations')
+                            ->whereColumn('central_finance_promotion_fee_allocations.promotion_id', 'central_finance_promotions.id')
+                            ->where('school_id', $schoolId)->where('fees_class_type_id', $feesClassTypeId)->where('status', 'active');
+                    });
+                }
+            })
+            ->orderBy('code')->get()
+            ->filter(fn (CentralFinancePromotion $promotion): bool => $this->dataIsolation->classification('promotion', (int) $promotion->id) === $schoolClassification)
+            ->values();
     }
 
     public function apply(CentralFinanceUser $actor, int $receivableId, int $promotionId, CarbonImmutable $effectiveDate, string $reason, CarbonImmutable $recordedAt, string $key): CentralFinancePromotionApplication
     {
-        return DB::connection('mysql')->transaction(function () use ($actor, $receivableId, $promotionId, $effectiveDate, $reason, $recordedAt, $key): CentralFinancePromotionApplication {
+        return $this->applyInternal($actor, $receivableId, $promotionId, $effectiveDate, $reason, $recordedAt, $key, false);
+    }
+
+    /** Promotion selection during Front Desk Student Fee Setup. */
+    public function applyFromFeeSetup(CentralFinanceUser $actor, int $receivableId, int $promotionId, int $feesClassTypeId, CarbonImmutable $effectiveDate, CarbonImmutable $recordedAt, string $key): CentralFinancePromotionApplication
+    {
+        return $this->applyInternal($actor, $receivableId, $promotionId, $effectiveDate, 'Promotion selected during Student Fee Setup.', $recordedAt, $key, true, $feesClassTypeId);
+    }
+
+    private function applyInternal(CentralFinanceUser $actor, int $receivableId, int $promotionId, CarbonImmutable $effectiveDate, string $reason, CarbonImmutable $recordedAt, string $key, bool $fromFeeSetup, ?int $feesClassTypeId = null): CentralFinancePromotionApplication
+    {
+        return DB::connection('mysql')->transaction(function () use ($actor, $receivableId, $promotionId, $effectiveDate, $reason, $recordedAt, $key, $fromFeeSetup, $feesClassTypeId): CentralFinancePromotionApplication {
             $receivable = CentralFinanceReceivable::on('mysql')->lockForUpdate()->findOrFail($receivableId);
-            $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $receivable->school);
+            if ($fromFeeSetup) {
+                $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $receivable->school_id);
+            } else {
+                $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $receivable->school);
+            }
             $this->dataIsolation->assertWorkflowWritable('receivable', $receivable->id);
             $idempotency = hash('sha256', implode('|', ['promotion-application', $receivable->school_id, $receivable->id, $key]));
             $existing = CentralFinancePromotionApplication::on('mysql')->where('idempotency_key', $idempotency)->lockForUpdate()->first();
@@ -71,14 +117,16 @@ final class CentralFinancePromotionService
             if (CentralFinancePromotionApplication::on('mysql')->where('receivable_id', $receivable->id)->exists()) throw new InvalidArgumentException('Only one Promotion may be applied to a receivable.');
             if ($receivable->adjustments()->exists()) throw new InvalidArgumentException('Apply a Promotion before any waiver or correction so its snapshot remains unambiguous.');
             $promotion = CentralFinancePromotion::on('mysql')->lockForUpdate()->findOrFail($promotionId);
-            if (!$this->eligibleFor($actor, $receivable, $effectiveDate)->contains('id', $promotion->id)) throw new AuthorizationException('This Promotion is not active for the selected School and effective date.');
+            if (!$this->eligibleForSchool((int) $receivable->school_id, $fromFeeSetup ? $feesClassTypeId : null, $effectiveDate)->contains('id', $promotion->id)) throw new AuthorizationException('This Promotion is not active for the selected School, Fee Item, and effective date.');
             $gross = CentralFinanceDecimal::normalize((string) ($receivable->source_amount_due ?? $receivable->amount_due));
             $discount = $promotion->discount_type === CentralFinancePromotion::PERCENTAGE
                 ? CentralFinanceDecimal::percentageOf($gross, (string) $promotion->discount_value)
                 : CentralFinanceDecimal::normalize((string) $promotion->discount_value);
             if (CentralFinanceDecimal::compare($discount, '0') <= 0 || CentralFinanceDecimal::compare($discount, $gross) >= 0) throw new InvalidArgumentException('Promotion discount must be positive and less than the gross receivable.');
             $note = trim($reason) === '' ? 'Promotion '.(string) $promotion->code.' applied.' : trim($reason);
-            $adjustment = $this->adjustments->applyPromotion($actor, $receivable->id, $discount, $note, $effectiveDate, $recordedAt, $key);
+            $adjustment = $fromFeeSetup
+                ? $this->adjustments->applyPromotionDuringFeeSetup($actor, $receivable->id, $discount, $note, $effectiveDate, $recordedAt, $key)
+                : $this->adjustments->applyPromotion($actor, $receivable->id, $discount, $note, $effectiveDate, $recordedAt, $key);
             $application = CentralFinancePromotionApplication::on('mysql')->create([
                 'school_id' => $receivable->school_id, 'receivable_id' => $receivable->id, 'promotion_id' => $promotion->id,
                 'adjustment_id' => $adjustment->id, 'idempotency_key' => $idempotency,
