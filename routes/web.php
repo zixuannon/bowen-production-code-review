@@ -1251,8 +1251,13 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::post('central-finance/collection-handovers/{batch}/cancel', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'cancel'])->name('central-finance.collection-handovers.cancel');
     Route::post('central-finance/collection-handovers/{batch}/confirm', [\App\Http\Controllers\CentralFinanceCollectionHandoverController::class, 'confirm'])->name('central-finance.collection-handovers.confirm');
     Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
+    Route::get('central-finance/promotions', [CentralFinanceWorkspaceController::class, 'promotions'])->name('central-finance.promotions');
+    Route::post('central-finance/promotions', [CentralFinanceWorkspaceController::class, 'storePromotion'])->name('central-finance.promotions.store');
     Route::get('central-finance/receivables/{receivable}', [CentralFinanceWorkspaceController::class, 'receivableDetail'])->name('central-finance.receivables.show');
-    Route::post('central-finance/receivables/{receivable}/adjustments', [CentralFinanceWorkspaceController::class, 'adjustReceivable'])->name('central-finance.receivables.adjustments.store');
+    Route::post('central-finance/receivables/{receivable}/corrections', [CentralFinanceWorkspaceController::class, 'correctReceivable'])->name('central-finance.receivables.corrections.store');
+    Route::post('central-finance/receivables/{receivable}/waivers', [CentralFinanceWorkspaceController::class, 'waiveReceivable'])->name('central-finance.receivables.waivers.store');
+    Route::post('central-finance/receivables/{receivable}/void', [CentralFinanceWorkspaceController::class, 'voidReceivable'])->name('central-finance.receivables.void.store');
+    Route::post('central-finance/receivables/{receivable}/promotion', [CentralFinanceWorkspaceController::class, 'applyReceivablePromotion'])->name('central-finance.receivables.promotions.store');
     Route::get('central-finance/student-ledger', [CentralFinanceWorkspaceController::class, 'studentLedger'])->name('central-finance.student-ledger');
     Route::get('central-finance/payments', [CentralFinanceWorkspaceController::class, 'paymentHistory'])->name('central-finance.payments.index');
     Route::get('central-finance/payments/{payment}', [CentralFinanceWorkspaceController::class, 'paymentDetail'])->name('central-finance.payments.show');

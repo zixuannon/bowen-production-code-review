@@ -140,6 +140,14 @@ final class CentralFinanceReceivableSyncService
                 $this->complete($event, 'created');
                 return $receivable;
             }
+            if (in_array($receivable->status, [CentralFinanceReceivable::VOIDED, CentralFinanceReceivable::CANCELLED], true)) {
+                $this->complete($event, 'blocked_paid', 'receivable_lifecycle_final');
+                return $receivable;
+            }
+            if ($receivable->promotionApplication()->exists()) {
+                $this->complete($event, 'blocked_paid', 'promotion_snapshot_requires_review');
+                return $receivable;
+            }
             $paid = (float) $receivable->amount_paid;
             $adjustment = (float) $receivable->finance_adjustment_amount;
             $effective = (float) $row['amount'] + $adjustment;
@@ -207,7 +215,11 @@ final class CentralFinanceReceivableSyncService
     /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,created_at:CarbonImmutable,updated_at:CarbonImmutable} $row */
     private function matches(CentralFinanceReceivable $receivable, array $row): bool
     {
-        return $receivable->status !== CentralFinanceReceivable::CANCELLED && $receivable->description === $row['description'] && optional($receivable->due_date)->format('Y-m-d') === $row['due_date'] && strtoupper((string) $receivable->currency) === strtoupper($row['currency']) && (float) $receivable->amount_due === (float) $row['amount'];
+        return !in_array($receivable->status, [CentralFinanceReceivable::CANCELLED, CentralFinanceReceivable::VOIDED], true)
+            && $receivable->description === $row['description']
+            && optional($receivable->due_date)->format('Y-m-d') === $row['due_date']
+            && strtoupper((string) $receivable->currency) === strtoupper($row['currency'])
+            && (float) ($receivable->source_amount_due ?? $receivable->amount_due) === (float) $row['amount'];
     }
 
     /** @param array{source_id:string,description:string,due_date:?string,currency:string,amount:float,updated_at:CarbonImmutable} $row */

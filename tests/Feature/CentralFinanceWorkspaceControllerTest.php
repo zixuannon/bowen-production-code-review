@@ -9,6 +9,7 @@ use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceOtherIncome;
+use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceUser;
 use App\Models\User;
 use App\Services\CentralFinanceWorkspaceService;
@@ -962,6 +963,31 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
 
         $this->assertSame($beforeExpenses, DB::connection('mysql')->table('central_finance_expenses')->count());
         $this->assertSame($beforeLedger, CentralFinanceLedgerEntry::on('mysql')->count());
+    }
+
+    public function test_receivables_workspace_accepts_and_returns_the_voided_status_filter(): void
+    {
+        $now = now();
+        DB::connection('mysql')->table('central_finance_student_profiles')->insert([
+            'id'=>601, 'school_id'=>1, 'tenant_student_id'=>601, 'source_uuid'=>(string) Str::uuid(),
+            'student_name'=>'Voided Receivable Student', 'admission_no'=>'ZIX-VOID-601',
+            'enrollment_status'=>'active', 'last_synced_at'=>$now, 'created_at'=>$now, 'updated_at'=>$now,
+        ]);
+        DB::connection('mysql')->table('central_finance_receivables')->insert([
+            'receivable_uuid'=>(string) Str::uuid(), 'school_id'=>1, 'student_profile_id'=>601,
+            'source_type'=>'tenant_fee', 'source_id'=>'voided-601', 'description'=>'Voided tuition',
+            'currency'=>'MMK', 'amount_due'=>100, 'amount_paid'=>0,
+            'status'=>CentralFinanceReceivable::VOIDED, 'created_at'=>$now, 'updated_at'=>$now,
+        ]);
+
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $view = app(CentralFinanceWorkspaceController::class)->receivables(new Request([
+            'receivable_status'=>CentralFinanceReceivable::VOIDED,
+        ]));
+
+        $this->assertSame([601], $view->getData()['receivables']->pluck('student_profile_id')->all());
+        $this->assertSame(CentralFinanceReceivable::VOIDED, $view->getData()['filters']['receivable_status']);
     }
 
     private function account(string $code,string $name,int $school): CentralFinanceFundAccount

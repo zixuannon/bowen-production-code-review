@@ -1,5 +1,42 @@
 # eSchool Current State
 
+## Finance Layer 3 — Receivable lifecycle — local candidate ready for Production gate
+
+- Baseline: `9ce2339a03d0191926d6969d63cb5b10b4a56ca3`; Production has not
+  been changed.  The candidate replaces the ambiguous generic receivable
+  adjustment command with separate Head-Finance-only Promotion, Correction,
+  Waiver, and unpaid-only Void actions.
+- Every action is append-only, has an idempotency key, mandatory effective
+  date/reason where required, and stores before/after net values.  Exact
+  DECIMAL(20,4) arithmetic is used for new lifecycle writes.  No action
+  creates or edits a Payment, Receipt, Ledger entry, or Fund Account balance.
+- Promotion applications are immutable snapshots and one application is
+  allowed per receivable.  Source sync preserves lifecycle-final receivables
+  and blocks automatic source rewrites once a promotion snapshot exists.
+- Targeted Central receivable/payment, workspace, and localization regression
+  passes: 77 tests / 2,404 assertions. This includes additive migration → boot →
+  rollback → reapply, percentage/fixed promotions, snapshot immutability,
+  paid-floor and pending-collection guards, QA inheritance, and Layer 2
+  refund/reversal regression.  The small follow-up closes the Receivables
+  status-filter gap: `voided` is now an accepted and rendered status, so its
+  append-only history remains discoverable from the normal UI. Blade
+  compilation and diff whitespace checks pass.
+- Complete local PHPUnit passes with 963 tests / 7,470 assertions, zero
+  failures or errors, and 34 pre-existing skips. PHP 8.5 PDO and PHPUnit XML
+  deprecation notices remain.  The suite was run against only the disposable
+  `eschool_testing` and `school_testing` schemas.
+- Local BOWEN QA browser gates pass: the shared Central Finance read screens
+  at 1440px, 1280px, and 390px; and the Layer 3 Promotion Definitions plus
+  Receivables lifecycle UI at 1440px and 390px.  All responses were 200 with
+  no console, page, 404, or 500 errors.  The browser schema exercise applied
+  only the already-tested additive Layer 3 migration to the local BOWEN QA
+  database; Production was not contacted or changed.
+- Production deployment remains a separate Human Gate.  It requires the
+  approved immutable-release, backup, exact-path migration-preflight, and
+  read-only Production QA process.
+
+Last updated: 2026-09-29
+
 ## Zixuan QA School workspace consistency — local candidate
 
 - Zixuan (`MMBOWEN01`) remains the explicitly classified permanent QA/Test

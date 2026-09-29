@@ -90,23 +90,34 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 800
             await expect(manage).toHaveCount(1);
             const managed = await page.goto(await manage.getAttribute('href'), { waitUntil: 'networkidle' });
             expect(managed.status()).toBe(200);
-            await expect(page.getByText('Opening Allocation / Adjustment', { exact: true })).toBeVisible();
+            await expect(page.getByText('Account Opening Balance / Adjustment', { exact: true })).toBeVisible();
 
             await page.goto('/central-finance/reports', { waitUntil: 'networkidle' });
-            for (const label of ['Report filters', 'School comparison', 'Income / expense trend', 'Category analysis']) {
+            for (const label of ['Report filters', 'School comparison', 'Income / expense trend', 'Chart of Accounts analysis']) {
                 await expect(page.getByText(label, { exact: true })).toBeVisible();
             }
 
             await page.goto('/central-finance/audits', { waitUntil: 'networkidle' });
-            await expect(page.getByText('Before / After', { exact: true })).toBeVisible();
+            await expect(page.getByText('Central Finance Audit Log', { exact: true })).toBeVisible();
 
             await page.goto('/central-finance/imports', { waitUntil: 'networkidle' });
             await expect(page.getByRole('heading', { name: /Import Batch|导入批次/, exact: true }).first()).toBeVisible();
 
-            await page.goto('/central-finance/student-collection', { waitUntil: 'networkidle' });
-            const detail = page.locator('a[href*="/central-finance/student-collection/"]').first();
-            await expect(detail).toHaveCount(1);
-            const detailResponse = await page.goto(await detail.getAttribute('href'), { waitUntil: 'networkidle' });
+            const switcher = page.getByLabel('Switch School', { exact: true });
+            const schoolIds = await switcher.locator('option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+            let detailHref = null;
+            for (const schoolId of schoolIds) {
+                await switcher.selectOption(schoolId);
+                await page.waitForLoadState('networkidle');
+                await page.goto('/central-finance/student-collection', { waitUntil: 'networkidle' });
+                const detail = page.locator('a[href*="/central-finance/student-collection/"]').first();
+                if (await detail.count()) {
+                    detailHref = await detail.getAttribute('href');
+                    break;
+                }
+            }
+            expect(detailHref).toBeTruthy();
+            const detailResponse = await page.goto(detailHref, { waitUntil: 'networkidle' });
             expect(detailResponse.status()).toBe(200);
             await expect(page.locator('body')).not.toContainText('403');
         } finally {

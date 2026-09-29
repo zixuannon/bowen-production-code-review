@@ -32,6 +32,9 @@ final class CentralFinanceDataIsolationService
         'category' => ['table' => 'central_finance_categories', 'school' => 'school_id'],
         'student_profile' => ['table' => 'central_finance_student_profiles', 'school' => 'school_id'],
         'receivable' => ['table' => 'central_finance_receivables', 'school' => 'school_id'],
+        'receivable_adjustment' => ['table' => 'central_finance_receivable_adjustments', 'school' => 'school_id'],
+        'promotion' => ['table' => 'central_finance_promotions', 'school' => null],
+        'promotion_application' => ['table' => 'central_finance_promotion_applications', 'school' => 'school_id'],
         'pending_collection' => ['table' => 'central_finance_pending_collections', 'school' => 'school_id'],
         'collection_handover' => ['table' => 'central_finance_collection_handover_batches', 'school' => 'school_id'],
         'fund_handover' => ['table' => 'central_finance_fund_handovers', 'school' => 'school_id'],
@@ -569,7 +572,7 @@ final class CentralFinanceDataIsolationService
             throw new AuthorizationException('The classified record does not belong to the authorized School.');
         }
         if ($tenantSubject === null && $recordSchoolId === null && $subjectType !== 'school') {
-            $groupColumn = in_array($subjectType, ['fund_account', 'category'], true) ? 'group_id' : ($subjectType === 'group_import_batch' ? 'finance_group_id' : null);
+            $groupColumn = in_array($subjectType, ['fund_account', 'category', 'promotion'], true) ? 'group_id' : ($subjectType === 'group_import_batch' ? 'finance_group_id' : null);
             $groupId = $groupColumn ? (int) ($row->{$groupColumn} ?? 0) : 0;
             $isGroupSchool = $subjectType === 'central_user'
                 ? DB::connection('mysql')->table('central_finance_user_school_scopes')->where([

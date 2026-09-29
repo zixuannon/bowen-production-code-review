@@ -20,6 +20,8 @@ use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceSchoolCutover;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
+use App\Models\FinanceGroupSchool;
+use App\Models\CentralFinancePromotion;
 use App\Services\CentralFinanceFundAccountBalanceService;
 use App\Services\CentralFinanceFundAccountSchoolAvailabilityService;
 use App\Services\CentralFinanceFundAccountScopeService;
@@ -34,6 +36,7 @@ use App\Services\CentralFinancePaymentService;
 use App\Services\CentralFinancePaymentRefundService;
 use App\Services\CentralFinancePaymentReversalService;
 use App\Services\CentralFinanceReceivableAdjustmentService;
+use App\Services\CentralFinancePromotionService;
 use App\Services\CentralFinancePaymentImportService;
 use App\Services\CentralFinanceExpenseImportService;
 use App\Services\CentralFinanceImportBatchService;
@@ -81,6 +84,7 @@ final class CentralFinanceWorkspaceController extends Controller
         private readonly CentralFinancePaymentRefundService $refunds,
         private readonly CentralFinancePaymentReversalService $reversals,
         private readonly CentralFinanceReceivableAdjustmentService $receivableAdjustments,
+        private readonly CentralFinancePromotionService $promotions,
         private readonly CentralFinancePaymentImportService $paymentImports,
         private readonly CentralFinanceExpenseImportService $expenseImports,
         private readonly CentralFinanceImportBatchService $importBatches,
@@ -108,6 +112,26 @@ final class CentralFinanceWorkspaceController extends Controller
     public function receivables(?Request $request = null): View
     {
         return $this->render('receivables', $request ?? request());
+    }
+
+    public function promotions(): View
+    {
+        $actor = $this->actor();
+        $groups = $this->configuration->configurableGroups($actor);
+        $promotions = CentralFinancePromotion::on('mysql')->with('allocations.school')->whereIn('group_id', $groups->pluck('id'))->latest()->get();
+        $schools = FinanceGroupSchool::on('mysql')->with('school')->whereIn('group_id', $groups->pluck('id'))->where('status', 'active')->get()->groupBy('group_id');
+        $promotionClassifications = $promotions->mapWithKeys(fn (CentralFinancePromotion $promotion): array => [
+            $promotion->id => $this->dataIsolation->classification('promotion', $promotion->id),
+        ]);
+        return view('central-finance.promotions', compact('groups', 'promotions', 'schools', 'promotionClassifications'));
+    }
+
+    public function storePromotion(Request $request): RedirectResponse
+    {
+        $actor = $this->actor();
+        $data = $request->validate(['group_id'=>['required','integer'],'name'=>['required','string','max:191'],'code'=>['required','string','max:80','regex:/^[A-Za-z0-9_-]+$/'],'description'=>['nullable','string'],'discount_type'=>['required',Rule::in([CentralFinancePromotion::PERCENTAGE,CentralFinancePromotion::FIXED])],'discount_value'=>['required','regex:/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/'],'valid_from'=>['required','date_format:Y-m-d'],'valid_until'=>['nullable','date_format:Y-m-d'],'status'=>['required',Rule::in(CentralFinancePromotion::STATUSES)],'school_ids'=>['required','array','min:1'],'school_ids.*'=>['integer','distinct']]);
+        try { $this->promotions->define($actor, (int) $data['group_id'], $data['school_ids'], $data); } catch (InvalidArgumentException|AuthorizationException $exception) { return back()->withErrors(['promotion' => __($exception->getMessage())])->withInput(); }
+        return back()->with('success', __('Promotion definition created.'));
     }
 
     public function operating(?Request $request = null): View
@@ -314,22 +338,29 @@ final class CentralFinanceWorkspaceController extends Controller
         ])->where('school_id', $school->id)->findOrFail($receivable);
         $adjustments = CentralFinanceReceivableAdjustment::on('mysql')
             ->where('receivable_id', $document->id)->latest('adjusted_at')->get();
+        $lifecycleTotals = [
+            'promotion' => $adjustments->where('adjustment_type', CentralFinanceReceivableAdjustmentService::PROMOTION)->sum('amount_delta'),
+            'waiver' => $adjustments->where('adjustment_type', CentralFinanceReceivableAdjustmentService::WAIVER)->sum('amount_delta'),
+            'correction' => $adjustments->where('adjustment_type', CentralFinanceReceivableAdjustmentService::CORRECTION)->sum('amount_delta'),
+        ];
         $audits = CentralFinanceDocumentAudit::on('mysql')->where('school_id', $school->id)
             ->where('document_type', 'central_receivable_adjustment')
             ->whereIn('document_id', $adjustments->pluck('id'))->latest()->get();
         $canOperate = false;
+        $eligiblePromotions = collect();
 
         try {
-            $this->workspace->requireOperatingSchool($actor);
-            $canOperate = $this->dataIsolation->isProduction('receivable', (int) $document->id)
-                && $this->cutovers->allowsCentralWrites($school->id);
+            [$correctionActor] = $this->currentCorrectionContext();
+            $this->dataIsolation->assertWorkflowWritable('receivable', (int) $document->id);
+            $canOperate = $this->cutovers->allowsCentralWrites($school->id);
+            if ($canOperate) $eligiblePromotions = $this->promotions->eligibleFor($correctionActor, $document, CarbonImmutable::now('Asia/Yangon'));
         } catch (AuthorizationException) {
             // Read-only Central Finance users may inspect the immutable history.
         }
 
         $adjustmentIdempotencyKey = 'ui-receivable-'.Str::uuid();
 
-        return view('central-finance.receivable-detail', compact('actor', 'school', 'document', 'adjustments', 'audits', 'canOperate', 'adjustmentIdempotencyKey'));
+        return view('central-finance.receivable-detail', compact('actor', 'school', 'document', 'adjustments', 'audits', 'canOperate', 'eligiblePromotions', 'adjustmentIdempotencyKey', 'lifecycleTotals'));
     }
 
     public function expenseDetail(int $expense): View
@@ -651,32 +682,47 @@ final class CentralFinanceWorkspaceController extends Controller
         return back()->with('success', __('Central payment reversal recorded.'));
     }
 
-    public function adjustReceivable(Request $request, int $receivable): RedirectResponse
+    public function correctReceivable(Request $request, int $receivable): RedirectResponse
     {
-        [$actor, $school] = $this->currentOperatingContext();
+        [$actor, $school] = $this->currentCorrectionContext();
         $data = $request->validate([
-            'type' => ['required', Rule::in(['adjustment', 'discount', 'waiver', 'void'])],
-            'amount_delta' => ['nullable', 'numeric', 'not_in:0'],
+            'amount_delta' => ['required', 'regex:/^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/', 'not_in:0'],
             'reason' => ['required', 'string', 'max:2000'],
+            'effective_date' => ['required', 'date_format:Y-m-d'],
             'idempotency_key' => ['required', 'string', 'regex:/^ui-receivable-[A-Za-z0-9_.:-]{2,100}$/'],
         ]);
-        if ($data['type'] !== 'void' && !isset($data['amount_delta'])) {
-            return back()->withErrors(['amount_delta' => __('An adjustment amount is required.')]);
-        }
         $document = CentralFinanceReceivable::on('mysql')->where('school_id', $school->id)->findOrFail($receivable);
-        $this->dataIsolation->assertProduction('receivable', (int) $document->id);
-        $this->receivableAdjustments->adjust(
-            $actor,
-            $document->id,
-            $data['type'],
-            (float) ($data['amount_delta'] ?? 0),
-            $data['reason'],
-            CarbonImmutable::now(),
-            $data['idempotency_key'],
-        );
+        try { $this->receivableAdjustments->correct($actor, $document->id, $data['amount_delta'], $data['reason'], $this->transactionDate($data['effective_date'], 'effective_date'), CarbonImmutable::now(), $data['idempotency_key']); } catch (InvalidArgumentException $exception) { return back()->withErrors(['amount_delta' => __($exception->getMessage())])->withInput(); }
 
         return redirect()->route('central-finance.receivables.show', $document->id)
-            ->with('success', __('Central receivable adjustment recorded.'));
+            ->with('success', __('Central receivable correction recorded.'));
+    }
+
+    public function waiveReceivable(Request $request, int $receivable): RedirectResponse
+    {
+        [$actor, $school] = $this->currentCorrectionContext();
+        $data = $request->validate(['amount' => ['required', 'regex:/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/', 'not_in:0'], 'reason' => ['required', 'string', 'max:2000'], 'effective_date' => ['required', 'date_format:Y-m-d'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-receivable-[A-Za-z0-9_.:-]{2,100}$/']]);
+        $document = CentralFinanceReceivable::on('mysql')->where('school_id', $school->id)->findOrFail($receivable);
+        try { $this->receivableAdjustments->waive($actor, $document->id, $data['amount'], $data['reason'], $this->transactionDate($data['effective_date'], 'effective_date'), CarbonImmutable::now(), $data['idempotency_key']); } catch (InvalidArgumentException $exception) { return back()->withErrors(['amount' => __($exception->getMessage())])->withInput(); }
+        return redirect()->route('central-finance.receivables.show', $document->id)->with('success', __('Central receivable waiver recorded.'));
+    }
+
+    public function voidReceivable(Request $request, int $receivable): RedirectResponse
+    {
+        [$actor, $school] = $this->currentCorrectionContext();
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000'], 'effective_date' => ['required', 'date_format:Y-m-d'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-receivable-[A-Za-z0-9_.:-]{2,100}$/']]);
+        $document = CentralFinanceReceivable::on('mysql')->where('school_id', $school->id)->findOrFail($receivable);
+        try { $this->receivableAdjustments->void($actor, $document->id, $data['reason'], $this->transactionDate($data['effective_date'], 'effective_date'), CarbonImmutable::now(), $data['idempotency_key']); } catch (InvalidArgumentException $exception) { return back()->withErrors(['reason' => __($exception->getMessage())])->withInput(); }
+        return redirect()->route('central-finance.receivables.show', $document->id)->with('success', __('Central receivable void recorded.'));
+    }
+
+    public function applyReceivablePromotion(Request $request, int $receivable): RedirectResponse
+    {
+        [$actor, $school] = $this->currentCorrectionContext();
+        $data = $request->validate(['promotion_id' => ['required', 'integer'], 'reason' => ['nullable', 'string', 'max:2000'], 'effective_date' => ['required', 'date_format:Y-m-d'], 'idempotency_key' => ['required', 'string', 'regex:/^ui-receivable-[A-Za-z0-9_.:-]{2,100}$/']]);
+        $document = CentralFinanceReceivable::on('mysql')->where('school_id', $school->id)->findOrFail($receivable);
+        try { $this->promotions->apply($actor, $document->id, (int) $data['promotion_id'], $this->transactionDate($data['effective_date'], 'effective_date'), (string) ($data['reason'] ?? ''), CarbonImmutable::now(), $data['idempotency_key']); } catch (InvalidArgumentException|AuthorizationException $exception) { return back()->withErrors(['promotion_id' => __($exception->getMessage())])->withInput(); }
+        return redirect()->route('central-finance.receivables.show', $document->id)->with('success', __('Promotion applied to receivable.'));
     }
 
     public function paymentImportTemplate()
@@ -1455,7 +1501,7 @@ final class CentralFinanceWorkspaceController extends Controller
     /** @return array<string, mixed> */
     private function validatedReadFilters(Request $request, ?\App\Models\School $school, \Illuminate\Support\Collection $accounts, ?\Illuminate\Support\Collection $schools = null): array
     {
-        $data=$request->validate(['from'=>['nullable','date'],'to'=>['nullable','date','after_or_equal:from'],'school_id'=>['nullable','integer'],'fund_account_id'=>['nullable','integer'],'source'=>['nullable','string','max:80'],'category_id'=>['nullable','integer'],'operator_id'=>['nullable','integer'],'requester_id'=>['nullable','integer'],'amount_min'=>['nullable','numeric','min:0'],'amount_max'=>['nullable','numeric','gte:amount_min'],'reimbursement_status'=>['nullable', Rule::in([CentralFinanceReimbursementRequest::PENDING, CentralFinanceReimbursementRequest::APPROVED, CentralFinanceReimbursementRequest::REJECTED, CentralFinanceReimbursementRequest::WITHDRAWN, CentralFinanceReimbursementRequest::CANCELLED])],'payment_method'=>['nullable','string','max:40'],'student'=>['nullable','string','max:191'],'reference'=>['nullable','string','max:100'],'receipt_no'=>['nullable','string','max:100'],'receipt_status'=>['nullable', Rule::in(['active','refunded'])], 'currency'=>['nullable', Rule::in(CentralFinanceCurrency::ALLOWED)],'payment_class'=>['nullable','string','max:191'],'payment_student'=>['nullable','string','max:191'],'receivable_status'=>['nullable', Rule::in([CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL, CentralFinanceReceivable::PAID, CentralFinanceReceivable::WAIVED, CentralFinanceReceivable::CANCELLED])], 'account_owner'=>['nullable', Rule::in([CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL])], 'account_type'=>['nullable', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])], 'account_status'=>['nullable', Rule::in([CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED])], 'custodian_user_id'=>['nullable','integer'], 'account_search'=>['nullable','string','max:191'], 'direction'=>['nullable', Rule::in(['money_in','money_out','internal_transfer'])], 'operating_classification'=>['nullable', Rule::in(['income','expense','neutral'])], 'audit_action'=>['nullable','string','max:80'], 'audit_module'=>['nullable','string','max:80'], 'audit_document'=>['nullable','string','max:100'], 'include_qa_test'=>['nullable','boolean']]);
+        $data=$request->validate(['from'=>['nullable','date'],'to'=>['nullable','date','after_or_equal:from'],'school_id'=>['nullable','integer'],'fund_account_id'=>['nullable','integer'],'source'=>['nullable','string','max:80'],'category_id'=>['nullable','integer'],'operator_id'=>['nullable','integer'],'requester_id'=>['nullable','integer'],'amount_min'=>['nullable','numeric','min:0'],'amount_max'=>['nullable','numeric','gte:amount_min'],'reimbursement_status'=>['nullable', Rule::in([CentralFinanceReimbursementRequest::PENDING, CentralFinanceReimbursementRequest::APPROVED, CentralFinanceReimbursementRequest::REJECTED, CentralFinanceReimbursementRequest::WITHDRAWN, CentralFinanceReimbursementRequest::CANCELLED])],'payment_method'=>['nullable','string','max:40'],'student'=>['nullable','string','max:191'],'reference'=>['nullable','string','max:100'],'receipt_no'=>['nullable','string','max:100'],'receipt_status'=>['nullable', Rule::in(['active','refunded'])], 'currency'=>['nullable', Rule::in(CentralFinanceCurrency::ALLOWED)],'payment_class'=>['nullable','string','max:191'],'payment_student'=>['nullable','string','max:191'],'receivable_status'=>['nullable', Rule::in([CentralFinanceReceivable::OPEN, CentralFinanceReceivable::PARTIAL, CentralFinanceReceivable::PAID, CentralFinanceReceivable::WAIVED, CentralFinanceReceivable::CANCELLED, CentralFinanceReceivable::VOIDED])], 'account_owner'=>['nullable', Rule::in([CentralFinanceFundAccount::OWNER_HQ, CentralFinanceFundAccount::OWNER_SCHOOL])], 'account_type'=>['nullable', Rule::in([CentralFinanceFundAccount::TYPE_CASH, CentralFinanceFundAccount::TYPE_BANK, CentralFinanceFundAccount::TYPE_OTHER])], 'account_status'=>['nullable', Rule::in([CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED])], 'custodian_user_id'=>['nullable','integer'], 'account_search'=>['nullable','string','max:191'], 'direction'=>['nullable', Rule::in(['money_in','money_out','internal_transfer'])], 'operating_classification'=>['nullable', Rule::in(['income','expense','neutral'])], 'audit_action'=>['nullable','string','max:80'], 'audit_module'=>['nullable','string','max:80'], 'audit_document'=>['nullable','string','max:100'], 'include_qa_test'=>['nullable','boolean']]);
         if ($school && isset($data['school_id']) && (int) $data['school_id'] !== $school->id) abort(404);
         if (!$school && isset($data['school_id']) && $schools && !$schools->contains('id', (int) $data['school_id'])) abort(404);
         if (isset($data['fund_account_id']) && !$accounts->contains('id',(int)$data['fund_account_id'])) abort(404);
