@@ -159,6 +159,23 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString('Bowen Group / Central Finance', $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
     }
 
+    public function test_group_account_create_form_lists_only_authorized_group_head_finance_custodians(): void
+    {
+        $this->grantHeadFinanceRole();
+        $this->actingAs($this->head);
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+
+        $view = app(CentralFinanceWorkspaceController::class)->accounts(new Request());
+        $options = $view->getData()['groupCustodianOptions'];
+
+        $this->assertSame([['id' => $this->head->id, 'label' => 'Head Finance']], $options[1]);
+        $html = $view->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+        $this->assertStringContainsString('const byGroup =', $html);
+        $this->assertStringContainsString('Head Finance', $html);
+        $this->assertStringNotContainsString('Zixuan Accountant', $html);
+        $this->assertStringContainsString('form?.querySelector(\'select[name="custodian_user_id"]\')', $html);
+    }
+
     public function test_transfer_and_handover_pages_hide_write_choices_until_a_central_school_is_selected(): void
     {
         $this->actingAs($this->head);

@@ -100,6 +100,58 @@ final class CentralFinanceConfigurationAuthorizationService
     }
 
     /**
+     * People who may be recorded as the custodian of a newly created Group
+     * Fund Account. A custodian is descriptive master data only: this method
+     * deliberately returns the same Central Head Finance identities that the
+     * create command accepts, and never grants account access.
+     *
+     * @param \Illuminate\Support\Collection<int, FinanceGroup> $groups
+     * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, CentralFinanceUser>>
+     */
+    public function groupAccountCustodians(CentralFinanceUser $actor, \Illuminate\Support\Collection $groups): \Illuminate\Support\Collection
+    {
+        $groups = $groups->filter(fn ($group) => $group instanceof FinanceGroup)->values();
+        if ($groups->isEmpty()) {
+            return collect();
+        }
+
+        $groupUsers = FinanceGroupUser::on('mysql')
+            ->whereIn('group_id', $groups->pluck('id'))
+            ->where('status', 'active')
+            ->get(['group_id', 'central_user_id']);
+        $users = CentralFinanceUser::on('mysql')
+            ->whereIn('id', $groupUsers->pluck('central_user_id')->unique())
+            ->whereNull('school_id')
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get(['id', 'school_id', 'first_name', 'last_name', 'email'])
+            ->keyBy('id');
+
+        return $groups->mapWithKeys(function (FinanceGroup $group) use ($actor, $groupUsers, $users): array {
+            // The caller itself must still have group configuration authority.
+            $this->assertHeadFinanceCanConfigureGroup($actor, (int) $group->id);
+
+            $custodians = $groupUsers->where('group_id', $group->id)
+                ->map(fn (FinanceGroupUser $groupUser) => $users->get($groupUser->central_user_id))
+                ->filter(function (?CentralFinanceUser $candidate) use ($group): bool {
+                    if ($candidate === null) {
+                        return false;
+                    }
+
+                    try {
+                        $this->assertHeadFinanceCanConfigureGroup($candidate, (int) $group->id);
+                        return true;
+                    } catch (AuthorizationException) {
+                        return false;
+                    }
+                })
+                ->values();
+
+            return [(int) $group->id => $custodians];
+        });
+    }
+
+    /**
      * Cutover is a control-plane operation. A Central Super Admin may operate
      * only on an active Finance Group member; Head Finance still needs both
      * explicit School and Group operating scopes.

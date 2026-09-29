@@ -398,4 +398,30 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
+@if($page === 'accounts' && $canConfigureAccounts)
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.querySelector('#central-finance-setup form');
+    const group = form?.querySelector('select[name="group_id"]');
+    const custodian = form?.querySelector('select[name="custodian_user_id"]');
+    const byGroup = @json($groupCustodianOptions);
+    const oldGroupId = @json(old('group_id'));
+    const oldCustodianId = @json(old('custodian_user_id'));
+    if (!group || !custodian) return;
+
+    if (oldGroupId) group.value = String(oldGroupId);
+    const refreshCustodians = function (selectedId) {
+        const people = byGroup[String(group.value)] || [];
+        custodian.replaceChildren(new Option(@json(__('No custodian')), ''));
+        people.forEach(function (person) {
+            const option = new Option(person.label, String(person.id));
+            option.selected = String(person.id) === String(selectedId || '');
+            custodian.add(option);
+        });
+    };
+    refreshCustodians(oldCustodianId);
+    group.addEventListener('change', function () { refreshCustodians(null); });
+});
+</script>
+@endif
 @endsection

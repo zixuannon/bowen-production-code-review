@@ -1903,6 +1903,18 @@ Finance P4 Daily Cash Closing, if approved. Do not start Bank Reconciliation, re
 
 ## Backlog
 
+## Central Fund Account custodian selector (local candidate)
+
+- The Create Central Account screen now loads the eligible Central Head Finance
+  custodians for the selected Finance Group instead of rendering an empty
+  dropdown. Changing the Group refreshes the options in the browser.
+- The selection is descriptive Fund Account master data only; it does not
+  create account access, alter a School allocation, or change any balance.
+  Server-side creation still applies the existing Group Head Finance custody
+  authorization before saving.
+- Targeted workspace and Fund Account V2 regressions pass locally. No schema,
+  migration, Finance record, or Production change is included in this candidate.
+
 - The historical full fresh-install migration inventory has a pre-existing
   cross-connection ordering gap: some tenant migrations read central tables,
   while the 2026-05 multicurrency central migration scans tenant tables. The
