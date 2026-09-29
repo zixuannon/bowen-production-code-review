@@ -62,7 +62,17 @@ final class MigrateFinanceCollectionV2 extends Command
     private function trustedTenants(): array
     {
         $query = School::on('mysql')->whereNotNull('code')->whereNotNull('database_name');
-        if (Schema::connection('mysql')->hasColumn('schools', 'status')) $query->whereIn('status', [1, '1', 'active', 'ACTIVE']);
+        if (Schema::connection('mysql')->hasColumn('schools', 'status')) {
+            // Do not mix numeric and text literals in one predicate.  MySQL coerces
+            // a text literal such as "active" to 0 when `status` is numeric, which
+            // would accidentally include an inactive (0) School in a production run.
+            $statusType = Schema::connection('mysql')->getColumnType('schools', 'status');
+            if (in_array($statusType, ['tinyint', 'smallint', 'mediumint', 'integer', 'bigint'], true)) {
+                $query->where('status', 1);
+            } else {
+                $query->whereIn('status', ['1', 'active', 'ACTIVE']);
+            }
+        }
         $result = [];
         foreach ($query->orderBy('id')->get(['id', 'code', 'database_name']) as $school) {
             $code = strtoupper(trim((string) $school->getRawOriginal('code')));
