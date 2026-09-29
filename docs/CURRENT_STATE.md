@@ -1,5 +1,44 @@
 # eSchool Current State
 
+## Front Desk — School Finance Workspace Consolidation — local candidate
+
+- Baseline: `6443c5afa750f7901f1173de5030153cd99d3e4b`. Production has not
+  been inspected, changed, or deployed in this phase.
+- A School in canonical `CENTRAL` cutover now derives both daily Front Desk
+  navigation and legacy-write retirement from the same authoritative cutover
+  state. The obsolete code-based navigation rollout list is removed, resolving
+  the Timecity drift without adding a second allowlist.
+- A Central Front Desk sees only `收费设置 / Student Fees` (Fee Item Management
+  and Fee Types) plus the Central `School Finance` collection workspace:
+  Student Collection, My Pending Collections, Collection Receipts, and Cash
+  Handover only when an active allocated Cash Fund Account is usable. Student
+  Fee Setup remains the existing student-profile fee-assignment flow; no
+  second setup or collection path was introduced.
+- The generic legacy Finance navigation is suppressed for Central-cutover
+  Front Desk identities. Existing historical data and authorized read paths
+  remain intact; existing legacy settlement POST routes retain the trusted
+  Central-cutover server-side denial and cannot bypass Pending Collection →
+  Head Finance confirmation → canonical Payment/Receipt/Ledger/Fund Account.
+- Canonical Front Desk onboarding now grants only an auditable tenant
+  fee-setup permission contract. It excludes legacy direct payment/receipt,
+  Finance staff administration, Fund Account administration, opening balance,
+  transfer, Head Finance confirmation, refund/reversal, promotion definitions,
+  and other legacy settlement authority. Central collection submit remains a
+  separate explicit scope. Existing non-contract grants fail closed for manual
+  review rather than being silently rewritten.
+- Verification: targeted Front Desk/cutover/collection/onboarding regression
+  passes (90 tests / 599 assertions); full PHPUnit passes (973 tests / 7,650
+  assertions, 34 pre-existing skips; PHP 8.5/PHPUnit deprecation notices
+  remain). Local Playwright Front Desk acceptance passes at 1440px and 390px
+  without a collection submission, 404/500, or console error. The browser
+  fixture was disposable local BOWEN_QA data only.
+- Production deployment is a Human Gate. Deployment must not invoke the
+  global onboarding role provisioner without an explicit, separately audited
+  tenant-role reconciliation plan, since its `--execute` mode changes role
+  permission definitions.
+
+Last updated: 2026-09-29
+
 ## P0 — Finance Collection V2 Complete — integrated local candidate
 
 - Baseline: verified local Finance Layer 3 `64148b6a25ba841c49625d1a78757dacb8893de1`. Layer 3 is not being released independently; this is one integrated local-only candidate and Production has not been changed.

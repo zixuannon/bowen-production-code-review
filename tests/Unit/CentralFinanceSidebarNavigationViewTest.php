@@ -47,6 +47,11 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
         $this->assertStringContainsString('$centralCanViewSchoolReports', $view);
         $this->assertStringContainsString('CentralFinanceSchoolFinanceNavigationService::class', $view);
         $this->assertStringContainsString('$usesCentralFinanceDailyWorkspace', $view);
+        $this->assertStringContainsString('$centralCanUseCashHandover', $view);
+        $this->assertStringContainsString("route('central-finance.collection-handovers.index')", $view);
+        $this->assertStringContainsString("route('central-finance.pending-collections.front-desk.index') }}#collection-receipts", $view);
+        $this->assertStringContainsString("@elseif(!\$centralIsFrontDesk)", $view);
+        $this->assertStringContainsString("__('收费设置 / Student Fees')", $view);
         $this->assertStringNotContainsString("route('bank-accounts.index')", $view);
         $this->assertStringNotContainsString("route('bank-transfers.index')", $view);
         $this->assertStringNotContainsString("route('fund-handovers.index')", $view);
@@ -71,6 +76,10 @@ final class CentralFinanceSidebarNavigationViewTest extends TestCase
 
         $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/ExpenseController.php'));
         $this->assertStringContainsString('usesCentralFinanceDailyWorkspace()', (string) file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/FeesController.php'));
+
+        $navigation = (string) file_get_contents(dirname(__DIR__, 2).'/app/Services/CentralFinanceSchoolFinanceNavigationService.php');
+        $this->assertStringContainsString('allowsCentralWrites', $navigation);
+        $this->assertStringNotContainsString('school_finance_navigation_rollout_codes', $navigation);
 
         $workspace = (string) file_get_contents(dirname(__DIR__, 2).'/resources/views/central-finance/workspace.blade.php');
         $this->assertStringContainsString('@if($school && $canAccessAllSchools)', $workspace);

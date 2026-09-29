@@ -15,8 +15,9 @@ use Throwable;
 /**
  * Registry-driven role-definition provisioner for every active installed
  * tenant. Inactive/decommissioned registry rows are not operational tenants.
- * It is deliberately definition-only: no user assignment, permissions, or
- * Central Finance scope are granted.
+ * It is deliberately definition-only: no user assignment or Central Finance
+ * scope is granted. Front Desk receives only the fixed non-settlement
+ * fee-setup permission contract.
  */
 final class ProvisionFinanceOnboardingRoles extends Command
 {
@@ -79,7 +80,9 @@ final class ProvisionFinanceOnboardingRoles extends Command
                 }
 
                 $after = $this->status((int) $school->id);
-                if (in_array('missing', $after, true) || in_array('permission_conflict', $after, true)) {
+                if (in_array('missing', $after, true)
+                    || in_array('permission_conflict', $after, true)
+                    || in_array('permission_contract_missing', $after, true)) {
                     return $this->fail("[{$school->code}] post-provision verification failed; provisioning stopped.");
                 }
                 $this->info("[{$school->code}] ".$this->format($result));
@@ -141,7 +144,7 @@ final class ProvisionFinanceOnboardingRoles extends Command
                 throw new \LogicException('connection target differs from the central registry');
             }
 
-            foreach (['schools', 'roles', 'role_has_permissions'] as $table) {
+            foreach (['schools', 'roles', 'permissions', 'role_has_permissions'] as $table) {
                 if (!Schema::connection('school')->hasTable($table)) {
                     throw new \LogicException("required tenant table missing: {$table}");
                 }
@@ -181,11 +184,25 @@ final class ProvisionFinanceOnboardingRoles extends Command
                 ->where('guard_name', 'web')
                 ->where('name', $name)
                 ->first();
-            $status[$name] = !$role
-                ? 'missing'
-                : (DB::connection('school')->table('role_has_permissions')->where('role_id', $role->id)->exists()
+            if (!$role) {
+                $status[$name] = 'missing';
+                continue;
+            }
+
+            $permissions = DB::connection('school')->table('role_has_permissions as pivot')
+                ->join('permissions', 'permissions.id', '=', 'pivot.permission_id')
+                ->where('pivot.role_id', $role->id)
+                ->pluck('permissions.name')
+                ->all();
+            if ($name === TenantStaffRoleOnboardingService::FRONT_DESK) {
+                $status[$name] = array_diff($permissions, \App\Services\TenantFrontDeskFeeSetupPermissionContract::names()) !== []
                     ? 'permission_conflict'
-                    : 'exists');
+                    : (array_diff(\App\Services\TenantFrontDeskFeeSetupPermissionContract::names(), $permissions) !== []
+                        ? 'permission_contract_missing'
+                        : 'exists');
+                continue;
+            }
+            $status[$name] = $permissions !== [] ? 'permission_conflict' : 'exists';
         }
 
         return $status;

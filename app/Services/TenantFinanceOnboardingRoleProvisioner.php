@@ -9,8 +9,9 @@ use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Creates only the canonical tenant identity role definitions used by the
- * Finance Staff Onboarding workflow. It never assigns a user, permission, or
- * Central Finance scope.
+ * Finance Staff Onboarding workflow. It never assigns a user or Central
+ * Finance scope. The Front Desk role receives only its fixed tenant
+ * fee-setup contract; collection authority remains a separate Central grant.
  */
 final class TenantFinanceOnboardingRoleProvisioner
 {
@@ -45,8 +46,12 @@ final class TenantFinanceOnboardingRoleProvisioner
                 ->keyBy('name');
 
             foreach ($existing as $role) {
-                if ($connection->table('role_has_permissions')->where('role_id', $role->id)->exists()) {
+                if ($role->name !== TenantStaffRoleOnboardingService::FRONT_DESK
+                    && $connection->table('role_has_permissions')->where('role_id', $role->id)->exists()) {
                     throw new RuntimeException("Canonical onboarding role [{$role->name}] has permission grants and requires manual review.");
+                }
+                if ($role->name === TenantStaffRoleOnboardingService::FRONT_DESK) {
+                    TenantFrontDeskFeeSetupPermissionContract::synchronize($connection, (int) $role->id);
                 }
             }
 
@@ -75,8 +80,12 @@ final class TenantFinanceOnboardingRoleProvisioner
                     ->where('name', $name)
                     ->lockForUpdate()
                     ->first();
-                if (!$role || $connection->table('role_has_permissions')->where('role_id', $role->id)->exists()) {
+                if (!$role || ($name !== TenantStaffRoleOnboardingService::FRONT_DESK
+                    && $connection->table('role_has_permissions')->where('role_id', $role->id)->exists())) {
                     throw new RuntimeException("Canonical onboarding role [{$name}] could not be safely provisioned.");
+                }
+                if ($name === TenantStaffRoleOnboardingService::FRONT_DESK) {
+                    TenantFrontDeskFeeSetupPermissionContract::synchronize($connection, (int) $role->id);
                 }
 
                 $status[$name] = $inserted === 1 ? 'created' : 'reused';

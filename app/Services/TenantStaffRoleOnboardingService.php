@@ -22,7 +22,7 @@ final class TenantStaffRoleOnboardingService
     {
         return [
             self::SCHOOL_ACCOUNTANT => 'Tenant identity only. Tuition collection is not granted by this role assignment.',
-            self::FRONT_DESK => 'Tenant identity only. Central access remains limited to the explicit Pending Collection grant.',
+            self::FRONT_DESK => 'Tenant fee setup only. Central collection access remains limited to the explicit Pending Collection grant.',
             self::PRINCIPAL => 'Tenant identity only. Central Finance access remains read-only when explicitly granted.',
         ];
     }
@@ -69,7 +69,7 @@ final class TenantStaffRoleOnboardingService
                     ->where('school_id', $actor->school_id)
                     ->first();
 
-                if ($role && $role->permissions()->exists()) {
+                if ($role && $roleName !== self::FRONT_DESK && $role->permissions()->exists()) {
                     throw ValidationException::withMessages([
                         'roles' => [__('An existing role with this name has custom permissions and requires manual review.')],
                     ]);
@@ -87,6 +87,13 @@ final class TenantStaffRoleOnboardingService
                     // Make an existing permission-free canonical role visible
                     // to Staff administration without ever rewriting grants.
                     $role->forceFill(['custom_role' => 1, 'editable' => 0])->save();
+                }
+                if ($roleName === self::FRONT_DESK) {
+                    try {
+                        TenantFrontDeskFeeSetupPermissionContract::synchronize(DB::connection('school'), (int) $role->id);
+                    } catch (\RuntimeException $exception) {
+                        throw ValidationException::withMessages(['roles' => [$exception->getMessage()]]);
+                    }
                 }
                 $roleIds[] = (int) $role->id;
             }

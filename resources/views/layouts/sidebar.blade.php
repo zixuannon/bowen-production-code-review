@@ -26,6 +26,7 @@
             $centralCanMoveFunds = false;
             $centralCanViewSchoolReports = false;
             $centralCanSubmitPendingCollections = false;
+            $centralCanUseCashHandover = false;
             $centralIsFrontDesk = false;
             $usesCentralFinanceDailyWorkspace = false;
             try {
@@ -79,6 +80,12 @@
                         $centralWorkspace->assertCanSubmitCollectionsSchool($centralFinanceActor, $centralCurrentSchool->id);
                         $centralCanSubmitPendingCollections = true;
                         $centralIsFrontDesk = !$centralCanOperateCurrentSchool;
+                        // A cash handover is useful only when this trusted
+                        // School workflow can select an active, allocated Cash
+                        // Fund Account. Never expose an empty/dead-end menu.
+                        $centralCanUseCashHandover = $centralWorkspace
+                            ->accessibleAccountsForSchoolWorkflow($centralFinanceActor, (int) $centralCurrentSchool->id)
+                            ->contains(fn ($account) => strtolower((string) $account->account_type) === 'cash');
                     } catch (\Throwable) {
                         $centralCanSubmitPendingCollections = false;
                     }
@@ -108,6 +115,10 @@
                     <div class="collapse {{ request()->routeIs('central-finance.*') ? 'show' : '' }}" id="central-finance-menu"><ul class="nav flex-column sub-menu">
                         <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.student-collection.*') ? 'active' : '' }}" href="{{ route('central-finance.student-collection.index') }}">{{ __('Student Collection') }}</a></li>
                         <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.pending-collections.front-desk.*') ? 'active' : '' }}" href="{{ route('central-finance.pending-collections.front-desk.index') }}">{{ __('My pending collections') }}</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{{ route('central-finance.pending-collections.front-desk.index') }}#collection-receipts">{{ __('Collection Receipts') }}</a></li>
+                        @if($centralCanUseCashHandover)
+                            <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.collection-handovers.*') ? 'active' : '' }}" href="{{ route('central-finance.collection-handovers.index') }}">{{ __('Cash Handover') }}</a></li>
+                        @endif
                     </ul></div>
                 </li>
             @else
@@ -793,7 +804,7 @@
                 @canany(['fees-list', 'fees-type-list'])
                     <li class="nav-item">
                         <a class="nav-link" data-toggle="collapse" href="#fee-setup-menu" aria-expanded="false" aria-controls="fee-setup-menu">
-                            <i class="fa fa-cog menu-icon"></i><span class="menu-title">{{ __('Fee Setup') }}</span><i class="menu-arrow"></i>
+                            <i class="fa fa-cog menu-icon"></i><span class="menu-title">{{ __('收费设置 / Student Fees') }}</span><i class="menu-arrow"></i>
                         </a>
                         <div class="collapse" id="fee-setup-menu"><ul class="nav flex-column sub-menu">
                             @can('fees-list')<li class="nav-item"><a href="{{ route('fees.index') }}" class="nav-link">{{ __('Manage Fees') }}</a></li>@endcan
@@ -801,7 +812,7 @@
                         </ul></div>
                     </li>
                 @endcanany
-            @else
+            @elseif(!$centralIsFrontDesk)
             <li class="nav-item">
                 <a class="nav-link" data-toggle="collapse" href="#fees-menu" aria-expanded="false"
                     aria-controls="fees-menu" data-access="@hasFeatureAccess('Fees Management')">

@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\School;
 
 /**
- * Read-only tenant-sidebar rollout decision.
+ * Read-only tenant-sidebar decision.
  *
  * The current tenant database is established by the trusted School login
  * bootstrap.  Tenant-local numeric IDs must never be used to locate a
@@ -58,7 +58,10 @@ final class CentralFinanceSchoolFinanceNavigationService
             return false;
         }
 
-        return in_array($school->code, config('central_finance.school_finance_navigation_rollout_codes', []), true)
-            && $this->cutovers->allowsCentralWrites((int) $school->id);
+        // The canonical cutover row is the single trusted source for both
+        // Central write retirement and daily-workspace navigation. A separate
+        // School-code rollout list caused CENTRAL Timecity to retain the old
+        // Finance menu while its direct legacy writes were already denied.
+        return $this->cutovers->allowsCentralWrites((int) $school->id);
     }
 }

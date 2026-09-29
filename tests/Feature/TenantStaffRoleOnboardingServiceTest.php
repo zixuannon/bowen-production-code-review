@@ -79,6 +79,9 @@ final class TenantStaffRoleOnboardingServiceTest extends TestCase
             $table->unsignedBigInteger('model_id');
             $table->primary(['permission_id', 'model_id', 'model_type']);
         });
+        foreach (\App\Services\TenantFrontDeskFeeSetupPermissionContract::names() as $permission) {
+            DB::connection('school')->table('permissions')->insert(['name' => $permission, 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()]);
+        }
         (require database_path('migrations/schools/2026_09_01_000001_create_school_record_lifecycle_audits_table.php'))->up();
 
         DB::connection('school')->table('users')->insert([
@@ -149,6 +152,15 @@ final class TenantStaffRoleOnboardingServiceTest extends TestCase
 
         $frontDeskRole = DB::connection('school')->table('roles')->where('name', TenantStaffRoleOnboardingService::FRONT_DESK)->sole();
         $this->assertSame(1, DB::connection('school')->table('model_has_roles')->where(['model_id' => 2, 'role_id' => $frontDeskRole->id])->count());
+        $this->assertSame(
+            \App\Services\TenantFrontDeskFeeSetupPermissionContract::names(),
+            DB::connection('school')->table('role_has_permissions as pivot')
+                ->join('permissions', 'permissions.id', '=', 'pivot.permission_id')
+                ->where('pivot.role_id', $frontDeskRole->id)
+                ->orderBy('permissions.id')
+                ->pluck('permissions.name')
+                ->all(),
+        );
         $this->assertSame(2, DB::connection('school')->table('school_record_lifecycle_audits')->count());
     }
 

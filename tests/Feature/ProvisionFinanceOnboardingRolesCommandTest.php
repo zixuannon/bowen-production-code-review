@@ -104,11 +104,26 @@ final class ProvisionFinanceOnboardingRolesCommandTest extends TestCase
             $table->timestamps();
             $table->unique(['name', 'guard_name', 'school_id']);
         });
+        Schema::connection('school')->create('permissions', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('guard_name')->default('web');
+            $table->timestamps();
+            $table->unique(['name', 'guard_name']);
+        });
         Schema::connection('school')->create('role_has_permissions', function (Blueprint $table): void {
             $table->unsignedBigInteger('permission_id');
             $table->unsignedBigInteger('role_id');
             $table->primary(['permission_id', 'role_id']);
         });
+        foreach (\App\Services\TenantFrontDeskFeeSetupPermissionContract::names() as $permission) {
+            DB::connection('school')->table('permissions')->insert([
+                'name' => $permission,
+                'guard_name' => 'web',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
         DB::connection('school')->table('schools')->insert(['id' => $id, 'code' => $code, 'database_name' => $database]);
         DB::connection('mysql')->table('schools')->insert([
             'id' => $id,
@@ -143,6 +158,9 @@ final class ProvisionFinanceOnboardingRolesCommandTest extends TestCase
             DB::connection('school')->table('roles')->where('school_id', $schoolId)->orderBy('id')->pluck('name')->all(),
         );
         $this->assertSame(3, DB::connection('school')->table('roles')->where('school_id', $schoolId)->count());
-        $this->assertSame(0, DB::connection('school')->table('role_has_permissions')->count());
+        $this->assertSame(
+            count(\App\Services\TenantFrontDeskFeeSetupPermissionContract::names()),
+            DB::connection('school')->table('role_has_permissions')->count(),
+        );
     }
 }

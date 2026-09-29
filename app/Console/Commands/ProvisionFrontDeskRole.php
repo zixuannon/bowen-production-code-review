@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Role;
 use App\Models\School;
+use App\Services\TenantFinanceOnboardingRoleProvisioner;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 final class ProvisionFrontDeskRole extends Command
 {
     protected $signature = 'school:provision-front-desk-role {school_code} {--dry-run}';
-    protected $description = 'Provision the non-financial Front Desk tenant role for one School';
+    protected $description = 'Provision the constrained Front Desk tenant fee-setup role for one School';
 
     public function handle(): int
     {
@@ -27,9 +27,11 @@ final class ProvisionFrontDeskRole extends Command
         Config::set('database.connections.school.database', $school->database_name);
         DB::purge('school');
         DB::connection('school')->reconnect();
-        Role::on('school')->withoutGlobalScopes()->updateOrCreate(
-            ['name' => 'Front Desk / Admissions & Collection', 'school_id' => $school->id],
-            ['custom_role' => 0, 'editable' => 0, 'guard_name' => 'web'],
+        app(TenantFinanceOnboardingRoleProvisioner::class)->provision(
+            (int) $school->id,
+            (string) $school->code,
+            (string) $school->database_name,
+            'front_desk_workspace_provisioning',
         );
 
         return self::SUCCESS;

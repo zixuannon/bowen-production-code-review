@@ -12,7 +12,7 @@
             <h3>{{ __('My pending collections') }}</h3>
             <p class="text-muted">{{ $school->name }} · {{ __('A Collection Receipt is not a canonical Finance Receipt until Head Finance confirms it.') }}</p>
 
-            <div class="table-responsive">
+            <div class="table-responsive" id="collection-receipts">
                 <table class="table cf-data-table">
                     <thead>
                     <tr>

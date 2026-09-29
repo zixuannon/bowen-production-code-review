@@ -116,13 +116,12 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
         $this->assertSame('legacy', $cutovers->statusForSchool(2));
     }
 
-    public function test_only_the_explicit_zixuan_rollout_school_uses_central_daily_navigation_after_cutover(): void
+    public function test_every_central_cutover_school_uses_the_canonical_daily_navigation_without_a_code_allowlist(): void
     {
         $cutovers = app(CentralFinanceSchoolCutoverService::class);
         $zixuan = School::on('mysql')->findOrFail(1);
         $navigation = app(CentralFinanceSchoolFinanceNavigationService::class);
 
-        Config::set('central_finance.school_finance_navigation_rollout_codes', ['MMBOWEN01']);
         Config::set('database.connections.school.database', 'local_zixuan');
         $this->assertFalse($navigation->usesCentralFinanceDailyWorkspace());
 
@@ -132,6 +131,9 @@ final class CentralFinanceSchoolCutoverTest extends TestCase
 
         Config::set('database.connections.school.database', 'local_timecity');
         $this->assertFalse($navigation->usesCentralFinanceDailyWorkspace());
+
+        DB::connection('mysql')->table('central_finance_school_cutovers')->where('school_id', 2)->update(['status' => 'central']);
+        $this->assertTrue($navigation->usesCentralFinanceDailyWorkspace());
 
         // The sidebar is rendered after the authenticated School Login has
         // saved this trusted context. It must not fall back to a default or

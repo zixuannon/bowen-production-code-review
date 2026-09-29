@@ -42,6 +42,16 @@ final class TenantFinanceOnboardingRoleProvisionerTest extends TestCase
             $table->unsignedBigInteger('role_id');
             $table->primary(['permission_id', 'role_id']);
         });
+        Schema::connection('school')->create('permissions', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('guard_name')->default('web');
+            $table->timestamps();
+            $table->unique(['name', 'guard_name']);
+        });
+        foreach (\App\Services\TenantFrontDeskFeeSetupPermissionContract::names() as $permission) {
+            DB::connection('school')->table('permissions')->insert(['name' => $permission, 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()]);
+        }
     }
 
     protected function tearDown(): void
@@ -51,7 +61,7 @@ final class TenantFinanceOnboardingRoleProvisionerTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_it_provisions_all_three_permission_free_roles_without_any_scope_grant(): void
+    public function test_it_provisions_three_roles_with_only_the_front_desk_fee_setup_contract_and_no_scope_grant(): void
     {
         $result = app(TenantFinanceOnboardingRoleProvisioner::class)->provision(
             41,
@@ -69,7 +79,16 @@ final class TenantFinanceOnboardingRoleProvisionerTest extends TestCase
             TenantStaffRoleOnboardingService::roleNames(),
             DB::connection('school')->table('roles')->orderBy('id')->pluck('name')->all(),
         );
-        $this->assertSame(0, DB::connection('school')->table('role_has_permissions')->count());
+        $frontDesk = DB::connection('school')->table('roles')->where('name', TenantStaffRoleOnboardingService::FRONT_DESK)->sole();
+        $this->assertSame(
+            \App\Services\TenantFrontDeskFeeSetupPermissionContract::names(),
+            DB::connection('school')->table('role_has_permissions as pivot')
+                ->join('permissions', 'permissions.id', '=', 'pivot.permission_id')
+                ->where('pivot.role_id', $frontDesk->id)
+                ->orderBy('permissions.id')
+                ->pluck('permissions.name')
+                ->all(),
+        );
     }
 
     public function test_repeat_provisioning_is_idempotent_and_preserves_existing_role_metadata(): void

@@ -224,6 +224,7 @@ final class CentralFinanceSchoolStaffIdentityService
                 if (Schema::connection('school')->hasColumn('roles', 'created_at')) { $roleData['created_at'] = now(); $roleData['updated_at'] = now(); }
                 $roleId = (int) $db->table('roles')->insertGetId($roleData);
             } else $roleId = (int) $role->id;
+            TenantFrontDeskFeeSetupPermissionContract::synchronize($db, $roleId);
             $exists = $db->table('model_has_roles')->where(['role_id' => $roleId, 'model_id' => $tenantId, 'model_type' => User::class])->exists();
             if (!$exists) $db->table('model_has_roles')->insert(['role_id' => $roleId, 'model_id' => $tenantId, 'model_type' => User::class]);
             return $tenantId;

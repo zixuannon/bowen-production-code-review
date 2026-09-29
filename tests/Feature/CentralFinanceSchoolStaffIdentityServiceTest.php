@@ -45,7 +45,12 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->boolean('status')->default(true); $table->boolean('two_factor_enabled')->default(true); $table->text('two_factor_secret')->nullable(); $table->timestamp('two_factor_expires_at')->nullable(); $table->timestamps(); $table->softDeletes(); });
         Schema::connection('school')->create('staffs', function (Blueprint $table): void { $table->id(); $table->unsignedBigInteger('user_id'); });
         Schema::connection('school')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); });
+        Schema::connection('school')->create('permissions', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); });
+        Schema::connection('school')->create('role_has_permissions', function (Blueprint $table): void { $table->unsignedBigInteger('permission_id'); $table->unsignedBigInteger('role_id'); $table->primary(['permission_id', 'role_id']); });
         Schema::connection('school')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
+        foreach (\App\Services\TenantFrontDeskFeeSetupPermissionContract::names() as $permission) {
+            DB::connection('school')->table('permissions')->insert(['name' => $permission, 'guard_name' => 'web']);
+        }
         DB::connection('school')->table('users')->insert(['id' => 7, 'school_id' => 1, 'first_name' => 'Zixuan', 'last_name' => 'Accountant', 'email' => 'zixuan.accountant@example.test']);
         DB::connection('school')->table('users')->insert([
             ['id' => 8, 'school_id' => 1, 'first_name' => 'Zixuan', 'last_name' => 'Principal', 'email' => 'zixuan.principal@example.test'],
