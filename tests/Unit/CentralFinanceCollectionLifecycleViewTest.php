@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\CentralFinanceCurrencySummaryService;
+use Illuminate\Support\Facades\Blade;
+use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
 final class CentralFinanceCollectionLifecycleViewTest extends TestCase
@@ -47,6 +49,21 @@ final class CentralFinanceCollectionLifecycleViewTest extends TestCase
         $this->assertStringContainsString("__('Collected')", $frontDeskView);
         $this->assertStringContainsString("__('Submitted')", $frontDeskView);
         $this->assertStringContainsString('Finance Confirmed At', $receiptView);
+    }
+
+    public function test_student_collection_form_blade_compiles_to_valid_php(): void
+    {
+        $compiled = Blade::compileString(file_get_contents(resource_path('views/central-finance/student-collection/show.blade.php')));
+        $path = tempnam(sys_get_temp_dir(), 'eschool-student-collection-');
+        file_put_contents($path, $compiled);
+
+        try {
+            $lint = new Process([PHP_BINARY, '-l', $path]);
+            $lint->run();
+            $this->assertTrue($lint->isSuccessful(), $lint->getErrorOutput().$lint->getOutput());
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_confirmed_finance_receipt_uses_the_same_80mm_thermal_contract_as_the_collection_receipt(): void
