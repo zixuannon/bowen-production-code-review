@@ -43,7 +43,8 @@ final class CentralFinanceStudentCollectionController extends Controller
     public function collection(Request $request): View
     {
         $actor = $this->actor();
-        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor)
+            || $this->workspace->isQaTestSchoolContext($actor);
         $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
         $school = $this->workspace->currentSchool($actor, $includeQaTest);
         $schools = $this->workspace->accessibleSchools($actor, $includeQaTest);

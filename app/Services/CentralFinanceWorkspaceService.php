@@ -139,6 +139,22 @@ final class CentralFinanceWorkspaceService
         return null;
     }
 
+    /**
+     * Whether the actor is already operating inside a trusted QA/Test School.
+     *
+     * This is intentionally derived from the existing Central + Group scope
+     * and the server-side selected-School session. It is not a user-controlled
+     * "include all QA" switch. A selected QA School may read its own QA/Test
+     * records; All Schools and Official School contexts keep the normal
+     * Official-only presentation.
+     */
+    public function isQaTestSchoolContext(CentralFinanceUser $actor): bool
+    {
+        $school = $this->currentSchool($actor, true);
+
+        return $school !== null && $this->dataIsolation->isQaTestSchool((int) $school->id);
+    }
+
     public function isSchoolStaffPrincipal(CentralFinanceUser $actor): bool
     {
         return $actor->getRawOriginal('central_finance_principal_type') === CentralFinanceSchoolStaffIdentityService::PRINCIPAL_TYPE;
@@ -207,7 +223,7 @@ final class CentralFinanceWorkspaceService
     public function accessibleAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {
         $query = $this->accounts->visibleAccounts($actor, $schoolId, true)->active()->orderBy('account_name');
-        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
+        $this->applyFundAccountVisibility($query, $schoolId, $includeQaTest);
         return $query->get();
     }
 
@@ -237,7 +253,7 @@ final class CentralFinanceWorkspaceService
     public function readableAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {
         $query = $this->accounts->visibleAccounts($actor, $schoolId, false)->orderBy('account_name');
-        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
+        $this->applyFundAccountVisibility($query, $schoolId, $includeQaTest);
 
         return $query->get();
     }
@@ -258,7 +274,7 @@ final class CentralFinanceWorkspaceService
             ->whereHas('schoolAllocations', fn (Builder $allocations) => $allocations
                 ->where('school_id', $schoolId)->effective())
             ->orderBy('account_name');
-        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
+        $this->applyFundAccountVisibility($query, $schoolId, $includeQaTest);
         return $query->get();
     }
 
@@ -288,5 +304,21 @@ final class CentralFinanceWorkspaceService
             ->where('status', 'active')
             ->whereHas('group', fn ($query) => $query->where('status', 'active'))
             ->get();
+    }
+
+    /**
+     * A QA School can never select an Official Fund Account merely because it
+     * has a valid allocation. This applies the same exact-QA rule to shared
+     * read and operation account lists as the dedicated School workflow API.
+     */
+    private function applyFundAccountVisibility(Builder $query, ?int $schoolId, bool $includeQaTest): void
+    {
+        if ($schoolId !== null && $this->dataIsolation->isQaTestSchool($schoolId)) {
+            $this->dataIsolation->applySchoolWorkflow($query, 'fund_account', $schoolId);
+
+            return;
+        }
+
+        $this->dataIsolation->apply($query, 'fund_account', $includeQaTest);
     }
 }

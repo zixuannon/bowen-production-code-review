@@ -819,6 +819,39 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         ], 'mysql');
     }
 
+    public function test_selected_qa_school_context_reads_its_own_qa_history_and_accounts_without_opening_all_schools_history(): void
+    {
+        $this->grantHeadFinanceRole();
+        $entry = CentralFinanceLedgerEntry::on('mysql')->create([
+            'entry_uuid'=>(string) Str::uuid(), 'school_id'=>1,
+            'fund_account_id'=>$this->zixuan->id, 'entry_date'=>'2026-09-15', 'occurred_at'=>now(),
+            'source_type'=>'qa_context_test', 'source_id'=>'QA-CONTEXT', 'source_line'=>'1',
+            'reference_no'=>'QA-CONTEXT', 'transaction_type'=>'operating_income', 'currency'=>'MMK',
+            'money_in'=>125, 'money_out'=>0, 'operating_income'=>125, 'operating_expense'=>0,
+            'memo'=>'QA context fixture', 'created_by'=>$this->head->id,
+        ]);
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        $isolation->classify($this->head, 1, 'school', 1, CentralFinanceDataClassification::QA_TEST, 'Zixuan is the permanent QA School.');
+        $isolation->classify($this->head, 1, 'fund_account', $this->zixuan->id, CentralFinanceDataClassification::QA_TEST, 'Zixuan QA account.');
+        $isolation->classify($this->head, 1, 'ledger', $entry->id, CentralFinanceDataClassification::QA_TEST, 'Zixuan QA ledger entry.');
+
+        $this->actingAs($this->head);
+        $workspace = app(CentralFinanceWorkspaceService::class);
+        $workspace->enterSchool($this->head, 1);
+        $selected = app(CentralFinanceWorkspaceController::class)->reports(new Request());
+
+        $this->assertSame(1, $selected->getData()['school']->id);
+        $this->assertTrue($selected->getData()['includeQaTest']);
+        $this->assertSame(['ZIX-CASH'], $selected->getData()['accounts']->pluck('account_code')->all());
+        $this->assertSame(125.0, $selected->getData()['currencyTotals']['MMK']['money_in']);
+
+        $workspace->exitSchool();
+        $allSchools = app(CentralFinanceWorkspaceController::class)->reports(new Request());
+        $this->assertFalse($allSchools->getData()['includeQaTest']);
+        $this->assertSame(['TIM-CASH'], $allSchools->getData()['accounts']->pluck('account_code')->all());
+        $this->assertFalse($allSchools->getData()['ledger']->getCollection()->pluck('reference_no')->contains('QA-CONTEXT'));
+    }
+
     public function test_direct_qa_master_and_student_rows_are_hidden_without_changing_production_rows(): void
     {
         $this->grantHeadFinanceRole();

@@ -24,7 +24,8 @@ final class CentralFinanceGroupImportController extends Controller
     public function workspace(Request $request): View
     {
         $actor = $this->actor();
-        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor)
+            || $this->workspace->isQaTestSchoolContext($actor);
         $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
         $groups = $this->imports->authorizedGroups($actor);
         abort_if($groups->isEmpty(), 403);

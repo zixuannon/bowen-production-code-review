@@ -1,5 +1,33 @@
 # eSchool Current State
 
+## Zixuan QA School workspace consistency — local candidate
+
+- Zixuan (`MMBOWEN01`) remains the explicitly classified permanent QA/Test
+  School. The local candidate makes its already trusted selected-School
+  context consistently readable across Central Finance workspace, account,
+  student-collection, pending-collection, handover, and batch-history read
+  surfaces. This prevents a QA record that is visible in one Zixuan page from
+  becoming a false 404 on its detail or adjacent workspace page.
+- The rule is narrowly scoped: only an actor already authorized for the
+  selected QA School receives its own QA/Test records. QA School Fund Account
+  lists still use exact QA classification, so an Official account cannot be
+  selected merely because it is allocated to Zixuan. Archived data remains
+  excluded from School workflow selectors.
+- All Schools / Official views remain Official-only unless an authorized
+  Head Finance or Super Admin deliberately requests QA history. School staff
+  cannot use `include_qa_test` to expand into an All Schools QA view, and
+  existing Central + Group school-scope authorization remains unchanged.
+- Local targeted verification passed: workspace QA context and isolation
+  regression (3 tests / 19 assertions), QA payment/collection regression
+  (6 tests / 24 assertions), handover (7 tests / 72 assertions), Group
+  Import confirm (24 tests / 160 assertions), Group Import preview (5 tests /
+  94 assertions), School Finance facade (4 tests / 17 assertions), and
+  operating-school context (4 tests / 16 assertions). The combined run hit
+  the documented 128 MB PHP memory ceiling; no runtime limit or business code
+  was changed to bypass it. Production is unchanged pending Human approval.
+
+Last updated: 2026-09-29
+
 ## Finance Layer 4 — Date Contract + Official Finance Go-Live Foundation — local candidate
 
 - Baseline: `1ce52fca9de5ea683a1a774a38e2edb8ab4de0d2`; branch

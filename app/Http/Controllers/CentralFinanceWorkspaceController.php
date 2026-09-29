@@ -988,7 +988,7 @@ final class CentralFinanceWorkspaceController extends Controller
     private function readScope(Request $request): array
     {
         $actor = $this->actor();
-        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $includeQaTest = $this->effectiveIncludeQaTest($request, $actor);
         $school = $this->workspace->currentSchool($actor, $includeQaTest);
         $schools = $this->workspace->accessibleSchools($actor, $includeQaTest);
         $accounts = $this->workspace->readableAccounts($actor, $school?->id, $includeQaTest);
@@ -1001,7 +1001,7 @@ final class CentralFinanceWorkspaceController extends Controller
     private function operatingDocumentDetail(string $type, int $id): View
     {
         $actor = $this->actor();
-        $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor);
+        $includeQaTest = $this->effectiveIncludeQaTest(request(), $actor);
         $class = $type === 'expense' ? CentralFinanceExpense::class : CentralFinanceOtherIncome::class;
         $documentQuery = $class::on('mysql')->withTrashed()->with('category');
         $this->dataIsolation->apply($documentQuery, $type, $includeQaTest);
@@ -1025,7 +1025,7 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $categoriesQuery = CentralFinanceCategory::on('mysql')->availableForSchool($school->id)->forActor($actor,[$school->id],true)
             ->forCashDirection($type === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME);
-        $this->dataIsolation->apply($categoriesQuery, 'category');
+        $this->applyReadVisibility($categoriesQuery, 'category', $school, $includeQaTest);
         $categories = $categoriesQuery->orderBy('name')->get();
         $ledgerSource = $type === 'expense' ? 'central_expense' : 'central_other_income';
 
@@ -1038,7 +1038,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $class = $type === 'expense' ? CentralFinanceExpense::class : CentralFinanceOtherIncome::class;
         $dateColumn = $type === 'expense' ? 'expense_date' : 'income_date';
         $query = $class::on('mysql')->withTrashed()->with('category');
-        $this->dataIsolation->apply($query, $type === 'expense' ? 'expense' : 'other_income', (bool) ($filters['include_qa_test'] ?? false));
+        $this->applyReadVisibility($query, $type === 'expense' ? 'expense' : 'other_income', $school, (bool) ($filters['include_qa_test'] ?? false));
         if ($school) $query->where('school_id', $school->id);
         elseif ($schools->isNotEmpty()) $query->whereIn('school_id', $schools->pluck('id'));
         else $query->whereRaw('1 = 0');
@@ -1058,7 +1058,7 @@ final class CentralFinanceWorkspaceController extends Controller
 
     private function render(string $page, Request $request, ?int $requestedAccountId = null): View
     {
-        $actor=$this->actor(); $includeQaTest=$this->dataIsolation->includeQaTest($request,$actor); $school=$this->workspace->currentSchool($actor,$includeQaTest); $schools=$this->workspace->accessibleSchools($actor,$includeQaTest); $canAccessAllSchools=!$this->workspace->isSchoolStaffPrincipal($actor); $schoolFinanceFacade=$this->workspace->usesSchoolFinanceFacade($actor);
+        $actor=$this->actor(); $includeQaTest=$this->effectiveIncludeQaTest($request,$actor); $school=$this->workspace->currentSchool($actor,$includeQaTest); $schools=$this->workspace->accessibleSchools($actor,$includeQaTest); $canAccessAllSchools=!$this->workspace->isSchoolStaffPrincipal($actor); $schoolFinanceFacade=$this->workspace->usesSchoolFinanceFacade($actor);
         // Read models intentionally use strict selected-School accounts. Keep
         // the broader authorised operation set separate: Head Finance may
         // still collect a School's fee into an authorised HQ account.
@@ -1166,7 +1166,7 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $receivableQuery = $schoolId ? CentralFinanceReceivable::on('mysql')->with('studentProfile')->where('school_id', $schoolId) : null;
         if ($receivableQuery) {
-            $this->dataIsolation->apply($receivableQuery, 'receivable', $includeQaTest);
+            $this->applyReadVisibility($receivableQuery, 'receivable', $school, $includeQaTest);
             $receivableQuery
                 ->when($filters['receivable_status'] ?? null, fn ($query, $status) => $query->where('status', $status))
                 ->when($filters['currency'] ?? null, fn ($query, $currency) => $query->where('currency', $currency))
@@ -1184,8 +1184,12 @@ final class CentralFinanceWorkspaceController extends Controller
         }
         $profileQuery=$schoolId ? CentralFinanceStudentProfile::on('mysql')->with(['receivables' => fn ($query) => $query->latest()->with('payments.receipt')])->where('school_id',$schoolId) : null;
         if ($profileQuery) {
-            $this->dataIsolation->apply($profileQuery, 'student_profile', $includeQaTest);
-            $this->dataIsolation->applyTenantMetadata($profileQuery, 'student', (int) $schoolId, $includeQaTest, 'tenant_student_id');
+            $this->applyReadVisibility($profileQuery, 'student_profile', $school, $includeQaTest);
+            if ($school && $this->dataIsolation->isQaTestSchool((int) $school->id)) {
+                $this->dataIsolation->applyTenantMetadataForSchoolWorkflow($profileQuery, 'student', (int) $school->id, 'tenant_student_id');
+            } else {
+                $this->dataIsolation->applyTenantMetadata($profileQuery, 'student', (int) $schoolId, $includeQaTest, 'tenant_student_id');
+            }
         }
         $profiles=$profileQuery ? $profileQuery->when($filters['student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested->where('student_name','like',"%{$student}%")->orWhere('admission_no','like',"%{$student}%")->orWhere('student_code','like',"%{$student}%")))->latest()->paginate(25, ['*'], 'students_page')->withQueryString() : collect();
         if ($profiles instanceof LengthAwarePaginator) {
@@ -1198,8 +1202,12 @@ final class CentralFinanceWorkspaceController extends Controller
         $payments=$paymentsQuery->latest('paid_at')->paginate(25, ['*'], 'payments_page')->withQueryString();
         $paymentProfileQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
         if ($paymentProfileQuery) {
-            $this->dataIsolation->apply($paymentProfileQuery, 'student_profile');
-            $this->dataIsolation->applyTenantMetadata($paymentProfileQuery, 'student', (int) $schoolId, false, 'tenant_student_id');
+            $this->applyReadVisibility($paymentProfileQuery, 'student_profile', $school, $includeQaTest);
+            if ($school && $this->dataIsolation->isQaTestSchool((int) $school->id)) {
+                $this->dataIsolation->applyTenantMetadataForSchoolWorkflow($paymentProfileQuery, 'student', (int) $school->id, 'tenant_student_id');
+            } else {
+                $this->dataIsolation->applyTenantMetadata($paymentProfileQuery, 'student', (int) $schoolId, $includeQaTest, 'tenant_student_id');
+            }
             $paymentProfileQuery
                 ->when($filters['payment_class'] ?? null, fn ($query, $class) => $query->where('class_name', $class))
                 ->when($filters['payment_student'] ?? null, fn ($query, $student) => $query->where(fn ($nested) => $nested
@@ -1212,12 +1220,16 @@ final class CentralFinanceWorkspaceController extends Controller
         $paymentProfiles->each(fn (CentralFinanceStudentProfile $profile) => $profile->setAttribute('currency_totals', $this->currencySummaries->receivables($profile->receivables)));
         $paymentClassQuery = $schoolId ? CentralFinanceStudentProfile::on('mysql')->where('school_id', $schoolId) : null;
         if ($paymentClassQuery) {
-            $this->dataIsolation->apply($paymentClassQuery, 'student_profile');
-            $this->dataIsolation->applyTenantMetadata($paymentClassQuery, 'student', (int) $schoolId, false, 'tenant_student_id');
+            $this->applyReadVisibility($paymentClassQuery, 'student_profile', $school, $includeQaTest);
+            if ($school && $this->dataIsolation->isQaTestSchool((int) $school->id)) {
+                $this->dataIsolation->applyTenantMetadataForSchoolWorkflow($paymentClassQuery, 'student', (int) $school->id, 'tenant_student_id');
+            } else {
+                $this->dataIsolation->applyTenantMetadata($paymentClassQuery, 'student', (int) $schoolId, $includeQaTest, 'tenant_student_id');
+            }
         }
         $paymentClasses = $paymentClassQuery ? $paymentClassQuery->whereNotNull('class_name')->where('class_name', '!=', '')->distinct()->orderBy('class_name')->pluck('class_name') : collect();
         $paymentReceivableQuery=$schoolId ? CentralFinanceReceivable::on('mysql')->where('school_id',$schoolId)->whereIn('status',['open','partial']) : null;
-        if ($paymentReceivableQuery) $this->dataIsolation->apply($paymentReceivableQuery, 'receivable');
+        if ($paymentReceivableQuery) $this->applyReadVisibility($paymentReceivableQuery, 'receivable', $school, $includeQaTest);
         $paymentReceivables=$paymentReceivableQuery ? $paymentReceivableQuery->orderBy('student_profile_id')->orderBy('due_date')->get(['id','student_profile_id','description','amount_due','amount_paid','currency']) : collect();
         $categoryQuery=CentralFinanceCategory::on('mysql')->forActor($actor,$schoolId ? [$schoolId] : $schools->pluck('id')->all());
         if ($page === 'categories' && $canConfigureAccounts && Schema::connection('mysql')->hasColumn('central_finance_categories','group_id')) {
@@ -1225,7 +1237,7 @@ final class CentralFinanceWorkspaceController extends Controller
                 $query->whereIn('group_id', $configurableGroups->pluck('id'))->orWhere(fn ($legacy) => $legacy->whereNull('group_id')->whereIn('school_id',$schools->pluck('id')));
             })->with('schoolAllocations');
         }
-        $this->dataIsolation->apply($categoryQuery, 'category', $includeQaTest);
+        $this->applyReadVisibility($categoryQuery, 'category', $school, $includeQaTest);
         $categories=$categoryQuery->orderBy('type')->orderBy('name')->get();
         $operators=CentralFinanceUser::on('mysql')->whereIn('id', (clone $filteredLedger)->distinct()->pluck('created_by')->filter())->orderBy('first_name')->get(['id','first_name','last_name','email']);
         if ($page === 'ledger' && method_exists($ledger, 'getCollection')) {
@@ -1281,7 +1293,7 @@ final class CentralFinanceWorkspaceController extends Controller
             if ($this->accountAvailability->allocationSchemaAvailable()) $accountRelations[] = 'schoolAllocations';
             $directoryQuery = CentralFinanceFundAccount::on('mysql')->with($accountRelations)
                 ->whereIn('id', $accounts->pluck('id'));
-            $this->dataIsolation->apply($directoryQuery, 'fund_account', $includeQaTest);
+            $this->applyReadVisibility($directoryQuery, 'fund_account', $school, $includeQaTest);
             if (!empty($filters['account_owner'])) $directoryQuery->where('owner_type', $filters['account_owner']);
             if (!empty($filters['account_type'])) $directoryQuery->where('account_type', $filters['account_type']);
             if (!empty($filters['account_status'])) $directoryQuery->where('status', $filters['account_status']);
@@ -1323,7 +1335,7 @@ final class CentralFinanceWorkspaceController extends Controller
                 'token' => $request->string('import_batch')->toString(), 'school_id' => $schoolId,
                 'uploaded_by' => $actor->id, 'import_type' => 'payment',
             ]);
-            $this->dataIsolation->apply($paymentImportBatchQuery, 'import_batch', $includeQaTest);
+            $this->applyReadVisibility($paymentImportBatchQuery, 'import_batch', $school, $includeQaTest);
             $paymentImportBatch = $paymentImportBatchQuery->firstOrFail();
         }
         if ($page === 'operating' && $request->string('operation')->toString() === 'expense' && $schoolId && $request->filled('import_batch')) {
@@ -1331,7 +1343,7 @@ final class CentralFinanceWorkspaceController extends Controller
                 'token' => $request->string('import_batch')->toString(), 'school_id' => $schoolId,
                 'uploaded_by' => $actor->id, 'import_type' => 'expense',
             ]);
-            $this->dataIsolation->apply($expenseImportBatchQuery, 'import_batch', $includeQaTest);
+            $this->applyReadVisibility($expenseImportBatchQuery, 'import_batch', $school, $includeQaTest);
             $expenseImportBatch = $expenseImportBatchQuery->firstOrFail();
         }
         $cutoverChecklist = $school && $canConfigureSchool ? $this->cutoverReadiness->checklist($school) : collect();
@@ -1342,7 +1354,7 @@ final class CentralFinanceWorkspaceController extends Controller
         // tenant data or pretends that an import batch exists.
         if ($page === 'imports' && Schema::connection('mysql')->hasTable('central_finance_import_batches')) {
             $importBatchesQuery = CentralFinanceImportBatch::on('mysql')->with([]);
-            $this->dataIsolation->apply($importBatchesQuery, 'import_batch', $includeQaTest);
+            $this->applyReadVisibility($importBatchesQuery, 'import_batch', $school, $includeQaTest);
             if ($school) $importBatchesQuery->where('school_id', $school->id);
             elseif ($schools->isNotEmpty()) $importBatchesQuery->whereIn('school_id', $schools->pluck('id'));
             else $importBatchesQuery->whereRaw('1 = 0');
@@ -1360,10 +1372,10 @@ final class CentralFinanceWorkspaceController extends Controller
             ->latest($operationsType === 'expense' ? 'expense_date' : 'income_date')->paginate(25, ['*'], 'operations_page')->withQueryString() : collect();
         $operationOperators = $operationsType ? CentralFinanceUser::on('mysql')->whereIn('id', (clone $this->scopedOperatingDocumentsQuery($operationsType, $school, $schools, $accounts, $filters))->distinct()->pluck('created_by')->filter())->orderBy('first_name')->get() : collect();
         $operationCategoryQuery = $operationsType ? CentralFinanceCategory::on('mysql')->forActor($actor,$school ? [$school->id] : $schools->pluck('id')->all())->where('is_active',true)->forCashDirection($operationsType === 'expense' ? CentralFinanceCategory::EXPENSE : CentralFinanceCategory::INCOME) : null;
-        if ($operationCategoryQuery) $this->dataIsolation->apply($operationCategoryQuery, 'category');
+        if ($operationCategoryQuery) $this->applyReadVisibility($operationCategoryQuery, 'category', $school, $includeQaTest);
         $operationCategories = $operationCategoryQuery ? $operationCategoryQuery->orderBy('name')->get() : collect();
         $reimbursementQuery = CentralFinanceReimbursementRequest::on('mysql')->with('category');
-        $this->dataIsolation->apply($reimbursementQuery, 'reimbursement', $includeQaTest);
+        $this->applyReadVisibility($reimbursementQuery, 'reimbursement', $school, $includeQaTest);
         if ($school) $reimbursementQuery->where('school_id', $school->id); elseif ($schools->isNotEmpty()) $reimbursementQuery->whereIn('school_id', $schools->pluck('id')); else $reimbursementQuery->whereRaw('1 = 0');
         if (!empty($filters['reimbursement_status'])) $reimbursementQuery->where('status', $filters['reimbursement_status']);
         if (!empty($filters['requester_id'])) $reimbursementQuery->where('requested_by', (int) $filters['requester_id']);
@@ -1373,11 +1385,11 @@ final class CentralFinanceWorkspaceController extends Controller
         if (!empty($filters['from'])) $reimbursementQuery->whereDate('created_at', '>=', $filters['from']);
         if (!empty($filters['to'])) $reimbursementQuery->whereDate('created_at', '<=', $filters['to']);
         $fallbackReimbursementQuery = $schoolId ? CentralFinanceReimbursementRequest::on('mysql')->where('school_id',$schoolId) : null;
-        if ($fallbackReimbursementQuery) $this->dataIsolation->apply($fallbackReimbursementQuery, 'reimbursement', $includeQaTest);
+        if ($fallbackReimbursementQuery) $this->applyReadVisibility($fallbackReimbursementQuery, 'reimbursement', $school, $includeQaTest);
         $reimbursements = $page === 'reimbursements' ? $reimbursementQuery->latest()->paginate(25, ['*'], 'reimbursements_page')->withQueryString() : ($fallbackReimbursementQuery ? $fallbackReimbursementQuery->latest()->get() : collect());
         $reimbursementRequesters = $page === 'reimbursements' ? CentralFinanceUser::on('mysql')->whereIn('id', (clone $reimbursementQuery)->distinct()->pluck('requested_by'))->orderBy('first_name')->get() : collect();
         $reimbursementCategoryQuery = $page === 'reimbursements' ? CentralFinanceCategory::on('mysql')->forActor($actor,$school ? [$school->id] : $schools->pluck('id')->all(),$canOperate)->where('is_active',true)->forCashDirection(CentralFinanceCategory::EXPENSE) : null;
-        if ($reimbursementCategoryQuery) $this->dataIsolation->apply($reimbursementCategoryQuery, 'category');
+        if ($reimbursementCategoryQuery) $this->applyReadVisibility($reimbursementCategoryQuery, 'category', $school, $includeQaTest);
         $reimbursementCategories = $reimbursementCategoryQuery ? $reimbursementCategoryQuery->orderBy('name')->get() : collect();
         $canApproveReimbursements = false;
         if ($school) try { app(\App\Services\CentralFinanceSchoolScopeService::class)->assertCanApproveReimbursements($actor, $school->id); $canApproveReimbursements = $canOperate; } catch (AuthorizationException) {}
@@ -1398,8 +1410,8 @@ final class CentralFinanceWorkspaceController extends Controller
             else $handoverQuery->whereRaw('1 = 0');
         }
         $fundingQuery=$schoolId?CentralFinanceHqFundingRequest::on('mysql')->where('school_id',$schoolId):null;
-        foreach ([[$expenseCategoryQuery,'category'],[$incomeCategoryQuery,'category']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->dataIsolation->apply($isolatedQuery,$subjectType);
-        foreach ([[$expenseQuery,'expense'],[$incomeQuery,'other_income'],[$handoverQuery,'fund_handover'],[$fundingQuery,'hq_funding']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->dataIsolation->apply($isolatedQuery,$subjectType,$includeQaTest);
+        foreach ([[$expenseCategoryQuery,'category'],[$incomeCategoryQuery,'category']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->applyReadVisibility($isolatedQuery, $subjectType, $school, $includeQaTest);
+        foreach ([[$expenseQuery,'expense'],[$incomeQuery,'other_income'],[$handoverQuery,'fund_handover'],[$fundingQuery,'hq_funding']] as [$isolatedQuery,$subjectType]) if ($isolatedQuery) $this->applyReadVisibility($isolatedQuery, $subjectType, $school, $includeQaTest);
         $data=['page'=>$page,'actor'=>$actor,'school'=>$school,'schools'=>$schools,'schoolNames'=>$schools->pluck('name','id'),'canAccessAllSchools'=>$canAccessAllSchools,'accounts'=>$accounts,'operationAccounts'=>$operationAccounts,'handoverDestinationUserIds'=>$handoverDestinationUserIds,'accountDirectory'=>$accountDirectory,'statementEntries'=>$statementEntries,'statementOpeningBalance'=>$statementOpeningBalance,'statementTotals'=>$statementTotals,'accountAudits'=>$accountAudits,'canOperate'=>$canOperate,'canApproveReimbursements'=>$canApproveReimbursements,'canConfigureAccounts'=>$canConfigureAccounts,'canConfigureSchool'=>$canConfigureSchool,'configurableGroups'=>$configurableGroups,'allocationSchools'=>$allocationSchools,'accountAssignableUsers'=>$accountAssignableUsers,'cutoverStatus'=>$schoolId?$this->cutovers->statusForSchool($schoolId):null,'cutoverRecord'=>$cutoverRecord,'cutoverChecklist'=>$cutoverChecklist,'schoolUsers'=>$schoolUsers,'operators'=>$operators,'auditOperators'=>$auditOperators,'ledger'=>$ledger,'ledgerCategories'=>$ledgerCategories,'currencyTotals'=>$currencyTotals,'physicalAccountTotals'=>$physicalAccountTotals,'reportSchoolComparison'=>$reportSchoolComparison,'reportTrend'=>$reportTrend,'reportCategoryAnalysis'=>$reportCategoryAnalysis,'receivableCurrencyTotals'=>$receivableCurrencyTotals,'filters'=>$filters,'includeQaTest'=>$includeQaTest,'canIncludeQaTest'=>$this->dataIsolation->canIncludeQaTest($actor),'receivables'=>$receivables,'aging'=>$aging,'profiles'=>$profiles,'payments'=>$payments,'paymentProfiles'=>$paymentProfiles,'paymentClasses'=>$paymentClasses,'paymentReceivables'=>$paymentReceivables,'categories'=>$categories,'staff'=>$staff,'audits'=>$audits,'accountReport'=>$accountReport,'paymentImportBatch'=>$paymentImportBatch,'expenseImportBatch'=>$expenseImportBatch,'importBatches'=>$importBatches,'expenseCategories'=>$expenseCategoryQuery?->get()??collect(),'incomeCategories'=>$incomeCategoryQuery?->get()??collect(),'expenses'=>$expenseQuery?->latest()->get()??collect(),'otherIncomes'=>$incomeQuery?->latest()->get()??collect(),'operatingDocuments'=>$operatingDocuments,'operationOperators'=>$operationOperators,'operationCategories'=>$operationCategories,'reimbursements'=>$reimbursements,'reimbursementRequesters'=>$reimbursementRequesters,'reimbursementCategories'=>$reimbursementCategories,'handovers'=>$handoverQuery?->latest()->get()??collect(),'fundingRequests'=>$fundingQuery?->latest()->get()??collect()];
         $data['schoolFinanceFacade'] = $schoolFinanceFacade;
         $transferQuery = null;
@@ -1413,7 +1425,7 @@ final class CentralFinanceWorkspaceController extends Controller
             elseif ($schools->isNotEmpty()) $transferQuery->whereIn('school_id', $schools->pluck('id'));
             else $transferQuery->whereRaw('1 = 0');
         }
-        if ($transferQuery) $this->dataIsolation->apply($transferQuery, 'internal_transfer', $includeQaTest);
+        if ($transferQuery) $this->applyReadVisibility($transferQuery, 'internal_transfer', $school, $includeQaTest);
         $data['transfers'] = $transferQuery ? $transferQuery->latest()->get() : collect();
 
         return view('central-finance.workspace',$data);
@@ -1517,7 +1529,7 @@ final class CentralFinanceWorkspaceController extends Controller
     private function scopedLedgerQuery(?\App\Models\School $school, \Illuminate\Support\Collection $schools, \Illuminate\Support\Collection $accounts, array $filters)
     {
         $query = CentralFinanceLedgerEntry::on('mysql');
-        $this->dataIsolation->apply($query, 'ledger', (bool) ($filters['include_qa_test'] ?? false));
+        $this->applyReadVisibility($query, 'ledger', $school, (bool) ($filters['include_qa_test'] ?? false));
         if ($school) $query->where('school_id', $school->id);
         elseif ($schools->isNotEmpty()) $query->whereIn('school_id', $schools->pluck('id'));
         else $query->whereRaw('1 = 0');
@@ -1533,7 +1545,7 @@ final class CentralFinanceWorkspaceController extends Controller
     private function accountStatementData(?\App\Models\School $school, \Illuminate\Support\Collection $schools, \Illuminate\Support\Collection $accounts, array $filters, CentralFinanceFundAccount $account): array
     {
         $canonical = CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id);
-        $this->dataIsolation->apply($canonical, 'ledger', (bool) ($filters['include_qa_test'] ?? false));
+        $this->applyReadVisibility($canonical, 'ledger', $school, (bool) ($filters['include_qa_test'] ?? false));
         if ($school) {
             $canonical->where('school_id', $school->id);
         } elseif ($schools->isNotEmpty()) {
@@ -1572,7 +1584,7 @@ final class CentralFinanceWorkspaceController extends Controller
     private function scopedPaymentQuery(?\App\Models\School $school, \Illuminate\Support\Collection $schools, \Illuminate\Support\Collection $accounts, array $filters)
     {
         $query = CentralFinancePayment::on('mysql');
-        $this->dataIsolation->apply($query, 'payment', (bool) ($filters['include_qa_test'] ?? false));
+        $this->applyReadVisibility($query, 'payment', $school, (bool) ($filters['include_qa_test'] ?? false));
         if ($school) $query->where('school_id', $school->id);
         elseif ($schools->isNotEmpty()) $query->whereIn('school_id', $schools->pluck('id'));
         else $query->whereRaw('1 = 0');
@@ -1608,7 +1620,7 @@ final class CentralFinanceWorkspaceController extends Controller
         // from the trusted central registry rather than weakening the scope
         // query or falling back to a generic logo.
         $school = School::on('mysql')->findOrFail($school->id);
-        $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor)
+        $includeQaTest = $this->effectiveIncludeQaTest(request(), $actor)
             || $this->dataIsolation->isQaTestSchool((int) $school->id);
         $accounts = $this->workspace->readableAccounts($actor, $school->id, $includeQaTest);
         abort_unless($accounts->pluck('id')->contains((int) $document->fund_account_id), 404);
@@ -1633,7 +1645,7 @@ final class CentralFinanceWorkspaceController extends Controller
     private function currentReadSchool(): array
     {
         $actor = $this->actor();
-        $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor);
+        $includeQaTest = $this->effectiveIncludeQaTest(request(), $actor);
         $school = $this->workspace->currentSchool($actor, $includeQaTest);
         abort_unless($school !== null, 404);
 
@@ -1670,14 +1682,44 @@ final class CentralFinanceWorkspaceController extends Controller
 
     private function scopedImportBatch(CentralFinanceUser $actor, string $identifier): CentralFinanceImportBatch
     {
-        $includeQaTest = $this->dataIsolation->includeQaTest(request(), $actor);
+        $includeQaTest = $this->effectiveIncludeQaTest(request(), $actor);
+        $school = $this->workspace->currentSchool($actor, $includeQaTest);
         $schoolIds = $this->workspace->accessibleSchools($actor, $includeQaTest)->pluck('id');
         $query = CentralFinanceImportBatch::on('mysql')
             ->whereIn('school_id', $schoolIds)
             ->where(fn ($query) => $query->where('token', $identifier)->orWhere('batch_uuid', $identifier));
-        $this->dataIsolation->apply($query, 'import_batch', $includeQaTest);
+        $this->applyReadVisibility($query, 'import_batch', $school, $includeQaTest);
 
         return $query->firstOrFail();
+    }
+
+    /**
+     * QA/Test data becomes readable only inside the actor's already trusted
+     * selected QA School. The explicit request flag is evaluated first, so a
+     * School staff identity still cannot elevate itself into an All Schools
+     * QA-history view.
+     */
+    private function effectiveIncludeQaTest(Request $request, CentralFinanceUser $actor): bool
+    {
+        return $this->dataIsolation->includeQaTest($request, $actor)
+            || $this->workspace->isQaTestSchoolContext($actor);
+    }
+
+    /**
+     * Selected QA Schools deliberately use the stricter exact-QA predicate,
+     * not the broad privileged history predicate. This keeps Zixuan usable as
+     * a full QA School without revealing unclassified, Official, or archived
+     * records through a School-scoped page.
+     */
+    private function applyReadVisibility(\Illuminate\Database\Eloquent\Builder $query, string $subjectType, ?School $school, bool $includeQaTest): void
+    {
+        if ($school !== null && $this->dataIsolation->isQaTestSchool((int) $school->id)) {
+            $this->dataIsolation->applySchoolWorkflow($query, $subjectType, (int) $school->id);
+
+            return;
+        }
+
+        $this->dataIsolation->apply($query, $subjectType, $includeQaTest);
     }
 
     private function downloadReadExport(CentralFinanceReadExport $export, string $basename, string $format)
@@ -1699,6 +1741,13 @@ final class CentralFinanceWorkspaceController extends Controller
     private function viewableFundAccounts(CentralFinanceUser $actor, ?int $schoolId, bool $includeQaTest = false): \Illuminate\Support\Collection
     {
         $accounts = $this->workspace->readableAccounts($actor, $schoolId, $includeQaTest);
+        // A selected QA School must remain an exact-QA workspace. Head
+        // Finance can leave that School context to manage Group control-plane
+        // accounts, but those Official accounts are never mixed into the QA
+        // School directory merely because the actor can configure the Group.
+        if ($schoolId !== null && $this->dataIsolation->isQaTestSchool($schoolId)) {
+            return $accounts;
+        }
         $configurableGroupIds = $this->configuration->configurableGroups($actor)->pluck('id');
         if ($configurableGroupIds->isEmpty()) {
             return $accounts;

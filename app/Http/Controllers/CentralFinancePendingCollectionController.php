@@ -28,7 +28,8 @@ final class CentralFinancePendingCollectionController extends Controller
     public function frontDeskIndex(Request $request): View
     {
         $actor = $this->workspace->actor(Auth::user());
-        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor)
+            || $this->workspace->isQaTestSchoolContext($actor);
         $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
         $school = $this->workspace->currentSchool($actor, $includeQaTest);
         if ($school === null) {
@@ -96,7 +97,8 @@ final class CentralFinancePendingCollectionController extends Controller
     {
         $actor = $this->workspace->actor(Auth::user());
         $this->workspace->assertHeadFinance($actor);
-        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor)
+            || $this->workspace->isQaTestSchoolContext($actor);
         $canIncludeQaTest = $this->dataIsolation->canIncludeQaTest($actor);
         $school = $this->workspace->currentSchool($actor, $includeQaTest);
         if ($school === null) {
