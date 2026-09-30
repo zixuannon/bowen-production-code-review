@@ -135,9 +135,14 @@ final class CentralFinanceOptionalFeeAssignmentService
         $allowed = $selected->map(fn (int $id) => (string) $id)->flip();
         $result = [];
         foreach ($requested as $sourceId => $promotionId) {
+            // The modal renders a `No Promotion` option for every visible
+            // optional Fee Item, including rows the operator did not select.
+            // An empty value is therefore an explicit no-op, not an attempt
+            // to apply a Promotion to that unselected row.  Only a non-empty
+            // Promotion selection is subject to the selected-item guard.
+            if ($promotionId === null || $promotionId === '') continue;
             $sourceId = (int) $sourceId;
             if ($sourceId < 1 || !$allowed->has((string) $sourceId)) throw ValidationException::withMessages(['promotions' => __('A Promotion may be selected only for an item included in this Fee Setup.')]);
-            if ($promotionId === null || $promotionId === '') continue;
             $promotionId = (int) $promotionId;
             if ($promotionId < 1) throw ValidationException::withMessages(['promotions' => __('The selected Promotion is invalid.')]);
             $result[$sourceId] = $promotionId;

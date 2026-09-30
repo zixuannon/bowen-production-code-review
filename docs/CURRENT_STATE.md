@@ -1,5 +1,24 @@
 # eSchool Current State
 
+## Student Fee Setup promotion validation timing — local hotfix candidate
+
+- The Central Student Finance `+ Add Item` modal submits a `No Promotion`
+  value for every rendered optional Fee Item, including unselected rows. The
+  optional-fee adapter previously checked draft membership before treating an
+  empty promotion value as a no-op, so selecting one Fee Item could wrongly
+  fail because another unselected row submitted an empty value.
+- The local hotfix treats only `null`/empty promotion values as no-ops before
+  the selected-item guard. The modal also disables Promotion/quantity inputs
+  until its row is selected and clears a Promotion when the row is removed.
+  A non-empty Promotion still must target a selected Fee Item and then passes
+  the existing active/date/school/classification/Fee applicability checks. No
+  schema, pricing, quantity, receivable, payment, receipt, ledger, or Fund
+  Account behavior changes.
+- Focused contract regression passes: blank values on selected and unselected
+  rows are safe; an applicable selected Promotion is retained; a non-empty
+  Promotion against an unselected Fee Item remains denied. Production has not
+  been changed.
+
 ## Fee Item Quantity Configuration — strict compatibility candidate; regression verified
 
 - Fee Item Management UI cleanup is now part of the same local candidate: Create/Edit rows are compact cards; the delete action is attached to each card; the quantity switch uses localized single-locale wording; and MMK rows visually collapse redundant exchange-rate and converted-MMK fields. This is presentation-only and does not change pricing, quantity semantics, validation, promotions, receivables, or any persisted Finance record.

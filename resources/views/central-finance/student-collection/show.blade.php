@@ -35,12 +35,12 @@
             @csrf<input type="hidden" name="optional_attempt_uuid" value="{{ $optionalAttemptUuid }}">
             <div class="modal-header"><div><h5 class="modal-title" id="optional-fee-modal-title">{{ __('Student Fee Setup') }}</h5><p class="small text-muted mb-0">{{ __('Select approved optional items, quantity where the item allows it, and only an already-approved applicable Promotion.') }}</p></div><button type="button" class="close" data-dismiss="modal" aria-label="{{ __('Close') }}"><span aria-hidden="true">&times;</span></button></div>
             <div class="modal-body"><div class="table-responsive"><table class="table cf-data-table cf-mobile-card-table mb-0"><thead><tr><th>{{ __('Item') }}</th><th>{{ __('Unit price') }}</th><th>{{ __('Quantity') }}</th><th>{{ __('Approved Promotion') }}</th><th>{{ __('Select') }}</th></tr></thead><tbody>
-                @foreach($optionalItems as $item)<tr>
+                @foreach($optionalItems as $item)<tr data-optional-fee-row="{{ $item->id }}">
                     <td data-label="{{ __('Item') }}"><span class="cf-primary-line">{{ $item->name }}</span><span class="cf-secondary-line">{{ $item->fee_type ?: '—' }} · {{ $item->academic_year }}</span></td>
                     <td data-label="{{ __('Unit price') }}"><strong>{{ number_format($item->amount, 2) }} {{ $item->currency }}</strong></td>
-                    <td data-label="{{ __('Quantity') }}"><input class="form-control form-control-sm" name="optional_fee_quantities[{{ $item->id }}]" type="number" min="1" max="{{ app(\App\Services\StudentFeeAssignmentService::class)->maxQuantity() }}" step="1" value="1" @disabled(!$item->quantity_enabled)><small class="text-muted">{{ $item->quantity_enabled ? __('Quantity based') : __('Fixed at 1') }}</small></td>
-                    <td data-label="{{ __('Approved Promotion') }}"><select class="form-control form-control-sm" name="promotions[{{ $item->id }}]"><option value="">{{ __('No Promotion') }}</option>@foreach($item->promotions as $promotion)<option value="{{ $promotion->id }}">{{ $promotion->code }} · {{ $promotion->name }}</option>@endforeach</select></td>
-                    <td data-label="{{ __('Select') }}"><div class="form-check"><input class="form-check-input" type="checkbox" name="optional_fee_ids[]" value="{{ $item->id }}" id="optional-item-{{ $item->id }}"><label class="form-check-label sr-only" for="optional-item-{{ $item->id }}">{{ __('Select') }} {{ $item->name }}</label></div></td>
+                    <td data-label="{{ __('Quantity') }}"><input class="form-control form-control-sm optional-fee-quantity" name="optional_fee_quantities[{{ $item->id }}]" type="number" min="1" max="{{ app(\App\Services\StudentFeeAssignmentService::class)->maxQuantity() }}" step="1" value="1" data-quantity-enabled="{{ $item->quantity_enabled ? '1' : '0' }}" disabled><small class="text-muted">{{ $item->quantity_enabled ? __('Quantity based') : __('Fixed at 1') }}</small></td>
+                    <td data-label="{{ __('Approved Promotion') }}"><select class="form-control form-control-sm optional-fee-promotion" name="promotions[{{ $item->id }}]" disabled><option value="">{{ __('No Promotion') }}</option>@foreach($item->promotions as $promotion)<option value="{{ $promotion->id }}">{{ $promotion->code }} · {{ $promotion->name }}</option>@endforeach</select></td>
+                    <td data-label="{{ __('Select') }}"><div class="form-check"><input class="form-check-input optional-fee-toggle" type="checkbox" name="optional_fee_ids[]" value="{{ $item->id }}" data-optional-fee-id="{{ $item->id }}" id="optional-item-{{ $item->id }}"><label class="form-check-label sr-only" for="optional-item-{{ $item->id }}">{{ __('Select') }} {{ $item->name }}</label></div></td>
                 </tr>@endforeach
             </tbody></table></div></div>
             <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-dismiss="modal">{{ __('Cancel') }}</button><button type="submit" class="btn cf-primary-action">{{ __('Preview and add selected items') }}</button></div>
@@ -65,4 +65,28 @@
     </tbody></table></div></div></div>
 </div>
 
+@endsection
+
+@section('script')
+<script>
+(() => {
+    const syncOptionalFeeRow = (toggle) => {
+        const row = document.querySelector(`[data-optional-fee-row="${toggle.dataset.optionalFeeId}"]`);
+        if (!row) return;
+
+        const promotion = row.querySelector('.optional-fee-promotion');
+        const quantity = row.querySelector('.optional-fee-quantity');
+        if (promotion) {
+            promotion.disabled = !toggle.checked;
+            if (!toggle.checked) promotion.value = '';
+        }
+        if (quantity) quantity.disabled = !toggle.checked || quantity.dataset.quantityEnabled !== '1';
+    };
+
+    document.querySelectorAll('.optional-fee-toggle').forEach((toggle) => {
+        toggle.addEventListener('change', () => syncOptionalFeeRow(toggle));
+        syncOptionalFeeRow(toggle);
+    });
+})();
+</script>
 @endsection

@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Services\CentralFinanceOptionalFeeAssignmentService;
+use Illuminate\Validation\ValidationException;
+use ReflectionClass;
 use Tests\TestCase;
 
 final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
@@ -74,6 +77,33 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('fee_scope', $promotions);
         $this->assertStringContainsString('name="promotions[{{ $item->id }}]"', $view);
         $this->assertStringContainsString('already-approved applicable Promotion', $view);
+        $this->assertStringContainsString('optional-fee-toggle', $view);
+        $this->assertStringContainsString('optional-fee-promotion', $view);
+        $this->assertStringContainsString("promotion.value = '';", $view);
+        $this->assertStringContainsString('promotion.disabled = !toggle.checked', $view);
+    }
+
+    public function test_blank_promotion_values_for_unselected_modal_rows_are_noops_but_a_real_stale_selection_is_denied(): void
+    {
+        $method = (new ReflectionClass(CentralFinanceOptionalFeeAssignmentService::class))
+            ->getMethod('canonicalPromotionSelection');
+        $service = (new ReflectionClass(CentralFinanceOptionalFeeAssignmentService::class))
+            ->newInstanceWithoutConstructor();
+
+        // The browser submits every rendered select in the modal.  An
+        // unselected row's explicit "No Promotion" value must not be treated
+        // as an attempt to attach a Promotion outside the selected draft.
+        $this->assertSame([], $method->invoke($service, collect([17]), [17 => '', 23 => '']));
+        $this->assertSame([17 => 9], $method->invoke($service, collect([17]), [17 => 9, 23 => '']));
+
+        try {
+            $method->invoke($service, collect([17]), [17 => '', 23 => 9]);
+            $this->fail('A non-empty Promotion for a non-selected Fee Item must be denied.');
+        } catch (ValidationException $exception) {
+            $this->assertSame([
+                'promotions' => ['A Promotion may be selected only for an item included in this Fee Setup.'],
+            ], $exception->errors());
+        }
     }
 
     public function test_tenant_student_fee_setup_uses_the_same_quantity_and_approved_promotion_contract(): void
