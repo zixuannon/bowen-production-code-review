@@ -1,11 +1,11 @@
 # eSchool Current State
 
-## Fee Item Quantity Configuration — local candidate; regression verified
+## Fee Item Quantity Configuration — strict compatibility candidate; regression verified
 
 - Fee Item Management UI cleanup is now part of the same local candidate: Create/Edit rows are compact cards; the delete action is attached to each card; the quantity switch uses localized single-locale wording; and MMK rows visually collapse redundant exchange-rate and converted-MMK fields. This is presentation-only and does not change pricing, quantity semantics, validation, promotions, receivables, or any persisted Finance record.
 
-- Baseline: Production lineage `23569f5e5c2a7deaa53d5b37e18c6e592e6472bb`.
-  This local-only candidate exposes an explicit `Allow Multiple Quantity / 允许多数量`
+- Active Production release: `cca1c124f7d7b7628766ae208e161b608db0c7e3`.
+  Local candidate `f60d11de693672e9875b8162fbb4e2f41e500c72` exposes an explicit `Allow Multiple Quantity / 允许多数量`
   checkbox on Fee Item create and edit. `optional` and `quantity_enabled` are
   independent values; existing Fee Items remain false/default-off and no
   historical assignment, Receivable, Payment, Receipt, Ledger, Fund Account,
@@ -16,6 +16,13 @@
   flows. A configurable server-side maximum of `100` is enforced in request
   validation and again before any immutable snapshot, including against
   tampered fixed-quantity requests.
+- The form serializer submits one scalar `quantity_enabled=0` or
+  `quantity_enabled=1`. Only the exact legacy jQuery-repeater payload
+  `['0', '1']` is normalized to enabled; every other array and invalid scalar
+  remains subject to Laravel's boolean validator and is rejected. The first
+  deployment attempt of the broader candidate `1b1dd9d` was immediately
+  rolled back because it accepted other duplicate boolean arrays; no migration
+  or Finance write occurred.
 - Student Fee Setup renders editable positive-integer quantity only for
   quantity-enabled Fee Items, otherwise renders fixed quantity one. It
   presents unit price × quantity line totals and a saved-draft preview with
@@ -40,9 +47,10 @@
   fixed-one quantity item, and a quantity-enabled item without submitting any
   Fee Setup form. The temporary quantity-enabled test state was reset after
   the check; the fixture now returns to default-off quantity configuration.
-- Production remains untouched; Timecity student `000001` / 苏婷婷 remains
-  unmodified and reserved for the operator's manual E2E. This candidate still
-  requires a separate explicit Production deployment approval.
+- Production remains on the verified pre-switch release; Timecity student
+  `000001` / 苏婷婷 remains unmodified and reserved for the operator's manual
+  E2E. The strict candidate requires a new explicit Production deployment
+  approval.
 
 Last updated: 2026-09-30
 

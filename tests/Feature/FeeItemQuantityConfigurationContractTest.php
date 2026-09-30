@@ -6,6 +6,7 @@ use App\Http\Controllers\FeesController;
 use App\Models\FeesClassType;
 use App\Services\StudentFeeAssignmentService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -81,6 +82,16 @@ final class FeeItemQuantityConfigurationContractTest extends TestCase
         $this->assertSame(['1', '0'], $request->input('optional_fees_type.4.quantity_enabled'));
         $this->assertSame(['0', '2'], $request->input('optional_fees_type.5.quantity_enabled'));
         $this->assertSame(['0', ['1']], $request->input('optional_fees_type.6.quantity_enabled'));
+
+        $rules = ['quantity_enabled' => ['nullable', 'boolean']];
+        $this->assertFalse(Validator::make(['quantity_enabled' => '0'], $rules)->fails());
+        $this->assertFalse(Validator::make(['quantity_enabled' => '1'], $rules)->fails());
+        foreach (range(1, 6) as $index) {
+            $this->assertTrue(Validator::make([
+                'quantity_enabled' => $request->input("optional_fees_type.{$index}.quantity_enabled"),
+            ], $rules)->fails());
+        }
+        $this->assertTrue(Validator::make(['quantity_enabled' => '2'], $rules)->fails());
     }
 
     public function test_server_rejects_tampered_fixed_and_excessive_quantities_before_a_snapshot_is_created(): void
