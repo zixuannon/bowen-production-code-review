@@ -19,6 +19,8 @@ active_link=${ACTIVE_LINK:-/www/wwwroot/43.160.241.126}
 php_bin=${PHP_BIN:-/usr/bin/php83}
 release_name=${RELEASE_NAME:-eschool-rc-${commit:0:12}-consolidated}
 release_dir="$release_root/$release_name"
+runtime_artisan="$script_root/scripts/production/run_artisan_as_runtime_user.sh"
+ownership_guard="$script_root/scripts/production/verify_runtime_ownership.sh"
 
 [[ -d "$repo/.git" ]] || { echo "DEPLOY_FAIL: repository unavailable" >&2; exit 1; }
 [[ -x "$php_bin" ]] || { echo "DEPLOY_FAIL: PHP 8.3 binary unavailable" >&2; exit 1; }
@@ -50,7 +52,10 @@ if id www >/dev/null 2>&1; then
   chmod 775 "$release_dir/bootstrap/cache"
 fi
 if [[ -x /usr/bin/composer ]]; then
-  COMPOSER_ALLOW_SUPERUSER=1 "$php_bin" /usr/bin/composer install --working-dir="$release_dir" --no-dev --prefer-dist --no-interaction --optimize-autoloader >/dev/null
+  # Composer manages the immutable release as root, but its default
+  # post-autoload hook boots Laravel.  Suppress that root bootstrap and run
+  # package discovery through the runtime-user wrapper below instead.
+  COMPOSER_ALLOW_SUPERUSER=1 "$php_bin" /usr/bin/composer install --working-dir="$release_dir" --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-scripts >/dev/null
 else
   echo "DEPLOY_FAIL: Composer unavailable" >&2
   exit 1
@@ -59,16 +64,24 @@ if id www >/dev/null 2>&1; then
   chown -R www:www "$release_dir/bootstrap/cache"
   chmod 775 "$release_dir/bootstrap/cache"
 fi
+PHP_BIN="$php_bin" "$runtime_artisan" "$release_dir" package:discover --ansi >/dev/null
 printf '%s\n' "$commit" > "$release_dir/.release-commit"
 baseline=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$baseline_contract")
 SOURCE_REPO="$release_dir" "$release_dir/scripts/production/write_release_manifest.sh" "$release_dir" "$baseline" "${GITHUB_REF:-main}"
 "$release_dir/scripts/production/verify_release_guard.sh" "$release_dir"
+JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$ownership_guard" "$release_dir" "$baseline_contract"
 echo "DRY_RUN_PASS:$commit:$release_dir"
 
 if [[ "$action" == "--prepare" ]]; then
   echo "PREPARE_PASS:$commit:$release_dir"
 elif [[ "$action" == "--switch" ]]; then
   [[ -f "$release_dir/.release-manifest.json" ]] || { echo "DEPLOY_FAIL: manifest missing" >&2; exit 1; }
+  previous_release=$(readlink -f "$active_link") || { echo "DEPLOY_FAIL: active release unavailable for rollback" >&2; exit 1; }
   ln -sfn "$release_dir" "$active_link"
+  if ! JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$ownership_guard" "$release_dir" "$baseline_contract"; then
+    ln -sfn "$previous_release" "$active_link"
+    echo "DEPLOY_FAIL: post-switch runtime ownership invariant failed; previous release restored" >&2
+    exit 1
+  fi
   echo "SWITCH_PASS:$commit:$release_dir"
 fi

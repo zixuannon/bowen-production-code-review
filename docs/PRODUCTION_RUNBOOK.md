@@ -61,6 +61,15 @@ After an atomic release switch, preserve the existing shared `public/storage`
 target and use a shared writable `VIEW_COMPILED_PATH`; never point compiled
 views into a release directory that will later be removed.
 
+Root owns only privileged deployment orchestration: release directories,
+symlinks, and service configuration. Composer must run with `--no-scripts` as
+root. Every command that boots Laravel and can write shared runtime state—such
+as `package:discover`, exact-path migration runners, cache commands, and
+prewarm checks—must run through
+`scripts/production/run_artisan_as_runtime_user.sh` using the configured
+runtime identity (`www` in Production). Do not run `php artisan ...` directly
+as root from a release or from the active symlink.
+
 Before creating an immutable release, run the versioned runtime-link guard. It
 must resolve (not merely identify as symlinks) `.env`, `storage`, and
 `public/storage` to the exact `shared_*_target` paths in
@@ -71,7 +80,16 @@ not copy `readlink` output from the active release into a candidate. A broken,
 relative-to-the-wrong-release, incorrectly owned, or unexpected target blocks
 deployment before release creation and atomic switch.
 
-Clear configuration, route, and view caches after the switch, then reload the
+`scripts/production/verify_runtime_ownership.sh` is also required immediately
+before activation and immediately after the switch. It is read-only and fails
+closed if any root-owned entry exists under shared
+`storage/framework/cache/data`, `storage/framework/views`, or
+`storage/framework/sessions`, or if `www` cannot write those paths. It must
+report offending paths; it must never silently repair them. A post-switch
+failure restores the prior immutable symlink before application QA begins.
+
+Run any necessary configuration, route, and view cache operations through the
+runtime-user wrapper after the switch, then reload the
 PHP-FPM master serving the active Nginx vhost. Determine that master/socket from
 the vhost's included PHP configuration and PID file—do not assume a similarly
 named virtual-host socket is the serving pool. Verify one fresh browser request

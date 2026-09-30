@@ -1,5 +1,29 @@
 # eSchool Current State
 
+## Laravel shared-runtime ownership contract — local operations candidate
+
+- Production is running `2fbf49c150bb8f949ad04f4ce6ff5fc8819cc6de`. The
+  release is healthy after a bounded repair of the two already-identified
+  root-owned runtime artifacts; `cache/data`, `views`, and `sessions` each
+  currently have zero root-owned entries.
+- The local follow-up candidate `6c2a52b` prevents the release builder from
+  using root Composer hooks to bootstrap Laravel: Composer uses `--no-scripts`,
+  then package discovery and any explicit runtime-writing Artisan operation
+  run as `www`. A new read-only ownership guard blocks a release before and
+  after switching if shared cache data, compiled views, or sessions contain a
+  root-owned entry or are not writable by `www`; a post-switch failure restores
+  the prior immutable symlink rather than repairing files silently.
+- Evidence confirms that production deployment Composer hooks and direct root
+  Artisan invocations can boot Laravel under root; the exact historical writer
+  of the repaired files is not attributable from extant filesystem/log evidence.
+  R2E tenant discovery also boots Laravel as root and requires a separately
+  reviewed server-configuration follow-up before this contract is complete.
+- Local verification: shell syntax checks; `RuntimeLinkGuardTest` 5 passed / 33
+  assertions; runtime-user package discovery completed. No Production change
+  is included in this candidate.
+
+Last updated: 2026-09-30
+
 ## Front Desk — School Finance Workspace Consolidation — deployed baseline; role-contract corrective candidate
 
 - Deployed baseline: `7b1b164aa5bcb88e3f456555f6cb2ac5849cbc91`.

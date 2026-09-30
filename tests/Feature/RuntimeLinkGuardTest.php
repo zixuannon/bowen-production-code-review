@@ -18,7 +18,11 @@ final class RuntimeLinkGuardTest extends TestCase
         $this->root = sys_get_temp_dir()."/round5-release-$id";
         $this->shared = sys_get_temp_dir()."/round5-shared-$id";
         mkdir($this->root.'/public', 0775, true); mkdir($this->root.'/bootstrap/cache', 0775, true);
-        mkdir($this->shared.'/storage/app/public', 0775, true); file_put_contents($this->shared.'/.env', 'APP_ENV=testing');
+        mkdir($this->shared.'/storage/app/public', 0775, true);
+        mkdir($this->shared.'/storage/framework/cache/data', 0775, true);
+        mkdir($this->shared.'/storage/framework/views', 0775, true);
+        mkdir($this->shared.'/storage/framework/sessions', 0775, true);
+        file_put_contents($this->shared.'/.env', 'APP_ENV=testing');
         $this->root = realpath($this->root); $this->shared = realpath($this->shared);
         symlink($this->shared.'/.env', $this->root.'/.env');
         symlink($this->shared.'/storage', $this->root.'/storage');
@@ -75,14 +79,34 @@ final class RuntimeLinkGuardTest extends TestCase
         chmod($this->shared.'/storage', 0775);
     }
 
+    public function test_runtime_ownership_guard_accepts_only_writable_shared_runtime_paths(): void
+    {
+        $process = new Process([
+            'bash', base_path('scripts/production/verify_runtime_ownership.sh'), $this->root, $this->baseline,
+        ], null, ['JSON_PHP_BIN'=>PHP_BINARY]);
+        $process->run();
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString('RUNTIME_OWNERSHIP_GUARD_PASS', $process->getOutput());
+    }
+
     public function test_release_guard_and_builder_use_the_exact_runtime_contract(): void
     {
         $runtimeGuard = file_get_contents(base_path('scripts/production/verify_runtime_links.sh'));
+        $ownershipGuard = file_get_contents(base_path('scripts/production/verify_runtime_ownership.sh'));
+        $runtimeArtisan = file_get_contents(base_path('scripts/production/run_artisan_as_runtime_user.sh'));
         $guard = file_get_contents(base_path('scripts/production/verify_release_guard.sh'));
         $deploy = file_get_contents(base_path('scripts/production/deploy_release.sh'));
         $this->assertStringContainsString('sh "$(cd "$(dirname "$0")/.." && pwd)/release/verify_required_assets.sh"', $runtimeGuard);
         $this->assertStringContainsString('verify_runtime_links.sh', $guard);
         $this->assertStringContainsString('verify_runtime_links.sh', $deploy);
+        $this->assertStringContainsString('verify_runtime_ownership.sh', $deploy);
+        $this->assertStringContainsString('--no-scripts', $deploy);
+        $this->assertStringContainsString('package:discover --ansi', $deploy);
+        $this->assertStringContainsString('previous release restored', $deploy);
+        $this->assertStringContainsString('framework/cache/data framework/views framework/sessions', $ownershipGuard);
+        $this->assertStringContainsString('contains root-owned runtime entries', $ownershipGuard);
+        $this->assertStringContainsString('runuser -u "$runtime_user"', $runtimeArtisan);
         $this->assertStringContainsString("printf '%s\\n' \"\$commit\" > \"\$release_dir/.release-commit\"", $deploy);
         $this->assertStringContainsString('release_commit_marker', $guard);
         $this->assertStringContainsString('baseline_contract="$script_root/config/production-baseline.json"', $deploy);
