@@ -20,6 +20,7 @@ class FeesClassType extends Model {
         'finance_category_id',
         'amount',
         'optional',
+        'quantity_enabled',
         'school_id',
         'fee_currency',
         'fee_original_amount',
@@ -27,6 +28,7 @@ class FeesClassType extends Model {
         'fee_amount_mmk'
     ];
     protected $appends = ['fees_type_name'];
+    protected $casts = ['quantity_enabled' => 'boolean'];
 
 
     public function fees_type() {

@@ -1,5 +1,49 @@
 # eSchool Current State
 
+## Fee Item Quantity Configuration — local candidate; regression verified
+
+- Baseline: Production lineage `23569f5e5c2a7deaa53d5b37e18c6e592e6472bb`.
+  This local-only candidate exposes an explicit `Allow Quantity / 允许数量`
+  checkbox on Fee Item create and edit. `optional` and `quantity_enabled` are
+  independent values; existing Fee Items remain false/default-off and no
+  historical assignment, Receivable, Payment, Receipt, Ledger, Fund Account,
+  or Production Fee Item was changed.
+- The existing tenant schema migration already supplies
+  `fees_class_types.quantity_enabled`; no new migration is introduced. The
+  new model/controller path persists the boolean in both create and edit
+  flows. A configurable server-side maximum of `100` is enforced in request
+  validation and again before any immutable snapshot, including against
+  tampered fixed-quantity requests.
+- Student Fee Setup renders editable positive-integer quantity only for
+  quantity-enabled Fee Items, otherwise renders fixed quantity one. It
+  presents unit price × quantity line totals and a saved-draft preview with
+  Fee Item, unit price, quantity, gross, selected Promotion, discount, and
+  net. The preview delegates eligibility and exact DECIMAL calculation to the
+  existing Central Promotion service and creates no Promotion Application or
+  money record.
+- Immutable snapshots remain the source for unit price, quantity, and line
+  total. Existing Collection V2 and receipt/allocation regression verifies
+  `50,000 × 2 = 100,000` as one Receivable and preserves itemized allocation
+  through the receipt without duplicate Fund Account effect. No permission was
+  added: Fee Item management remains subject to the existing `fees-create`
+  contract; all other Front Desk and Finance boundaries are unchanged.
+- Local verification: PHP lint, Blade compilation, whitespace check, and the
+  targeted quantity/optional/receivable/payment regression pass: 47 tests,
+  342 assertions. The full local PHPUnit suite passes through the authorized
+  disposable test databases: 980 tests, 7,724 assertions (one project
+  deprecation, one PHPUnit deprecation, and 34 skipped tests). PHP 8.5 emits
+  the pre-existing `PDO::MYSQL_ATTR_SSL_CA` deprecation warning.
+- Browser QA passes at both 1440px and 390px using a dedicated synthetic local
+  Front Desk fixture. It verifies Fee Item management, edit rendering, a
+  fixed-one quantity item, and a quantity-enabled item without submitting any
+  Fee Setup form. The temporary quantity-enabled test state was reset after
+  the check; the fixture now returns to default-off quantity configuration.
+- Production remains untouched; Timecity student `000001` / 苏婷婷 remains
+  unmodified and reserved for the operator's manual E2E. This candidate still
+  requires a separate explicit Production deployment approval.
+
+Last updated: 2026-09-30
+
 ## Laravel shared-runtime ownership contract — local operations candidate
 
 - Production is running `2fbf49c150bb8f949ad04f4ce6ff5fc8819cc6de`. The

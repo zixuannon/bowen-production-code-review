@@ -125,9 +125,11 @@ class FeesController extends Controller
             'compulsory_fees_type.*' => 'required|array',
             'compulsory_fees_type.*.fees_type_id' => 'required|numeric',
             'compulsory_fees_type.*.amount' => 'required|numeric',
+            'compulsory_fees_type.*.quantity_enabled' => 'nullable|boolean',
             'optional_fees_type.*' => 'required|array',
             'optional_fees_type.*.fees_type_id' => 'required|numeric',
             'optional_fees_type.*.amount' => 'required|numeric',
+            'optional_fees_type.*.quantity_enabled' => 'nullable|boolean',
             'fees_installments' => 'required_if:include_fee_installments,1|array',
             'fees_installments.*.name' => 'required',
             'fees_installments.*.due_date' => 'required|date',
@@ -214,6 +216,7 @@ class FeesController extends Controller
                         "fee_exchange_rate_snapshot" => $exchangeRate,
                         "fee_amount_mmk" => round($amountMmk, 2),
                         "optional" => 0,
+                        "quantity_enabled" => filter_var($data['quantity_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
                     );
                 }
 
@@ -249,12 +252,13 @@ class FeesController extends Controller
                             "fee_exchange_rate_snapshot" => $exchangeRate,
                             "fee_amount_mmk" => round($amountMmk, 2),
                             "optional" => 1,
+                            "quantity_enabled" => filter_var($data['quantity_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
                         );
                     }
                 }
 
                 if (count($feeClassType) > 0) {
-                    $this->feesClassType->upsert($feeClassType, ['class_id', 'fees_type_id'], ['amount', 'optional', 'finance_category_id', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']);
+                    $this->feesClassType->upsert($feeClassType, ['class_id', 'fees_type_id'], ['amount', 'optional', 'quantity_enabled', 'finance_category_id', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']);
                 }
 
                 if ($request->include_fee_installments && count($request->fees_installments)) {
@@ -430,9 +434,11 @@ class FeesController extends Controller
             'compulsory_fees_type.*' => 'required|array',
             'compulsory_fees_type.*.fees_type_id' => 'required|numeric',
             'compulsory_fees_type.*.amount' => 'required|numeric',
+            'compulsory_fees_type.*.quantity_enabled' => 'nullable|boolean',
             'optional_fees_type.*' => 'required|array',
             'optional_fees_type.*.fees_type_id' => 'required|numeric',
             'optional_fees_type.*.amount' => 'required|numeric',
+            'optional_fees_type.*.quantity_enabled' => 'nullable|boolean',
             'fees_installments' => 'nullable|array',
             'fees_installments.*.name' => 'required',
             'fees_installments.*.due_date' => 'required|date',
@@ -550,6 +556,7 @@ class FeesController extends Controller
                     "fee_exchange_rate_snapshot" => $exchangeRate,
                     "fee_amount_mmk" => round($amountMmk, 2),
                     "optional" => 0,
+                    "quantity_enabled" => filter_var($data['quantity_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
                     "school_id" => $schoolId,
                     "created_at" => $now,
                     "updated_at" => $now,
@@ -587,6 +594,7 @@ class FeesController extends Controller
                     "fee_exchange_rate_snapshot" => $exchangeRate,
                     "fee_amount_mmk" => round($amountMmk, 2),
                     "optional" => 1,
+                    "quantity_enabled" => filter_var($data['quantity_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
                     "school_id" => $schoolId,
                     "created_at" => $now,
                     "updated_at" => $now,
@@ -602,7 +610,7 @@ class FeesController extends Controller
                 DB::table('fees_class_types')->upsert(
                     $feeClassTypeRows,
                     ['class_id', 'fees_id', 'fees_type_id', 'school_id'],
-                    ['amount', 'optional', 'finance_category_id', 'updated_at', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']
+                    ['amount', 'optional', 'quantity_enabled', 'finance_category_id', 'updated_at', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']
                 );
             }
 

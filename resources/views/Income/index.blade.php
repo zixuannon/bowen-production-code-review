@@ -132,6 +132,15 @@
                                                         <label class="small text-muted">缅币汇率</label>
                                                         {!! Form::number('compulsory_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'min' => 0.0001, 'step' => '0.0001', 'readonly']) !!}
                                                     </div>
+
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted d-block">允许数量 / Allow Quantity</label>
+                                                        <input type="hidden" name="compulsory_fees_type[][quantity_enabled]" value="0">
+                                                        <div class="form-check form-switch">
+                                                            <input class="form-check-input" type="checkbox" name="compulsory_fees_type[][quantity_enabled]" value="1">
+                                                            <label class="form-check-label">学生费用设置可填写数量（默认固定为 1）</label>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -343,6 +352,15 @@
                                                     <div class="form-group col-md-12 col-lg-3">
                                                         <label class="small text-muted">缅币汇率</label>
                                                         {!! Form::text('optional_fees_type[][fee_exchange_rate_snapshot]', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*', 'readonly']) !!}
+                                                    </div>
+
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted d-block">允许数量 / Allow Quantity</label>
+                                                        <input type="hidden" name="optional_fees_type[][quantity_enabled]" value="0">
+                                                        <div class="form-check form-switch">
+                                                            <input class="form-check-input" type="checkbox" name="optional_fees_type[][quantity_enabled]" value="1">
+                                                            <label class="form-check-label">学生费用设置可填写数量（默认固定为 1）</label>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>

@@ -160,6 +160,15 @@
                                                         <label class="small text-muted">缅币汇率</label>
                                                         {!! Form::text('fee_exchange_rate_snapshot', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
                                                     </div>
+
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted d-block">允许数量 / Allow Quantity</label>
+                                                        <input type="hidden" name="quantity_enabled" value="0">
+                                                        <div class="form-check form-switch">
+                                                            <input class="form-check-input" type="checkbox" name="quantity_enabled" value="1">
+                                                            <label class="form-check-label">学生费用设置可填写数量（默认固定为 1）</label>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -375,6 +384,15 @@
                                                         <label class="small text-muted">缅币汇率</label>
                                                         {!! Form::text('fee_exchange_rate_snapshot', 1, ['class' => 'form-control fee_exchange_rate_snapshot', 'placeholder' => 'Rate', 'inputmode' => 'decimal', 'pattern' => '[0-9.]*']) !!}
                                                     </div>
+
+                                                    <div class="form-group col-md-12 col-lg-3">
+                                                        <label class="small text-muted d-block">允许数量 / Allow Quantity</label>
+                                                        <input type="hidden" name="quantity_enabled" value="0">
+                                                        <div class="form-check form-switch">
+                                                            <input class="form-check-input" type="checkbox" name="quantity_enabled" value="1">
+                                                            <label class="form-check-label">学生费用设置可填写数量（默认固定为 1）</label>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -413,7 +431,8 @@
                     "fee_currency": "{{$type->fee_currency ?? 'MMK'}}",
                     "fee_original_amount": "{{$type->fee_original_amount ?? $type->amount ?? 0}}",
                     "fee_exchange_rate_snapshot": "{{$type->fee_exchange_rate_snapshot ?? 1}}",
-                    "fee_amount_mmk": "{{$type->fee_amount_mmk ?? $type->amount ?? 0}}"
+                    "fee_amount_mmk": "{{$type->fee_amount_mmk ?? $type->amount ?? 0}}",
+                    "quantity_enabled": "{{ (int) ($type->quantity_enabled ?? false) }}"
                 }{{ $index < count($fees->compulsory_fees) - 1 ? ',' : '' }}
             @endforeach
         ],
@@ -427,7 +446,8 @@
                     "fee_currency": "{{$type->fee_currency ?? 'MMK'}}",
                     "fee_original_amount": "{{$type->fee_original_amount ?? $type->amount ?? 0}}",
                     "fee_exchange_rate_snapshot": "{{$type->fee_exchange_rate_snapshot ?? 1}}",
-                    "fee_amount_mmk": "{{$type->fee_amount_mmk ?? $type->amount ?? 0}}"
+                    "fee_amount_mmk": "{{$type->fee_amount_mmk ?? $type->amount ?? 0}}",
+                    "quantity_enabled": "{{ (int) ($type->quantity_enabled ?? false) }}"
                 }{{ $index < count($fees->optional_fees) - 1 ? ',' : '' }}
             @endforeach
         ],
@@ -633,6 +653,13 @@
 
             compRepeater = getCompRepeater();
 
+            function restoreQuantityEnabled($rows, rows) {
+                $rows.each(function (index) {
+                    var enabled = Number(rows[index] && rows[index].quantity_enabled || 0) === 1;
+                    $(this).find('input[type="checkbox"][name="quantity_enabled"]').prop('checked', enabled);
+                });
+            }
+
             if (compRepeater && typeof compRepeater.setList === 'function') {
                 compRepeater.setList(feesData.compulsory_fees);
                 // 轮询初始化多币种字段（setList 异步渲染 DOM，需要等待）
@@ -643,6 +670,7 @@
                     var rows = $('.compulsory-fee-row');
                     if (rows.length > 0 && rows.first().find('.fee_currency').length > 0) {
                         clearInterval(retryInterval);
+                        restoreQuantityEnabled(rows, feesData.compulsory_fees);
                         if (typeof initCompulsoryFeeRows === 'function') {
                             initCompulsoryFeeRows();
                         }
@@ -703,6 +731,7 @@
                     var rows = $('.optional-fee-row');
                     if (rows.length > 0 && rows.first().find('.fee_currency').length > 0) {
                         clearInterval(optRetryInterval);
+                        restoreQuantityEnabled(rows, feesData.optional_fees);
                         if (typeof initOptionalFeeRows === 'function') {
                             initOptionalFeeRows();
                         }

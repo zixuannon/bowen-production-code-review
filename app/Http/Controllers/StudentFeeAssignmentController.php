@@ -39,12 +39,15 @@ final class StudentFeeAssignmentController extends Controller
         $canCollect = $this->canCollectForStudent($student);
         $availableItems = $this->assignments->availableItems($student);
         $availableAdditionalItems = $this->assignments->availableAdditionalItems($student);
+        $draft = $this->assignments->latestDraft($student);
         return view('students.fee-assignment', [
             'student' => $student,
             'availableItems' => $availableItems,
             'availableAdditionalItems' => $availableAdditionalItems,
             'promotionChoices' => $this->promotionSelections->choices(Auth::user(), $student, $availableItems->merge($availableAdditionalItems)),
-            'draft' => $this->assignments->latestDraft($student),
+            'quantityMax' => $this->assignments->maxQuantity(),
+            'draft' => $draft,
+            'draftPromotionPreview' => $this->promotionSelections->previewDraft(Auth::user(), $student, $draft),
             'confirmedAssignments' => $confirmed,
             'finance' => $finance,
             'assignmentSync' => $assignmentSync,
@@ -75,7 +78,7 @@ final class StudentFeeAssignmentController extends Controller
         ResponseService::noPermissionThenRedirect('fees-create');
         $data = $request->validate([
             'optional_fee_ids' => ['nullable', 'array'], 'optional_fee_ids.*' => ['integer'],
-            'optional_fee_quantities' => ['nullable', 'array'], 'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1'],
+            'optional_fee_quantities' => ['nullable', 'array'], 'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1', 'max:'.$this->assignments->maxQuantity()],
             'promotions' => ['nullable', 'array'], 'promotions.*' => ['nullable', 'integer', 'min:1'],
         ]);
         $student = $this->student($studentId);
@@ -118,7 +121,7 @@ final class StudentFeeAssignmentController extends Controller
         ResponseService::noPermissionThenRedirect('fees-create');
         $data = $request->validate([
             'optional_fee_ids' => ['required', 'array'], 'optional_fee_ids.*' => ['integer'],
-            'optional_fee_quantities' => ['nullable', 'array'], 'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1'],
+            'optional_fee_quantities' => ['nullable', 'array'], 'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1', 'max:'.$this->assignments->maxQuantity()],
             'promotions' => ['nullable', 'array'], 'promotions.*' => ['nullable', 'integer', 'min:1'],
         ]);
         $student = $this->student($studentId);

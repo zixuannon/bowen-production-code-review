@@ -22,6 +22,8 @@ use Illuminate\Validation\ValidationException;
  */
 final class StudentFeeAssignmentService
 {
+    public const DEFAULT_MAX_QUANTITY = 100;
+
     public function __construct(
         private readonly CentralFinanceReceivablePublisher $publisher,
         private readonly CentralFinanceDataIsolationService $dataIsolation,
@@ -109,7 +111,7 @@ final class StudentFeeAssignmentService
         }
 
         $selected = $available->filter(fn (FeesClassType $item) => !(bool) $item->optional || $optionalIds->contains((int) $item->id));
-        $quantities = $this->validatedOptionalQuantities($selected, $optionalQuantities);
+        $quantities = $this->validatedFeeQuantities($selected, $optionalQuantities);
         return DB::transaction(function () use ($student, $selected, $quantities, $selectedPromotions): StudentFeeAssignment {
             $assignment = $this->latestDraft($student) ?? StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
@@ -134,7 +136,7 @@ final class StudentFeeAssignmentService
             throw ValidationException::withMessages(['optional_fee_ids' => 'Select one eligible optional fee for this Student.']);
         }
         $selectedItems = $selected->map(fn (int $id) => $optional->get($id));
-        $quantities = $this->validatedOptionalQuantities($selectedItems, $optionalQuantities);
+        $quantities = $this->validatedFeeQuantities($selectedItems, $optionalQuantities);
         return DB::transaction(function () use ($student, $selected, $optional, $quantities, $selectedPromotions): StudentFeeAssignment {
             $assignment = StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
@@ -187,7 +189,7 @@ final class StudentFeeAssignmentService
 
     private function snapshot(FeesClassType $template, int $quantity = 1, ?int $selectedPromotionId = null): array
     {
-        if ($quantity < 1 || ($quantity > 1 && !(bool) ($template->quantity_enabled ?? false))) {
+        if ($quantity < 1 || $quantity > $this->maxQuantity() || ($quantity !== 1 && !(bool) ($template->quantity_enabled ?? false))) {
             throw ValidationException::withMessages(['optional_fee_quantities' => 'The selected Fee Item does not allow the requested quantity.']);
         }
         $currency = strtoupper((string) ($template->fee_currency ?: $template->fee?->currency ?: 'MMK'));
@@ -227,17 +229,11 @@ final class StudentFeeAssignmentService
     }
 
     /** @param iterable<FeesClassType> $selected @param array<mixed> $requested */
-    private function validatedOptionalQuantities(iterable $selected, array $requested): array
+    private function validatedFeeQuantities(iterable $selected, array $requested): array
     {
         $quantities = [];
         foreach ($selected as $template) {
             $id = (int) $template->id;
-            // Compulsory lines are always exactly one. Browser input can only
-            // select quantities for optional items and is never authoritative.
-            if (!(bool) $template->optional) {
-                $quantities[$id] = 1;
-                continue;
-            }
             $raw = $requested[$id] ?? $requested[(string) $id] ?? 1;
             if (!is_int($raw) && !is_string($raw) && !is_float($raw)) {
                 throw ValidationException::withMessages(['optional_fee_quantities' => 'Fee quantity must be a positive whole number.']);
@@ -247,12 +243,20 @@ final class StudentFeeAssignmentService
                 throw ValidationException::withMessages(['optional_fee_quantities' => 'Fee quantity must be a positive whole number.']);
             }
             $quantity = (int) $raw;
-            if ($quantity > 1 && !(bool) ($template->quantity_enabled ?? false)) {
+            if ($quantity > $this->maxQuantity()) {
+                throw ValidationException::withMessages(['optional_fee_quantities' => 'Fee quantity exceeds the configured maximum of '.$this->maxQuantity().'.']);
+            }
+            if ($quantity !== 1 && !(bool) ($template->quantity_enabled ?? false)) {
                 throw ValidationException::withMessages(['optional_fee_quantities' => 'This Fee Item is not configured for multiple quantities.']);
             }
             $quantities[$id] = $quantity;
         }
         return $quantities;
+    }
+
+    public function maxQuantity(): int
+    {
+        return max(1, (int) config('central_finance.student_fee_max_quantity', self::DEFAULT_MAX_QUANTITY));
     }
 
     private function assertStudentShape(Students $student): void

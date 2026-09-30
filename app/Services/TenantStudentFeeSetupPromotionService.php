@@ -9,6 +9,7 @@ use App\Models\FeesClassType;
 use App\Models\StudentFeeAssignment;
 use App\Models\Students;
 use App\Models\User;
+use App\Support\CentralFinanceDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -100,6 +101,55 @@ final class TenantStudentFeeSetupPromotionService
         }
 
         return $result;
+    }
+
+    /**
+     * Read-only preview for saved draft lines. It reuses the Central
+     * Promotion engine's eligibility and exact-decimal calculation; only
+     * confirmation may persist a Promotion Application.
+     *
+     * @return Collection<int, array{promotion:string,discount:string,net:string}>
+     */
+    public function previewDraft(User $actor, Students $student, ?StudentFeeAssignment $assignment): Collection
+    {
+        if ($assignment === null) {
+            return collect();
+        }
+
+        $items = $assignment->items->where('status', 'active')
+            ->filter(fn ($item): bool => (int) ($item->selected_promotion_id ?? 0) > 0);
+        if ($items->isEmpty()) {
+            return collect();
+        }
+
+        try {
+            $principal = $this->principal($actor, $student);
+            $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
+        } catch (AuthorizationException) {
+            return collect();
+        }
+
+        $date = CarbonImmutable::now('Asia/Yangon');
+        return $items->mapWithKeys(function ($item) use ($principal, $student, $date): array {
+            try {
+                return [(int) $item->id => $this->promotions->previewForFeeSetup(
+                    $principal,
+                    (int) $student->school_id,
+                    (int) $item->fees_class_type_id,
+                    (int) $item->selected_promotion_id,
+                    CentralFinanceDecimal::normalize((string) $item->amount_snapshot),
+                    $date,
+                )];
+            } catch (AuthorizationException|\InvalidArgumentException) {
+                // Do not invent a discount if a saved definition later
+                // expires; confirmation will revalidate and fail closed.
+                return [(int) $item->id => [
+                    'promotion' => __('Promotion requires revalidation'),
+                    'discount' => CentralFinanceDecimal::normalize('0'),
+                    'net' => CentralFinanceDecimal::normalize((string) $item->amount_snapshot),
+                ]];
+            }
+        });
     }
 
     /**

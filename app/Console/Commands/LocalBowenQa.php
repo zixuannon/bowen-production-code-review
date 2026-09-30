@@ -11,6 +11,7 @@ use App\Models\FeesPaid;
 use App\Services\FeesPaidImportService;
 use App\Services\FeesPaymentService;
 use App\Services\SchoolDataService;
+use App\Services\TenantFrontDeskFeeSetupPermissionContract;
 use App\Support\LocalBowenQaGuard;
 use Illuminate\Console\Command;
 use Illuminate\Http\UploadedFile;
@@ -144,6 +145,7 @@ class LocalBowenQa extends Command
             ['qa_guardian@bowen-qa.test', 'QA', 'Guardian'],
             ['qa_student@bowen-qa.test', 'QA', 'Student'],
             ['qa_head_finance@bowen-qa.test', 'QA', 'Head Finance'],
+            ['qa_front_desk@bowen-qa.test', 'QA', 'Front Desk'],
             ['qa_cashier_a@bowen-qa.test', 'QA', 'Cashier A'],
             ['qa_cashier_b@bowen-qa.test', 'QA', 'Cashier B'],
         ] as [$email, $first, $last]) {
@@ -192,6 +194,7 @@ class LocalBowenQa extends Command
             ['qa_guardian@bowen-qa.test', 'QA', 'Guardian'],
             ['qa_student@bowen-qa.test', 'QA', 'Student'],
             ['qa_head_finance@bowen-qa.test', 'QA', 'Head Finance'],
+            ['qa_front_desk@bowen-qa.test', 'QA', 'Front Desk'],
             ['qa_cashier_a@bowen-qa.test', 'QA', 'Cashier A'],
             ['qa_cashier_b@bowen-qa.test', 'QA', 'Cashier B'],
         ];
@@ -352,11 +355,12 @@ class LocalBowenQa extends Command
     private function seedFinanceRoleAssignments(int $schoolId, $now): void
     {
         $school = DB::connection('school');
-        foreach (['Head Finance', 'Cashier'] as $roleName) {
+        foreach (['Head Finance', 'Cashier', 'Front Desk / Admissions & Collection'] as $roleName) {
             $school->table('roles')->updateOrInsert(['school_id' => $schoolId, 'name' => $roleName, 'guard_name' => 'web'], ['updated_at' => $now, 'created_at' => $now]);
         }
         $headRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'Head Finance')->value('id');
         $cashierRole = $school->table('roles')->where('school_id', $schoolId)->where('name', 'Cashier')->value('id');
+        $frontDeskRole = (int) $school->table('roles')->where('school_id', $schoolId)->where('name', 'Front Desk / Admissions & Collection')->value('id');
         // Do not clone School Admin. Finance roles receive only the permissions
         // they need for the foundation; account scope then further restricts
         // Cashier visibility to explicit assignments.
@@ -373,7 +377,8 @@ class LocalBowenQa extends Command
                 'role_id' => $cashierRole,
             ], []);
         }
-        foreach ([['qa_head_finance@bowen-qa.test', $headRole], ['qa_cashier_a@bowen-qa.test', $cashierRole], ['qa_cashier_b@bowen-qa.test', $cashierRole]] as [$email, $role]) {
+        TenantFrontDeskFeeSetupPermissionContract::synchronize($school, $frontDeskRole);
+        foreach ([['qa_head_finance@bowen-qa.test', $headRole], ['qa_front_desk@bowen-qa.test', $frontDeskRole], ['qa_cashier_a@bowen-qa.test', $cashierRole], ['qa_cashier_b@bowen-qa.test', $cashierRole]] as [$email, $role]) {
             $id = $school->table('users')->where('email', $email)->value('id');
             $school->table('model_has_roles')->updateOrInsert(['role_id' => $role, 'model_id' => $id, 'model_type' => 'App\\Models\\User'], []);
         }

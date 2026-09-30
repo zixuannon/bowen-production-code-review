@@ -101,6 +101,30 @@ final class CentralFinancePromotionService
         return $this->applyInternal($actor, $receivableId, $promotionId, $effectiveDate, 'Promotion selected during Student Fee Setup.', $recordedAt, $key, true, $feesClassTypeId);
     }
 
+    /**
+     * Read-only Fee Setup quote. Preview and confirmed application share the
+     * same eligibility and exact-decimal calculation; this creates no
+     * adjustment, Promotion Application, or Receivable.
+     *
+     * @return array{promotion:string,discount:string,net:string}
+     */
+    public function previewForFeeSetup(CentralFinanceUser $actor, int $schoolId, int $feesClassTypeId, int $promotionId, string $gross, CarbonImmutable $effectiveDate): array
+    {
+        $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
+        $promotion = $this->eligibleForSchool($schoolId, $feesClassTypeId, $effectiveDate)->firstWhere('id', $promotionId);
+        if ($promotion === null) {
+            throw new AuthorizationException('This Promotion is not active for the selected School, Fee Item, and effective date.');
+        }
+
+        $gross = CentralFinanceDecimal::normalize($gross);
+        $discount = $this->discountForGross($promotion, $gross);
+        return [
+            'promotion' => trim((string) $promotion->code.' · '.(string) $promotion->name),
+            'discount' => $discount,
+            'net' => CentralFinanceDecimal::subtract($gross, $discount),
+        ];
+    }
+
     private function applyInternal(CentralFinanceUser $actor, int $receivableId, int $promotionId, CarbonImmutable $effectiveDate, string $reason, CarbonImmutable $recordedAt, string $key, bool $fromFeeSetup, ?int $feesClassTypeId = null): CentralFinancePromotionApplication
     {
         return DB::connection('mysql')->transaction(function () use ($actor, $receivableId, $promotionId, $effectiveDate, $reason, $recordedAt, $key, $fromFeeSetup, $feesClassTypeId): CentralFinancePromotionApplication {
@@ -119,10 +143,7 @@ final class CentralFinancePromotionService
             $promotion = CentralFinancePromotion::on('mysql')->lockForUpdate()->findOrFail($promotionId);
             if (!$this->eligibleForSchool((int) $receivable->school_id, $fromFeeSetup ? $feesClassTypeId : null, $effectiveDate)->contains('id', $promotion->id)) throw new AuthorizationException('This Promotion is not active for the selected School, Fee Item, and effective date.');
             $gross = CentralFinanceDecimal::normalize((string) ($receivable->source_amount_due ?? $receivable->amount_due));
-            $discount = $promotion->discount_type === CentralFinancePromotion::PERCENTAGE
-                ? CentralFinanceDecimal::percentageOf($gross, (string) $promotion->discount_value)
-                : CentralFinanceDecimal::normalize((string) $promotion->discount_value);
-            if (CentralFinanceDecimal::compare($discount, '0') <= 0 || CentralFinanceDecimal::compare($discount, $gross) >= 0) throw new InvalidArgumentException('Promotion discount must be positive and less than the gross receivable.');
+            $discount = $this->discountForGross($promotion, $gross);
             $note = trim($reason) === '' ? 'Promotion '.(string) $promotion->code.' applied.' : trim($reason);
             $adjustment = $fromFeeSetup
                 ? $this->adjustments->applyPromotionDuringFeeSetup($actor, $receivable->id, $discount, $note, $effectiveDate, $recordedAt, $key)
@@ -140,5 +161,17 @@ final class CentralFinancePromotionService
             $this->dataIsolation->inheritWorkflowClassification($actor, (int) $receivable->school_id, 'promotion_application', (int) $application->id);
             return $application;
         });
+    }
+
+    private function discountForGross(CentralFinancePromotion $promotion, string $gross): string
+    {
+        $discount = $promotion->discount_type === CentralFinancePromotion::PERCENTAGE
+            ? CentralFinanceDecimal::percentageOf($gross, (string) $promotion->discount_value)
+            : CentralFinanceDecimal::normalize((string) $promotion->discount_value);
+        if (CentralFinanceDecimal::compare($discount, '0') <= 0 || CentralFinanceDecimal::compare($discount, $gross) >= 0) {
+            throw new InvalidArgumentException('Promotion discount must be positive and less than the gross receivable.');
+        }
+
+        return $discount;
     }
 }

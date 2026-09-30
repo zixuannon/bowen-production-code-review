@@ -184,7 +184,7 @@ final class CentralFinanceStudentCollectionController extends Controller
             'optional_fee_ids' => ['required', 'array', 'min:1'],
             'optional_fee_ids.*' => ['required', 'integer'],
             'optional_fee_quantities' => ['nullable', 'array'],
-            'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1'],
+            'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1', 'max:'.app(\App\Services\StudentFeeAssignmentService::class)->maxQuantity()],
             'promotions' => ['nullable', 'array'],
             'promotions.*' => ['nullable', 'integer', 'min:1'],
         ]);
