@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\FeesController;
 use App\Models\FeesClassType;
 use App\Services\StudentFeeAssignmentService;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -21,9 +23,17 @@ final class FeeItemQuantityConfigurationContractTest extends TestCase
         $this->assertStringContainsString('Allow Multiple Quantity', $edit);
         $this->assertStringContainsString('compulsory_fees_type[][quantity_enabled]', $create);
         $this->assertStringContainsString('optional_fees_type[][quantity_enabled]', $create);
+        $this->assertStringContainsString('quantity-enabled-toggle', $create);
+        $this->assertStringContainsString('quantity-enabled-value', $create);
+        $this->assertStringNotContainsString('type="checkbox" name="optional_fees_type[][quantity_enabled]"', $create);
         $this->assertStringContainsString('"quantity_enabled"', $edit);
+        $this->assertStringContainsString('quantity-enabled-toggle', $edit);
+        $this->assertStringContainsString('quantity-enabled-value', $edit);
+        $this->assertStringNotContainsString('type="checkbox" name="quantity_enabled"', $edit);
         $this->assertStringContainsString('restoreQuantityEnabled(rows, feesData.compulsory_fees)', $edit);
         $this->assertStringContainsString('restoreQuantityEnabled(rows, feesData.optional_fees)', $edit);
+        $this->assertStringContainsString('normalizeQuantityEnabledInputs($request)', $controller);
+        $this->assertStringContainsString("collect(\$values)->every", $controller);
         $this->assertStringContainsString("'quantity_enabled'", $model);
         $this->assertStringContainsString('"quantity_enabled" => filter_var', $controller);
         $this->assertStringContainsString("['amount', 'optional', 'quantity_enabled'", $controller);
@@ -42,6 +52,27 @@ final class FeeItemQuantityConfigurationContractTest extends TestCase
         $this->assertStringContainsString('$quantity > $this->maxQuantity()', $service);
         $this->assertStringContainsString('$quantity !== 1 && !(bool) ($template->quantity_enabled ?? false)', $service);
         $this->assertStringContainsString("'integer', 'min:1', 'max:'.\$this->assignments->maxQuantity()", $controller);
+    }
+
+    public function test_legacy_repeater_boolean_arrays_are_normalized_but_malformed_values_still_fail_validation(): void
+    {
+        $controller = (new \ReflectionClass(FeesController::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod(FeesController::class, 'normalizeQuantityEnabledInputs');
+        $method->setAccessible(true);
+
+        $request = Request::create('/', 'POST', [
+            'optional_fees_type' => [
+                ['quantity_enabled' => ['0', '1']],
+                ['quantity_enabled' => ['0']],
+                ['quantity_enabled' => ['0', 'invalid']],
+            ],
+        ]);
+
+        $method->invoke($controller, $request);
+
+        $this->assertSame('1', $request->input('optional_fees_type.0.quantity_enabled'));
+        $this->assertSame('0', $request->input('optional_fees_type.1.quantity_enabled'));
+        $this->assertSame(['0', 'invalid'], $request->input('optional_fees_type.2.quantity_enabled'));
     }
 
     public function test_server_rejects_tampered_fixed_and_excessive_quantities_before_a_snapshot_is_created(): void

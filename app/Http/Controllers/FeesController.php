@@ -67,6 +67,36 @@ class FeesController extends Controller
     private ClassSectionInterface $classSection;
     private SessionYearsTrackingsService $sessionYearsTrackingsService;
 
+    /**
+     * Accept the legacy repeater's duplicated 0/1 checkbox payload only when
+     * every value is a valid boolean representation. Current forms submit a
+     * single scalar through the hidden field, so malformed values still fail
+     * the regular request validator.
+     */
+    private function normalizeQuantityEnabledInputs(Request $request): void
+    {
+        foreach (['compulsory_fees_type', 'optional_fees_type'] as $field) {
+            $rows = $request->input($field, []);
+            if (!is_array($rows)) {
+                continue;
+            }
+
+            foreach ($rows as $index => $row) {
+                if (!is_array($row) || !is_array($row['quantity_enabled'] ?? null)) {
+                    continue;
+                }
+
+                $values = array_values($row['quantity_enabled']);
+                $validBooleanValues = [true, false, 0, 1, '0', '1'];
+                if ($values !== [] && collect($values)->every(static fn ($value) => in_array($value, $validBooleanValues, true))) {
+                    $rows[$index]['quantity_enabled'] = end($values);
+                }
+            }
+
+            $request->merge([$field => $rows]);
+        }
+    }
+
     public function __construct(FeesInterface $fees, SessionYearInterface $sessionYear, FeesInstallmentInterface $feesInstallment, SchoolSettingInterface $schoolSettings, MediumInterface $medium, FeesTypeInterface $feesType, ClassSchoolInterface $classes, FeesClassTypeInterface $feesClassType, UserInterface $user, FeesPaidInterface $feesPaid, CompulsoryFeeInterface $compulsoryFee, OptionalFeeInterface $optionalFee, CachingService $cache, PaymentConfigurationInterface $paymentConfigurations, ClassSchoolInterface $classSchool, StudentInterface $student, PaymentTransactionInterface $paymentTransaction, SystemSettingInterface $systemSetting, ClassSectionInterface $classSection, SessionYearsTrackingsService $sessionYearsTrackingsService)
     {
         $this->fees = $fees;
@@ -114,6 +144,7 @@ class FeesController extends Controller
     {
         ResponseService::noFeatureThenSendJson('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-create');
+        $this->normalizeQuantityEnabledInputs($request);
         $request->validate([
             'include_fee_installments' => 'required|boolean',
             'due_date' => 'required|date',
@@ -409,6 +440,7 @@ class FeesController extends Controller
     {
         ResponseService::noFeatureThenSendJson('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-edit');
+        $this->normalizeQuantityEnabledInputs($request);
 
         Log::info('Fees update started', [
             'id' => $id,

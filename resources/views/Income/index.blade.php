@@ -138,10 +138,10 @@
                                                     </div>
 
                                                     <div class="form-group col-md-12 col-lg-5">
-                                                        <input type="hidden" name="compulsory_fees_type[][quantity_enabled]" value="0">
+                                                        <input type="hidden" name="compulsory_fees_type[][quantity_enabled]" value="0" class="quantity-enabled-value">
                                                         <div class="fee-quantity-control">
                                                             <div><label>{{ __('Allow Multiple Quantity') }}</label><small class="text-muted">{{ __('Students may select more than one unit during Fee Setup.') }}</small></div>
-                                                            <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="compulsory_fees_type[][quantity_enabled]" value="1" aria-label="{{ __('Allow Multiple Quantity') }}"></div>
+                                                            <div class="form-check form-switch"><input class="form-check-input quantity-enabled-toggle" type="checkbox" value="1" aria-label="{{ __('Allow Multiple Quantity') }}"></div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -358,10 +358,10 @@
                                                     </div>
 
                                                     <div class="form-group col-md-12 col-lg-5">
-                                                        <input type="hidden" name="optional_fees_type[][quantity_enabled]" value="0">
+                                                        <input type="hidden" name="optional_fees_type[][quantity_enabled]" value="0" class="quantity-enabled-value">
                                                         <div class="fee-quantity-control">
                                                             <div><label>{{ __('Allow Multiple Quantity') }}</label><small class="text-muted">{{ __('Students may select more than one unit during Fee Setup.') }}</small></div>
-                                                            <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="optional_fees_type[][quantity_enabled]" value="1" aria-label="{{ __('Allow Multiple Quantity') }}"></div>
+                                                            <div class="form-check form-switch"><input class="form-check-input quantity-enabled-toggle" type="checkbox" value="1" aria-label="{{ __('Allow Multiple Quantity') }}"></div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -466,6 +466,13 @@
                 ? $row.find('.fee-original-label').data('mmk-label')
                 : $row.find('.fee-original-label').data('foreign-label'));
         }
+
+        // jQuery repeater appends [] to named checkboxes. Keep the repeated
+        // field scalar and mirror the visual switch into its hidden 0/1 input.
+        $(document).on('change', '.quantity-enabled-toggle', function () {
+            $(this).closest('.fee-item-card').find('.quantity-enabled-value').first()
+                .val(this.checked ? '1' : '0');
+        });
 
         // 计算等值 MMK
         function calculateEquivalentMMK($row) {

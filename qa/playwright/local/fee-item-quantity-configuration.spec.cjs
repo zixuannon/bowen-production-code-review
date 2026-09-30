@@ -48,10 +48,23 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       const create = await page.goto('/fees', { waitUntil: 'domcontentloaded' });
       expect(create?.status()).toBe(200);
       await expect(page.getByText('Allow Multiple Quantity', { exact: false }).first()).toBeVisible();
-      const quantitySwitch = page.locator('input[type="checkbox"][name*="quantity_enabled"]').first();
+      const quantitySwitch = page.locator('input.quantity-enabled-toggle').first();
       await expect(quantitySwitch).toBeVisible();
-      await quantitySwitch.check();
-      await expect(quantitySwitch).toBeChecked();
+      // The shared layout's decorative progress layer may linger in local
+      // browser runs; it is not part of the form or a permission boundary.
+      await quantitySwitch.check({ force: true });
+      expect(await page.evaluate(() => document.querySelector('input.quantity-enabled-toggle')?.checked)).toBeTruthy();
+      const quantityPayload = await page.locator('#create-form').evaluate((form) => {
+        const hidden = form.querySelector('.fee-item-card .quantity-enabled-value');
+        return {
+          name: hidden?.name,
+          values: [...new FormData(form).entries()]
+            .filter(([name]) => name === hidden?.name)
+            .map(([, value]) => value),
+        };
+      });
+      expect(quantityPayload.name).toMatch(/quantity_enabled/);
+      expect(quantityPayload.values).toEqual(['1']);
       await expect(page.locator('.fee-item-card.is-mmk .fee-exchange-detail').first()).toBeHidden();
       await expect(page.locator('.fee-item-card.is-mmk .fee-mmk-detail').first()).toBeHidden();
 
@@ -63,7 +76,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       expect(edit?.status()).toBe(200);
       await expect(page.getByText('Allow Multiple Quantity', { exact: false }).first()).toBeVisible();
 
-      const setup = await page.goto('/students/1/fee-assignment', { waitUntil: 'networkidle' });
+      // The app maintains long-lived client connections, so networkidle is
+      // not a reliable readiness signal. The form itself is server-rendered.
+      const setup = await page.goto('/students/1/fee-assignment', { waitUntil: 'domcontentloaded' });
       expect(setup?.status()).toBe(200);
       await expect(page.getByRole('heading', { name: 'Student Fee Setup', exact: true })).toBeVisible();
       await expect(page.locator('input[readonly][value="1"]').first()).toBeVisible();
