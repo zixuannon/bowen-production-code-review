@@ -75,4 +75,35 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('name="promotions[{{ $item->id }}]"', $view);
         $this->assertStringContainsString('already-approved applicable Promotion', $view);
     }
+
+    public function test_tenant_student_fee_setup_uses_the_same_quantity_and_approved_promotion_contract(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = (string) file_get_contents($root.'/app/Http/Controllers/StudentFeeAssignmentController.php');
+        $tenantPromotion = (string) file_get_contents($root.'/app/Services/TenantStudentFeeSetupPromotionService.php');
+        $assignment = (string) file_get_contents($root.'/app/Services/StudentFeeAssignmentService.php');
+        $view = (string) file_get_contents($root.'/resources/views/students/fee-assignment.blade.php');
+        $migration = (string) file_get_contents($root.'/database/migrations/schools/2026_09_30_000001_add_student_fee_assignment_promotion_selection.php');
+
+        $this->assertStringContainsString("'optional_fee_quantities' => ['nullable', 'array']", $controller);
+        $this->assertStringContainsString("'promotions' => ['nullable', 'array']", $controller);
+        $this->assertStringContainsString('validateSelections', $controller);
+        $this->assertStringContainsString('applyConfirmedSelections', $controller);
+        $this->assertStringContainsString('optionalQuantities = []', $assignment);
+        $this->assertStringContainsString('selectedPromotions = []', $assignment);
+        $this->assertStringContainsString('selected_promotion_id', $assignment);
+        $this->assertStringContainsString('resolveTrustedSession', $tenantPromotion);
+        $this->assertStringContainsString('assertCentralWritesAllowed', $tenantPromotion);
+        $this->assertStringContainsString('eligibleForFeeSetup', $tenantPromotion);
+        $this->assertStringContainsString('applyFromFeeSetup', $tenantPromotion);
+        $this->assertStringContainsString('tenant-fee-setup:', $tenantPromotion);
+        $this->assertStringNotContainsString('->define(', $tenantPromotion);
+        $this->assertStringNotContainsString('applyWaiver', $tenantPromotion);
+        $this->assertStringNotContainsString('applyCorrection', $tenantPromotion);
+        $this->assertStringContainsString('name="optional_fee_quantities[{{ $item->id }}]"', $view);
+        $this->assertStringContainsString('name="promotions[{{ $item->id }}]"', $view);
+        $this->assertStringContainsString("__('Fixed at 1')", $view);
+        $this->assertStringContainsString('selected_promotion_id', $migration);
+        $this->assertStringContainsString('sfa_item_selected_promotion_idx', $migration);
+    }
 }

@@ -16,7 +16,10 @@ final class MigrateFinanceCollectionV2 extends Command
         '2026_09_29_000001_add_central_finance_layer3_receivable_promotions',
         '2026_09_29_000002_add_finance_collection_v2_documents',
     ];
-    public const TENANT_MIGRATION = '2026_09_29_000002_add_student_fee_quantity_snapshots';
+    public const TENANT_MIGRATIONS = [
+        '2026_09_29_000002_add_student_fee_quantity_snapshots',
+        '2026_09_30_000001_add_student_fee_assignment_promotion_selection',
+    ];
 
     protected $signature = 'finance:migrate-collection-v2
         {--execute : Apply only the exact reviewed Collection V2 Central and trusted-tenant migrations}';
@@ -46,7 +49,7 @@ final class MigrateFinanceCollectionV2 extends Command
             if ($this->centralState() !== 'complete') return $this->fail('Central Collection V2 migration did not verify.');
             foreach ($tenants as $code => $database) {
                 if (!$this->connect($database)) return self::FAILURE;
-                if ($this->tenantState() === 'eligible' && !$this->migrate('school', database_path('migrations/schools'), [self::TENANT_MIGRATION])) return self::FAILURE;
+                if ($this->tenantState() === 'eligible' && !$this->migrate('school', database_path('migrations/schools'), self::TENANT_MIGRATIONS)) return self::FAILURE;
                 if ($this->tenantState() !== 'complete') return $this->fail("[{$code}] tenant Collection V2 migration did not verify.");
             }
             return self::SUCCESS;
@@ -106,10 +109,20 @@ final class MigrateFinanceCollectionV2 extends Command
     {
         $schema = Schema::connection('school');
         if (!$schema->hasTable('migrations') || !$schema->hasTable('fees_class_types') || !$schema->hasTable('student_fee_assignment_items')) return 'unexpected';
-        $recorded = DB::connection('school')->table('migrations')->where('migration', self::TENANT_MIGRATION)->count();
-        $complete = $recorded === 1 && $schema->hasColumn('fees_class_types', 'quantity_enabled') && $schema->hasColumns('student_fee_assignment_items', ['unit_price_snapshot','quantity_snapshot']);
+        $recorded = DB::connection('school')->table('migrations')->whereIn('migration', self::TENANT_MIGRATIONS)->pluck('migration')->all();
+        $quantityRecorded = in_array(self::TENANT_MIGRATIONS[0], $recorded, true);
+        $promotionRecorded = in_array(self::TENANT_MIGRATIONS[1], $recorded, true);
+        $quantityComplete = $quantityRecorded && $schema->hasColumn('fees_class_types', 'quantity_enabled') && $schema->hasColumns('student_fee_assignment_items', ['unit_price_snapshot','quantity_snapshot']);
+        $promotionComplete = $promotionRecorded && $schema->hasColumn('student_fee_assignment_items', 'selected_promotion_id');
+        $complete = $quantityComplete && $promotionComplete;
         if ($complete) return 'complete';
-        return $recorded === 0 && !$schema->hasColumn('fees_class_types', 'quantity_enabled') ? 'eligible' : 'unexpected';
+        // Existing Collection V2 tenants receive only the additive Promotion
+        // selection column. New tenants receive both exact reviewed paths.
+        $eligibleForPromotion = $quantityComplete && !$promotionRecorded && !$schema->hasColumn('student_fee_assignment_items', 'selected_promotion_id');
+        $eligibleForCollection = !$quantityRecorded && !$promotionRecorded
+            && !$schema->hasColumn('fees_class_types', 'quantity_enabled')
+            && !$schema->hasColumn('student_fee_assignment_items', 'selected_promotion_id');
+        return $eligibleForPromotion || $eligibleForCollection ? 'eligible' : 'unexpected';
     }
 
     private function connect(string $database): bool

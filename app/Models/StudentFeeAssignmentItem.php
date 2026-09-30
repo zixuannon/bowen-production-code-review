@@ -10,8 +10,8 @@ final class StudentFeeAssignmentItem extends Model
     public const CANCELLED = 'cancelled';
     public const FEES_CLASS_TYPE = 'fees_class_type';
 
-    protected $fillable = ['uuid', 'student_fee_assignment_id', 'fee_id', 'fees_class_type_id', 'fees_type_id', 'description_snapshot', 'due_date_snapshot', 'amount_snapshot', 'unit_price_snapshot', 'quantity_snapshot', 'currency_snapshot', 'exchange_rate_snapshot', 'amount_mmk_snapshot', 'optional_snapshot', 'source_type', 'source_id', 'status'];
-    protected $casts = ['optional_snapshot' => 'boolean', 'amount_snapshot' => 'decimal:4', 'unit_price_snapshot' => 'decimal:4', 'quantity_snapshot' => 'integer', 'exchange_rate_snapshot' => 'decimal:8', 'amount_mmk_snapshot' => 'decimal:4', 'due_date_snapshot' => 'date'];
+    protected $fillable = ['uuid', 'student_fee_assignment_id', 'fee_id', 'fees_class_type_id', 'fees_type_id', 'description_snapshot', 'due_date_snapshot', 'amount_snapshot', 'unit_price_snapshot', 'quantity_snapshot', 'selected_promotion_id', 'currency_snapshot', 'exchange_rate_snapshot', 'amount_mmk_snapshot', 'optional_snapshot', 'source_type', 'source_id', 'status'];
+    protected $casts = ['optional_snapshot' => 'boolean', 'amount_snapshot' => 'decimal:4', 'unit_price_snapshot' => 'decimal:4', 'quantity_snapshot' => 'integer', 'selected_promotion_id' => 'integer', 'exchange_rate_snapshot' => 'decimal:8', 'amount_mmk_snapshot' => 'decimal:4', 'due_date_snapshot' => 'date'];
 
     protected static function booted(): void
     {

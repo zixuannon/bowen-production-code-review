@@ -65,6 +65,43 @@ Last updated: 2026-09-29
 
 Last updated: 2026-09-29
 
+## Student Fee Setup quantity + approved Promotion completion — local candidate
+
+- The authenticated Timecity Front Desk QA found that the direct tenant-side
+  `Student Fee Setup` page rendered only fee checkboxes.  The quantity
+  snapshot service already existed, but the Controller and Blade form omitted
+  its request field; the approved-Promotion selector existed only on the
+  Central optional-item modal.
+- The local candidate adds quantity controls only for optional Fee Items whose
+  `quantity_enabled` flag is true; all compulsory and fixed-quantity items
+  remain fixed at one.  The browser total is calculated from server-owned unit
+  prices and quantities, and server validation remains authoritative.
+- Tenant-side Fee Setup now renders only active, date-valid, School/Fee-item
+  applicable Central Promotions.  It resolves the Front Desk identity solely
+  from the trusted tenant session, validates selection again on POST, stores
+  only the selected Central identifier in the immutable tenant snapshot, then
+  invokes the existing Central `applyFromFeeSetup` service after receivable
+  projection.  It does not introduce a manual discount path, promotion
+  definition authority, waiver, correction, or void capability.
+- An additive, tenant-only migration adds nullable
+  `student_fee_assignment_items.selected_promotion_id`; the immutable Central
+  Promotion Application remains the audit and monetary snapshot of record.
+  `finance:migrate-collection-v2` now recognizes the prior Collection V2
+  schema plus this additive step and fails closed for partial/unexpected
+  states.
+- Confirm retries are idempotent per immutable assignment-item UUID.  If a
+  selected Promotion is awaiting Central projection, the page exposes an
+  explicit retry control rather than silently treating the selection as
+  applied.
+- Local verification: PHP lint, Blade cache, migration rollback/reapply
+  coverage, direct Fee Setup contract tests, and Central receivable/payment
+  regression pass (45 tests / 308 assertions across the targeted commands).
+  The local BOWEN_QA browser reset/verify guard correctly stopped because this
+  worktree lacks permission to connect to its local MySQL service; no
+  non-local fallback was used.  No Production system or data was contacted.
+
+Last updated: 2026-09-30
+
 ## Finance Layer 3 — Receivable lifecycle — local candidate ready for Production gate
 
 - Baseline: `9ce2339a03d0191926d6969d63cb5b10b4a56ca3`; Production has not

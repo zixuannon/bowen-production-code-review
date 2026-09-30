@@ -13,18 +13,27 @@ class FinanceCollectionV2MigrationRunnerTest extends TestCase
 {
     /** @var array<string, mixed> */
     private array $mysqlConnection;
+    /** @var array<string, mixed> */
+    private array $schoolConnection;
     private string $database;
+    private string $schoolDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->mysqlConnection = config('database.connections.mysql');
+        $this->schoolConnection = config('database.connections.school');
         $this->database = tempnam(sys_get_temp_dir(), 'collection-v2-runner-');
+        $this->schoolDatabase = tempnam(sys_get_temp_dir(), 'collection-v2-school-');
         Config::set('database.connections.mysql', [
             'driver' => 'sqlite', 'database' => $this->database, 'prefix' => '', 'foreign_key_constraints' => true,
         ]);
         DB::purge('mysql');
+        Config::set('database.connections.school', [
+            'driver' => 'sqlite', 'database' => $this->schoolDatabase, 'prefix' => '', 'foreign_key_constraints' => true,
+        ]);
+        DB::purge('school');
 
         Schema::connection('mysql')->create('schools', function ($table): void {
             $table->increments('id');
@@ -38,8 +47,11 @@ class FinanceCollectionV2MigrationRunnerTest extends TestCase
     protected function tearDown(): void
     {
         DB::purge('mysql');
+        DB::purge('school');
         Config::set('database.connections.mysql', $this->mysqlConnection);
+        Config::set('database.connections.school', $this->schoolConnection);
         @unlink($this->database);
+        @unlink($this->schoolDatabase);
         parent::tearDown();
     }
 
@@ -56,5 +68,22 @@ class FinanceCollectionV2MigrationRunnerTest extends TestCase
         $tenants = $method->invoke(app(MigrateFinanceCollectionV2::class));
 
         $this->assertSame(['MMBOWEN01' => 'active_zixuan'], $tenants);
+    }
+
+    public function test_promotion_selection_migration_is_additive_and_reversible_for_a_tenant_snapshot_table(): void
+    {
+        Schema::connection('school')->create('student_fee_assignment_items', function ($table): void {
+            $table->id();
+            $table->unsignedInteger('quantity_snapshot')->default(1);
+        });
+
+        $migration = require database_path('migrations/schools/2026_09_30_000001_add_student_fee_assignment_promotion_selection.php');
+        $migration->up();
+        $this->assertTrue(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'selected_promotion_id'));
+        $this->assertTrue(collect(Schema::connection('school')->getIndexes('student_fee_assignment_items'))
+            ->contains(fn (array $index): bool => ($index['name'] ?? '') === 'sfa_item_selected_promotion_idx'));
+
+        $migration->down();
+        $this->assertFalse(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'selected_promotion_id'));
     }
 }
