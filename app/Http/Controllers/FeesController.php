@@ -68,10 +68,9 @@ class FeesController extends Controller
     private SessionYearsTrackingsService $sessionYearsTrackingsService;
 
     /**
-     * Accept the legacy repeater's duplicated 0/1 checkbox payload only when
-     * every value is a valid boolean representation. Current forms submit a
-     * single scalar through the hidden field, so malformed values still fail
-     * the regular request validator.
+     * Accept only the legacy repeater's exact duplicated 0/1 checkbox payload.
+     * Current forms submit a single scalar through the hidden field, so every
+     * other array remains subject to the regular request validator.
      */
     private function normalizeQuantityEnabledInputs(Request $request): void
     {
@@ -86,10 +85,8 @@ class FeesController extends Controller
                     continue;
                 }
 
-                $values = array_values($row['quantity_enabled']);
-                $validBooleanValues = [true, false, 0, 1, '0', '1'];
-                if ($values !== [] && collect($values)->every(static fn ($value) => in_array($value, $validBooleanValues, true))) {
-                    $rows[$index]['quantity_enabled'] = end($values);
+                if (array_values($row['quantity_enabled']) === ['0', '1']) {
+                    $rows[$index]['quantity_enabled'] = '1';
                 }
             }
 

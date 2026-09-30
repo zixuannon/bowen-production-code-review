@@ -33,7 +33,7 @@ final class FeeItemQuantityConfigurationContractTest extends TestCase
         $this->assertStringContainsString('restoreQuantityEnabled(rows, feesData.compulsory_fees)', $edit);
         $this->assertStringContainsString('restoreQuantityEnabled(rows, feesData.optional_fees)', $edit);
         $this->assertStringContainsString('normalizeQuantityEnabledInputs($request)', $controller);
-        $this->assertStringContainsString("collect(\$values)->every", $controller);
+        $this->assertStringContainsString("=== ['0', '1']", $controller);
         $this->assertStringContainsString("'quantity_enabled'", $model);
         $this->assertStringContainsString('"quantity_enabled" => filter_var', $controller);
         $this->assertStringContainsString("['amount', 'optional', 'quantity_enabled'", $controller);
@@ -64,15 +64,23 @@ final class FeeItemQuantityConfigurationContractTest extends TestCase
             'optional_fees_type' => [
                 ['quantity_enabled' => ['0', '1']],
                 ['quantity_enabled' => ['0']],
-                ['quantity_enabled' => ['0', 'invalid']],
+                ['quantity_enabled' => ['1', '1']],
+                ['quantity_enabled' => ['0', '0']],
+                ['quantity_enabled' => ['1', '0']],
+                ['quantity_enabled' => ['0', '2']],
+                ['quantity_enabled' => ['0', ['1']]],
             ],
         ]);
 
         $method->invoke($controller, $request);
 
         $this->assertSame('1', $request->input('optional_fees_type.0.quantity_enabled'));
-        $this->assertSame('0', $request->input('optional_fees_type.1.quantity_enabled'));
-        $this->assertSame(['0', 'invalid'], $request->input('optional_fees_type.2.quantity_enabled'));
+        $this->assertSame(['0'], $request->input('optional_fees_type.1.quantity_enabled'));
+        $this->assertSame(['1', '1'], $request->input('optional_fees_type.2.quantity_enabled'));
+        $this->assertSame(['0', '0'], $request->input('optional_fees_type.3.quantity_enabled'));
+        $this->assertSame(['1', '0'], $request->input('optional_fees_type.4.quantity_enabled'));
+        $this->assertSame(['0', '2'], $request->input('optional_fees_type.5.quantity_enabled'));
+        $this->assertSame(['0', ['1']], $request->input('optional_fees_type.6.quantity_enabled'));
     }
 
     public function test_server_rejects_tampered_fixed_and_excessive_quantities_before_a_snapshot_is_created(): void
