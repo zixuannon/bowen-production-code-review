@@ -10,12 +10,14 @@ final class FrontDeskSchoolFinanceWorkspaceContractTest extends TestCase
     public function test_front_desk_fee_setup_contract_excludes_legacy_settlement_and_finance_administration(): void
     {
         self::assertSame([
+            'student-list',
             'fees-list', 'fees-create', 'fees-edit',
             'fees-type-list', 'fees-type-create', 'fees-type-edit',
             'fees-class-list', 'fees-class-create', 'fees-class-edit',
         ], TenantFrontDeskFeeSetupPermissionContract::names());
 
         foreach ([
+            'student-create', 'student-edit', 'student-delete',
             'fees-paid', 'fees-config', 'finance-payment-create',
             'finance-fund-account-manage', 'finance-transfer-create',
             'finance-handover-confirm', 'finance-staff-manage',

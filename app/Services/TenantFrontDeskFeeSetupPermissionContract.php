@@ -17,6 +17,10 @@ final class TenantFrontDeskFeeSetupPermissionContract
 {
     /** @var list<string> */
     public const PERMISSIONS = [
+        // Read-only student lookup is required to reach the existing Student
+        // Profile → Fee Setup workflow. It deliberately grants no student
+        // create, edit, or delete capability.
+        'student-list',
         'fees-list',
         'fees-create',
         'fees-edit',

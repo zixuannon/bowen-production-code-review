@@ -1,9 +1,10 @@
 # eSchool Current State
 
-## Front Desk — School Finance Workspace Consolidation — local candidate
+## Front Desk — School Finance Workspace Consolidation — deployed baseline; role-contract corrective candidate
 
-- Baseline: `6443c5afa750f7901f1173de5030153cd99d3e4b`. Production has not
-  been inspected, changed, or deployed in this phase.
+- Deployed baseline: `7b1b164aa5bcb88e3f456555f6cb2ac5849cbc91`.
+  The current local corrective candidate is based on that release; it has not
+  been deployed.
 - A School in canonical `CENTRAL` cutover now derives both daily Front Desk
   navigation and legacy-write retirement from the same authoritative cutover
   state. The obsolete code-based navigation rollout list is removed, resolving
@@ -19,8 +20,9 @@
   remain intact; existing legacy settlement POST routes retain the trusted
   Central-cutover server-side denial and cannot bypass Pending Collection →
   Head Finance confirmation → canonical Payment/Receipt/Ledger/Fund Account.
-- Canonical Front Desk onboarding now grants only an auditable tenant
-  fee-setup permission contract. It excludes legacy direct payment/receipt,
+- Canonical Front Desk onboarding grants only an auditable tenant role
+  contract: read-only own-school student lookup plus fee setup. It excludes
+  student create/edit/delete, legacy direct payment/receipt,
   Finance staff administration, Fund Account administration, opening balance,
   transfer, Head Finance confirmation, refund/reversal, promotion definitions,
   and other legacy settlement authority. Central collection submit remains a
@@ -32,7 +34,16 @@
   remain). Local Playwright Front Desk acceptance passes at 1440px and 390px
   without a collection submission, 404/500, or console error. The browser
   fixture was disposable local BOWEN_QA data only.
-- Production deployment is a Human Gate. Deployment must not invoke the
+- The deployed baseline removed Timecity Front Desk user #107's obsolete
+  `校区收款专员` role under audit #355, leaving the nine fee-setup permissions.
+  The resulting normal Student Profile entry was blocked because the original
+  contract omitted the required read-only `student-list` permission. The
+  current corrective candidate adds that exact permission to the shared
+  contract without reintroducing any legacy settlement or student-write
+  authority. It requires a separately approved code release and a scoped,
+  audited alignment of the Timecity canonical Front Desk role; Production has
+  not received this corrective candidate.
+- Deployment must not invoke the
   global onboarding role provisioner without an explicit, separately audited
   tenant-role reconciliation plan, since its `--execute` mode changes role
   permission definitions.

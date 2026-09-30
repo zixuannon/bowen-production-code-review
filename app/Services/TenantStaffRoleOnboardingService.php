@@ -22,7 +22,7 @@ final class TenantStaffRoleOnboardingService
     {
         return [
             self::SCHOOL_ACCOUNTANT => 'Tenant identity only. Tuition collection is not granted by this role assignment.',
-            self::FRONT_DESK => 'Tenant fee setup only. Central collection access remains limited to the explicit Pending Collection grant.',
+            self::FRONT_DESK => 'Read-only own-school student lookup and tenant fee setup. Central collection access remains limited to the explicit Pending Collection grant.',
             self::PRINCIPAL => 'Tenant identity only. Central Finance access remains read-only when explicitly granted.',
         ];
     }
