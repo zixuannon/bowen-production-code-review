@@ -51,6 +51,13 @@ if id www >/dev/null 2>&1; then
   chown -R www:www "$release_dir/bootstrap/cache"
   chmod 775 "$release_dir/bootstrap/cache"
 fi
+# These files are generated from the installed dependency set.  They are
+# tracked by this legacy repository, so a fresh worktree can otherwise carry
+# a stale provider map into an immutable release (for example, a provider for
+# a dev-only package omitted by --no-dev).  Remove only these release-local,
+# regenerable caches before discovery; the runtime-user command below rebuilds
+# them against the exact production vendor tree.
+rm -f "$release_dir/bootstrap/cache/packages.php" "$release_dir/bootstrap/cache/services.php"
 if [[ -x /usr/bin/composer ]]; then
   # Composer manages the immutable release as root, but its default
   # post-autoload hook boots Laravel.  Suppress that root bootstrap and run

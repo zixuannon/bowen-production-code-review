@@ -6,10 +6,13 @@
   release is healthy after a bounded repair of the two already-identified
   root-owned runtime artifacts; `cache/data`, `views`, and `sessions` each
   currently have zero root-owned entries.
-- The local follow-up candidate `6c2a52b` prevents the release builder from
+- The local follow-up candidate prevents the release builder from
   using root Composer hooks to bootstrap Laravel: Composer uses `--no-scripts`,
   then package discovery and any explicit runtime-writing Artisan operation
-  run as `www`. A new read-only ownership guard blocks a release before and
+  run as `www`. Before discovery it removes only the two release-local,
+  regenerated Composer provider caches (`bootstrap/cache/packages.php` and
+  `services.php`), preventing a tracked stale provider map from referring to
+  a dev-only package omitted by `--no-dev`. A new read-only ownership guard blocks a release before and
   after switching if shared cache data, compiled views, or sessions contain a
   root-owned entry or are not writable by `www`; a post-switch failure restores
   the prior immutable symlink rather than repairing files silently.

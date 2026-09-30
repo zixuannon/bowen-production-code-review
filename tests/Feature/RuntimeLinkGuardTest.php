@@ -103,6 +103,7 @@ final class RuntimeLinkGuardTest extends TestCase
         $this->assertStringContainsString('verify_runtime_ownership.sh', $deploy);
         $this->assertStringContainsString('--no-scripts', $deploy);
         $this->assertStringContainsString('package:discover --ansi', $deploy);
+        $this->assertStringContainsString('rm -f "$release_dir/bootstrap/cache/packages.php" "$release_dir/bootstrap/cache/services.php"', $deploy);
         $this->assertStringContainsString('previous release restored', $deploy);
         $this->assertStringContainsString('framework/cache/data framework/views framework/sessions', $ownershipGuard);
         $this->assertStringContainsString('contains root-owned runtime entries', $ownershipGuard);
