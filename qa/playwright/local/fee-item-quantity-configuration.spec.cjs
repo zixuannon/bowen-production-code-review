@@ -47,20 +47,26 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     try {
       const create = await page.goto('/fees', { waitUntil: 'domcontentloaded' });
       expect(create?.status()).toBe(200);
-      await expect(page.getByText('Allow Quantity', { exact: false }).first()).toBeVisible();
-      await expect(page.locator('input[type="checkbox"][name*="quantity_enabled"]').first()).toBeVisible();
+      await expect(page.getByText('Allow Multiple Quantity', { exact: false }).first()).toBeVisible();
+      const quantitySwitch = page.locator('input[type="checkbox"][name*="quantity_enabled"]').first();
+      await expect(quantitySwitch).toBeVisible();
+      await quantitySwitch.check();
+      await expect(quantitySwitch).toBeChecked();
+      await expect(page.locator('.fee-item-card.is-mmk .fee-exchange-detail').first()).toBeHidden();
+      await expect(page.locator('.fee-item-card.is-mmk .fee-mmk-detail').first()).toBeHidden();
+
+      await page.locator('.fee-item-card .fee_currency').first().selectOption('USD');
+      await expect(page.locator('.fee-item-card:not(.is-mmk) .fee-exchange-detail').first()).toBeVisible();
+      await expect(page.locator('.fee-item-card:not(.is-mmk) .fee-mmk-detail').first()).toBeVisible();
 
       const edit = await page.goto('/fees/1/edit', { waitUntil: 'domcontentloaded' });
       expect(edit?.status()).toBe(200);
-      await expect(page.getByText('Allow Quantity', { exact: false }).first()).toBeVisible();
+      await expect(page.getByText('Allow Multiple Quantity', { exact: false }).first()).toBeVisible();
 
       const setup = await page.goto('/students/1/fee-assignment', { waitUntil: 'networkidle' });
       expect(setup?.status()).toBe(200);
       await expect(page.getByRole('heading', { name: 'Student Fee Setup', exact: true })).toBeVisible();
       await expect(page.locator('input[readonly][value="1"]').first()).toBeVisible();
-      const enabledQuantity = page.locator('input.fee-quantity[min="1"][max="100"]').first();
-      await expect(enabledQuantity).toBeVisible();
-      await expect(enabledQuantity).toHaveValue('1');
       expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBeFalsy();
       expect(failures).toEqual([]);
     } finally {

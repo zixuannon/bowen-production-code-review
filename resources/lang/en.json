@@ -910,6 +910,11 @@
     ,"Recorded At": "Recorded At"
     ,"Opening Balance Effective Date": "Opening Balance Effective Date"
     ,"Custodian (optional)": "Custodian (optional)"
+    ,"Fee Item": "Fee Item"
+    ,"Converted MMK": "Converted MMK"
+    ,"Add Fee Item": "Add Fee Item"
+    ,"Allow Multiple Quantity": "Allow Multiple Quantity"
+    ,"Students may select more than one unit during Fee Setup.": "Students may select more than one unit during Fee Setup."
     ,"Data scope: Official data. Owner: Bowen Group / Central Finance. School access remains disabled until explicit allocations are saved.": "Data scope: Official data. Owner: Bowen Group / Central Finance. School access remains disabled until explicit allocations are saved."
     ,"Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically.": "Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically."
 }

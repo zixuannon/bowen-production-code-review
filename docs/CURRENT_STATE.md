@@ -2,8 +2,10 @@
 
 ## Fee Item Quantity Configuration — local candidate; regression verified
 
+- Fee Item Management UI cleanup is now part of the same local candidate: Create/Edit rows are compact cards; the delete action is attached to each card; the quantity switch uses localized single-locale wording; and MMK rows visually collapse redundant exchange-rate and converted-MMK fields. This is presentation-only and does not change pricing, quantity semantics, validation, promotions, receivables, or any persisted Finance record.
+
 - Baseline: Production lineage `23569f5e5c2a7deaa53d5b37e18c6e592e6472bb`.
-  This local-only candidate exposes an explicit `Allow Quantity / 允许数量`
+  This local-only candidate exposes an explicit `Allow Multiple Quantity / 允许多数量`
   checkbox on Fee Item create and edit. `optional` and `quantity_enabled` are
   independent values; existing Fee Items remain false/default-off and no
   historical assignment, Receivable, Payment, Receipt, Ledger, Fund Account,

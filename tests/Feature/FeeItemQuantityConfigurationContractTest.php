@@ -17,8 +17,8 @@ final class FeeItemQuantityConfigurationContractTest extends TestCase
         $controller = (string) file_get_contents($root.'/app/Http/Controllers/FeesController.php');
         $model = (string) file_get_contents($root.'/app/Models/FeesClassType.php');
 
-        $this->assertStringContainsString('Allow Quantity', $create);
-        $this->assertStringContainsString('Allow Quantity', $edit);
+        $this->assertStringContainsString('Allow Multiple Quantity', $create);
+        $this->assertStringContainsString('Allow Multiple Quantity', $edit);
         $this->assertStringContainsString('compulsory_fees_type[][quantity_enabled]', $create);
         $this->assertStringContainsString('optional_fees_type[][quantity_enabled]', $create);
         $this->assertStringContainsString('"quantity_enabled"', $edit);
