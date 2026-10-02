@@ -41,6 +41,7 @@ final class StudentFeeAssignmentController extends Controller
         $availableItems = $this->assignments->availableItems($student);
         $availableAdditionalItems = $this->assignments->availableAdditionalItems($student);
         $draft = $this->assignments->latestDraft($student);
+        $draftDiscountRequests = $this->promotionSelections->draftStudentDiscountRequests($student, $draft);
         return view('students.fee-assignment', [
             'student' => $student,
             'availableItems' => $availableItems,
@@ -49,6 +50,9 @@ final class StudentFeeAssignmentController extends Controller
             'canCreateStudentSpecificDiscounts' => $this->promotionSelections->canCreateStudentSpecificDiscounts(Auth::user(), $student),
             'quantityMax' => $this->assignments->maxQuantity(),
             'draft' => $draft,
+            'draftDiscountRequests' => $draftDiscountRequests,
+            'draftDiscountRequestLocked' => $this->promotionSelections->draftHasLockedDiscountRequest($draft),
+            'draftDiscountRequestPending' => $this->promotionSelections->draftHasPendingDiscountRequest($draft),
             'draftPromotionPreview' => $this->promotionSelections->previewDraft(Auth::user(), $student, $draft),
             'confirmedAssignments' => $confirmed,
             'finance' => $finance,
@@ -91,6 +95,7 @@ final class StudentFeeAssignmentController extends Controller
             'student_discounts.*.effective_date' => ['nullable', 'string'],
         ]);
         $student = $this->student($studentId);
+        $this->promotionSelections->assertDraftMayBeSaved($student);
         $available = $this->assignments->availableItems($student);
         $optionalIds = collect($data['optional_fee_ids'] ?? [])->map(fn ($id): int => (int) $id)->filter(fn (int $id): bool => $id > 0)->unique();
         $selected = $available->filter(fn ($item): bool => !(bool) $item->optional || $optionalIds->contains((int) $item->id));
@@ -109,6 +114,12 @@ final class StudentFeeAssignmentController extends Controller
         ResponseService::noPermissionThenRedirect('fees-create');
         $request->validate(['assignment_uuid' => ['required', 'uuid']]);
         $student = $this->student($studentId);
+        $draft = $student->feeAssignments()->where('status', StudentFeeAssignment::DRAFT)->where('uuid', (string) $request->assignment_uuid)->firstOrFail();
+        try {
+            $this->promotionSelections->synchronizeApprovedDraftStudentDiscounts(Auth::user(), $student, $draft);
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            return back()->withErrors($exception->errors())->withInput();
+        }
         $assignment = $this->assignments->confirm($student, Auth::user(), (string) $request->assignment_uuid);
         $promotionPending = false;
         try {

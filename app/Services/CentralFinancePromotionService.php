@@ -9,6 +9,7 @@ use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
 use App\Models\CentralFinanceDocumentAudit;
 use App\Models\FinanceGroupSchool;
+use App\Models\School;
 use App\Support\CentralFinanceDecimal;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
@@ -42,6 +43,9 @@ final class CentralFinancePromotionService
         if ($classifications->count() !== 1) throw new InvalidArgumentException('A Promotion definition cannot mix QA/Test and Official Schools.');
         $studentProfileId = isset($input['student_profile_id']) && $input['student_profile_id'] !== '' ? (int) $input['student_profile_id'] : null;
         $scope = (string) ($input['scope'] ?? ($studentProfileId === null ? CentralFinancePromotion::GENERAL : CentralFinancePromotion::STUDENT_SPECIFIC));
+        if ($studentProfileId !== null || $scope === CentralFinancePromotion::STUDENT_SPECIFIC) {
+            throw new InvalidArgumentException('Student-specific Discounts must be submitted from Student Fee Setup and approved by Head Finance.');
+        }
         if (!in_array($scope, CentralFinancePromotion::SCOPES, true)) {
             throw new InvalidArgumentException('Promotion scope is invalid.');
         }
@@ -122,6 +126,18 @@ final class CentralFinancePromotionService
         if (!$this->studentSpecificSchemaInstalled()) {
             throw new AuthorizationException('Student-specific Discounts are unavailable until the approved schema update is installed.');
         }
+        // A Central Head Finance decision is the approval boundary. It may
+        // materialise the exact request without inheriting a Front Desk scope.
+        try {
+            $this->configuration->assertHeadFinanceCanConfigureSchool($actor, School::on('mysql')->findOrFail($schoolId));
+            return;
+        } catch (AuthorizationException|\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            // A tenant Front Desk still requires the deliberately narrow scope
+            // below merely to submit a request from its own Fee Setup screen.
+            // The legacy User model intentionally follows a tenant session;
+            // that makes the Central-only Head Finance role lookup unavailable
+            // here and is equivalent to a non-Head-Finance result.
+        }
         $this->workspace->assertCanCreateStudentSpecificDiscountsSchool($actor, $schoolId);
     }
 
@@ -136,6 +152,36 @@ final class CentralFinancePromotionService
     {
         $schoolId = (int) $profile->school_id;
         $this->assertCanCreateStudentSpecificDiscount($actor, $schoolId);
+        $groupId = $this->singleActiveGroupForStudentDiscount($actor, $schoolId);
+
+        return $this->createStudentSpecificForFeeSetup($actor, $groupId, $profile, $feesClassTypeId, $input, $idempotencyKey);
+    }
+
+    /**
+     * Materialises only the immutable terms of a Head Finance-approved request.
+     * The requester cannot turn its narrow submit permission into definition
+     * authority, and Head Finance needs control of the request's own Group,
+     * not an unrelated school-operate grant.
+     *
+     * @param array{discount_type:string,discount_value:string,reason:string,effective_date:CarbonImmutable} $input
+     */
+    public function defineApprovedStudentSpecificForFeeSetupRequest(CentralFinanceUser $actor, int $groupId, CentralFinanceStudentProfile $profile, int $feesClassTypeId, array $input, string $idempotencyKey): CentralFinancePromotion
+    {
+        $this->configuration->assertHeadFinanceCanConfigureGroup($actor, $groupId);
+        $schoolId = (int) $profile->school_id;
+        if (!FinanceGroupSchool::on('mysql')->where(['group_id' => $groupId, 'school_id' => $schoolId, 'status' => 'active'])->exists()) {
+            throw new AuthorizationException('The approved Student-specific Discount is outside its active Finance Group School allocation.');
+        }
+
+        return $this->createStudentSpecificForFeeSetup($actor, $groupId, $profile, $feesClassTypeId, $input, $idempotencyKey);
+    }
+
+    /**
+     * @param array{discount_type:string,discount_value:string,reason:string,effective_date:CarbonImmutable} $input
+     */
+    private function createStudentSpecificForFeeSetup(CentralFinanceUser $actor, int $groupId, CentralFinanceStudentProfile $profile, int $feesClassTypeId, array $input, string $idempotencyKey): CentralFinancePromotion
+    {
+        $schoolId = (int) $profile->school_id;
         if ($feesClassTypeId < 1 || !preg_match('/^[a-f0-9]{64}$/', $idempotencyKey)) {
             throw new InvalidArgumentException('Student-specific Discount request is invalid.');
         }
@@ -149,14 +195,6 @@ final class CentralFinancePromotionService
             || $reason === '' || mb_strlen($reason) > 2000 || !$effectiveDate instanceof CarbonImmutable) {
             throw new InvalidArgumentException('Student-specific Discount details are invalid.');
         }
-
-        $groupIds = FinanceGroupSchool::on('mysql')->where('school_id', $schoolId)->where('status', 'active')
-            ->whereIn('group_id', DB::connection('mysql')->table('finance_group_users')->where('central_user_id', $actor->id)->where('status', 'active')->pluck('group_id'))
-            ->pluck('group_id')->unique()->values();
-        if ($groupIds->count() !== 1) {
-            throw new AuthorizationException('The current Front Desk identity has no unambiguous active Finance Group for this Student.');
-        }
-        $groupId = (int) $groupIds->sole();
 
         return DB::connection('mysql')->transaction(function () use ($actor, $profile, $feesClassTypeId, $idempotencyKey, $type, $value, $reason, $effectiveDate, $schoolId, $groupId): CentralFinancePromotion {
             $existing = CentralFinancePromotion::on('mysql')->where('creation_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
@@ -229,6 +267,18 @@ final class CentralFinancePromotionService
             }
             return $promotion;
         });
+    }
+
+    private function singleActiveGroupForStudentDiscount(CentralFinanceUser $actor, int $schoolId): int
+    {
+        $groupIds = FinanceGroupSchool::on('mysql')->where('school_id', $schoolId)->where('status', 'active')
+            ->whereIn('group_id', DB::connection('mysql')->table('finance_group_users')->where('central_user_id', $actor->id)->where('status', 'active')->pluck('group_id'))
+            ->pluck('group_id')->unique()->values();
+        if ($groupIds->count() !== 1) {
+            throw new AuthorizationException('The current Front Desk identity has no unambiguous active Finance Group for this Student.');
+        }
+
+        return (int) $groupIds->sole();
     }
 
     /** @return \Illuminate\Support\Collection<int, CentralFinancePromotion> */

@@ -141,6 +141,7 @@
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.payments.*') && request('view') === 'refunds' ? 'active' : '' }}" href="{{ route('central-finance.payments.index', ['view' => 'refunds']) }}">{{ __('退款 / 冲回') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.receivables*') && request('view') === 'adjustments' ? 'active' : '' }}" href="{{ route('central-finance.receivables', ['view' => 'adjustments']) }}">{{ __('应收调整 / 减免') }}</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.promotions*') ? 'active' : '' }}" href="{{ route('central-finance.promotions') }}">{{ __('Promotion definitions') }}</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.student-discount-requests*') ? 'active' : '' }}" href="{{ route('central-finance.student-discount-requests.index') }}">{{ __('Student Discount Requests') }}</a></li>
                             @endif
                         </ul></details></li>
                         @if($centralIsHeadFinance)

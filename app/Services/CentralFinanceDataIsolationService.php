@@ -34,6 +34,7 @@ final class CentralFinanceDataIsolationService
         'receivable' => ['table' => 'central_finance_receivables', 'school' => 'school_id'],
         'receivable_adjustment' => ['table' => 'central_finance_receivable_adjustments', 'school' => 'school_id'],
         'promotion' => ['table' => 'central_finance_promotions', 'school' => null],
+        'student_discount_request' => ['table' => 'central_finance_student_discount_requests', 'school' => 'school_id'],
         'promotion_application' => ['table' => 'central_finance_promotion_applications', 'school' => 'school_id'],
         'pending_collection' => ['table' => 'central_finance_pending_collections', 'school' => 'school_id'],
         'pending_collection_allocation' => ['table' => 'central_finance_pending_collection_allocations', 'school' => 'school_id'],

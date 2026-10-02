@@ -103,4 +103,26 @@ class FinanceCollectionV2MigrationRunnerTest extends TestCase
         $migration->down();
         $this->assertFalse(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'student_discount_type'));
     }
+
+    public function test_student_discount_request_migrations_are_additive_and_reversible(): void
+    {
+        Schema::connection('school')->create('student_fee_assignment_items', function ($table): void {
+            $table->id();
+            $table->date('student_discount_effective_date')->nullable();
+        });
+
+        $central = require database_path('migrations/2026_10_02_000002_create_central_finance_student_discount_requests.php');
+        $tenant = require database_path('migrations/schools/2026_10_02_000002_add_student_discount_request_reference.php');
+        $central->up();
+        $tenant->up();
+
+        $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_student_discount_requests'));
+        $this->assertTrue(Schema::connection('mysql')->hasColumns('central_finance_student_discount_requests', ['request_uuid', 'idempotency_key', 'status', 'promotion_id']));
+        $this->assertTrue(Schema::connection('school')->hasColumns('student_fee_assignment_items', ['student_discount_request_uuid', 'student_discount_request_status']));
+
+        $tenant->down();
+        $central->down();
+        $this->assertFalse(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'student_discount_request_uuid'));
+        $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_student_discount_requests'));
+    }
 }

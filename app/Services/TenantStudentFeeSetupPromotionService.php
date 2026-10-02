@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CentralFinanceReceivable;
+use App\Models\CentralFinanceStudentDiscountRequest;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
 use App\Models\FeesClassType;
@@ -30,6 +31,7 @@ final class TenantStudentFeeSetupPromotionService
         private readonly CentralFinanceSchoolCutoverService $cutovers,
         private readonly CentralFinancePromotionService $promotions,
         private readonly CentralFinanceReceivableSyncService $receivables,
+        private readonly CentralFinanceStudentDiscountRequestService $discountRequests,
     ) {}
 
     /** @param iterable<FeesClassType> $items @return Collection<int, Collection<int, object>> */
@@ -174,10 +176,104 @@ final class TenantStudentFeeSetupPromotionService
     }
 
     /**
-     * Turn a validated draft request into an idempotent Central Promotion
-     * definition before preview. The draft remains mutable; only confirmation
-     * creates the immutable Promotion Application/Receivable adjustment.
+     * A Fee Setup draft is the source record for a pending approval. Rebuilding
+     * it would replace its tenant item UUIDs, so it must remain frozen until
+     * Head Finance makes a decision. A rejected request may be deliberately
+     * removed or resubmitted as a new request.
      */
+    public function assertDraftMayBeSaved(Students $student): void
+    {
+        $draft = $student->feeAssignments()->with('items')->where('status', StudentFeeAssignment::DRAFT)->latest('id')->first();
+        if ($draft === null) {
+            return;
+        }
+
+        foreach ($draft->items as $item) {
+            $uuid = trim((string) $item->student_discount_request_uuid);
+            if ($uuid === '') {
+                continue;
+            }
+            $request = CentralFinanceStudentDiscountRequest::on('mysql')->where('request_uuid', $uuid)->first();
+            if ($request === null) {
+                throw new AuthorizationException('The saved student Discount request is not trusted.');
+            }
+            if (in_array($request->status, [CentralFinanceStudentDiscountRequest::PENDING, CentralFinanceStudentDiscountRequest::APPROVED], true)) {
+                throw ValidationException::withMessages(['student_discounts' => __('This Fee Setup draft is locked while Head Finance decides the submitted student-specific Discount. Confirm it after approval, or wait for a rejection before changing it.')]);
+            }
+        }
+    }
+
+    /** Render-only status for a draft that must not be rebuilt. */
+    public function draftHasLockedDiscountRequest(?StudentFeeAssignment $assignment): bool
+    {
+        if ($assignment === null) {
+            return false;
+        }
+        $assignment->loadMissing('items');
+        foreach ($assignment->items as $item) {
+            $uuid = trim((string) $item->student_discount_request_uuid);
+            if ($uuid === '') {
+                continue;
+            }
+            $request = CentralFinanceStudentDiscountRequest::on('mysql')->where('request_uuid', $uuid)->first();
+            if ($request === null || in_array($request->status, [CentralFinanceStudentDiscountRequest::PENDING, CentralFinanceStudentDiscountRequest::APPROVED], true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A pending request must not be confirmed; an approved one may be confirmed unchanged. */
+    public function draftHasPendingDiscountRequest(?StudentFeeAssignment $assignment): bool
+    {
+        if ($assignment === null) {
+            return false;
+        }
+
+        $assignment->loadMissing('items');
+        foreach ($assignment->items as $item) {
+            $uuid = trim((string) $item->student_discount_request_uuid);
+            if ($uuid === '') {
+                continue;
+            }
+            $request = CentralFinanceStudentDiscountRequest::on('mysql')->where('request_uuid', $uuid)->first();
+            if ($request === null || $request->status === CentralFinanceStudentDiscountRequest::PENDING) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The Central request is the decision authority.  Tenant draft status is
+     * intentionally only a last-known snapshot, so rendering must not show a
+     * stale pending value after Head Finance has decided.
+     *
+     * @return Collection<string, CentralFinanceStudentDiscountRequest>
+     */
+    public function draftStudentDiscountRequests(Students $student, ?StudentFeeAssignment $assignment): Collection
+    {
+        if ($assignment === null) {
+            return collect();
+        }
+
+        $uuids = $assignment->items->pluck('student_discount_request_uuid')
+            ->map(static fn ($uuid): string => trim((string) $uuid))
+            ->filter()->unique()->values();
+        if ($uuids->isEmpty()) {
+            return collect();
+        }
+
+        $profile = $this->profile($student);
+        return CentralFinanceStudentDiscountRequest::on('mysql')
+            ->where('school_id', $student->school_id)
+            ->where('student_profile_id', $profile->id)
+            ->whereIn('request_uuid', $uuids)
+            ->get()->keyBy('request_uuid');
+    }
+
+    /** Submit a Front Desk request; it deliberately does not create a Promotion. */
     public function materializeDraftStudentDiscounts(User $actor, Students $student, StudentFeeAssignment $assignment): StudentFeeAssignment
     {
         $assignment->loadMissing('items');
@@ -189,30 +285,67 @@ final class TenantStudentFeeSetupPromotionService
         if (!Schema::connection('school')->hasColumns('student_fee_assignment_items', ['student_discount_type', 'student_discount_value', 'student_discount_reason', 'student_discount_effective_date'])) {
             throw new \RuntimeException('Student-specific Discount draft schema is not installed.');
         }
-        $principal = $this->principal($actor, $student);
-        $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
+        $principal = $this->principal($actor, $student); $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
         $this->promotions->assertCanCreateStudentSpecificDiscount($principal, (int) $student->school_id);
         $profile = $this->profile($student);
         foreach ($items as $item) {
-            $effectiveDate = CarbonImmutable::parse((string) $item->student_discount_effective_date, 'Asia/Yangon')->startOfDay();
-            if ($item->student_discount_type === \App\Models\CentralFinancePromotion::FIXED
-                && CentralFinanceDecimal::compare((string) $item->student_discount_value, (string) $item->amount_snapshot) >= 0) {
-                throw ValidationException::withMessages(['student_discounts' => __('A student-specific Discount must leave a positive net amount.')]);
+            if (!Schema::connection('school')->hasColumns('student_fee_assignment_items', ['student_discount_request_uuid', 'student_discount_request_status'])) {
+                throw new \RuntimeException('Student Discount request schema is not installed.');
             }
-            $key = hash('sha256', implode('|', [
-                'student-fee-setup-discount', (int) $student->school_id, (int) $profile->id, (string) $assignment->uuid,
-                (int) $item->fees_class_type_id, (string) $item->student_discount_type, (string) $item->student_discount_value,
-                (string) $item->student_discount_reason, $effectiveDate->toDateString(),
-            ]));
-            $promotion = $this->promotions->defineStudentSpecificForFeeSetup($principal, $profile, (int) $item->fees_class_type_id, [
-                'discount_type' => (string) $item->student_discount_type,
-                'discount_value' => (string) $item->student_discount_value,
-                'reason' => (string) $item->student_discount_reason,
-                'effective_date' => $effectiveDate,
-            ], $key);
-            if ((int) $item->selected_promotion_id !== (int) $promotion->id) {
-                $item->update(['selected_promotion_id' => $promotion->id]);
+            $existing = trim((string) $item->student_discount_request_uuid);
+            if ($existing !== '') {
+                $request = CentralFinanceStudentDiscountRequest::on('mysql')->where('request_uuid', $existing)->first();
+                if ($request === null || (int) $request->school_id !== (int) $student->school_id || (int) $request->student_profile_id !== (int) $profile->id) {
+                    throw new AuthorizationException('The saved student Discount request is not trusted.');
+                }
+                if ($request->status === CentralFinanceStudentDiscountRequest::PENDING) {
+                    $this->assertRequestMatchesItem($request, $item);
+                    $item->update(['student_discount_request_status' => CentralFinanceStudentDiscountRequest::PENDING]);
+                    continue;
+                }
+                if ($request->status === CentralFinanceStudentDiscountRequest::APPROVED) {
+                    $this->assertRequestMatchesItem($request, $item);
+                    $item->update(['student_discount_request_status' => CentralFinanceStudentDiscountRequest::APPROVED, 'selected_promotion_id' => $request->promotion_id]);
+                    continue;
+                }
+                // A rejected request is immutable. The Front Desk must remove
+                // it from the draft and submit a new, explicit request.
+                throw ValidationException::withMessages(['student_discounts' => __('This student-specific Discount was rejected. Remove it or submit a new request.')]);
             }
+            $request = $this->discountRequests->submit($principal, $profile, $assignment, $item);
+            $item->update(['student_discount_request_uuid' => $request->request_uuid, 'student_discount_request_status' => $request->status, 'selected_promotion_id' => null]);
+        }
+        return $assignment->fresh('items');
+    }
+
+    private function assertRequestMatchesItem(CentralFinanceStudentDiscountRequest $request, StudentFeeAssignmentItem $item): void
+    {
+        $matches = (int) $request->fees_class_type_id === (int) $item->fees_class_type_id
+            && $request->discount_type === (string) $item->student_discount_type
+            && CentralFinanceDecimal::compare((string) $request->discount_value, (string) $item->student_discount_value) === 0
+            && hash_equals((string) $request->reason, trim((string) $item->student_discount_reason))
+            && $request->effective_date?->format('Y-m-d') === $item->student_discount_effective_date?->format('Y-m-d')
+            && CentralFinanceDecimal::compare((string) $request->gross_amount_snapshot, (string) $item->amount_snapshot) === 0;
+        if (!$matches) {
+            throw new AuthorizationException('A submitted student-specific Discount request may not be modified.');
+        }
+    }
+
+    /** Blocks immutable confirmation until every requested Discount was approved. */
+    public function synchronizeApprovedDraftStudentDiscounts(User $actor, Students $student, StudentFeeAssignment $assignment): StudentFeeAssignment
+    {
+        $assignment->loadMissing('items');
+        foreach ($assignment->items->where('status', StudentFeeAssignmentItem::ACTIVE) as $item) {
+            if (trim((string) $item->student_discount_type) === '') continue;
+            $uuid = trim((string) $item->student_discount_request_uuid);
+            $request = $uuid === '' ? null : CentralFinanceStudentDiscountRequest::on('mysql')->where('request_uuid', $uuid)->first();
+            if ($request === null || (int) $request->school_id !== (int) $student->school_id || (int) $request->fees_class_type_id !== (int) $item->fees_class_type_id) {
+                throw ValidationException::withMessages(['student_discounts' => __('Submit this student-specific Discount for Head Finance approval before confirming Fee Setup.')]);
+            }
+            if ($request->status === CentralFinanceStudentDiscountRequest::PENDING) throw ValidationException::withMessages(['student_discounts' => __('Student-specific Discount is awaiting Head Finance approval.')]);
+            if ($request->status === CentralFinanceStudentDiscountRequest::REJECTED) throw ValidationException::withMessages(['student_discounts' => __('Student-specific Discount was rejected: ').$request->rejection_reason]);
+            if ($request->status !== CentralFinanceStudentDiscountRequest::APPROVED || !(int) $request->promotion_id) throw new AuthorizationException('Student-specific Discount approval is invalid.');
+            $item->update(['student_discount_request_status' => CentralFinanceStudentDiscountRequest::APPROVED, 'selected_promotion_id' => $request->promotion_id]);
         }
         return $assignment->fresh('items');
     }
@@ -230,12 +363,6 @@ final class TenantStudentFeeSetupPromotionService
             return collect();
         }
 
-        $items = $assignment->items->where('status', 'active')
-            ->filter(fn ($item): bool => (int) ($item->selected_promotion_id ?? 0) > 0);
-        if ($items->isEmpty()) {
-            return collect();
-        }
-
         try {
             $principal = $this->principal($actor, $student);
             $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
@@ -245,16 +372,30 @@ final class TenantStudentFeeSetupPromotionService
 
         $date = CarbonImmutable::now('Asia/Yangon');
         $profile = $this->profile($student);
-        return $items->mapWithKeys(function ($item) use ($principal, $student, $date, $profile): array {
+        $requests = $this->draftStudentDiscountRequests($student, $assignment);
+        $items = $assignment->items->where('status', 'active')->filter(function ($item) use ($requests): bool {
+            if ((int) ($item->selected_promotion_id ?? 0) > 0) {
+                return true;
+            }
+            $request = $requests->get(trim((string) $item->student_discount_request_uuid));
+            return $request?->status === CentralFinanceStudentDiscountRequest::APPROVED && (int) $request->promotion_id > 0;
+        });
+        if ($items->isEmpty()) {
+            return collect();
+        }
+
+        return $items->mapWithKeys(function ($item) use ($principal, $student, $date, $profile, $requests): array {
             try {
                 $effectiveDate = trim((string) ($item->student_discount_effective_date ?? '')) !== ''
                     ? CarbonImmutable::parse((string) $item->student_discount_effective_date, 'Asia/Yangon')->startOfDay()
                     : $date;
+                $request = $requests->get(trim((string) $item->student_discount_request_uuid));
+                $promotionId = (int) ($item->selected_promotion_id ?: ($request?->status === CentralFinanceStudentDiscountRequest::APPROVED ? $request->promotion_id : 0));
                 return [(int) $item->id => $this->promotions->previewForFeeSetup(
                     $principal,
                     (int) $student->school_id,
                     (int) $item->fees_class_type_id,
-                    (int) $item->selected_promotion_id,
+                    $promotionId,
                     CentralFinanceDecimal::normalize((string) $item->amount_snapshot),
                     $effectiveDate,
                     (int) $profile->id,

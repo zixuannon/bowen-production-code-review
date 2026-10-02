@@ -17,27 +17,30 @@
         </div></div>
 
         @if($availableItems->isNotEmpty())
-            <form method="POST" action="{{ route('students.fee-assignment.draft', $student->id) }}" class="card">
+            <form method="POST" action="{{ route('students.fee-assignment.draft', $student->id) }}" class="card" data-draft-discount-locked="{{ $draftDiscountRequestLocked ? '1' : '0' }}">
                 @csrf
                 <div class="card-body">
                     <h4>{{ __('Fee Items') }}</h4>
+                    @if($draftDiscountRequestLocked)<div class="alert alert-info">{{ __('This draft is locked while Head Finance decides the student-specific Discount request. Confirm the Fee Setup after approval, or wait for a rejection before changing the request.') }}</div>@endif
                     @foreach($availableItems->groupBy(fn($item) => $item->fees_type?->name ?? __('Other')) as $type => $items)
                         <h5 class="mt-4">{{ $type }}</h5>
                         @foreach($items as $item)
                             @php($draftItem = collect(optional($draft)->items)->firstWhere('fees_class_type_id', $item->id))
+                            @php($discountRequest = $draftItem ? $draftDiscountRequests->get(trim((string) $draftItem->student_discount_request_uuid)) : null)
+                            @php($discountRequestStatus = $discountRequest?->status ?: $draftItem?->student_discount_request_status)
                             @php($checked = !$item->optional || $draftItem !== null)
                             @php($choiceItems = $promotionChoices->get((int) $item->id, collect()))
                             @php($discountActive = trim((string) ($draftItem?->student_discount_type ?? '')) !== '')
                             <div class="border rounded p-3 mb-2 fee-item-row">
                                 <div class="form-check">
-                                    <input class="form-check-input fee-item" id="fee-item-{{ $item->id }}" type="checkbox" name="optional_fee_ids[]" value="{{ $item->id }}" data-unit-price="{{ $item->fee_original_amount ?? $item->amount }}" data-currency="{{ strtoupper($item->fee_currency ?: $item->fee?->currency ?: 'MMK') }}" {{ $checked ? 'checked' : '' }} {{ !$item->optional ? 'disabled' : '' }}>
+                                    <input class="form-check-input fee-item" id="fee-item-{{ $item->id }}" type="checkbox" name="optional_fee_ids[]" value="{{ $item->id }}" data-unit-price="{{ $item->fee_original_amount ?? $item->amount }}" data-currency="{{ strtoupper($item->fee_currency ?: $item->fee?->currency ?: 'MMK') }}" {{ $checked ? 'checked' : '' }} {{ !$item->optional || $draftDiscountRequestLocked ? 'disabled' : '' }}>
                                     <label class="form-check-label" for="fee-item-{{ $item->id }}">{{ $item->fee?->name }} · {{ number_format((float) ($item->fee_original_amount ?? $item->amount), 2) }} {{ strtoupper($item->fee_currency ?: $item->fee?->currency ?: 'MMK') }} @if(!$item->optional)<span class="badge badge-secondary">{{ __('Compulsory') }}</span>@else<span class="badge badge-info">{{ __('Optional') }}</span>@endif</label>
                                 </div>
                                 <div class="form-row mt-2 ml-1">
                                     <div class="col-md-3 mb-2">
                                         <label class="small mb-1" for="fee-quantity-{{ $item->id }}">{{ __('Quantity') }}</label>
                                         @if($item->quantity_enabled)
-                                            <input class="form-control form-control-sm fee-quantity" id="fee-quantity-{{ $item->id }}" type="number" name="optional_fee_quantities[{{ $item->id }}]" value="{{ $draftItem?->quantity_snapshot ?? 1 }}" min="1" max="{{ $quantityMax }}" step="1" data-fee-id="{{ $item->id }}" {{ $checked ? '' : 'disabled' }}>
+                                            <input class="form-control form-control-sm fee-quantity" id="fee-quantity-{{ $item->id }}" type="number" name="optional_fee_quantities[{{ $item->id }}]" value="{{ $draftItem?->quantity_snapshot ?? 1 }}" min="1" max="{{ $quantityMax }}" step="1" data-fee-id="{{ $item->id }}" {{ $checked && !$draftDiscountRequestLocked ? '' : 'disabled' }}>
                                             <small class="text-muted">{{ __('Maximum') }} {{ $quantityMax }}</small>
                                         @else
                                             <input class="form-control form-control-sm" type="number" value="1" readonly aria-label="{{ __('Fixed quantity') }}">
@@ -51,7 +54,7 @@
                                     </div>
                                     <div class="col-md-5 mb-2">
                                         <label class="small mb-1" for="fee-promotion-{{ $item->id }}">{{ __('Approved Promotion') }}</label>
-                                        <select class="form-control form-control-sm fee-promotion" id="fee-promotion-{{ $item->id }}" name="promotions[{{ $item->id }}]" data-fee-id="{{ $item->id }}" {{ $checked ? '' : 'disabled' }}>
+                                        <select class="form-control form-control-sm fee-promotion" id="fee-promotion-{{ $item->id }}" name="promotions[{{ $item->id }}]" data-fee-id="{{ $item->id }}" {{ $checked && !$draftDiscountRequestLocked ? '' : 'disabled' }}>
                                             <option value="">{{ __('No Promotion') }}</option>
                                             @foreach($choiceItems as $promotion)
                                                 <option value="{{ $promotion->id }}" @selected((int) ($draftItem?->selected_promotion_id ?? 0) === (int) $promotion->id)>{{ $promotion->code }} · {{ $promotion->name }}</option>
@@ -63,14 +66,15 @@
                                 @if($canCreateStudentSpecificDiscounts)
                                     <div class="border-top pt-2 mt-1 student-discount-panel" data-fee-id="{{ $item->id }}">
                                         <div class="form-check mb-2">
-                                            <input class="form-check-input student-discount-toggle" id="student-discount-{{ $item->id }}" type="checkbox" name="student_discounts[{{ $item->id }}][enabled]" value="1" data-fee-id="{{ $item->id }}" {{ $discountActive ? 'checked' : '' }} {{ $checked ? '' : 'disabled' }}>
-                                            <label class="form-check-label" for="student-discount-{{ $item->id }}"><strong>{{ __('Student-specific Discount') }}</strong> <span class="text-muted small">{{ __('Current Student only; reason and business date are required.') }}</span></label>
+                                            <input class="form-check-input student-discount-toggle" id="student-discount-{{ $item->id }}" type="checkbox" name="student_discounts[{{ $item->id }}][enabled]" value="1" data-fee-id="{{ $item->id }}" {{ $discountActive ? 'checked' : '' }} {{ $checked && !$draftDiscountRequestLocked ? '' : 'disabled' }}>
+                                            <label class="form-check-label" for="student-discount-{{ $item->id }}"><strong>{{ __('Student-specific Discount request') }}</strong> <span class="text-muted small">{{ __('Head Finance must approve the exact request before Fee Setup can be confirmed.') }}</span></label>
                                         </div>
+                                        @if($discountRequestStatus)<small class="d-block text-warning">{{ __('Head Finance status') }}: {{ __($discountRequestStatus) }}</small>@endif
                                         <div class="form-row ml-1">
-                                            <div class="col-md-2 mb-2"><label class="small mb-1">{{ __('Type') }}</label><select class="form-control form-control-sm student-discount-field" name="student_discounts[{{ $item->id }}][discount_type]" data-fee-id="{{ $item->id }}" {{ $discountActive ? '' : 'disabled' }}><option value="percentage" @selected(($draftItem?->student_discount_type ?? '') === 'percentage')>{{ __('Percentage') }}</option><option value="fixed" @selected(($draftItem?->student_discount_type ?? '') === 'fixed')>{{ __('Fixed amount') }}</option></select></div>
-                                            <div class="col-md-2 mb-2"><label class="small mb-1">{{ __('Value') }}</label><input class="form-control form-control-sm student-discount-field" type="number" min="0.0001" step="0.0001" name="student_discounts[{{ $item->id }}][discount_value]" value="{{ $draftItem?->student_discount_value }}" data-fee-id="{{ $item->id }}" {{ $discountActive ? '' : 'disabled' }}></div>
-                                            <div class="col-md-5 mb-2"><label class="small mb-1">{{ __('Reason') }}</label><input class="form-control form-control-sm student-discount-field" type="text" maxlength="2000" name="student_discounts[{{ $item->id }}][reason]" value="{{ $draftItem?->student_discount_reason }}" data-fee-id="{{ $item->id }}" {{ $discountActive ? '' : 'disabled' }}></div>
-                                            <div class="col-md-3 mb-2"><label class="small mb-1">{{ __('Business date') }}</label><input class="form-control form-control-sm student-discount-field" type="date" name="student_discounts[{{ $item->id }}][effective_date]" value="{{ optional($draftItem?->student_discount_effective_date)->format('Y-m-d') ?: now('Asia/Yangon')->toDateString() }}" data-fee-id="{{ $item->id }}" {{ $discountActive ? '' : 'disabled' }}></div>
+                                            <div class="col-md-2 mb-2"><label class="small mb-1">{{ __('Type') }}</label><select class="form-control form-control-sm student-discount-field" name="student_discounts[{{ $item->id }}][discount_type]" data-fee-id="{{ $item->id }}" {{ $discountActive && !$draftDiscountRequestLocked ? '' : 'disabled' }}><option value="percentage" @selected(($draftItem?->student_discount_type ?? '') === 'percentage')>{{ __('Percentage') }}</option><option value="fixed" @selected(($draftItem?->student_discount_type ?? '') === 'fixed')>{{ __('Fixed amount') }}</option></select></div>
+                                            <div class="col-md-2 mb-2"><label class="small mb-1">{{ __('Value') }}</label><input class="form-control form-control-sm student-discount-field" type="number" min="0.0001" step="0.0001" name="student_discounts[{{ $item->id }}][discount_value]" value="{{ $draftItem?->student_discount_value }}" data-fee-id="{{ $item->id }}" {{ $discountActive && !$draftDiscountRequestLocked ? '' : 'disabled' }}></div>
+                                            <div class="col-md-5 mb-2"><label class="small mb-1">{{ __('Reason') }}</label><input class="form-control form-control-sm student-discount-field" type="text" maxlength="2000" name="student_discounts[{{ $item->id }}][reason]" value="{{ $draftItem?->student_discount_reason }}" data-fee-id="{{ $item->id }}" {{ $discountActive && !$draftDiscountRequestLocked ? '' : 'disabled' }}></div>
+                                            <div class="col-md-3 mb-2"><label class="small mb-1">{{ __('Business date') }}</label><input class="form-control form-control-sm student-discount-field" type="date" name="student_discounts[{{ $item->id }}][effective_date]" value="{{ optional($draftItem?->student_discount_effective_date)->format('Y-m-d') ?: now('Asia/Yangon')->toDateString() }}" data-fee-id="{{ $item->id }}" {{ $discountActive && !$draftDiscountRequestLocked ? '' : 'disabled' }}></div>
                                         </div>
                                     </div>
                                 @endif
@@ -78,7 +82,7 @@
                         @endforeach
                     @endforeach
                     <hr><strong>{{ __('Preview Gross Total') }}: <span id="fee-total">0.00</span></strong><span class="d-block small text-muted">{{ __('Promotion discounts and net totals are calculated by the approved Promotion engine in the saved preview.') }}</span>
-                    <button class="btn btn-primary ml-3" type="submit">{{ __('Preview Fee Assignment') }}</button>
+                    <button class="btn btn-primary ml-3" type="submit" @disabled($draftDiscountRequestLocked)>{{ __('Preview Fee Assignment / Submit Discount Request') }}</button>
                 </div>
             </form>
         @else
@@ -86,7 +90,7 @@
         @endif
 
         @if($draft)
-            <div class="card mt-3"><div class="card-body"><h4>{{ __('Student Fee Assignment Review') }}</h4><p class="text-muted">{{ $student->user?->full_name }} · {{ __('Academic Year') }} {{ $student->session_year_id }}</p><div class="table-responsive"><table class="table table-sm"><thead><tr><th>{{ __('Fee Item') }}</th><th>{{ __('Unit price') }}</th><th>{{ __('Quantity') }}</th><th>{{ __('Gross Line Total') }}</th><th>{{ __('Promotion / Discount') }}</th><th>{{ __('Reason') }}</th><th>{{ __('Discount') }}</th><th>{{ __('Net Line Total') }}</th></tr></thead><tbody>@foreach($draft->items->where('status','active') as $item)@php($quote = $draftPromotionPreview->get($item->id))<tr><td>{{ $item->description_snapshot }}</td><td>{{ number_format($item->unit_price_snapshot ?? $item->amount_snapshot, 2) }} {{ $item->currency_snapshot }}</td><td>{{ $item->quantity_snapshot ?? 1 }}</td><td>{{ number_format($item->amount_snapshot, 2) }} {{ $item->currency_snapshot }}</td><td>{{ $quote['promotion'] ?? __('None') }}</td><td>{{ $item->student_discount_reason ?: '—' }}</td><td>{{ number_format((float) ($quote['discount'] ?? 0), 2) }} {{ $item->currency_snapshot }}</td><td><strong>{{ number_format((float) ($quote['net'] ?? $item->amount_snapshot), 2) }} {{ $item->currency_snapshot }}</strong></td></tr>@endforeach</tbody></table></div><strong>{{ __('Total Assigned') }}: {{ number_format($draft->items->where('status','active')->sum('amount_snapshot'), 2) }}</strong><form method="POST" action="{{ route('students.fee-assignment.confirm', $student->id) }}" class="mt-3">@csrf <input type="hidden" name="assignment_uuid" value="{{ $draft->uuid }}"><button class="btn btn-success" type="submit">{{ __('Confirm Fee Assignment') }}</button></form></div></div>
+            <div class="card mt-3"><div class="card-body"><h4>{{ __('Student Fee Assignment Review') }}</h4><p class="text-muted">{{ $student->user?->full_name }} · {{ __('Academic Year') }} {{ $student->session_year_id }}</p><div class="table-responsive"><table class="table table-sm"><thead><tr><th>{{ __('Fee Item') }}</th><th>{{ __('Unit price') }}</th><th>{{ __('Quantity') }}</th><th>{{ __('Gross Line Total') }}</th><th>{{ __('Promotion / Discount') }}</th><th>{{ __('Reason') }}</th><th>{{ __('Head Finance status') }}</th><th>{{ __('Discount') }}</th><th>{{ __('Net Line Total') }}</th></tr></thead><tbody>@foreach($draft->items->where('status','active') as $item)@php($quote = $draftPromotionPreview->get($item->id))@php($discountRequest = $draftDiscountRequests->get(trim((string) $item->student_discount_request_uuid)))<tr><td>{{ $item->description_snapshot }}</td><td>{{ number_format($item->unit_price_snapshot ?? $item->amount_snapshot, 2) }} {{ $item->currency_snapshot }}</td><td>{{ $item->quantity_snapshot ?? 1 }}</td><td>{{ number_format($item->amount_snapshot, 2) }} {{ $item->currency_snapshot }}</td><td>{{ $quote['promotion'] ?? __('None') }}</td><td>{{ $item->student_discount_reason ?: '—' }}</td><td>{{ $discountRequest?->status ? __($discountRequest->status) : ($item->student_discount_request_status ? __($item->student_discount_request_status) : '—') }}</td><td>{{ number_format((float) ($quote['discount'] ?? 0), 2) }} {{ $item->currency_snapshot }}</td><td><strong>{{ number_format((float) ($quote['net'] ?? $item->amount_snapshot), 2) }} {{ $item->currency_snapshot }}</strong></td></tr>@endforeach</tbody></table></div><strong>{{ __('Total Assigned') }}: {{ number_format($draft->items->where('status','active')->sum('amount_snapshot'), 2) }}</strong><form method="POST" action="{{ route('students.fee-assignment.confirm', $student->id) }}" class="mt-3">@csrf <input type="hidden" name="assignment_uuid" value="{{ $draft->uuid }}"><button class="btn btn-success" type="submit" @disabled($draftDiscountRequestPending)>{{ __('Confirm Fee Assignment') }}</button></form></div></div>
         @endif
 
         @if($availableAdditionalItems->isNotEmpty() && $confirmedAssignments->isNotEmpty())
@@ -122,21 +126,22 @@
         document.getElementById('fee-total').textContent = total.toFixed(2);
     };
     const toggle = (checkbox, prefix = '') => {
+        const discountLocked = checkbox.closest('form')?.dataset.draftDiscountLocked === '1';
         const quantity = document.getElementById(`${prefix}quantity-${checkbox.value}`);
         const promotion = document.getElementById(`${prefix}promotion-${checkbox.value}`);
-        if (quantity && !quantity.readOnly) quantity.disabled = !checkbox.checked;
-        if (promotion) promotion.disabled = !checkbox.checked;
+        if (quantity && !quantity.readOnly) quantity.disabled = discountLocked || !checkbox.checked;
+        if (promotion) promotion.disabled = discountLocked || !checkbox.checked;
         const studentDiscount = document.getElementById(`student-discount-${checkbox.value}`);
         if (studentDiscount) {
-            studentDiscount.disabled = !checkbox.checked;
-            if (!checkbox.checked && studentDiscount.checked) {
+            studentDiscount.disabled = discountLocked || !checkbox.checked;
+            if (!discountLocked && !checkbox.checked && studentDiscount.checked) {
                 studentDiscount.checked = false;
                 studentDiscount.dispatchEvent(new Event('change'));
             }
         }
         document.querySelectorAll(`.student-discount-field[data-fee-id="${checkbox.value}"]`).forEach((field) => {
             const enabled = checkbox.checked && document.getElementById(`student-discount-${checkbox.value}`)?.checked;
-            field.disabled = !enabled;
+            field.disabled = discountLocked || !enabled;
         });
         refresh();
     };
@@ -154,14 +159,15 @@
             const feeId = toggleInput.dataset.feeId;
             const selected = document.getElementById(`fee-item-${feeId}`)?.checked;
             const promotion = document.getElementById(`fee-promotion-${feeId}`);
+            const locked = toggleInput.closest('form')?.dataset.draftDiscountLocked === '1';
             document.querySelectorAll(`.student-discount-field[data-fee-id="${feeId}"]`).forEach((field) => {
-                field.disabled = !selected || !toggleInput.checked;
+                field.disabled = locked || !selected || !toggleInput.checked;
             });
             if (toggleInput.checked && promotion) {
                 promotion.value = '';
                 promotion.disabled = true;
             } else if (promotion) {
-                promotion.disabled = !selected;
+                promotion.disabled = locked || !selected;
             }
         };
         toggleInput.addEventListener('change', refreshDiscount);

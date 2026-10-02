@@ -158,9 +158,9 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('central_finance_promotion_fee_allocations', $promotion);
         $this->assertStringContainsString('creation_idempotency_key', $promotion);
         $this->assertStringContainsString('student_discounts', $root ? (string) file_get_contents($root.'/app/Http/Controllers/StudentFeeAssignmentController.php') : '');
-        $this->assertStringContainsString("'student_profile_id'=>['nullable','integer']", $controller);
-        $this->assertStringContainsString('name="student_profile_id"', $view);
-        $this->assertStringContainsString('All eligible Students', $view);
+        $this->assertStringNotContainsString("'student_profile_id'=>['nullable','integer']", $controller);
+        $this->assertStringNotContainsString('name="student_profile_id"', $view);
+        $this->assertStringContainsString('Student Discount Requests', $view);
         $this->assertStringNotContainsString('name="discount_value"', $collection);
     }
 }

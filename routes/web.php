@@ -1258,6 +1258,9 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/receivables', [CentralFinanceWorkspaceController::class, 'receivables'])->name('central-finance.receivables');
     Route::get('central-finance/promotions', [CentralFinanceWorkspaceController::class, 'promotions'])->name('central-finance.promotions');
     Route::post('central-finance/promotions', [CentralFinanceWorkspaceController::class, 'storePromotion'])->name('central-finance.promotions.store');
+    Route::get('central-finance/student-discount-requests', [\App\Http\Controllers\CentralFinanceStudentDiscountRequestController::class, 'index'])->name('central-finance.student-discount-requests.index');
+    Route::post('central-finance/student-discount-requests/{request}/approve', [\App\Http\Controllers\CentralFinanceStudentDiscountRequestController::class, 'approve'])->whereNumber('request')->name('central-finance.student-discount-requests.approve');
+    Route::post('central-finance/student-discount-requests/{request}/reject', [\App\Http\Controllers\CentralFinanceStudentDiscountRequestController::class, 'reject'])->whereNumber('request')->name('central-finance.student-discount-requests.reject');
     Route::get('central-finance/receivables/{receivable}', [CentralFinanceWorkspaceController::class, 'receivableDetail'])->name('central-finance.receivables.show');
     Route::post('central-finance/receivables/{receivable}/corrections', [CentralFinanceWorkspaceController::class, 'correctReceivable'])->name('central-finance.receivables.corrections.store');
     Route::post('central-finance/receivables/{receivable}/waivers', [CentralFinanceWorkspaceController::class, 'waiveReceivable'])->name('central-finance.receivables.waivers.store');
