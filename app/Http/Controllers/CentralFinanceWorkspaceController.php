@@ -135,7 +135,10 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         $actor = $this->actor();
         $data = $request->validate(['group_id'=>['required','integer'],'student_profile_id'=>['nullable','integer'],'name'=>['required','string','max:191'],'code'=>['required','string','max:80','regex:/^[A-Za-z0-9_-]+$/'],'description'=>['nullable','string'],'discount_type'=>['required',Rule::in([CentralFinancePromotion::PERCENTAGE,CentralFinancePromotion::FIXED])],'discount_value'=>['required','regex:/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/'],'valid_from'=>['required','date_format:Y-m-d'],'valid_until'=>['nullable','date_format:Y-m-d'],'status'=>['required',Rule::in(CentralFinancePromotion::STATUSES)],'school_ids'=>['required','array','min:1'],'school_ids.*'=>['integer','distinct']]);
-        try { $this->promotions->define($actor, (int) $data['group_id'], $data['school_ids'], $data); } catch (InvalidArgumentException|AuthorizationException $exception) { return back()->withErrors(['promotion' => __($exception->getMessage())])->withInput(); }
+        try { $this->promotions->define($actor, (int) $data['group_id'], $data['school_ids'], $data); } catch (InvalidArgumentException|AuthorizationException $exception) {
+            $field = $exception->getMessage() === CentralFinancePromotionService::DUPLICATE_CODE_MESSAGE ? 'code' : 'promotion';
+            return back()->withErrors([$field => __($exception->getMessage())])->withInput();
+        }
         return back()->with('success', __('Promotion definition created.'));
     }
 

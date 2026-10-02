@@ -1,5 +1,24 @@
 # eSchool Current State
 
+## Promotion duplicate-code validation — local hotfix candidate
+
+- Production incident on `2026-10-02`: Head Finance submitted a valid
+  student-specific Promotion with a code that already existed in the same
+  Finance Group. The database uniqueness constraint correctly rolled the
+  transaction back, but the controller rendered the expected duplicate-code
+  rejection as an HTTP 500.
+- The local hotfix preserves the database constraint and adds a service-level
+  duplicate check plus a narrow race-condition conversion. The controller now
+  binds the resulting message to the `code` field, so no second Promotion,
+  allocation, audit, Receivable, Payment, Receipt, Ledger, or Fund Account
+  record is created.
+- Local verification: the focused duplicate-code/controller contract passes;
+  full `CentralFinanceReceivablePaymentTest` passes (44 tests / 280
+  assertions); `CentralFinanceOptionalFeeCollectionContractTest` passes (7
+  tests / 78 assertions). The PHP 8.5 PDO deprecation is pre-existing.
+- No migration is required. The hotfix is local-only and awaits a separate
+  Production deployment approval.
+
 ## Student-specific Discount — unified local candidate
 
 - The existing Central Promotion engine now has explicit `general` and

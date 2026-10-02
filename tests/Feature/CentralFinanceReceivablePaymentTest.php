@@ -355,6 +355,28 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $isolation=app(CentralFinanceDataIsolationService::class); $isolation->classify($this->head,1,'school',1,CentralFinanceDataClassification::QA_TEST,'QA School.');
   try { $service->define($this->head,1,[1,2],['name'=>'Mixed','code'=>'MIXED','description'=>null,'discount_type'=>'fixed','discount_value'=>'1.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active']); $this->fail('A definition must not mix QA and Official schools.'); } catch (InvalidArgumentException) { $this->assertSame(1,\App\Models\CentralFinancePromotion::on('mysql')->count()); }
  }
+ public function test_duplicate_promotion_code_returns_a_safe_validation_error_without_a_second_definition_or_audit(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up(); (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $input=['name'=>'Existing promotion','code'=>'DUPLICATE-CODE','description'=>null,'discount_type'=>'fixed','discount_value'=>'100.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active'];
+  $service=app(\App\Services\CentralFinancePromotionService::class); $first=$service->define($this->head,1,[1],$input);
+  $before=[\App\Models\CentralFinancePromotion::on('mysql')->count(),DB::connection('mysql')->table('central_finance_document_audits')->count()];
+  try { $service->define($this->head,1,[1],array_merge($input,['name'=>'Duplicate promotion','code'=>'duplicate-code'])); $this->fail('A duplicate Promotion code must be returned as a safe validation error.'); }
+  catch (InvalidArgumentException $exception) { $this->assertSame(\App\Services\CentralFinancePromotionService::DUPLICATE_CODE_MESSAGE,$exception->getMessage()); }
+  $this->assertSame($before,[\App\Models\CentralFinancePromotion::on('mysql')->count(),DB::connection('mysql')->table('central_finance_document_audits')->count()]);
+  $this->assertSame($first->id,\App\Models\CentralFinancePromotion::on('mysql')->where('code','DUPLICATE-CODE')->value('id'));
+ }
+ public function test_promotion_form_maps_a_duplicate_code_to_the_code_field_instead_of_a_500(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up(); (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $input=['group_id'=>1,'name'=>'Existing promotion','code'=>'FORM-DUPLICATE','description'=>null,'discount_type'=>'fixed','discount_value'=>'100.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active','school_ids'=>[1]];
+  app(\App\Services\CentralFinancePromotionService::class)->define($this->head,1,[1],$input);
+  $this->actingAs($this->head); $request=Request::create('/central-finance/promotions','POST',$input,[],[],['HTTP_REFERER'=>'http://localhost/central-finance/promotions']);
+  $response=app(CentralFinanceWorkspaceController::class)->storePromotion($request);
+  $this->assertInstanceOf(\Illuminate\Http\RedirectResponse::class,$response);
+  $this->assertSame(\App\Services\CentralFinancePromotionService::DUPLICATE_CODE_MESSAGE,session('errors')->first('code'));
+  $this->assertSame(1,\App\Models\CentralFinancePromotion::on('mysql')->count());
+ }
  public function test_student_specific_promotion_is_visible_only_to_its_exact_profile_and_remains_append_only(): void {
   (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
   (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();

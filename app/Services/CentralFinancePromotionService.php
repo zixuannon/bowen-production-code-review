@@ -13,6 +13,7 @@ use App\Support\CentralFinanceDecimal;
 use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
@@ -20,6 +21,8 @@ use InvalidArgumentException;
 /** Promotion definitions are Group master data; applications are immutable receivable snapshots. */
 final class CentralFinancePromotionService
 {
+    public const DUPLICATE_CODE_MESSAGE = 'Promotion code is already used in this Finance Group.';
+
     public function __construct(
         private readonly CentralFinanceConfigurationAuthorizationService $configuration,
         private readonly CentralFinanceReceivableAdjustmentService $adjustments,
@@ -68,19 +71,32 @@ final class CentralFinancePromotionService
         if ($input['discount_type'] === CentralFinancePromotion::PERCENTAGE && CentralFinanceDecimal::compare($value, '100') > 0) throw new InvalidArgumentException('Percentage Promotion may not exceed 100%.');
         if (!in_array($input['discount_type'], [CentralFinancePromotion::PERCENTAGE, CentralFinancePromotion::FIXED], true) || !in_array($input['status'], CentralFinancePromotion::STATUSES, true)) throw new InvalidArgumentException('Promotion definition is invalid.');
         if (!empty($input['valid_until']) && $input['valid_until'] < $input['valid_from']) throw new InvalidArgumentException('Promotion end date cannot be before its start date.');
-        return DB::connection('mysql')->transaction(function () use ($actor, $groupId, $schoolIds, $input, $value, $studentProfileId, $scope): CentralFinancePromotion {
-            $attributes = ['group_id'=>$groupId,'name'=>trim($input['name']),'code'=>strtoupper(trim($input['code'])),'description'=>trim((string) ($input['description'] ?? '')) ?: null,'discount_type'=>$input['discount_type'],'discount_value'=>$value,'valid_from'=>$input['valid_from'],'valid_until'=>$input['valid_until'] ?: null,'status'=>$input['status'],'fee_scope'=>'all_approved_fees','created_by'=>$actor->id];
-            if ($this->studentSpecificSchemaInstalled()) {
-                $attributes['student_profile_id'] = $studentProfileId;
-                $attributes['scope'] = $scope;
+        $code = strtoupper(trim((string) $input['code']));
+        if (CentralFinancePromotion::on('mysql')->where('group_id', $groupId)->where('code', $code)->exists()) {
+            throw new InvalidArgumentException(self::DUPLICATE_CODE_MESSAGE);
+        }
+
+        try {
+            return DB::connection('mysql')->transaction(function () use ($actor, $groupId, $schoolIds, $input, $value, $studentProfileId, $scope, $code): CentralFinancePromotion {
+                $attributes = ['group_id'=>$groupId,'name'=>trim($input['name']),'code'=>$code,'description'=>trim((string) ($input['description'] ?? '')) ?: null,'discount_type'=>$input['discount_type'],'discount_value'=>$value,'valid_from'=>$input['valid_from'],'valid_until'=>$input['valid_until'] ?: null,'status'=>$input['status'],'fee_scope'=>'all_approved_fees','created_by'=>$actor->id];
+                if ($this->studentSpecificSchemaInstalled()) {
+                    $attributes['student_profile_id'] = $studentProfileId;
+                    $attributes['scope'] = $scope;
+                }
+                $promotion = CentralFinancePromotion::on('mysql')->create($attributes);
+                foreach ($schoolIds as $schoolId) $promotion->allocations()->create(['school_id'=>$schoolId,'status'=>'active']);
+                CentralFinanceDocumentAudit::on('mysql')->create(['school_id'=>$schoolIds[0],'group_id'=>$groupId,'document_type'=>'central_finance_promotion','document_id'=>$promotion->id,'action'=>'created','actor_id'=>$actor->id,'reason'=>'Promotion definition created.','before_values'=>null,'after_values'=>['code'=>$promotion->code,'discount_type'=>$promotion->discount_type,'discount_value'=>$promotion->discount_value,'school_ids'=>$schoolIds,'scope'=>$scope,'student_profile_id'=>$promotion->student_profile_id]]);
+                $classification = $this->dataIsolation->classification('school', $schoolIds[0]);
+                if ($classification !== 'production') $this->dataIsolation->classify($actor, $schoolIds[0], 'promotion', $promotion->id, $classification, 'Promotion definition classification inherited from its allocated Schools.');
+                return $promotion;
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            if (str_contains($exception->getMessage(), 'cf_promotion_group_code_unique')) {
+                throw new InvalidArgumentException(self::DUPLICATE_CODE_MESSAGE, previous: $exception);
             }
-            $promotion = CentralFinancePromotion::on('mysql')->create($attributes);
-            foreach ($schoolIds as $schoolId) $promotion->allocations()->create(['school_id'=>$schoolId,'status'=>'active']);
-            CentralFinanceDocumentAudit::on('mysql')->create(['school_id'=>$schoolIds[0],'group_id'=>$groupId,'document_type'=>'central_finance_promotion','document_id'=>$promotion->id,'action'=>'created','actor_id'=>$actor->id,'reason'=>'Promotion definition created.','before_values'=>null,'after_values'=>['code'=>$promotion->code,'discount_type'=>$promotion->discount_type,'discount_value'=>$promotion->discount_value,'school_ids'=>$schoolIds,'scope'=>$scope,'student_profile_id'=>$promotion->student_profile_id]]);
-            $classification = $this->dataIsolation->classification('school', $schoolIds[0]);
-            if ($classification !== 'production') $this->dataIsolation->classify($actor, $schoolIds[0], 'promotion', $promotion->id, $classification, 'Promotion definition classification inherited from its allocated Schools.');
-            return $promotion;
-        });
+
+            throw $exception;
+        }
     }
 
     /** @return \Illuminate\Support\Collection<int, CentralFinancePromotion> */
