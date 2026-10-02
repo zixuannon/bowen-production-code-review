@@ -84,6 +84,8 @@ final class ProductionMigrationGuard
             'database/migrations/2026_09_29_000002_add_finance_collection_v2_documents.php',
             'database/migrations/schools/2026_09_29_000002_add_student_fee_quantity_snapshots.php',
             'database/migrations/schools/2026_09_30_000001_add_student_fee_assignment_promotion_selection.php',
+            'database/migrations/2026_10_02_000001_add_student_scope_to_central_finance_promotions.php',
+            'database/migrations/schools/2026_10_02_000001_add_student_specific_discount_drafts.php',
         ],
     ];
 

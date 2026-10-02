@@ -95,6 +95,27 @@ class ProductionMigrationGuardTest extends TestCase
         );
     }
 
+    public function test_collection_v2_runner_allows_only_the_exact_student_discount_migrations_in_production(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $paths = [
+            database_path('migrations/2026_10_02_000001_add_student_scope_to_central_finance_promotions.php'),
+            database_path('migrations/schools/2026_10_02_000001_add_student_specific_discount_drafts.php'),
+        ];
+
+        $guard->assertAllowed('migrate', 'finance:migrate-collection-v2', $paths, true, true);
+        $this->addToAssertionCount(1);
+
+        $this->expectException(RuntimeException::class);
+        $guard->assertAllowed(
+            'migrate',
+            'finance:migrate-collection-v2',
+            [database_path('migrations/schools')],
+            true,
+            true,
+        );
+    }
+
     public function test_guard_does_not_change_local_or_test_migration_behavior(): void
     {
         (new ProductionMigrationGuard())->assertAllowed('migrate', 'migrate', [], false, false);

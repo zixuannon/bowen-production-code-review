@@ -42,6 +42,13 @@
   all zero in the local fixture. Production has not been changed and no Su
   Ting / 苏婷婷 record has been touched. The candidate is awaiting explicit
   Production deployment approval.
+- Production preflight found that the exact-path Production migration guard
+  did not yet list the two approved 2026-10-02 migrations. The local
+  follow-up allowlists only those Central and tenant paths for
+  `finance:migrate-collection-v2`; positive and directory-path rejection
+  coverage protects the same Production-only contract. It requires a new
+  candidate SHA and deployment approval; no Production migration or switch
+  occurred.
 
 Last updated: 2026-10-02
 
