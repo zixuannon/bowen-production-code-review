@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CentralFinancePromotion;
 use App\Models\CentralFinancePromotionApplication;
 use App\Models\CentralFinanceReceivable;
+use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
 use App\Models\CentralFinanceDocumentAudit;
 use App\Models\FinanceGroupSchool;
@@ -13,6 +14,7 @@ use App\Services\CentralFinanceWorkspaceService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 
 /** Promotion definitions are Group master data; applications are immutable receivable snapshots. */
@@ -35,15 +37,33 @@ final class CentralFinancePromotionService
         if ($members->count() !== count($schoolIds)) throw new AuthorizationException('Every Promotion allocation must be an active member of the selected Finance Group.');
         $classifications = collect($schoolIds)->map(fn (int $schoolId) => $this->dataIsolation->classification('school', $schoolId))->unique();
         if ($classifications->count() !== 1) throw new InvalidArgumentException('A Promotion definition cannot mix QA/Test and Official Schools.');
+        $studentProfileId = isset($input['student_profile_id']) && $input['student_profile_id'] !== '' ? (int) $input['student_profile_id'] : null;
+        if ($studentProfileId !== null) {
+            if (!Schema::connection('mysql')->hasColumn('central_finance_promotions', 'student_profile_id')) {
+                throw new InvalidArgumentException('Student-specific Promotion scope is not available until the approved schema update is installed.');
+            }
+            $profile = CentralFinanceStudentProfile::on('mysql')->find($studentProfileId);
+            if ($profile === null || !in_array((int) $profile->school_id, $schoolIds, true)) {
+                throw new AuthorizationException('The selected Student must belong to an allocated School.');
+            }
+            if (count($schoolIds) !== 1) {
+                throw new InvalidArgumentException('A student-specific Promotion must be allocated to exactly that Student’s School.');
+            }
+            if ($this->dataIsolation->classification('student_profile', $profile->id) !== $classifications->first()) {
+                throw new AuthorizationException('The selected Student does not match the Promotion data classification.');
+            }
+        }
         $value = CentralFinanceDecimal::normalize((string) $input['discount_value']);
         if (CentralFinanceDecimal::compare($value, '0') <= 0) throw new InvalidArgumentException('Promotion discount value must be greater than zero.');
         if ($input['discount_type'] === CentralFinancePromotion::PERCENTAGE && CentralFinanceDecimal::compare($value, '100') > 0) throw new InvalidArgumentException('Percentage Promotion may not exceed 100%.');
         if (!in_array($input['discount_type'], [CentralFinancePromotion::PERCENTAGE, CentralFinancePromotion::FIXED], true) || !in_array($input['status'], CentralFinancePromotion::STATUSES, true)) throw new InvalidArgumentException('Promotion definition is invalid.');
         if (!empty($input['valid_until']) && $input['valid_until'] < $input['valid_from']) throw new InvalidArgumentException('Promotion end date cannot be before its start date.');
-        return DB::connection('mysql')->transaction(function () use ($actor, $groupId, $schoolIds, $input, $value): CentralFinancePromotion {
-            $promotion = CentralFinancePromotion::on('mysql')->create(['group_id'=>$groupId,'name'=>trim($input['name']),'code'=>strtoupper(trim($input['code'])),'description'=>trim((string) ($input['description'] ?? '')) ?: null,'discount_type'=>$input['discount_type'],'discount_value'=>$value,'valid_from'=>$input['valid_from'],'valid_until'=>$input['valid_until'] ?: null,'status'=>$input['status'],'fee_scope'=>'all_approved_fees','created_by'=>$actor->id]);
+        return DB::connection('mysql')->transaction(function () use ($actor, $groupId, $schoolIds, $input, $value, $studentProfileId): CentralFinancePromotion {
+            $attributes = ['group_id'=>$groupId,'name'=>trim($input['name']),'code'=>strtoupper(trim($input['code'])),'description'=>trim((string) ($input['description'] ?? '')) ?: null,'discount_type'=>$input['discount_type'],'discount_value'=>$value,'valid_from'=>$input['valid_from'],'valid_until'=>$input['valid_until'] ?: null,'status'=>$input['status'],'fee_scope'=>'all_approved_fees','created_by'=>$actor->id];
+            if (Schema::connection('mysql')->hasColumn('central_finance_promotions', 'student_profile_id')) $attributes['student_profile_id'] = $studentProfileId;
+            $promotion = CentralFinancePromotion::on('mysql')->create($attributes);
             foreach ($schoolIds as $schoolId) $promotion->allocations()->create(['school_id'=>$schoolId,'status'=>'active']);
-            CentralFinanceDocumentAudit::on('mysql')->create(['school_id'=>$schoolIds[0],'group_id'=>$groupId,'document_type'=>'central_finance_promotion','document_id'=>$promotion->id,'action'=>'created','actor_id'=>$actor->id,'reason'=>'Promotion definition created.','before_values'=>null,'after_values'=>['code'=>$promotion->code,'discount_type'=>$promotion->discount_type,'discount_value'=>$promotion->discount_value,'school_ids'=>$schoolIds]]);
+            CentralFinanceDocumentAudit::on('mysql')->create(['school_id'=>$schoolIds[0],'group_id'=>$groupId,'document_type'=>'central_finance_promotion','document_id'=>$promotion->id,'action'=>'created','actor_id'=>$actor->id,'reason'=>'Promotion definition created.','before_values'=>null,'after_values'=>['code'=>$promotion->code,'discount_type'=>$promotion->discount_type,'discount_value'=>$promotion->discount_value,'school_ids'=>$schoolIds,'student_profile_id'=>$promotion->student_profile_id]]);
             $classification = $this->dataIsolation->classification('school', $schoolIds[0]);
             if ($classification !== 'production') $this->dataIsolation->classify($actor, $schoolIds[0], 'promotion', $promotion->id, $classification, 'Promotion definition classification inherited from its allocated Schools.');
             return $promotion;
@@ -54,27 +74,33 @@ final class CentralFinancePromotionService
     public function eligibleFor(CentralFinanceUser $actor, CentralFinanceReceivable $receivable, CarbonImmutable $date): \Illuminate\Support\Collection
     {
         $this->configuration->assertHeadFinanceCanConfigureSchool($actor, $receivable->school);
-        return $this->eligibleForSchool((int) $receivable->school_id, null, $date);
+        return $this->eligibleForSchool((int) $receivable->school_id, null, $date, (int) $receivable->student_profile_id);
     }
 
     /**
      * Front Desk can see only approved definitions that match its trusted
      * School/Fee Setup item. It receives no definition-management authority.
      */
-    public function eligibleForFeeSetup(CentralFinanceUser $actor, int $schoolId, int $feesClassTypeId, CarbonImmutable $date): \Illuminate\Support\Collection
+    public function eligibleForFeeSetup(CentralFinanceUser $actor, int $schoolId, int $studentProfileId, int $feesClassTypeId, CarbonImmutable $date): \Illuminate\Support\Collection
     {
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
-        return $this->eligibleForSchool($schoolId, $feesClassTypeId, $date);
+        return $this->eligibleForSchool($schoolId, $feesClassTypeId, $date, $studentProfileId);
     }
 
     /** @return \Illuminate\Support\Collection<int, CentralFinancePromotion> */
-    private function eligibleForSchool(int $schoolId, ?int $feesClassTypeId, CarbonImmutable $date): \Illuminate\Support\Collection
+    private function eligibleForSchool(int $schoolId, ?int $feesClassTypeId, CarbonImmutable $date, ?int $studentProfileId = null): \Illuminate\Support\Collection
     {
         $schoolClassification = $this->dataIsolation->classification('school', $schoolId);
         return CentralFinancePromotion::on('mysql')->where('status', CentralFinancePromotion::ACTIVE)
             ->whereDate('valid_from', '<=', $date->toDateString())
             ->where(function ($q) use ($date): void { $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', $date->toDateString()); })
             ->whereHas('allocations', fn ($q) => $q->where('school_id', $schoolId)->where('status', 'active'))
+            ->when(Schema::connection('mysql')->hasColumn('central_finance_promotions', 'student_profile_id'), function ($query) use ($studentProfileId): void {
+                $query->where(function ($scoped) use ($studentProfileId): void {
+                    $scoped->whereNull('student_profile_id');
+                    if ($studentProfileId !== null) $scoped->orWhere('student_profile_id', $studentProfileId);
+                });
+            })
             ->where(function ($query) use ($schoolId, $feesClassTypeId): void {
                 $query->where('fee_scope', 'all_approved_fees');
                 if ($feesClassTypeId !== null) {
@@ -108,10 +134,10 @@ final class CentralFinancePromotionService
      *
      * @return array{promotion:string,discount:string,net:string}
      */
-    public function previewForFeeSetup(CentralFinanceUser $actor, int $schoolId, int $feesClassTypeId, int $promotionId, string $gross, CarbonImmutable $effectiveDate): array
+    public function previewForFeeSetup(CentralFinanceUser $actor, int $schoolId, int $feesClassTypeId, int $promotionId, string $gross, CarbonImmutable $effectiveDate, ?int $studentProfileId = null): array
     {
         $this->workspace->assertCanSubmitCollectionsSchool($actor, $schoolId);
-        $promotion = $this->eligibleForSchool($schoolId, $feesClassTypeId, $effectiveDate)->firstWhere('id', $promotionId);
+        $promotion = $this->eligibleForSchool($schoolId, $feesClassTypeId, $effectiveDate, $studentProfileId)->firstWhere('id', $promotionId);
         if ($promotion === null) {
             throw new AuthorizationException('This Promotion is not active for the selected School, Fee Item, and effective date.');
         }
@@ -141,7 +167,7 @@ final class CentralFinancePromotionService
             if (CentralFinancePromotionApplication::on('mysql')->where('receivable_id', $receivable->id)->exists()) throw new InvalidArgumentException('Only one Promotion may be applied to a receivable.');
             if ($receivable->adjustments()->exists()) throw new InvalidArgumentException('Apply a Promotion before any waiver or correction so its snapshot remains unambiguous.');
             $promotion = CentralFinancePromotion::on('mysql')->lockForUpdate()->findOrFail($promotionId);
-            if (!$this->eligibleForSchool((int) $receivable->school_id, $fromFeeSetup ? $feesClassTypeId : null, $effectiveDate)->contains('id', $promotion->id)) throw new AuthorizationException('This Promotion is not active for the selected School, Fee Item, and effective date.');
+            if (!$this->eligibleForSchool((int) $receivable->school_id, $fromFeeSetup ? $feesClassTypeId : null, $effectiveDate, (int) $receivable->student_profile_id)->contains('id', $promotion->id)) throw new AuthorizationException('This Promotion is not active for the selected School, Student, Fee Item, and effective date.');
             $gross = CentralFinanceDecimal::normalize((string) ($receivable->source_amount_due ?? $receivable->amount_due));
             $discount = $this->discountForGross($promotion, $gross);
             $note = trim($reason) === '' ? 'Promotion '.(string) $promotion->code.' applied.' : trim($reason);

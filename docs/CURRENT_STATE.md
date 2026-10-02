@@ -1,5 +1,24 @@
 # eSchool Current State
 
+## Student-specific Promotion scope — local finance candidate
+
+- Head Finance may define an active Promotion for one Central student profile
+  and exactly that profile's School. Existing generic Promotions remain
+  School-scoped. Front Desk may only select an already-approved, eligible
+  definition during Student Fee Setup.
+- Server-side eligibility excludes a scoped Promotion for every other Student,
+  retains QA/Test versus Official classification isolation, and reuses the
+  immutable Promotion Application and receivable-adjustment audit chain. It
+  adds no manual-discount field and changes no Payment, Receipt, Ledger, or
+  Fund Account behavior.
+- The candidate adds one additive Central migration
+  `2026_10_02_000001_add_student_scope_to_central_finance_promotions` and
+  extends only the exact `finance:migrate-collection-v2` preflight. It is
+  local-only pending a separate Production migration/deployment approval.
+- Local verification: the focused Central receivable/optional-fee suite passes
+  46 tests and 330 assertions; Blade templates compile successfully. The PHP
+  8.5 PDO SSL-constant deprecation is pre-existing and unrelated.
+
 ## Student Fee Setup promotion validation timing — local hotfix candidate
 
 - The Central Student Finance `+ Add Item` modal submits a `No Promotion`

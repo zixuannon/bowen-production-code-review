@@ -118,18 +118,23 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         $actor = $this->actor();
         $groups = $this->configuration->configurableGroups($actor);
-        $promotions = CentralFinancePromotion::on('mysql')->with('allocations.school')->whereIn('group_id', $groups->pluck('id'))->latest()->get();
+        $promotions = CentralFinancePromotion::on('mysql')->with(['allocations.school', 'studentProfile'])->whereIn('group_id', $groups->pluck('id'))->latest()->get();
         $schools = FinanceGroupSchool::on('mysql')->with('school')->whereIn('group_id', $groups->pluck('id'))->where('status', 'active')->get()->groupBy('group_id');
+        $schoolIds = $schools->flatten(1)->pluck('school_id')->map(fn ($id): int => (int) $id)->unique()->values();
+        $studentProfiles = CentralFinanceStudentProfile::on('mysql')->whereIn('school_id', $schoolIds)
+            ->orderBy('school_id')->orderBy('student_name')->get()
+            ->filter(fn (CentralFinanceStudentProfile $profile): bool => $this->dataIsolation->classification('student_profile', (int) $profile->id) === $this->dataIsolation->classification('school', (int) $profile->school_id))
+            ->values();
         $promotionClassifications = $promotions->mapWithKeys(fn (CentralFinancePromotion $promotion): array => [
             $promotion->id => $this->dataIsolation->classification('promotion', $promotion->id),
         ]);
-        return view('central-finance.promotions', compact('groups', 'promotions', 'schools', 'promotionClassifications'));
+        return view('central-finance.promotions', compact('groups', 'promotions', 'schools', 'studentProfiles', 'promotionClassifications'));
     }
 
     public function storePromotion(Request $request): RedirectResponse
     {
         $actor = $this->actor();
-        $data = $request->validate(['group_id'=>['required','integer'],'name'=>['required','string','max:191'],'code'=>['required','string','max:80','regex:/^[A-Za-z0-9_-]+$/'],'description'=>['nullable','string'],'discount_type'=>['required',Rule::in([CentralFinancePromotion::PERCENTAGE,CentralFinancePromotion::FIXED])],'discount_value'=>['required','regex:/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/'],'valid_from'=>['required','date_format:Y-m-d'],'valid_until'=>['nullable','date_format:Y-m-d'],'status'=>['required',Rule::in(CentralFinancePromotion::STATUSES)],'school_ids'=>['required','array','min:1'],'school_ids.*'=>['integer','distinct']]);
+        $data = $request->validate(['group_id'=>['required','integer'],'student_profile_id'=>['nullable','integer'],'name'=>['required','string','max:191'],'code'=>['required','string','max:80','regex:/^[A-Za-z0-9_-]+$/'],'description'=>['nullable','string'],'discount_type'=>['required',Rule::in([CentralFinancePromotion::PERCENTAGE,CentralFinancePromotion::FIXED])],'discount_value'=>['required','regex:/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/'],'valid_from'=>['required','date_format:Y-m-d'],'valid_until'=>['nullable','date_format:Y-m-d'],'status'=>['required',Rule::in(CentralFinancePromotion::STATUSES)],'school_ids'=>['required','array','min:1'],'school_ids.*'=>['integer','distinct']]);
         try { $this->promotions->define($actor, (int) $data['group_id'], $data['school_ids'], $data); } catch (InvalidArgumentException|AuthorizationException $exception) { return back()->withErrors(['promotion' => __($exception->getMessage())])->withInput(); }
         return back()->with('success', __('Promotion definition created.'));
     }

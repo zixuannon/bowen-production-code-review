@@ -37,6 +37,7 @@ final class TenantStudentFeeSetupPromotionService
         try {
             $principal = $this->principal($actor, $student);
             $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
+            $profile = $this->profile($student);
         } catch (AuthorizationException) {
             // A blank list is safe for a tenant user without a Finance Staff
             // identity.  The POST path fails closed if a Promotion is sent.
@@ -44,8 +45,8 @@ final class TenantStudentFeeSetupPromotionService
         }
 
         $date = CarbonImmutable::now('Asia/Yangon');
-        return collect($items)->mapWithKeys(function (FeesClassType $item) use ($principal, $student, $date): array {
-            $choices = $this->promotions->eligibleForFeeSetup($principal, (int) $student->school_id, (int) $item->id, $date)
+        return collect($items)->mapWithKeys(function (FeesClassType $item) use ($principal, $student, $date, $profile): array {
+            $choices = $this->promotions->eligibleForFeeSetup($principal, (int) $student->school_id, (int) $profile->id, (int) $item->id, $date)
                 ->map(fn ($promotion): object => (object) [
                     'id' => (int) $promotion->id,
                     'code' => (string) $promotion->code,
@@ -91,10 +92,10 @@ final class TenantStudentFeeSetupPromotionService
 
         $principal = $this->principal($actor, $student);
         $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
-        $this->profile($student);
+        $profile = $this->profile($student);
         $date = CarbonImmutable::now('Asia/Yangon');
         foreach ($result as $sourceId => $promotionId) {
-            $eligible = $this->promotions->eligibleForFeeSetup($principal, (int) $student->school_id, $sourceId, $date);
+            $eligible = $this->promotions->eligibleForFeeSetup($principal, (int) $student->school_id, (int) $profile->id, $sourceId, $date);
             if (!$eligible->contains('id', $promotionId)) {
                 throw ValidationException::withMessages(['promotions' => __('The selected Promotion is not active or applicable to this Fee Item.')]);
             }
@@ -130,7 +131,8 @@ final class TenantStudentFeeSetupPromotionService
         }
 
         $date = CarbonImmutable::now('Asia/Yangon');
-        return $items->mapWithKeys(function ($item) use ($principal, $student, $date): array {
+        $profile = $this->profile($student);
+        return $items->mapWithKeys(function ($item) use ($principal, $student, $date, $profile): array {
             try {
                 return [(int) $item->id => $this->promotions->previewForFeeSetup(
                     $principal,
@@ -139,6 +141,7 @@ final class TenantStudentFeeSetupPromotionService
                     (int) $item->selected_promotion_id,
                     CentralFinanceDecimal::normalize((string) $item->amount_snapshot),
                     $date,
+                    (int) $profile->id,
                 )];
             } catch (AuthorizationException|\InvalidArgumentException) {
                 // Do not invent a discount if a saved definition later

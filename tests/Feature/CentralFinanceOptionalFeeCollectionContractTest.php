@@ -136,4 +136,25 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('selected_promotion_id', $migration);
         $this->assertStringContainsString('sfa_item_selected_promotion_idx', $migration);
     }
+
+    public function test_student_specific_promotion_scope_is_server_enforced_and_never_becomes_a_front_desk_discount_field(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $promotion = (string) file_get_contents($root.'/app/Services/CentralFinancePromotionService.php');
+        $controller = (string) file_get_contents($root.'/app/Http/Controllers/CentralFinanceWorkspaceController.php');
+        $view = (string) file_get_contents($root.'/resources/views/central-finance/promotions.blade.php');
+        $collection = (string) file_get_contents($root.'/resources/views/central-finance/student-collection/show.blade.php');
+        $migration = (string) file_get_contents($root.'/database/migrations/2026_10_02_000001_add_student_scope_to_central_finance_promotions.php');
+
+        $this->assertStringContainsString("'student_profile_id'", $migration);
+        $this->assertStringContainsString('student_profile_id', $promotion);
+        $this->assertStringContainsString('Student must belong to an allocated School', $promotion);
+        $this->assertStringContainsString('exactly that Student’s School', $promotion);
+        $this->assertStringContainsString("->whereNull('student_profile_id')", $promotion);
+        $this->assertStringContainsString("->orWhere('student_profile_id', \$studentProfileId)", $promotion);
+        $this->assertStringContainsString("'student_profile_id'=>['nullable','integer']", $controller);
+        $this->assertStringContainsString('name="student_profile_id"', $view);
+        $this->assertStringContainsString('All eligible Students', $view);
+        $this->assertStringNotContainsString('name="discount_value"', $collection);
+    }
 }

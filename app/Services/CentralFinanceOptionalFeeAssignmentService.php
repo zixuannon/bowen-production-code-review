@@ -65,7 +65,7 @@ final class CentralFinanceOptionalFeeAssignmentService
         });
         $effectiveDate = \Carbon\CarbonImmutable::now('Asia/Yangon');
         return $items->map(function (object $item) use ($actor, $profile, $effectiveDate): object {
-            $item->promotions = $this->promotions->eligibleForFeeSetup($actor, (int) $profile->school_id, (int) $item->id, $effectiveDate)
+            $item->promotions = $this->promotions->eligibleForFeeSetup($actor, (int) $profile->school_id, (int) $profile->id, (int) $item->id, $effectiveDate)
                 ->map(fn ($promotion) => (object) ['id' => (int) $promotion->id, 'name' => (string) $promotion->name, 'code' => (string) $promotion->code, 'type' => (string) $promotion->discount_type, 'value' => (string) $promotion->discount_value])
                 ->values();
             return $item;

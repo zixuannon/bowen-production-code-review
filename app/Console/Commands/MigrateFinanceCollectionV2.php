@@ -15,6 +15,7 @@ final class MigrateFinanceCollectionV2 extends Command
     public const CENTRAL_MIGRATIONS = [
         '2026_09_29_000001_add_central_finance_layer3_receivable_promotions',
         '2026_09_29_000002_add_finance_collection_v2_documents',
+        '2026_10_02_000001_add_student_scope_to_central_finance_promotions',
     ];
     public const TENANT_MIGRATIONS = [
         '2026_09_29_000002_add_student_fee_quantity_snapshots',
@@ -93,15 +94,20 @@ final class MigrateFinanceCollectionV2 extends Command
         $schema = Schema::connection('mysql'); $db = DB::connection('mysql');
         foreach (['migrations','central_finance_receivables','central_finance_payments','central_finance_pending_collections','central_finance_ledger_entries','central_finance_document_audits'] as $table) if (!$schema->hasTable($table)) return 'unexpected';
         $recorded = $db->table('migrations')->whereIn('migration', self::CENTRAL_MIGRATIONS)->pluck('migration')->all();
-        $complete = count($recorded) === count(self::CENTRAL_MIGRATIONS)
+        $baseMigrations = array_slice(self::CENTRAL_MIGRATIONS, 0, 2);
+        $baseComplete = count(array_intersect($baseMigrations, $recorded)) === count($baseMigrations)
             && $schema->hasColumns('central_finance_receivables', ['unit_price_snapshot','quantity_snapshot'])
             && $schema->hasColumns('central_finance_payments', ['receivable_id'])
             && $schema->hasTable('central_finance_payment_allocations')
             && $schema->hasTable('central_finance_pending_collection_allocations')
             && $schema->hasTable('central_finance_unidentified_deposits')
             && $schema->hasTable('central_finance_unidentified_deposit_allocations')
-            && $schema->hasTable('central_finance_promotion_fee_allocations');
+            && $schema->hasTable('central_finance_promotion_fee_allocations')
+            && $schema->hasTable('central_finance_promotions');
+        $studentScopeRecorded = in_array(self::CENTRAL_MIGRATIONS[2], $recorded, true);
+        $complete = $baseComplete && $studentScopeRecorded && $schema->hasColumn('central_finance_promotions', 'student_profile_id');
         if ($complete) return 'complete';
+        if ($baseComplete && !$studentScopeRecorded && !$schema->hasColumn('central_finance_promotions', 'student_profile_id')) return 'eligible';
         return $recorded === [] ? 'eligible' : 'unexpected';
     }
 

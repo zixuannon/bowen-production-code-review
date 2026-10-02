@@ -355,6 +355,30 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $isolation=app(CentralFinanceDataIsolationService::class); $isolation->classify($this->head,1,'school',1,CentralFinanceDataClassification::QA_TEST,'QA School.');
   try { $service->define($this->head,1,[1,2],['name'=>'Mixed','code'=>'MIXED','description'=>null,'discount_type'=>'fixed','discount_value'=>'1.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active']); $this->fail('A definition must not mix QA and Official schools.'); } catch (InvalidArgumentException) { $this->assertSame(1,\App\Models\CentralFinancePromotion::on('mysql')->count()); }
  }
+ public function test_student_specific_promotion_is_visible_only_to_its_exact_profile_and_remains_append_only(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
+  (require database_path('migrations/2026_10_02_000001_add_student_scope_to_central_finance_promotions.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $service=app(\App\Services\CentralFinancePromotionService::class);
+  $target=$service->define($this->head,1,[1],['student_profile_id'=>$this->zixProfile->id,'name'=>'Individual support','code'=>'ZIX-ONLY-10','description'=>'Approved for this Student only.','discount_type'=>'percentage','discount_value'=>'10.0000','valid_from'=>'2026-01-01','valid_until'=>'2026-12-31','status'=>'active']);
+  $generic=$service->define($this->head,1,[1],['name'=>'School offer','code'=>'ZIX-ALL-5','description'=>null,'discount_type'=>'percentage','discount_value'=>'5.0000','valid_from'=>'2026-01-01','valid_until'=>'2026-12-31','status'=>'active']);
+  $date=CarbonImmutable::parse('2026-08-21','Asia/Yangon');
+  $front=CentralFinanceUser::on('mysql')->findOrFail(300);
+  $otherZixProfile=$this->profile(1,'44444444-4444-4444-8444-444444444444',99);
+  $expectedForTarget=[$generic->id,$target->id]; sort($expectedForTarget);
+  $this->assertSame($expectedForTarget,$service->eligibleForFeeSetup($front,1,$this->zixProfile->id,1,$date)->pluck('id')->sort()->values()->all());
+  $this->assertSame([$generic->id],$service->eligibleForFeeSetup($front,1,$otherZixProfile->id,1,$date)->pluck('id')->all());
+  $zixReceivable=$this->receivable($this->zixProfile);
+  $timeReceivable=$this->receivable($this->timeProfile);
+  $before=[DB::connection('mysql')->table('central_finance_receivable_adjustments')->count(),DB::connection('mysql')->table('central_finance_promotion_applications')->count(),CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count()];
+  $application=$service->apply($this->head,$zixReceivable->id,$target->id,$date,'Approved individual support.',$this->at(),'STUDENT-ONLY-ZIX');
+  $this->assertSame($target->id,$application->promotion_id);
+  try { $service->apply($this->head,$timeReceivable->id,$target->id,$date,'Must never cross Student scope.',$this->at(),'STUDENT-ONLY-TIME'); $this->fail('A student-specific Promotion must not apply to another Student.'); } catch (AuthorizationException) { $this->assertTrue(true); }
+  $this->assertSame([$before[0] + 1,$before[1] + 1,$before[2],$before[3]],[DB::connection('mysql')->table('central_finance_receivable_adjustments')->count(),DB::connection('mysql')->table('central_finance_promotion_applications')->count(),CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count()]);
+  try { $service->define($this->head,1,[1,2],['student_profile_id'=>$this->zixProfile->id,'name'=>'Invalid scope','code'=>'INVALID-SCOPE','description'=>null,'discount_type'=>'fixed','discount_value'=>'1.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active']); $this->fail('Student-specific definitions must be allocated to exactly one School.'); } catch (InvalidArgumentException) { $this->assertTrue(true); }
+ }
  public function test_layer3_corrections_waivers_and_voids_preserve_paid_floor_pending_guard_and_finance_history(): void {
   (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
   $service=app(\App\Services\CentralFinanceReceivableAdjustmentService::class); $receivable=$this->receivable($this->zixProfile);
