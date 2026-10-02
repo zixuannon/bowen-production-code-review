@@ -13,6 +13,15 @@ final class CentralFinanceSchoolScopeService {
         }
     }
 
+    /** A deliberately separate capability from collection submission. */
+    public function assertCanCreateStudentSpecificDiscounts(CentralFinanceUser $actor, int $schoolId): void {
+        $this->assertCanSubmitCollections($actor, $schoolId);
+        $scope = DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id' => $actor->id, 'school_id' => $schoolId])->first();
+        if (!$scope || !property_exists($scope, 'can_create_student_specific_discounts') || !(bool) $scope->can_create_student_specific_discounts) {
+            throw new AuthorizationException('The central actor cannot create student-specific discounts for this School.');
+        }
+    }
+
     public function assertCanOperate(CentralFinanceUser $actor, int $schoolId): void {
         School::on('mysql')->findOrFail($schoolId);
         $scope=DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id'=>$actor->id,'school_id'=>$schoolId])->first();

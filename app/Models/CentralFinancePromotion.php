@@ -16,10 +16,13 @@ final class CentralFinancePromotion extends Model
     public const STATUSES = [self::DRAFT, self::ACTIVE, self::INACTIVE, self::EXPIRED];
     public const PERCENTAGE = 'percentage';
     public const FIXED = 'fixed';
+    public const GENERAL = 'general';
+    public const STUDENT_SPECIFIC = 'student_specific';
+    public const SCOPES = [self::GENERAL, self::STUDENT_SPECIFIC];
 
     protected $connection = 'mysql';
     protected $fillable = [
-        'promotion_uuid', 'group_id', 'student_profile_id', 'name', 'code', 'description', 'discount_type', 'discount_value',
+        'promotion_uuid', 'group_id', 'student_profile_id', 'scope', 'creation_idempotency_key', 'name', 'code', 'description', 'student_discount_reason', 'discount_type', 'discount_value',
         'valid_from', 'valid_until', 'status', 'fee_scope', 'created_by', 'updated_by',
     ];
     protected $casts = ['discount_value' => 'decimal:4', 'valid_from' => 'date', 'valid_until' => 'date'];

@@ -86,4 +86,21 @@ class FinanceCollectionV2MigrationRunnerTest extends TestCase
         $migration->down();
         $this->assertFalse(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'selected_promotion_id'));
     }
+
+    public function test_student_specific_discount_draft_migration_is_additive_and_reversible(): void
+    {
+        Schema::connection('school')->create('student_fee_assignment_items', function ($table): void {
+            $table->id();
+            $table->unsignedBigInteger('selected_promotion_id')->nullable();
+        });
+
+        $migration = require database_path('migrations/schools/2026_10_02_000001_add_student_specific_discount_drafts.php');
+        $migration->up();
+        $this->assertTrue(Schema::connection('school')->hasColumns('student_fee_assignment_items', [
+            'student_discount_type', 'student_discount_value', 'student_discount_reason', 'student_discount_effective_date',
+        ]));
+
+        $migration->down();
+        $this->assertFalse(Schema::connection('school')->hasColumn('student_fee_assignment_items', 'student_discount_type'));
+    }
 }

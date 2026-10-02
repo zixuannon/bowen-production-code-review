@@ -379,6 +379,29 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $this->assertSame([$before[0] + 1,$before[1] + 1,$before[2],$before[3]],[DB::connection('mysql')->table('central_finance_receivable_adjustments')->count(),DB::connection('mysql')->table('central_finance_promotion_applications')->count(),CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count()]);
   try { $service->define($this->head,1,[1,2],['student_profile_id'=>$this->zixProfile->id,'name'=>'Invalid scope','code'=>'INVALID-SCOPE','description'=>null,'discount_type'=>'fixed','discount_value'=>'1.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active']); $this->fail('Student-specific definitions must be allocated to exactly one School.'); } catch (InvalidArgumentException) { $this->assertTrue(true); }
  }
+ public function test_front_desk_student_specific_discount_is_fee_scoped_audited_and_exactly_once(): void {
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
+  (require database_path('migrations/2026_10_02_000001_add_student_scope_to_central_finance_promotions.php'))->up();
+  DB::connection('mysql')->table('central_finance_user_school_scopes')->where(['user_id'=>300,'school_id'=>1])->update(['can_create_student_specific_discounts'=>1]);
+  $front=CentralFinanceUser::on('mysql')->findOrFail(300); $service=app(\App\Services\CentralFinancePromotionService::class); $date=$this->at();
+  $key=hash('sha256','front-desk-student-specific-discount');
+  $input=['discount_type'=>'percentage','discount_value'=>'10.0000','reason'=>'Sibling support approved for this Student.','effective_date'=>$date];
+  $discount=$service->defineStudentSpecificForFeeSetup($front,$this->zixProfile,1,$input,$key);
+  $retry=$service->defineStudentSpecificForFeeSetup($front,$this->zixProfile,1,$input,$key);
+  $this->assertSame($discount->id,$retry->id); $this->assertSame('student_specific',$discount->scope); $this->assertSame($this->zixProfile->id,(int)$discount->student_profile_id);
+  $this->assertSame(1,DB::connection('mysql')->table('central_finance_promotion_fee_allocations')->where(['promotion_id'=>$discount->id,'school_id'=>1,'fees_class_type_id'=>1,'status'=>'active'])->count());
+  $this->assertSame(1,DB::connection('mysql')->table('central_finance_document_audits')->where(['document_id'=>$discount->id,'action'=>'student_specific_discount_created'])->count());
+  $other=$this->profile(1,'66666666-6666-4666-8666-666666666666',88);
+  $this->assertSame([$discount->id],$service->eligibleForFeeSetup($front,1,$this->zixProfile->id,1,$date)->pluck('id')->all());
+  $this->assertFalse($service->eligibleForFeeSetup($front,1,$other->id,1,$date)->pluck('id')->contains($discount->id));
+  $receivable=$this->receivable($this->zixProfile); $before=[CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count()];
+  $application=$service->applyFromFeeSetup($front,$receivable->id,$discount->id,1,$date,$date,'front-desk-discount-item-1',$input['reason']);
+  $again=$service->applyFromFeeSetup($front,$receivable->id,$discount->id,1,$date,$date,'front-desk-discount-item-1',$input['reason']);
+  $this->assertSame($application->id,$again->id); $this->assertSame('student_specific',$application->promotion_scope_snapshot); $this->assertSame($this->zixProfile->id,(int)$application->student_profile_id_snapshot); $this->assertSame(1,(int)$application->fees_class_type_id_snapshot); $this->assertSame('front_desk',$application->applied_by_role_snapshot); $this->assertSame($input['reason'],$application->reason);
+  $this->assertSame('900.0000',(string)$receivable->fresh()->amount_due); $this->assertSame($before,[CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count()]);
+  try { $service->defineStudentSpecificForFeeSetup($front,$this->timeProfile,1,$input,hash('sha256','cross-school')); $this->fail('A Front Desk user cannot create a Discount for another School.'); } catch (AuthorizationException) { $this->assertTrue(true); }
+ }
  public function test_layer3_corrections_waivers_and_voids_preserve_paid_floor_pending_guard_and_finance_history(): void {
   (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
   $service=app(\App\Services\CentralFinanceReceivableAdjustmentService::class); $receivable=$this->receivable($this->zixProfile);

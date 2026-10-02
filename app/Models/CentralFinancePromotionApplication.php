@@ -11,9 +11,9 @@ final class CentralFinancePromotionApplication extends Model
 {
     protected $connection = 'mysql';
     protected $fillable = [
-        'application_uuid', 'school_id', 'receivable_id', 'promotion_id', 'adjustment_id', 'idempotency_key',
+        'application_uuid', 'school_id', 'receivable_id', 'promotion_id', 'promotion_scope_snapshot', 'student_profile_id_snapshot', 'fees_class_type_id_snapshot', 'adjustment_id', 'idempotency_key',
         'promotion_name_snapshot', 'promotion_code_snapshot', 'discount_type_snapshot', 'discount_value_snapshot',
-        'gross_amount_snapshot', 'discount_amount', 'net_amount_snapshot', 'effective_date', 'reason', 'applied_by', 'applied_at',
+        'gross_amount_snapshot', 'discount_amount', 'net_amount_snapshot', 'effective_date', 'reason', 'applied_by', 'applied_by_role_snapshot', 'applied_at',
     ];
     protected $casts = [
         'discount_value_snapshot' => 'decimal:4', 'gross_amount_snapshot' => 'decimal:4',

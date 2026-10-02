@@ -219,6 +219,14 @@ final class CentralFinanceWorkspaceService
         return $school;
     }
 
+    /** Front Desk discount creation is an explicit narrower School scope. */
+    public function assertCanCreateStudentSpecificDiscountsSchool(CentralFinanceUser $actor, int $schoolId): School
+    {
+        $school = $this->assertCanSubmitCollectionsSchool($actor, $schoolId);
+        $this->schools->assertCanCreateStudentSpecificDiscounts($actor, $school->id);
+        return $school;
+    }
+
     /** @return Collection<int, CentralFinanceFundAccount> */
     public function accessibleAccounts(CentralFinanceUser $actor, ?int $schoolId = null, bool $includeQaTest = false): Collection
     {

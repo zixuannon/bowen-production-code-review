@@ -20,11 +20,8 @@
             <div class="form-group"><label>{{ __('Description') }}</label><textarea name="description" class="form-control"></textarea></div><input type="hidden" name="status" value="active"><button class="btn btn-primary">{{ __('Create promotion') }}</button>
         </form>
     </div></div>
-    <div class="card"><div class="card-body"><h5>{{ __('Existing definitions') }}</h5><div class="table-responsive"><table class="table"><thead><tr><th>{{ __('Code') }}</th><th>{{ __('Name') }}</th><th>{{ __('Terms') }}</th><th>{{ __('Dates') }}</th><th>{{ __('Allocated Schools') }}</th><th>{{ __('Student scope') }}</th><th>{{ __('Fee scope') }}</th><th>{{ __('Classification') }}</th><th>{{ __('Status') }}</th></tr></thead><tbody>@forelse($promotions as $promotion)<tr><td>{{ $promotion->code }}</td><td>{{ $promotion->name }}</td><td>{{ $promotion->discount_type }} {{ number_format($promotion->discount_value, 2) }}</td><td>{{ $promotion->valid_from?->format('Y-m-d') }} — {{ $promotion->valid_until?->format('Y-m-d') ?: '—' }}</td><td>{{ $promotion->allocations->where('status','active')->map(fn ($allocation) => $allocation->school?->name ?: $allocation->school_id)->join(', ') }}</td><td>{{ $promotion->studentProfile ? $promotion->studentProfile->student_name.' · '.($promotion->studentProfile->student_code ?: $promotion->studentProfile->admission_no ?: $promotion->studentProfile->id) : __('All eligible Students') }}</td><td>{{ __($promotion->fee_scope) }}</td><td>{{ __($promotionClassifications[$promotion->id] ?? 'production') }}</td><td>{{ __($promotion->status) }}</td></tr>@empty<tr><td colspan="9" class="text-center text-muted">{{ __('No Promotion definitions have been created.') }}</td></tr>@endforelse</tbody></table></div></div></div>
+    <div class="card"><div class="card-body"><h5>{{ __('Existing definitions') }}</h5><div class="table-responsive"><table class="table"><thead><tr><th>{{ __('Code') }}</th><th>{{ __('Name') }}</th><th>{{ __('Terms') }}</th><th>{{ __('Dates') }}</th><th>{{ __('Allocated Schools') }}</th><th>{{ __('Scope') }}</th><th>{{ __('Student scope') }}</th><th>{{ __('Fee scope') }}</th><th>{{ __('Classification') }}</th><th>{{ __('Status') }}</th></tr></thead><tbody>@forelse($promotions as $promotion)<tr><td>{{ $promotion->code }}</td><td>{{ $promotion->name }}</td><td>{{ $promotion->discount_type }} {{ number_format($promotion->discount_value, 2) }}</td><td>{{ $promotion->valid_from?->format('Y-m-d') }} — {{ $promotion->valid_until?->format('Y-m-d') ?: '—' }}</td><td>{{ $promotion->allocations->where('status','active')->map(fn ($allocation) => $allocation->school?->name ?: $allocation->school_id)->join(', ') }}</td><td>{{ $promotion->scope === 'student_specific' ? __('Student-specific') : __('General') }}</td><td>{{ $promotion->studentProfile ? $promotion->studentProfile->student_name.' · '.($promotion->studentProfile->student_code ?: $promotion->studentProfile->admission_no ?: $promotion->studentProfile->id) : __('All eligible Students') }}</td><td>{{ __($promotion->fee_scope) }}</td><td>{{ __($promotionClassifications[$promotion->id] ?? 'production') }}</td><td>{{ __($promotion->status) }}</td></tr>@empty<tr><td colspan="10" class="text-center text-muted">{{ __('No Promotion definitions have been created.') }}</td></tr>@endforelse</tbody></table></div></div></div>
 </div>
-@endsection
-
-@push('scripts')
 <script>
 (() => {
     const student = document.getElementById('promotion-student-profile');
@@ -36,6 +33,6 @@
         if (!schoolId) return;
         schoolBoxes().forEach((box) => { box.checked = box.value === schoolId; });
     });
-});
+})();
 </script>
-@endpush
+@endsection

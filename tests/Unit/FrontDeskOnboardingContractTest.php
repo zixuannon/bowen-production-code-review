@@ -37,6 +37,7 @@ final class FrontDeskOnboardingContractTest extends TestCase
 
         self::assertStringContainsString('grantSchoolFrontDesk', $controller);
         self::assertStringContainsString('can_submit_collections', $identity);
+        self::assertStringContainsString('can_create_student_specific_discounts', $identity);
         self::assertStringContainsString('school-staff-front-desks', $routes);
         self::assertStringContainsString('provisionTenantFrontDesk', $identity);
         self::assertStringContainsString('school-staff-front-desks/provision', $routes);

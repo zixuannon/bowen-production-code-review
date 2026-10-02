@@ -8,6 +8,7 @@ use App\Models\CentralFinanceReceivable;
 use App\Services\ResponseService;
 use App\Services\CentralFinanceStudentReadBridge;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Services\CentralFinanceSchoolStaffIdentityService;
 use App\Services\CentralFinanceSchoolCutoverService;
 use Illuminate\Auth\Access\AuthorizationException;
 use App\Services\StudentFeeAssignmentService;
@@ -20,7 +21,7 @@ use Illuminate\View\View;
 
 final class StudentFeeAssignmentController extends Controller
 {
-    public function __construct(private readonly StudentFeeAssignmentService $assignments, private readonly CentralFinanceStudentReadBridge $finance, private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinanceSchoolCutoverService $cutovers, private readonly TenantStudentFeeSetupPromotionService $promotionSelections) {}
+    public function __construct(private readonly StudentFeeAssignmentService $assignments, private readonly CentralFinanceStudentReadBridge $finance, private readonly CentralFinanceWorkspaceService $workspace, private readonly CentralFinanceSchoolCutoverService $cutovers, private readonly TenantStudentFeeSetupPromotionService $promotionSelections, private readonly CentralFinanceSchoolStaffIdentityService $staffIdentities) {}
 
     public function show(int $studentId): View
     {
@@ -45,6 +46,7 @@ final class StudentFeeAssignmentController extends Controller
             'availableItems' => $availableItems,
             'availableAdditionalItems' => $availableAdditionalItems,
             'promotionChoices' => $this->promotionSelections->choices(Auth::user(), $student, $availableItems->merge($availableAdditionalItems)),
+            'canCreateStudentSpecificDiscounts' => $this->promotionSelections->canCreateStudentSpecificDiscounts(Auth::user(), $student),
             'quantityMax' => $this->assignments->maxQuantity(),
             'draft' => $draft,
             'draftPromotionPreview' => $this->promotionSelections->previewDraft(Auth::user(), $student, $draft),
@@ -80,13 +82,25 @@ final class StudentFeeAssignmentController extends Controller
             'optional_fee_ids' => ['nullable', 'array'], 'optional_fee_ids.*' => ['integer'],
             'optional_fee_quantities' => ['nullable', 'array'], 'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1', 'max:'.$this->assignments->maxQuantity()],
             'promotions' => ['nullable', 'array'], 'promotions.*' => ['nullable', 'integer', 'min:1'],
+            'student_discounts' => ['nullable', 'array'],
+            'student_discounts.*' => ['nullable', 'array'],
+            'student_discounts.*.enabled' => ['nullable'],
+            'student_discounts.*.discount_type' => ['nullable', 'string'],
+            'student_discounts.*.discount_value' => ['nullable'],
+            'student_discounts.*.reason' => ['nullable', 'string', 'max:2000'],
+            'student_discounts.*.effective_date' => ['nullable', 'string'],
         ]);
         $student = $this->student($studentId);
         $available = $this->assignments->availableItems($student);
         $optionalIds = collect($data['optional_fee_ids'] ?? [])->map(fn ($id): int => (int) $id)->filter(fn (int $id): bool => $id > 0)->unique();
         $selected = $available->filter(fn ($item): bool => !(bool) $item->optional || $optionalIds->contains((int) $item->id));
         $promotions = $this->promotionSelections->validateSelections(Auth::user(), $student, $selected, $data['promotions'] ?? []);
-        $assignment = $this->assignments->saveDraft($student, Auth::user(), $data['optional_fee_ids'] ?? [], $data['optional_fee_quantities'] ?? [], $promotions);
+        $discounts = $this->promotionSelections->validateStudentDiscounts(Auth::user(), $student, $selected, $data['student_discounts'] ?? []);
+        if (array_intersect(array_keys($promotions), array_keys($discounts)) !== []) {
+            return back()->withErrors(['student_discounts' => __('Choose either an approved Promotion or a student-specific Discount for each Fee Item.')])->withInput();
+        }
+        $assignment = $this->assignments->saveDraft($student, Auth::user(), $data['optional_fee_ids'] ?? [], $data['optional_fee_quantities'] ?? [], $promotions, $discounts);
+        $assignment = $this->promotionSelections->materializeDraftStudentDiscounts(Auth::user(), $student, $assignment);
         return redirect()->route('students.fee-assignment.show', $studentId)->with('success', 'Fee assignment draft saved.')->with('assignment_uuid', $assignment->uuid);
     }
 
@@ -123,12 +137,25 @@ final class StudentFeeAssignmentController extends Controller
             'optional_fee_ids' => ['required', 'array'], 'optional_fee_ids.*' => ['integer'],
             'optional_fee_quantities' => ['nullable', 'array'], 'optional_fee_quantities.*' => ['nullable', 'integer', 'min:1', 'max:'.$this->assignments->maxQuantity()],
             'promotions' => ['nullable', 'array'], 'promotions.*' => ['nullable', 'integer', 'min:1'],
+            'student_discounts' => ['nullable', 'array'],
+            'student_discounts.*' => ['nullable', 'array'],
+            'student_discounts.*.enabled' => ['nullable'],
+            'student_discounts.*.discount_type' => ['nullable', 'string'],
+            'student_discounts.*.discount_value' => ['nullable'],
+            'student_discounts.*.reason' => ['nullable', 'string', 'max:2000'],
+            'student_discounts.*.effective_date' => ['nullable', 'string'],
         ]);
         $student = $this->student($studentId);
         $available = $this->assignments->availableAdditionalItems($student);
         $selectedIds = collect($data['optional_fee_ids'])->map(fn ($id): int => (int) $id)->filter(fn (int $id): bool => $id > 0)->unique();
-        $promotions = $this->promotionSelections->validateSelections(Auth::user(), $student, $available->whereIn('id', $selectedIds), $data['promotions'] ?? []);
-        $assignment = $this->assignments->saveAdditionalDraft($student, Auth::user(), $data['optional_fee_ids'], $data['optional_fee_quantities'] ?? [], $promotions);
+        $selected = $available->whereIn('id', $selectedIds);
+        $promotions = $this->promotionSelections->validateSelections(Auth::user(), $student, $selected, $data['promotions'] ?? []);
+        $discounts = $this->promotionSelections->validateStudentDiscounts(Auth::user(), $student, $selected, $data['student_discounts'] ?? []);
+        if (array_intersect(array_keys($promotions), array_keys($discounts)) !== []) {
+            return back()->withErrors(['student_discounts' => __('Choose either an approved Promotion or a student-specific Discount for each Fee Item.')])->withInput();
+        }
+        $assignment = $this->assignments->saveAdditionalDraft($student, Auth::user(), $data['optional_fee_ids'], $data['optional_fee_quantities'] ?? [], $promotions, $discounts);
+        $assignment = $this->promotionSelections->materializeDraftStudentDiscounts(Auth::user(), $student, $assignment);
         return redirect()->route('students.fee-assignment.show', $studentId)->with('success', 'Additional fee assignment draft saved.')->with('assignment_uuid', $assignment->uuid);
     }
 
@@ -140,9 +167,48 @@ final class StudentFeeAssignmentController extends Controller
     private function canCollectForStudent(Students $student): bool
     {
         try {
-            $actor = $this->workspace->actor(Auth::user());
-            $school = $this->workspace->requireOperatingSchool($actor);
-            return (int) $school->id === (int) $student->school_id && $this->cutovers->allowsCentralWrites($school->id);
+            $authenticated = Auth::user();
+            if ($authenticated === null) {
+                return false;
+            }
+
+            // Fee Setup is a tenant-facing route.  Its authenticated User is
+            // therefore a tenant Staff record whose numeric primary key must
+            // never be treated as a Central Finance user ID.  Resolve the
+            // request-scoped Central principal only through the trusted
+            // School-login session mapping and bind it back to the tenant
+            // Staff UUID before checking the narrow collection capability.
+            $context = session(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+            if (is_array($context)) {
+                $actor = $this->staffIdentities->resolveTrustedSession($context);
+                $actorUuid = (string) $authenticated->getRawOriginal('central_finance_source_uuid');
+                if ($actorUuid === ''
+                    || !hash_equals((string) ($context['user_uuid'] ?? ''), $actorUuid)
+                    || (int) $actor->getRawOriginal('school_id') !== (int) $student->school_id) {
+                    return false;
+                }
+            } else {
+                // Central-only sessions have no tenant Staff context and may
+                // enter only through their own canonical Central identity.
+                $actor = $this->workspace->actor($authenticated);
+            }
+            $school = $this->workspace->currentSchool($actor);
+            if ($school === null || (int) $school->id !== (int) $student->school_id || !$this->cutovers->allowsCentralWrites($school->id)) {
+                return false;
+            }
+
+            // A Front Desk creates a Pending Collection, whereas Head Finance
+            // posts the canonical Finance effect. Both are valid entry points
+            // to the same Student Collection screen; a generic school
+            // operator is neither.
+            try {
+                $this->workspace->assertCanSubmitCollectionsSchool($actor, (int) $school->id);
+                return true;
+            } catch (AuthorizationException) {
+                $this->workspace->assertCanOperateSchool($actor, (int) $school->id);
+                $this->workspace->assertHeadFinance($actor);
+                return true;
+            }
         } catch (AuthorizationException) {
             return false;
         }

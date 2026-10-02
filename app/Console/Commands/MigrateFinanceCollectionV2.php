@@ -20,6 +20,7 @@ final class MigrateFinanceCollectionV2 extends Command
     public const TENANT_MIGRATIONS = [
         '2026_09_29_000002_add_student_fee_quantity_snapshots',
         '2026_09_30_000001_add_student_fee_assignment_promotion_selection',
+        '2026_10_02_000001_add_student_specific_discount_drafts',
     ];
 
     protected $signature = 'finance:migrate-collection-v2
@@ -105,7 +106,10 @@ final class MigrateFinanceCollectionV2 extends Command
             && $schema->hasTable('central_finance_promotion_fee_allocations')
             && $schema->hasTable('central_finance_promotions');
         $studentScopeRecorded = in_array(self::CENTRAL_MIGRATIONS[2], $recorded, true);
-        $complete = $baseComplete && $studentScopeRecorded && $schema->hasColumn('central_finance_promotions', 'student_profile_id');
+        $complete = $baseComplete && $studentScopeRecorded
+            && $schema->hasColumns('central_finance_promotions', ['student_profile_id', 'scope', 'creation_idempotency_key', 'student_discount_reason'])
+            && $schema->hasColumns('central_finance_promotion_applications', ['promotion_scope_snapshot', 'student_profile_id_snapshot', 'fees_class_type_id_snapshot', 'applied_by_role_snapshot'])
+            && $schema->hasColumn('central_finance_user_school_scopes', 'can_create_student_specific_discounts');
         if ($complete) return 'complete';
         if ($baseComplete && !$studentScopeRecorded && !$schema->hasColumn('central_finance_promotions', 'student_profile_id')) return 'eligible';
         return $recorded === [] ? 'eligible' : 'unexpected';
@@ -118,17 +122,21 @@ final class MigrateFinanceCollectionV2 extends Command
         $recorded = DB::connection('school')->table('migrations')->whereIn('migration', self::TENANT_MIGRATIONS)->pluck('migration')->all();
         $quantityRecorded = in_array(self::TENANT_MIGRATIONS[0], $recorded, true);
         $promotionRecorded = in_array(self::TENANT_MIGRATIONS[1], $recorded, true);
+        $studentDiscountRecorded = in_array(self::TENANT_MIGRATIONS[2], $recorded, true);
         $quantityComplete = $quantityRecorded && $schema->hasColumn('fees_class_types', 'quantity_enabled') && $schema->hasColumns('student_fee_assignment_items', ['unit_price_snapshot','quantity_snapshot']);
         $promotionComplete = $promotionRecorded && $schema->hasColumn('student_fee_assignment_items', 'selected_promotion_id');
-        $complete = $quantityComplete && $promotionComplete;
+        $studentDiscountComplete = $studentDiscountRecorded && $schema->hasColumns('student_fee_assignment_items', ['student_discount_type', 'student_discount_value', 'student_discount_reason', 'student_discount_effective_date']);
+        $complete = $quantityComplete && $promotionComplete && $studentDiscountComplete;
         if ($complete) return 'complete';
         // Existing Collection V2 tenants receive only the additive Promotion
         // selection column. New tenants receive both exact reviewed paths.
+        $eligibleForStudentDiscount = $quantityComplete && $promotionComplete && !$studentDiscountRecorded
+            && !$schema->hasColumn('student_fee_assignment_items', 'student_discount_type');
         $eligibleForPromotion = $quantityComplete && !$promotionRecorded && !$schema->hasColumn('student_fee_assignment_items', 'selected_promotion_id');
         $eligibleForCollection = !$quantityRecorded && !$promotionRecorded
             && !$schema->hasColumn('fees_class_types', 'quantity_enabled')
             && !$schema->hasColumn('student_fee_assignment_items', 'selected_promotion_id');
-        return $eligibleForPromotion || $eligibleForCollection ? 'eligible' : 'unexpected';
+        return $eligibleForStudentDiscount || $eligibleForPromotion || $eligibleForCollection ? 'eligible' : 'unexpected';
     }
 
     private function connect(string $database): bool

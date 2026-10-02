@@ -119,6 +119,8 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString("'promotions' => ['nullable', 'array']", $controller);
         $this->assertStringContainsString('validateSelections', $controller);
         $this->assertStringContainsString('applyConfirmedSelections', $controller);
+        $this->assertStringContainsString('assertCanSubmitCollectionsSchool', $controller);
+        $this->assertStringContainsString('assertHeadFinance', $controller);
         $this->assertStringContainsString('optionalQuantities = []', $assignment);
         $this->assertStringContainsString('selectedPromotions = []', $assignment);
         $this->assertStringContainsString('selected_promotion_id', $assignment);
@@ -137,7 +139,7 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('sfa_item_selected_promotion_idx', $migration);
     }
 
-    public function test_student_specific_promotion_scope_is_server_enforced_and_never_becomes_a_front_desk_discount_field(): void
+    public function test_student_specific_promotion_scope_is_server_enforced_through_the_existing_promotion_engine(): void
     {
         $root = dirname(__DIR__, 2);
         $promotion = (string) file_get_contents($root.'/app/Services/CentralFinancePromotionService.php');
@@ -151,7 +153,11 @@ final class CentralFinanceOptionalFeeCollectionContractTest extends TestCase
         $this->assertStringContainsString('Student must belong to an allocated School', $promotion);
         $this->assertStringContainsString('exactly that Student’s School', $promotion);
         $this->assertStringContainsString("->whereNull('student_profile_id')", $promotion);
-        $this->assertStringContainsString("->orWhere('student_profile_id', \$studentProfileId)", $promotion);
+        $this->assertStringContainsString("CentralFinancePromotion::STUDENT_SPECIFIC", $promotion);
+        $this->assertStringContainsString('defineStudentSpecificForFeeSetup', $promotion);
+        $this->assertStringContainsString('central_finance_promotion_fee_allocations', $promotion);
+        $this->assertStringContainsString('creation_idempotency_key', $promotion);
+        $this->assertStringContainsString('student_discounts', $root ? (string) file_get_contents($root.'/app/Http/Controllers/StudentFeeAssignmentController.php') : '');
         $this->assertStringContainsString("'student_profile_id'=>['nullable','integer']", $controller);
         $this->assertStringContainsString('name="student_profile_id"', $view);
         $this->assertStringContainsString('All eligible Students', $view);

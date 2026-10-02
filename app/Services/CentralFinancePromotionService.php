@@ -38,8 +38,18 @@ final class CentralFinancePromotionService
         $classifications = collect($schoolIds)->map(fn (int $schoolId) => $this->dataIsolation->classification('school', $schoolId))->unique();
         if ($classifications->count() !== 1) throw new InvalidArgumentException('A Promotion definition cannot mix QA/Test and Official Schools.');
         $studentProfileId = isset($input['student_profile_id']) && $input['student_profile_id'] !== '' ? (int) $input['student_profile_id'] : null;
+        $scope = (string) ($input['scope'] ?? ($studentProfileId === null ? CentralFinancePromotion::GENERAL : CentralFinancePromotion::STUDENT_SPECIFIC));
+        if (!in_array($scope, CentralFinancePromotion::SCOPES, true)) {
+            throw new InvalidArgumentException('Promotion scope is invalid.');
+        }
+        if ($scope === CentralFinancePromotion::GENERAL && $studentProfileId !== null) {
+            throw new InvalidArgumentException('A general Promotion cannot target an individual Student.');
+        }
+        if ($scope === CentralFinancePromotion::STUDENT_SPECIFIC && $studentProfileId === null) {
+            throw new InvalidArgumentException('A student-specific Promotion requires one Student.');
+        }
         if ($studentProfileId !== null) {
-            if (!Schema::connection('mysql')->hasColumn('central_finance_promotions', 'student_profile_id')) {
+            if (!$this->studentSpecificSchemaInstalled()) {
                 throw new InvalidArgumentException('Student-specific Promotion scope is not available until the approved schema update is installed.');
             }
             $profile = CentralFinanceStudentProfile::on('mysql')->find($studentProfileId);
@@ -58,12 +68,15 @@ final class CentralFinancePromotionService
         if ($input['discount_type'] === CentralFinancePromotion::PERCENTAGE && CentralFinanceDecimal::compare($value, '100') > 0) throw new InvalidArgumentException('Percentage Promotion may not exceed 100%.');
         if (!in_array($input['discount_type'], [CentralFinancePromotion::PERCENTAGE, CentralFinancePromotion::FIXED], true) || !in_array($input['status'], CentralFinancePromotion::STATUSES, true)) throw new InvalidArgumentException('Promotion definition is invalid.');
         if (!empty($input['valid_until']) && $input['valid_until'] < $input['valid_from']) throw new InvalidArgumentException('Promotion end date cannot be before its start date.');
-        return DB::connection('mysql')->transaction(function () use ($actor, $groupId, $schoolIds, $input, $value, $studentProfileId): CentralFinancePromotion {
+        return DB::connection('mysql')->transaction(function () use ($actor, $groupId, $schoolIds, $input, $value, $studentProfileId, $scope): CentralFinancePromotion {
             $attributes = ['group_id'=>$groupId,'name'=>trim($input['name']),'code'=>strtoupper(trim($input['code'])),'description'=>trim((string) ($input['description'] ?? '')) ?: null,'discount_type'=>$input['discount_type'],'discount_value'=>$value,'valid_from'=>$input['valid_from'],'valid_until'=>$input['valid_until'] ?: null,'status'=>$input['status'],'fee_scope'=>'all_approved_fees','created_by'=>$actor->id];
-            if (Schema::connection('mysql')->hasColumn('central_finance_promotions', 'student_profile_id')) $attributes['student_profile_id'] = $studentProfileId;
+            if ($this->studentSpecificSchemaInstalled()) {
+                $attributes['student_profile_id'] = $studentProfileId;
+                $attributes['scope'] = $scope;
+            }
             $promotion = CentralFinancePromotion::on('mysql')->create($attributes);
             foreach ($schoolIds as $schoolId) $promotion->allocations()->create(['school_id'=>$schoolId,'status'=>'active']);
-            CentralFinanceDocumentAudit::on('mysql')->create(['school_id'=>$schoolIds[0],'group_id'=>$groupId,'document_type'=>'central_finance_promotion','document_id'=>$promotion->id,'action'=>'created','actor_id'=>$actor->id,'reason'=>'Promotion definition created.','before_values'=>null,'after_values'=>['code'=>$promotion->code,'discount_type'=>$promotion->discount_type,'discount_value'=>$promotion->discount_value,'school_ids'=>$schoolIds,'student_profile_id'=>$promotion->student_profile_id]]);
+            CentralFinanceDocumentAudit::on('mysql')->create(['school_id'=>$schoolIds[0],'group_id'=>$groupId,'document_type'=>'central_finance_promotion','document_id'=>$promotion->id,'action'=>'created','actor_id'=>$actor->id,'reason'=>'Promotion definition created.','before_values'=>null,'after_values'=>['code'=>$promotion->code,'discount_type'=>$promotion->discount_type,'discount_value'=>$promotion->discount_value,'school_ids'=>$schoolIds,'scope'=>$scope,'student_profile_id'=>$promotion->student_profile_id]]);
             $classification = $this->dataIsolation->classification('school', $schoolIds[0]);
             if ($classification !== 'production') $this->dataIsolation->classify($actor, $schoolIds[0], 'promotion', $promotion->id, $classification, 'Promotion definition classification inherited from its allocated Schools.');
             return $promotion;
@@ -87,6 +100,121 @@ final class CentralFinancePromotionService
         return $this->eligibleForSchool($schoolId, $feesClassTypeId, $date, $studentProfileId);
     }
 
+    /** Throws unless this Front Desk actor has the explicit narrow capability. */
+    public function assertCanCreateStudentSpecificDiscount(CentralFinanceUser $actor, int $schoolId): void
+    {
+        if (!$this->studentSpecificSchemaInstalled()) {
+            throw new AuthorizationException('Student-specific Discounts are unavailable until the approved schema update is installed.');
+        }
+        $this->workspace->assertCanCreateStudentSpecificDiscountsSchool($actor, $schoolId);
+    }
+
+    /**
+     * Creates one active, exact-Student and exact-Fee definition through the
+     * established Promotion engine.  No browser-supplied School, Student,
+     * Group, or Fee allocation is trusted.
+     *
+     * @param array{discount_type:string,discount_value:string,reason:string,effective_date:CarbonImmutable} $input
+     */
+    public function defineStudentSpecificForFeeSetup(CentralFinanceUser $actor, CentralFinanceStudentProfile $profile, int $feesClassTypeId, array $input, string $idempotencyKey): CentralFinancePromotion
+    {
+        $schoolId = (int) $profile->school_id;
+        $this->assertCanCreateStudentSpecificDiscount($actor, $schoolId);
+        if ($feesClassTypeId < 1 || !preg_match('/^[a-f0-9]{64}$/', $idempotencyKey)) {
+            throw new InvalidArgumentException('Student-specific Discount request is invalid.');
+        }
+        $type = (string) ($input['discount_type'] ?? '');
+        $value = CentralFinanceDecimal::normalize((string) ($input['discount_value'] ?? '0'));
+        $reason = trim((string) ($input['reason'] ?? ''));
+        $effectiveDate = $input['effective_date'] ?? null;
+        if (!in_array($type, [CentralFinancePromotion::PERCENTAGE, CentralFinancePromotion::FIXED], true)
+            || CentralFinanceDecimal::compare($value, '0') <= 0
+            || ($type === CentralFinancePromotion::PERCENTAGE && CentralFinanceDecimal::compare($value, '100') >= 0)
+            || $reason === '' || mb_strlen($reason) > 2000 || !$effectiveDate instanceof CarbonImmutable) {
+            throw new InvalidArgumentException('Student-specific Discount details are invalid.');
+        }
+
+        $groupIds = FinanceGroupSchool::on('mysql')->where('school_id', $schoolId)->where('status', 'active')
+            ->whereIn('group_id', DB::connection('mysql')->table('finance_group_users')->where('central_user_id', $actor->id)->where('status', 'active')->pluck('group_id'))
+            ->pluck('group_id')->unique()->values();
+        if ($groupIds->count() !== 1) {
+            throw new AuthorizationException('The current Front Desk identity has no unambiguous active Finance Group for this Student.');
+        }
+        $groupId = (int) $groupIds->sole();
+
+        return DB::connection('mysql')->transaction(function () use ($actor, $profile, $feesClassTypeId, $idempotencyKey, $type, $value, $reason, $effectiveDate, $schoolId, $groupId): CentralFinancePromotion {
+            $existing = CentralFinancePromotion::on('mysql')->where('creation_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
+            if ($existing !== null) {
+                if ($existing->scope !== CentralFinancePromotion::STUDENT_SPECIFIC
+                    || (int) $existing->student_profile_id !== (int) $profile->id
+                    || (int) $existing->group_id !== $groupId
+                    || $existing->discount_type !== $type
+                    || CentralFinanceDecimal::compare((string) $existing->discount_value, $value) !== 0
+                    || !hash_equals((string) $existing->student_discount_reason, $reason)
+                    || (string) $existing->valid_from?->format('Y-m-d') !== $effectiveDate->toDateString()
+                    || !DB::connection('mysql')->table('central_finance_promotion_fee_allocations')->where([
+                        'promotion_id' => $existing->id, 'school_id' => $schoolId, 'fees_class_type_id' => $feesClassTypeId, 'status' => 'active',
+                    ])->exists()) {
+                    throw new AuthorizationException('The existing Student-specific Discount does not match this trusted Fee Setup request.');
+                }
+                return $existing;
+            }
+            $suffix = strtoupper(substr($idempotencyKey, 0, 12));
+            $promotion = CentralFinancePromotion::on('mysql')->create([
+                'group_id' => $groupId,
+                'student_profile_id' => $profile->id,
+                'scope' => CentralFinancePromotion::STUDENT_SPECIFIC,
+                'creation_idempotency_key' => $idempotencyKey,
+                'name' => 'Student-specific Discount · '.mb_substr((string) $profile->student_name, 0, 120),
+                'code' => 'STD-'.$profile->id.'-'.$feesClassTypeId.'-'.$suffix,
+                'description' => 'Created from trusted Student Fee Setup.',
+                'student_discount_reason' => $reason,
+                'discount_type' => $type,
+                'discount_value' => $value,
+                'valid_from' => $effectiveDate->toDateString(),
+                'valid_until' => null,
+                'status' => CentralFinancePromotion::ACTIVE,
+                'fee_scope' => 'specific_fee_items',
+                'created_by' => $actor->id,
+            ]);
+            $promotion->allocations()->create(['school_id' => $schoolId, 'status' => 'active']);
+            DB::connection('mysql')->table('central_finance_promotion_fee_allocations')->insert([
+                'promotion_id' => $promotion->id,
+                'school_id' => $schoolId,
+                'fees_class_type_id' => $feesClassTypeId,
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $auditAttributes = [
+                'school_id' => $schoolId,
+                'document_type' => 'central_finance_promotion',
+                'document_id' => $promotion->id,
+                'action' => 'student_specific_discount_created',
+                'actor_id' => $actor->id,
+                'reason' => $reason,
+                'before_values' => null,
+                'after_values' => [
+                    'scope' => CentralFinancePromotion::STUDENT_SPECIFIC,
+                    'student_profile_id' => (int) $profile->id,
+                    'fees_class_type_id' => $feesClassTypeId,
+                    'discount_type' => $type,
+                    'discount_value' => $value,
+                    'effective_date' => $effectiveDate->toDateString(),
+                ],
+            ];
+            if (Schema::connection('mysql')->hasColumn('central_finance_document_audits', 'group_id')) {
+                $auditAttributes['group_id'] = $groupId;
+            }
+            CentralFinanceDocumentAudit::on('mysql')->create($auditAttributes);
+            $classification = $this->dataIsolation->classification('school', $schoolId);
+            if ($classification !== 'production') {
+                $this->dataIsolation->classify($actor, $schoolId, 'promotion', $promotion->id, $classification, 'Student-specific Discount classification inherited from its trusted School.');
+            }
+            return $promotion;
+        });
+    }
+
     /** @return \Illuminate\Support\Collection<int, CentralFinancePromotion> */
     private function eligibleForSchool(int $schoolId, ?int $feesClassTypeId, CarbonImmutable $date, ?int $studentProfileId = null): \Illuminate\Support\Collection
     {
@@ -95,10 +223,16 @@ final class CentralFinancePromotionService
             ->whereDate('valid_from', '<=', $date->toDateString())
             ->where(function ($q) use ($date): void { $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', $date->toDateString()); })
             ->whereHas('allocations', fn ($q) => $q->where('school_id', $schoolId)->where('status', 'active'))
-            ->when(Schema::connection('mysql')->hasColumn('central_finance_promotions', 'student_profile_id'), function ($query) use ($studentProfileId): void {
+            ->when($this->studentSpecificSchemaInstalled(), function ($query) use ($studentProfileId): void {
                 $query->where(function ($scoped) use ($studentProfileId): void {
-                    $scoped->whereNull('student_profile_id');
-                    if ($studentProfileId !== null) $scoped->orWhere('student_profile_id', $studentProfileId);
+                    $scoped->where(function ($general): void {
+                        $general->where('scope', CentralFinancePromotion::GENERAL)->whereNull('student_profile_id');
+                    });
+                    if ($studentProfileId !== null) {
+                        $scoped->orWhere(function ($student) use ($studentProfileId): void {
+                            $student->where('scope', CentralFinancePromotion::STUDENT_SPECIFIC)->where('student_profile_id', $studentProfileId);
+                        });
+                    }
                 });
             })
             ->where(function ($query) use ($schoolId, $feesClassTypeId): void {
@@ -122,9 +256,9 @@ final class CentralFinancePromotionService
     }
 
     /** Promotion selection during Front Desk Student Fee Setup. */
-    public function applyFromFeeSetup(CentralFinanceUser $actor, int $receivableId, int $promotionId, int $feesClassTypeId, CarbonImmutable $effectiveDate, CarbonImmutable $recordedAt, string $key): CentralFinancePromotionApplication
+    public function applyFromFeeSetup(CentralFinanceUser $actor, int $receivableId, int $promotionId, int $feesClassTypeId, CarbonImmutable $effectiveDate, CarbonImmutable $recordedAt, string $key, ?string $reason = null): CentralFinancePromotionApplication
     {
-        return $this->applyInternal($actor, $receivableId, $promotionId, $effectiveDate, 'Promotion selected during Student Fee Setup.', $recordedAt, $key, true, $feesClassTypeId);
+        return $this->applyInternal($actor, $receivableId, $promotionId, $effectiveDate, $reason ?: 'Promotion selected during Student Fee Setup.', $recordedAt, $key, true, $feesClassTypeId);
     }
 
     /**
@@ -174,7 +308,7 @@ final class CentralFinancePromotionService
             $adjustment = $fromFeeSetup
                 ? $this->adjustments->applyPromotionDuringFeeSetup($actor, $receivable->id, $discount, $note, $effectiveDate, $recordedAt, $key)
                 : $this->adjustments->applyPromotion($actor, $receivable->id, $discount, $note, $effectiveDate, $recordedAt, $key);
-            $application = CentralFinancePromotionApplication::on('mysql')->create([
+            $applicationAttributes = [
                 'school_id' => $receivable->school_id, 'receivable_id' => $receivable->id, 'promotion_id' => $promotion->id,
                 'adjustment_id' => $adjustment->id, 'idempotency_key' => $idempotency,
                 'promotion_name_snapshot' => $promotion->name, 'promotion_code_snapshot' => $promotion->code,
@@ -183,7 +317,18 @@ final class CentralFinancePromotionService
                 'net_amount_snapshot' => CentralFinanceDecimal::subtract($gross, $discount),
                 'effective_date' => $effectiveDate->toDateString(), 'reason' => $note,
                 'applied_by' => $actor->id, 'applied_at' => $recordedAt,
-            ]);
+            ];
+            if ($this->studentSpecificSchemaInstalled()) {
+                $applicationAttributes += [
+                    'promotion_scope_snapshot' => $promotion->scope,
+                    'student_profile_id_snapshot' => $promotion->student_profile_id,
+                    'fees_class_type_id_snapshot' => $feesClassTypeId,
+                    'applied_by_role_snapshot' => $this->workspace->isSchoolStaffPrincipal($actor)
+                        ? 'front_desk'
+                        : ($this->workspace->canReviewPendingCollections($actor) ? 'head_finance' : 'central_finance'),
+                ];
+            }
+            $application = CentralFinancePromotionApplication::on('mysql')->create($applicationAttributes);
             $this->dataIsolation->inheritWorkflowClassification($actor, (int) $receivable->school_id, 'promotion_application', (int) $application->id);
             return $application;
         });
@@ -199,5 +344,13 @@ final class CentralFinancePromotionService
         }
 
         return $discount;
+    }
+
+    private function studentSpecificSchemaInstalled(): bool
+    {
+        $schema = Schema::connection('mysql');
+        return $schema->hasColumns('central_finance_promotions', ['student_profile_id', 'scope', 'creation_idempotency_key', 'student_discount_reason'])
+            && $schema->hasColumns('central_finance_promotion_applications', ['promotion_scope_snapshot', 'student_profile_id_snapshot', 'fees_class_type_id_snapshot', 'applied_by_role_snapshot'])
+            && $schema->hasColumn('central_finance_user_school_scopes', 'can_create_student_specific_discounts');
     }
 }

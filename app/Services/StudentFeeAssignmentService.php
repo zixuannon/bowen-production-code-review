@@ -100,7 +100,7 @@ final class StudentFeeAssignmentService
     }
 
     /** @param list<mixed> $requestedOptionalIds */
-    public function saveDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = []): StudentFeeAssignment
+    public function saveDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         $available = $this->availableItems($student);
@@ -112,7 +112,7 @@ final class StudentFeeAssignmentService
 
         $selected = $available->filter(fn (FeesClassType $item) => !(bool) $item->optional || $optionalIds->contains((int) $item->id));
         $quantities = $this->validatedFeeQuantities($selected, $optionalQuantities);
-        return DB::transaction(function () use ($student, $selected, $quantities, $selectedPromotions): StudentFeeAssignment {
+        return DB::transaction(function () use ($student, $selected, $quantities, $selectedPromotions, $studentDiscounts): StudentFeeAssignment {
             $assignment = $this->latestDraft($student) ?? StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
                 'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student), 'assignment_type' => StudentFeeAssignment::INITIAL, 'status' => StudentFeeAssignment::DRAFT,
@@ -120,14 +120,14 @@ final class StudentFeeAssignmentService
             // Drafts are the only mutable records. Confirmed snapshots are never rebuilt.
             $assignment->items()->delete();
             foreach ($selected as $template) {
-                $assignment->items()->create($this->snapshot($template, $quantities[(int) $template->id] ?? 1, $selectedPromotions[(int) $template->id] ?? null));
+                $assignment->items()->create($this->snapshot($template, $quantities[(int) $template->id] ?? 1, $selectedPromotions[(int) $template->id] ?? null, $studentDiscounts[(int) $template->id] ?? null));
             }
             return $assignment->fresh('items');
         });
     }
 
     /** @param list<mixed> $requestedOptionalIds */
-    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = []): StudentFeeAssignment
+    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         $optional = $this->availableAdditionalItems($student)->keyBy('id');
@@ -137,13 +137,13 @@ final class StudentFeeAssignmentService
         }
         $selectedItems = $selected->map(fn (int $id) => $optional->get($id));
         $quantities = $this->validatedFeeQuantities($selectedItems, $optionalQuantities);
-        return DB::transaction(function () use ($student, $selected, $optional, $quantities, $selectedPromotions): StudentFeeAssignment {
+        return DB::transaction(function () use ($student, $selected, $optional, $quantities, $selectedPromotions, $studentDiscounts): StudentFeeAssignment {
             $assignment = StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
                 'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student),
                 'assignment_type' => StudentFeeAssignment::ADDITIONAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
-            foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id), $quantities[(int) $id], $selectedPromotions[(int) $id] ?? null));
+            foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id), $quantities[(int) $id], $selectedPromotions[(int) $id] ?? null, $studentDiscounts[(int) $id] ?? null));
             return $assignment->fresh('items');
         });
     }
@@ -187,7 +187,8 @@ final class StudentFeeAssignmentService
         return $assignment;
     }
 
-    private function snapshot(FeesClassType $template, int $quantity = 1, ?int $selectedPromotionId = null): array
+    /** @param array{discount_type:string,discount_value:string,reason:string,effective_date:string}|null $studentDiscount */
+    private function snapshot(FeesClassType $template, int $quantity = 1, ?int $selectedPromotionId = null, ?array $studentDiscount = null): array
     {
         if ($quantity < 1 || $quantity > $this->maxQuantity() || ($quantity !== 1 && !(bool) ($template->quantity_enabled ?? false))) {
             throw ValidationException::withMessages(['optional_fee_quantities' => 'The selected Fee Item does not allow the requested quantity.']);
@@ -223,6 +224,14 @@ final class StudentFeeAssignmentService
         // only reach this branch after the controller's schema-aware guard.
         if ($selectedPromotionId !== null) {
             $snapshot['selected_promotion_id'] = $selectedPromotionId;
+        }
+        if ($studentDiscount !== null) {
+            $snapshot += [
+                'student_discount_type' => $studentDiscount['discount_type'],
+                'student_discount_value' => $studentDiscount['discount_value'],
+                'student_discount_reason' => $studentDiscount['reason'],
+                'student_discount_effective_date' => $studentDiscount['effective_date'],
+            ];
         }
 
         return $snapshot;

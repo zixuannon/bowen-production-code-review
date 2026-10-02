@@ -7,6 +7,7 @@ use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceUser;
 use App\Models\FeesClassType;
 use App\Models\StudentFeeAssignment;
+use App\Models\StudentFeeAssignmentItem;
 use App\Models\Students;
 use App\Models\User;
 use App\Support\CentralFinanceDecimal;
@@ -57,6 +58,20 @@ final class TenantStudentFeeSetupPromotionService
         });
     }
 
+    /** Render-only capability probe; writes re-assert the same scope. */
+    public function canCreateStudentSpecificDiscounts(User $actor, Students $student): bool
+    {
+        try {
+            $principal = $this->principal($actor, $student);
+            $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
+            $this->promotions->assertCanCreateStudentSpecificDiscount($principal, (int) $student->school_id);
+            $this->profile($student);
+            return true;
+        } catch (AuthorizationException|\RuntimeException|\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            return false;
+        }
+    }
+
     /**
      * Canonicalise only selections for fee items that will be written into
      * this draft, and prove their current School/item/date applicability.
@@ -105,6 +120,104 @@ final class TenantStudentFeeSetupPromotionService
     }
 
     /**
+     * Canonicalise Front Desk-created student-specific discounts.  The browser
+     * provides only a draft value and reason; the trusted tenant session
+     * supplies the School, Student profile, Fee Item and Central actor.
+     *
+     * @param iterable<FeesClassType> $selectedItems
+     * @param array<mixed> $requested
+     * @return array<int, array{discount_type:string,discount_value:string,reason:string,effective_date:string}>
+     */
+    public function validateStudentDiscounts(User $actor, Students $student, iterable $selectedItems, array $requested): array
+    {
+        $selected = collect($selectedItems)->keyBy(fn (FeesClassType $item): int => (int) $item->id);
+        $normalized = [];
+        foreach ($requested as $sourceId => $discount) {
+            if (!is_scalar($sourceId) || !preg_match('/^[1-9][0-9]*$/', (string) $sourceId) || !is_array($discount)) {
+                throw ValidationException::withMessages(['student_discounts' => __('The student-specific Discount is invalid.')]);
+            }
+            $sourceId = (int) $sourceId;
+            $enabled = $discount['enabled'] ?? null;
+            if ($enabled === null || $enabled === '' || $enabled === '0' || $enabled === 0 || $enabled === false) {
+                continue;
+            }
+            if ($enabled !== '1' && $enabled !== 1 && $enabled !== true) {
+                throw ValidationException::withMessages(['student_discounts' => __('The student-specific Discount selection is invalid.')]);
+            }
+            if (!$selected->has($sourceId)) {
+                throw ValidationException::withMessages(['student_discounts' => __('A student-specific Discount may be created only for an included Fee Item.')]);
+            }
+            $type = (string) ($discount['discount_type'] ?? '');
+            $value = CentralFinanceDecimal::normalize((string) ($discount['discount_value'] ?? '0'));
+            $reason = trim((string) ($discount['reason'] ?? ''));
+            $date = trim((string) ($discount['effective_date'] ?? ''));
+            $parsed = $date === '' ? null : CarbonImmutable::createFromFormat('!Y-m-d', $date, 'Asia/Yangon');
+            if (!in_array($type, [\App\Models\CentralFinancePromotion::PERCENTAGE, \App\Models\CentralFinancePromotion::FIXED], true)
+                || CentralFinanceDecimal::compare($value, '0') <= 0
+                || ($type === \App\Models\CentralFinancePromotion::PERCENTAGE && CentralFinanceDecimal::compare($value, '100') >= 0)
+                || $reason === '' || mb_strlen($reason) > 2000 || $parsed === false || $parsed === null || $parsed->format('Y-m-d') !== $date) {
+                throw ValidationException::withMessages(['student_discounts' => __('A Discount type, valid value, reason, and business date are required.')]);
+            }
+            $normalized[$sourceId] = ['discount_type' => $type, 'discount_value' => $value, 'reason' => $reason, 'effective_date' => $date];
+        }
+        if ($normalized === []) {
+            return [];
+        }
+        if (!Schema::connection('school')->hasColumns('student_fee_assignment_items', ['student_discount_type', 'student_discount_value', 'student_discount_reason', 'student_discount_effective_date'])) {
+            throw ValidationException::withMessages(['student_discounts' => __('Student-specific Discounts are not available until this School completes its approved schema update.')]);
+        }
+        $principal = $this->principal($actor, $student);
+        $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
+        $this->promotions->assertCanCreateStudentSpecificDiscount($principal, (int) $student->school_id);
+        $this->profile($student);
+        return $normalized;
+    }
+
+    /**
+     * Turn a validated draft request into an idempotent Central Promotion
+     * definition before preview. The draft remains mutable; only confirmation
+     * creates the immutable Promotion Application/Receivable adjustment.
+     */
+    public function materializeDraftStudentDiscounts(User $actor, Students $student, StudentFeeAssignment $assignment): StudentFeeAssignment
+    {
+        $assignment->loadMissing('items');
+        $items = $assignment->items->where('status', StudentFeeAssignmentItem::ACTIVE)
+            ->filter(fn ($item): bool => trim((string) ($item->student_discount_type ?? '')) !== '');
+        if ($items->isEmpty()) {
+            return $assignment;
+        }
+        if (!Schema::connection('school')->hasColumns('student_fee_assignment_items', ['student_discount_type', 'student_discount_value', 'student_discount_reason', 'student_discount_effective_date'])) {
+            throw new \RuntimeException('Student-specific Discount draft schema is not installed.');
+        }
+        $principal = $this->principal($actor, $student);
+        $this->cutovers->assertCentralWritesAllowed((int) $student->school_id);
+        $this->promotions->assertCanCreateStudentSpecificDiscount($principal, (int) $student->school_id);
+        $profile = $this->profile($student);
+        foreach ($items as $item) {
+            $effectiveDate = CarbonImmutable::parse((string) $item->student_discount_effective_date, 'Asia/Yangon')->startOfDay();
+            if ($item->student_discount_type === \App\Models\CentralFinancePromotion::FIXED
+                && CentralFinanceDecimal::compare((string) $item->student_discount_value, (string) $item->amount_snapshot) >= 0) {
+                throw ValidationException::withMessages(['student_discounts' => __('A student-specific Discount must leave a positive net amount.')]);
+            }
+            $key = hash('sha256', implode('|', [
+                'student-fee-setup-discount', (int) $student->school_id, (int) $profile->id, (string) $assignment->uuid,
+                (int) $item->fees_class_type_id, (string) $item->student_discount_type, (string) $item->student_discount_value,
+                (string) $item->student_discount_reason, $effectiveDate->toDateString(),
+            ]));
+            $promotion = $this->promotions->defineStudentSpecificForFeeSetup($principal, $profile, (int) $item->fees_class_type_id, [
+                'discount_type' => (string) $item->student_discount_type,
+                'discount_value' => (string) $item->student_discount_value,
+                'reason' => (string) $item->student_discount_reason,
+                'effective_date' => $effectiveDate,
+            ], $key);
+            if ((int) $item->selected_promotion_id !== (int) $promotion->id) {
+                $item->update(['selected_promotion_id' => $promotion->id]);
+            }
+        }
+        return $assignment->fresh('items');
+    }
+
+    /**
      * Read-only preview for saved draft lines. It reuses the Central
      * Promotion engine's eligibility and exact-decimal calculation; only
      * confirmation may persist a Promotion Application.
@@ -134,13 +247,16 @@ final class TenantStudentFeeSetupPromotionService
         $profile = $this->profile($student);
         return $items->mapWithKeys(function ($item) use ($principal, $student, $date, $profile): array {
             try {
+                $effectiveDate = trim((string) ($item->student_discount_effective_date ?? '')) !== ''
+                    ? CarbonImmutable::parse((string) $item->student_discount_effective_date, 'Asia/Yangon')->startOfDay()
+                    : $date;
                 return [(int) $item->id => $this->promotions->previewForFeeSetup(
                     $principal,
                     (int) $student->school_id,
                     (int) $item->fees_class_type_id,
                     (int) $item->selected_promotion_id,
                     CentralFinanceDecimal::normalize((string) $item->amount_snapshot),
-                    $date,
+                    $effectiveDate,
                     (int) $profile->id,
                 )];
             } catch (AuthorizationException|\InvalidArgumentException) {
@@ -182,20 +298,24 @@ final class TenantStudentFeeSetupPromotionService
         ])->whereIn('source_id', $items->pluck('source_id')->map(fn ($id): string => (string) $id)->all())
             ->get()->keyBy(fn (CentralFinanceReceivable $row): string => (string) $row->source_id);
 
-        $date = CarbonImmutable::now('Asia/Yangon');
+        $recordedAt = CarbonImmutable::now('Asia/Yangon');
         foreach ($items as $item) {
             $receivable = $rows->get((string) $item->source_id);
             if ($receivable === null) {
                 throw ValidationException::withMessages(['promotions' => __('The Fee Assignment is confirmed, but its Central Receivable is awaiting synchronization. Retry confirmation shortly.')]);
             }
+            $effectiveDate = trim((string) ($item->student_discount_effective_date ?? '')) !== ''
+                ? CarbonImmutable::parse((string) $item->student_discount_effective_date, 'Asia/Yangon')->startOfDay()
+                : $recordedAt;
             $this->promotions->applyFromFeeSetup(
                 $principal,
                 (int) $receivable->id,
                 (int) $item->selected_promotion_id,
                 (int) $item->fees_class_type_id,
-                $date,
-                $date,
+                $effectiveDate,
+                $recordedAt,
                 'tenant-fee-setup:'.(int) $student->school_id.':'.$item->uuid.':'.(int) $item->selected_promotion_id,
+                trim((string) ($item->student_discount_reason ?? '')) ?: null,
             );
         }
     }

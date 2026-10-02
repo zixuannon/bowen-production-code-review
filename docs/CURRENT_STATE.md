@@ -1,5 +1,50 @@
 # eSchool Current State
 
+## Student-specific Discount — unified local candidate
+
+- The existing Central Promotion engine now has explicit `general` and
+  `student_specific` scopes. Existing Group/School-wide definitions remain
+  `general`; a Head Finance individual definition remains limited to one
+  Student and exactly that Student's School.
+- A trusted Front Desk can create a Student-specific Discount only from the
+  current Student Fee Setup row, only with the new explicit
+  `can_create_student_specific_discounts` Central School scope, and only for
+  the server-resolved Student, School, and Fee Item. The browser cannot choose
+  a group, School, Student profile, or Fee allocation. It must provide an
+  exact percentage/fixed value, reason, and business date; it cannot combine a
+  general Promotion and individual Discount on one row.
+- No second discount subsystem is introduced. A draft request materializes an
+  idempotent `CentralFinancePromotion` definition with an exact Student/Fee
+  allocation; confirmation uses the existing immutable Promotion Application
+  and Receivable Adjustment pipeline. Definitions, application snapshots and
+  document audits preserve scope, student, fee, actor role, reason, amount,
+  effective date and QA/Test classification. Payment, Receipt, Ledger, Fund
+  Account and Pending Collection behavior remains unchanged.
+- The candidate adds a reviewed Central additive schema extension and a
+  tenant draft-only schema extension. Historical Promotions default to
+  `general`; historical Promotion Applications remain unchanged. The exact
+  `finance:migrate-collection-v2` runner fails closed unless all Central and
+  trusted tenant fields are present.
+- Local verification: the focused Finance/migration/quantity suite passes
+  55 tests with 415 assertions; the complete local suite passes in bounded
+  Unit/Feature batches with 988 tests, 7,829 assertions, and no failures or
+  errors (34 intentional skips). The PHP 8.5 deprecation noise is pre-existing.
+- Disposable BOWEN_QA browser E2E passes: Head Finance creates a general and a
+  Student-specific definition; Front Desk cannot create definitions; a second
+  Student cannot see the first Student's discount; quantity 2 and a
+  Student-specific discount flow through Preview/Confirm and one multi-item
+  Pending Collection. Head Finance confirmation produces exactly one Payment,
+  Receipt and Ledger entry with two allocations; replay leaves those counts
+  unchanged. The Collection V2 runner preflight and execute paths pass for
+  Central and BOWEN_QA.
+- The disposable E2E graph was reset after verification: promotions,
+  receivables, pending collections, payments, receipts and ledger entries are
+  all zero in the local fixture. Production has not been changed and no Su
+  Ting / 苏婷婷 record has been touched. The candidate is awaiting explicit
+  Production deployment approval.
+
+Last updated: 2026-10-02
+
 ## Student-specific Promotion scope — local finance candidate
 
 - Head Finance may define an active Promotion for one Central student profile

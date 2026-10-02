@@ -330,6 +330,12 @@ final class CentralFinanceSchoolStaffIdentityService
             if (Schema::connection('mysql')->hasColumn('central_finance_user_school_scopes', 'can_submit_collections')) {
                 $scopeValues['can_submit_collections'] = $requestedCollectionSubmit;
             }
+            // This is deliberately a separate, auditable Front Desk grant.
+            // It never grants Head Finance, Promotion-management, waiver,
+            // correction, void, refund, or Fund Account authority.
+            if (Schema::connection('mysql')->hasColumn('central_finance_user_school_scopes', 'can_create_student_specific_discounts')) {
+                $scopeValues['can_create_student_specific_discounts'] = $requestedCollectionSubmit;
+            }
             $scopeBefore = DB::connection('mysql')->table('central_finance_user_school_scopes')
                 ->where(['user_id' => $principal->id, 'school_id' => $school->id])->first();
             DB::connection('mysql')->table('central_finance_user_school_scopes')->updateOrInsert(
