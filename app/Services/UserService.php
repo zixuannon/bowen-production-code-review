@@ -482,8 +482,9 @@ class UserService {
 
         $templateContent = $schoolSettings['email-template-staff'] ?? '';
 
-        $schoolCode = $user->school->code ?? Auth::user()->school->code;
-        $resetUrl = app(StaffInvitationService::class)->createUrl($user, $schoolCode);
+        $invitations = app(StaffInvitationService::class);
+        $schoolCode = $invitations->schoolForCurrentTenant($user)->code;
+        $resetUrl = $invitations->createUrl($user);
 
         // Define the placeholders and their replacements
         $placeholders = [

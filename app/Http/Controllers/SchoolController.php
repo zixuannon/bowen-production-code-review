@@ -296,34 +296,13 @@ class SchoolController extends Controller
         }
     }
 
-    private function replacePlaceholders($request, $user, $settings, $school_code)
+    private function replacePlaceholders($request, $user, $settings)
     {
         $templateContent = $settings['email_template_school_registration'] ?? '';
 
-        // Switch to school database so the token is stored in the school's
-        // password_resets table (not the main database). Otherwise,
-        // ResetPasswordController (which reads from school db) won't find it.
-        // Order matters: Config::set before any DB call so reconnect picks up
-        // the correct database name.
-        $previousConnection = DB::getDefaultConnection();
-        $schoolModel = School::whereCanonicalCode($school_code)->first();
-        $switched = $schoolModel && $schoolModel->database_name;
-        if ($switched) {
-            Config::set('database.connections.school.database', $schoolModel->database_name);
-            DB::purge('school');
-            DB::reconnect('school');
-            DB::setDefaultConnection('school');
-        }
-
-        try {
-            $resetUrl = app(\App\Services\StaffInvitationService::class)->createUrl($user, $school_code);
-        } finally {
-            // Restore previous database connection even if token generation fails
-            if ($switched && $previousConnection !== 'school') {
-                DB::setDefaultConnection($previousConnection);
-                DB::purge('school');
-            }
-        }
+        $schoolModel = School::on('mysql')->findOrFail((int) $user->getRawOriginal('school_id'));
+        $school_code = $schoolModel->code;
+        $resetUrl = app(\App\Services\StaffInvitationService::class)->createUrlForSchool($user, $schoolModel);
 
         // Define the placeholders and their replacements
         $placeholders = [
@@ -777,7 +756,7 @@ class SchoolController extends Controller
                 $settings = $this->cache->getSystemSettings();
                 $users = $this->schoolsRepository->builder()->with("user")->where('id', $request->edit_id)->first();
 
-                $email_body = $this->replacePlaceholders($request, $users->user, $settings, $users->code);
+                $email_body = $this->replacePlaceholders($request, $users->user, $settings);
 
                 $data = [
                     'subject' => 'Welcome to ' . $settings['system_name'] ?? 'eSchool Saas',

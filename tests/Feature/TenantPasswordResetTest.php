@@ -168,13 +168,6 @@ class TenantPasswordResetTest extends TestCase
         $this->reset($token, $this->user->email, $legacy, 'LegacyCodePassword9!')
             ->assertSessionHasErrors('school_code');
 
-        try {
-            app(StaffInvitationService::class)->createUrl($this->user, $legacy);
-            $this->fail('A deprecated School Code must not bind a staff invitation.');
-        } catch (LogicException) {
-            $this->addToAssertionCount(1);
-        }
-
         $this->useSchoolConnection();
         $this->assertFalse(Hash::check('LegacyCodePassword9!', $this->user->fresh()->password));
     }
@@ -248,6 +241,50 @@ class TenantPasswordResetTest extends TestCase
                 && ($query['school_code'] ?? null) === $this->school->code
                 && ($query['purpose'] ?? null) === 'staff_invitation';
         });
+    }
+
+    public function test_scoped_school_admin_invitation_uses_registry_and_restores_central_connection(): void
+    {
+        DB::setDefaultConnection('mysql');
+        Config::set('database.connections.school.database', null);
+        DB::purge('school');
+        $url = app(StaffInvitationService::class)->createUrlForSchool($this->user, $this->school);
+        $this->assertSame('mysql', DB::getDefaultConnection());
+        $this->assertNull(config('database.connections.school.database'));
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        $this->assertSame($this->school->code, $query['school_code']);
+        $this->assertSame($this->user->email, $query['email']);
+        $this->useSchoolConnection();
+        $this->assertTrue(app(TenantPasswordBroker::class)->invitationBroker()->tokenExists(
+            $this->user, basename(parse_url($url, PHP_URL_PATH))
+        ));
+    }
+
+    public function test_scoped_invitation_rejects_a_different_school_target(): void
+    {
+        try {
+            app(StaffInvitationService::class)->createUrlForSchool($this->user, $this->otherSchool);
+            $this->fail('An explicit scope must match the saved Staff School.');
+        } catch (LogicException) {
+            $this->assertSame(0, DB::connection('school')->table('staff_invitation_tokens')->where('email', $this->user->email)->count());
+        }
+    }
+
+    public function test_scoped_invitation_restores_context_when_tenant_user_validation_fails(): void
+    {
+        DB::setDefaultConnection('mysql');
+        Config::set('database.connections.school.database', null);
+        DB::purge('school');
+        $this->user->email = 'unregistered@qa.test';
+        try {
+            app(StaffInvitationService::class)->createUrlForSchool($this->user, $this->school);
+            $this->fail('Unknown tenant identity must be rejected.');
+        } catch (LogicException) {
+            $this->assertSame('mysql', DB::getDefaultConnection());
+            $this->assertNull(config('database.connections.school.database'));
+        } finally {
+            $this->useSchoolConnection();
+        }
     }
 
     public function test_staff_invitation_remains_valid_after_60_minutes_but_expires_after_24_hours(): void

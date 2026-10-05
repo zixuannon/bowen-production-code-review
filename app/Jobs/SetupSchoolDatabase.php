@@ -95,7 +95,7 @@ final class SetupSchoolDatabase implements ShouldQueue
             $school = School::with('user')->findOrFail($this->schoolId);
             $settings = $cache->getSystemSettings();
 
-            $email_body = $this->replacePlaceholders($school, $school->user, $settings, $school->code);
+            $email_body = $this->replacePlaceholders($school, $school->user, $settings);
             
             $data = [
                 'subject'     => 'Welcome to ' . ($settings['system_name'] ?? 'eSchool Saas'),
@@ -135,20 +135,17 @@ final class SetupSchoolDatabase implements ShouldQueue
         ]);
     }
 
-    private function replacePlaceholders($school, $user, $settings, $schoolCode): string
+    private function replacePlaceholders($school, $user, $settings): string
     {
         $templateContent = $settings['email_template_school_registration'] ?? '';
 
         // Invitation tokens are tenant-local. The scope restores the queue
         // worker's default connection and tenant configuration on every path.
-        $resetUrl = app(TenantConnectionScope::class)->forSchool(
-            $school,
-            fn (): string => app(\App\Services\StaffInvitationService::class)->createUrl($user, $schoolCode),
-        );
+        $resetUrl = app(\App\Services\StaffInvitationService::class)->createUrlForSchool($user, $school);
 
         $placeholders = [
             '{school_admin_name}' => $user->full_name,
-            '{code}' => $schoolCode,
+            '{code}' => $school->code,
             '{email}' => $user->email,
             '{password}' => "请点击以下链接设置您的登录密码（链接 24 小时内有效）：\n{$resetUrl}",
             '{reset_link}' => $resetUrl,

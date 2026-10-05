@@ -1,5 +1,51 @@
 # eSchool Current State
 
+## Staff invitation canonical School identity — local hotfix candidate
+
+- Base lineage: `5f28eb3b828be98c6a4d6c1f644b31c731ff620b`.
+  The accepted Zixuan diagnosis found invitation generation failed before
+  SMTP/Queue: `UserService::replaceStaffPlaceholders()` read a tenant-local
+  School replica/actor relation, then `StaffInvitationService::createUrl()`
+  re-resolved that derived code and conflicted with the saved School ID.
+- Invitation identity now starts with persisted `users.school_id`, resolves
+  the active/installed Central School registry by ID, and validates the
+  trusted request School, configured/live tenant connection, and the actual
+  tenant user ID/School/email before creating any token. Missing/inactive or
+  mismatched identities fail closed. No School-code allowlist is introduced.
+- Caller audit: Staff/Teacher/DriverHelper registration and synchronous
+  Staff/Teacher imports use the normal trusted request path through
+  `UserService`; Finance Staff onboarding uses the same guard through `send()`.
+  School provisioning and the existing School Admin update/resend caller use
+  an explicit canonical-ID scope which restores connections on success/error.
+  These are not new resend routes or new permissions. No generic Principal
+  resend endpoint is added; eventual recovery must target the existing user
+  through a separately approved invocation after deployment.
+- Tenant-local invitation tokens remain one-time, 24-hour, and separate from
+  ordinary password reset tokens; a newly issued invitation invalidates the
+  previous one. Test transport verifies recipient/template/canonical URL and
+  exactly one generated message for Principal, Front Desk, School Accountant,
+  legacy Cashier, and School Admin. Existing password/role behavior is unchanged.
+- Targeted invitation/canonical/password/controller regression: 49 tests /
+  309 assertions, zero failures. Independent read-only review found no blockers.
+- Full local regression: 1,016 tests / 8,047 assertions, zero failures,
+  34 existing skips. PHP 8.5 PDO and PHPUnit configuration deprecations remain
+  pre-existing. The full suite needs more than the CLI default 128 MB memory;
+  its successful run used `php -d memory_limit=1G vendor/bin/phpunit`.
+- Real disposable browser E2E: School Admin creates one Principal through
+  `/staff` with a deliberately stale tenant School code; creation returns
+  success without an invitation warning. A duplicate email submit is rejected.
+  Verification finds exactly one active tenant user, Staff profile, role and
+  invitation token; zero browser console/page/404/500 errors. Mail is array-only,
+  not SMTP. `local:bowen-qa reset` then removed the test account/token and
+  restored the tenant replica. Reproducible guarded harness:
+  `qa/playwright/local/staff-invitation-fixture.php` and `staff-invitation.spec.cjs`.
+- No migration, Finance, role, School Code/GR redesign, or Production change.
+  Production User #77 is untouched and no Production invitation was resent.
+  Freeze the tested local candidate, then STOP for explicit exact-SHA deployment
+  approval. Production delivery/recovery is not yet verified.
+
+Last updated: 2026-10-05
+
 ## Student Import V2 confirmation isolation — local candidate
 
 - Production incident diagnosis: `POST /students/import-v2/confirm` reached

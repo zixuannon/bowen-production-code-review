@@ -48,7 +48,6 @@ final class CanonicalSchoolCodeRuntimeContractTest extends TestCase
             'app/Services/StudentImportV2Service.php',
             'app/Services/CentralFinanceGroupImportService.php',
             'app/Services/CentralFinanceGateASchoolScope.php',
-            'app/Services/StaffInvitationService.php',
             'app/Http/Controllers/SchoolController.php',
         ];
 
