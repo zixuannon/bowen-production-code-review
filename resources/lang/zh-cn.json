@@ -166,6 +166,8 @@
     "title": "标题",
     "note": "备注",
     "due_date": "截止日期",
+    "due_date_optional": "截止日期（选填）",
+    "no_due_date": "无截止日期",
     "resubmission": "重新提交",
     "instructions": "指令/说明",
     "student_name": "学生姓名",

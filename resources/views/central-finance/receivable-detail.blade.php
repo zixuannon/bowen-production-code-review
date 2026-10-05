@@ -30,7 +30,7 @@
                     <div class="col-12 col-md-4 col-xl mb-2"><small class="text-muted d-block">{{ __('Outstanding') }}</small><strong>{{ number_format($document->amount_due - $document->amount_paid, 2) }} {{ $document->currency }}</strong></div>
                 </div>
                 <hr>
-                <dl class="row mb-0"><dt class="col-sm-4">{{ __('Status') }}</dt><dd class="col-sm-8">{{ __($document->status) }}</dd><dt class="col-sm-4">{{ __('Due date') }}</dt><dd class="col-sm-8">{{ $document->due_date?->format('Y-m-d') ?: '—' }}</dd><dt class="col-sm-4">{{ __('Tenant source') }}</dt><dd class="col-sm-8">{{ $document->source_type }} #{{ $document->source_id }}</dd></dl>
+                <dl class="row mb-0"><dt class="col-sm-4">{{ __('Status') }}</dt><dd class="col-sm-8">{{ __($document->status) }}</dd><dt class="col-sm-4">{{ __('Due date') }}</dt><dd class="col-sm-8">{{ $document->due_date?->format('Y-m-d') ?: __('no_due_date') }}</dd><dt class="col-sm-4">{{ __('Tenant source') }}</dt><dd class="col-sm-8">{{ $document->source_type }} #{{ $document->source_id }}</dd></dl>
             </div></div>
         </div>
         <div class="col-lg-5 mb-3">

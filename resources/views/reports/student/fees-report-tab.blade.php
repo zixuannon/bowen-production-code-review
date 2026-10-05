@@ -45,7 +45,7 @@
                             @endif
                         </td>
                         <td>{{ format_money($fee->amount ?? 0) }}</td>
-                        <td>{{ $fee->fees->due_date ?? '-' }}</td>
+                        <td>{{ $fee->fees->due_date ?: __('no_due_date') }}</td>
                         <td>
                             @php
                                 $paidAmount = 0;

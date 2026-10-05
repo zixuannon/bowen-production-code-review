@@ -292,7 +292,12 @@ class NotificationController extends Controller
             $today = Carbon::now()->format('Y-m-d');
             $users_ids = [];
 
-            $fees = $this->fees->builder()->whereDate('due_date', '<', $today)->get();
+            $fees = $this->fees->builder()->where(function ($query) use ($today) {
+                $query->whereDate('due_date', '<', $today)
+                    ->orWhereHas('installments', function ($installments) use ($today) {
+                        $installments->whereDate('due_date', '<', $today);
+                    });
+            })->get();
 
             if ($fees->isNotEmpty()) {
                 foreach ($fees as $fee) {

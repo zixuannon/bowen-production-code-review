@@ -99,6 +99,20 @@ class OfflineFeePaymentAuthorityTest extends TestCase
         $this->assertSame('1000.00', $result['data']['original_amount']);
     }
 
+    public function test_fee_without_overall_due_date_remains_collectible_without_a_late_charge(): void
+    {
+        DB::table('fees')->where('id', $this->fee->id)->update([
+            'due_date' => null,
+            'due_charges_amount' => 250,
+        ]);
+
+        $result = app(OfflineFeePaymentAuthorityService::class)->compulsory($this->compulsoryInput(), $this->schoolId);
+
+        $this->assertNull($result['fee']->getRawOriginal('due_date'));
+        $this->assertSame('1000.00', $result['data']['enter_amount']);
+        $this->assertSame('0.00', $result['data']['due_charges_amount']);
+    }
+
     /** @dataProvider compulsoryTampering */
     public function test_compulsory_negative_zero_overpay_and_tamper_fail_closed(array $changes): void
     {
@@ -220,6 +234,33 @@ class OfflineFeePaymentAuthorityTest extends TestCase
         $input['installment_fees'][0]['amount'] = 999;
         $this->expectException(InvalidArgumentException::class);
         app(OfflineFeePaymentAuthorityService::class)->compulsory($input, $this->schoolId);
+    }
+
+    public function test_dated_installment_still_accrues_its_own_charge_when_parent_fee_is_undated(): void
+    {
+        DB::table('fees')->where('id', $this->fee->id)->update(['due_date' => null]);
+        $installmentId = DB::table('fees_installments')->insertGetId([
+            'name' => 'Undated parent with dated installment',
+            'due_date' => now()->subDay()->format('Y-m-d'),
+            'due_charges' => 10,
+            'due_charges_type' => 'fixed',
+            'installment_amount' => 1000,
+            'fees_id' => $this->fee->id,
+            'session_year_id' => $this->fee->session_year_id,
+            'school_id' => $this->schoolId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $input = $this->compulsoryInput();
+        $input['installment_mode'] = true;
+        $input['installment_fees'] = [['id' => $installmentId, 'amount' => 1000, 'due_charges' => 10]];
+        $input['enter_amount'] = 1010;
+
+        $result = app(OfflineFeePaymentAuthorityService::class)->compulsory($input, $this->schoolId);
+
+        $this->assertNull($result['fee']->getRawOriginal('due_date'));
+        $this->assertSame('10.00', $result['data']['installment_fees'][0]['due_charges']);
     }
 
     /** @dataProvider optionalTampering */

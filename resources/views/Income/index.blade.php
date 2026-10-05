@@ -160,8 +160,8 @@
 
                                 <div class="col-12 row">
                                     <div class="form-group col-sm-12 col-md-6 col-lg-3">
-                                        <label>{{ __('due_date')}} <span class="text-danger">*</span></label>
-                                        {{ Form::text('due_date', null, ['class' => 'datepicker-popup-no-past form-control', 'placeholder' => __('due_date'), 'required', 'autocomplete' => 'off']) }}
+                                        <label>{{ __('due_date_optional') }}</label>
+                                        {{ Form::text('due_date', null, ['class' => 'datepicker-popup-no-past form-control', 'placeholder' => __('due_date_optional'), 'autocomplete' => 'off']) }}
                                     </div>
 
                                     <div class="form-group col-sm-12 col-md-6 col-lg-3">

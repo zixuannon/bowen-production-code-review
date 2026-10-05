@@ -1934,6 +1934,10 @@ class ApiController extends Controller
 
                     foreach ($classesWithDueDates as $classFee) {
 
+                        if (!$classFee->getRawOriginal('due_date')) {
+                            continue;
+                        }
+
                         $dueDate = Carbon::parse($classFee->due_date);
                         $class_section_id = $this->classSection->builder()->where('class_id', $classFee->class_id)->first();
                         $daysUntilDue = $today->diffInDays($dueDate, false);

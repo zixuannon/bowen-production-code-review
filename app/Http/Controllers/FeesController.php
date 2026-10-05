@@ -144,7 +144,7 @@ class FeesController extends Controller
         $this->normalizeQuantityEnabledInputs($request);
         $request->validate([
             'include_fee_installments' => 'required|boolean',
-            'due_date' => 'required|date',
+            'due_date' => 'nullable|date',
             'due_charges_percentage' => 'nullable|numeric',
             'due_charges_amount' => 'nullable|numeric',
             'class_id' => 'required|array',
@@ -198,7 +198,7 @@ class FeesController extends Controller
                 $name = (!empty($request->name)) ? $request->name . " - " : "";
                 $fees = $this->fees->create([
                     'name' => $name . $class->full_name,
-                    'due_date' => $request->due_date,
+                    'due_date' => $request->input('due_date') ?: null,
                     'due_charges' => $request->due_charges_percentage ?? 0,
                     'due_charges_amount' => $request->due_charges_amount ?? 0,
                     'class_id' => $class_id,
@@ -392,6 +392,10 @@ class FeesController extends Controller
             }
 
             $tempRow = $row->toArray();
+            if ($row->getRawOriginal('due_date') === null) {
+                $tempRow['due_date'] = null;
+                $tempRow['format_due_date'] = __('no_due_date');
+            }
             $currencyMap = ['MMK' => 'K', 'CNY' => '¥', 'USD' => '$'];
             $feeCurrency = $row->getRawOriginal('currency') ?? 'MMK';
             $tempRow['currency_symbol'] = $currencyMap[$feeCurrency] ?? 'K';
@@ -456,7 +460,7 @@ class FeesController extends Controller
 
         $request->validate([
             'include_fee_installments' => 'required|boolean',
-            'due_date' => 'required|date',
+            'due_date' => 'nullable|date',
             'due_charges_percentage' => 'nullable|numeric',
             'due_charges_amount' => 'nullable|numeric',
             'compulsory_fees_type' => 'required|array',
@@ -530,7 +534,7 @@ class FeesController extends Controller
             // Fees Data Store
             $feesData = array(
                 'name' => $request->name,
-                'due_date' => $request->due_date,
+                'due_date' => $request->input('due_date') ?: null,
                 'due_charges' => $normalizeAmount($request->due_charges_percentage),
                 'due_charges_amount' => $normalizeAmount($request->due_charges_amount)
             );
@@ -1291,10 +1295,18 @@ class FeesController extends Controller
                 }
                 $tempRow['fees'] = $fees->toArray();
                 // $tempRow['fees_status'] = null;
-                $due_date = Carbon::parse($fees->due_date);
+                $rawDueDate = $fees->getRawOriginal('due_date');
+                $due_date = $rawDueDate ? Carbon::parse($rawDueDate) : null;
                 $today_date = Carbon::now()->format('Y-m-d');
 
-                if ($due_date->gt($today_date)) {
+                $overdueInstallment = !$due_date && $fees->installments->contains(function ($installment) use ($today_date) {
+                    $installmentDueDate = $installment->getRawOriginal('due_date');
+                    return $installmentDueDate && $installmentDueDate < $today_date;
+                });
+
+                if ($overdueInstallment) {
+                    $tempRow['fees_status'] = 2;
+                } elseif (!$due_date || $due_date->gt($today_date)) {
                     $tempRow['fees_status'] = null;
                 } else {
                     $tempRow['fees_status'] = 2;
@@ -1463,8 +1475,9 @@ class FeesController extends Controller
         }
 
         $due_charges = 0;
-        $due_date = Carbon::createFromFormat('Y-m-d', $fees->getRawOriginal('due_date'));
-        if ($due_date->isPast() && !$due_date->isToday()) {
+        $rawDueDate = $fees->getRawOriginal('due_date');
+        $due_date = $rawDueDate ? Carbon::createFromFormat('Y-m-d', $rawDueDate) : null;
+        if ($due_date && $due_date->isPast() && !$due_date->isToday()) {
             $due_charges = $fees->due_charges_amount;
         }
 
@@ -1988,7 +2001,12 @@ class FeesController extends Controller
             $student_ids = [];
 
 
-            $fees = $this->fees->builder()->whereDate('due_date', '<', $today)->with('installments:id,name,due_date,due_charges,fees_id')->where('class_id', $class_id)->get();
+            $fees = $this->fees->builder()->where('class_id', $class_id)->where(function ($query) use ($today) {
+                $query->whereDate('due_date', '<', $today)
+                    ->orWhereHas('installments', function ($installments) use ($today) {
+                        $installments->whereDate('due_date', '<', $today);
+                    });
+            })->with('installments:id,name,due_date,due_charges,fees_id')->get();
 
             foreach ($fees as $fee) {
                 $sql = $this->user->builder()

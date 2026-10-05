@@ -1,5 +1,7 @@
 {
     "login": "登录",
+    "due_date_optional": "截止日期（选填）",
+    "no_due_date": "无截止日期",
     "email": "邮箱",
     "password": "密码",
     "email_or_mobile": "邮箱或手机号",

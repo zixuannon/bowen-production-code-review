@@ -28,6 +28,26 @@ final class CentralFinanceCollectionLifecycleViewTest extends TestCase
         $this->assertSame(50000.0, $summary['MMK']['available_to_collect']);
     }
 
+    public function test_undated_receivable_stays_outstanding_in_the_current_aging_bucket(): void
+    {
+        $today = \Carbon\CarbonImmutable::parse('2026-10-05');
+        $aging = app(CentralFinanceCurrencySummaryService::class)->aging([
+            (object) [
+                'status' => 'open',
+                'currency' => 'MMK',
+                'due_date' => null,
+                'amount_due' => 1000,
+                'amount_paid' => 250,
+            ],
+        ], $today);
+
+        $this->assertSame(750.0, $aging['MMK']['current']);
+        $this->assertSame(0.0, $aging['MMK']['1_30']);
+        $this->assertSame(0.0, $aging['MMK']['31_60']);
+        $this->assertSame(0.0, $aging['MMK']['61_90']);
+        $this->assertSame(0.0, $aging['MMK']['over_90']);
+    }
+
     public function test_head_finance_confirmation_locks_the_front_desk_declared_bank_account_instead_of_offering_a_substitute(): void
     {
         $view = file_get_contents(resource_path('views/central-finance/pending-collections/head-finance-index.blade.php'));

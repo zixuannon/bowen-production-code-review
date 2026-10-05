@@ -1373,7 +1373,7 @@ class ParentApiController extends Controller
             $currentDateTimestamp = new DateTime(date('Y-m-d'));
 
             foreach ($fees as $fee) {
-                $feesDateTimestamp = new DateTime($fee->due_date);
+                $feesDateTimestamp = $fee->getRawOriginal('due_date') ? new DateTime($fee->getRawOriginal('due_date')) : null;
 
                 // Set Optional Fees Data in response
                 if (count($fee->optional_fees) > 0) {
@@ -1389,7 +1389,7 @@ class ParentApiController extends Controller
 
                 // Set Compulsory Fees Data in response
                 if (count($fee->compulsory_fees) > 0) {
-                    $fee->is_overdue = $currentDateTimestamp > $feesDateTimestamp; // true/false
+                    $fee->is_overdue = $feesDateTimestamp !== null && $currentDateTimestamp > $feesDateTimestamp; // true/false
                     collect($fee->compulsory_fees)->map(function ($compulsoryFees) use ($student) {
                         $isCompulsoryFeesPaid = $student->user->compulsory_fees->first(function ($compulsoryFeesPaid) use ($student) {
                             return $compulsoryFeesPaid->type == 'Full Payment' && $compulsoryFeesPaid->student_id == $student->user->id;
@@ -1615,7 +1615,7 @@ class ParentApiController extends Controller
                 $dueChargesAmount = 0;
                 $amount = $fees->total_compulsory_fees;
 
-                if (new DateTime(date('Y-m-d')) > new DateTime($fees->due_date)) {
+                if ($fees->getRawOriginal('due_date') && new DateTime(date('Y-m-d')) > new DateTime($fees->getRawOriginal('due_date'))) {
                     $dueChargesAmount = $fees->due_charges_amount;
                     $amount += $dueChargesAmount;
                 }

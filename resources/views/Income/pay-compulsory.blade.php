@@ -181,7 +181,7 @@
                                                 <td class="text-left"></td>
                                                 <th colspan="2">
                                                     {{ __('due_charges') }} 
-                                                    <span class="text-small text-danger">({{ $fees->due_date }})</span>
+                                                    <span class="text-small text-danger">({{ $fees->due_date ?: __('no_due_date') }})</span>
                                                 </th>
                                                 <td class="text-right">{{ format_money($due_charges) }}</td>
                                             </tr>

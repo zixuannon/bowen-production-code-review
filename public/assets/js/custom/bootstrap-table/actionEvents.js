@@ -1722,7 +1722,7 @@ window.feesEvents = {
     'click .edit-data': function (e, value, row) {
         $('#edit-id').val(row.id);
         $('#edit-name').val(row.name);
-        $('#edit-due-date').val(moment(row.due_date, 'YYYY-MM-DD').format('DD-MM-YYYY'));
+        $('#edit-due-date').val(row.due_date ? moment(row.due_date, 'YYYY-MM-DD').format('DD-MM-YYYY') : '');
         $('#edit-due-charges').val(row.due_charges);
 
         if (row.include_fee_installments == 1) {

@@ -622,6 +622,8 @@
     "school_name": "School Name",
     "bill_generate_date": "Bill Generation Date",
     "bill_due_date": "Bill Due Date",
+    "due_date_optional": "Due Date (Optional)",
+    "no_due_date": "No due date",
     "bill_amount": "Bill Amount",
     "change_billing_cycle": "Change Billing Cycle",
     "extend_bill_date": "Extend Bill Date",

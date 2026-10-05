@@ -130,11 +130,16 @@ class Fee extends Model {
 
     public function getDueDateAttribute($value) {
         //        $data = getSchoolSettings('date_format');
+        if ($value === null || $value === '') {
+            return null;
+        }
         return date('d-m-Y', strtotime($value));
     }
 
     protected function setDueDateAttribute($value) {
-        $this->attributes['due_date'] = date('Y-m-d', strtotime($value));
+        $this->attributes['due_date'] = $value === null || trim((string) $value) === ''
+            ? null
+            : date('Y-m-d', strtotime($value));
     }
 
     public function scopeOwner($query) {
