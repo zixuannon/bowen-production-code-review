@@ -26,7 +26,11 @@ class MigrateOptionalFeeDueDate extends Command
         $originalDefaultConnection = DB::getDefaultConnection();
 
         try {
-            $tenants = $this->discoverActiveTenants();
+            $requested = array_values(array_unique(array_map(
+                static fn ($code) => strtoupper(trim((string) $code)),
+                (array) $this->option('tenant')
+            )));
+            $tenants = $this->discoverActiveTenants($requested);
             if ($tenants === null) {
                 return self::FAILURE;
             }
@@ -92,12 +96,15 @@ class MigrateOptionalFeeDueDate extends Command
     }
 
     /** @return array<string,string>|null */
-    private function discoverActiveTenants(): ?array
+    private function discoverActiveTenants(array $requestedCodes = []): ?array
     {
         try {
-            $rows = School::on('mysql')->where('status', 1)->whereNull('deleted_at')
-                ->whereNotNull('code')->whereNotNull('database_name')->orderBy('code')
-                ->get(['id', 'code', 'database_name']);
+            $query = School::on('mysql')->where('status', 1)->whereNull('deleted_at')
+                ->whereNotNull('code')->whereNotNull('database_name');
+            if ($requestedCodes !== []) {
+                $query->whereIn('code', $requestedCodes);
+            }
+            $rows = $query->orderBy('code')->get(['id', 'code', 'database_name']);
         } catch (Throwable $exception) {
             $this->error('The central active School registry could not be read: ' . $exception->getMessage());
             return null;
@@ -123,6 +130,16 @@ class MigrateOptionalFeeDueDate extends Command
             }
             $tenants[$code] = $database;
             $databases[$database] = true;
+        }
+
+        if ($requestedCodes !== []) {
+            $duplicateDatabase = School::on('mysql')->where('status', 1)->whereNull('deleted_at')
+                ->whereIn('database_name', array_keys($databases))
+                ->select('database_name')->groupBy('database_name')->havingRaw('COUNT(*) > 1')->exists();
+            if ($duplicateDatabase) {
+                $this->error('A requested tenant database is mapped by more than one active School.');
+                return null;
+            }
         }
 
         return $tenants;
