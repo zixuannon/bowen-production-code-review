@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\ClassSection;
-use App\Models\FeesClassType;
 use App\Models\FormField;
 use App\Models\School;
 use App\Models\SessionYear;
@@ -27,8 +26,10 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as SpreadsheetDate;
  * Preview-first, canonical-School-allowlisted student admission importer.
  *
  * Preview rows are kept in the cache only.  The identity table is written
- * during Confirm, inside the same tenant transaction as the Student and its
- * confirmed compulsory fee assignment.
+ * during Confirm, inside the same tenant transaction as the Student. Import
+ * deliberately stops at admission identity: Fee Setup, Promotion,
+ * Receivable, Collection, Payment and every other Finance document are
+ * separate, explicit workflows.
  */
 final class StudentImportV2Service
 {
@@ -56,7 +57,7 @@ final class StudentImportV2Service
         $result = [];
         foreach ($rows as $line => $row) {
             if ($this->blank($row)) continue;
-            $prepared = $this->prepareRow($row, $line + 2, $actor, $school, $classSections, $academicYears, $customFields, $seen);
+            $prepared = $this->prepareRow($row, $line + 2, $actor, $classSections, $academicYears, $customFields, $seen);
             $seen[$prepared['import_reference']] = $prepared;
             $result[] = $prepared;
         }
@@ -147,8 +148,7 @@ final class StudentImportV2Service
         if ($rows->contains(fn (array $row) => in_array($row['status'], ['error', 'conflict'], true))) {
             throw ValidationException::withMessages(['preview' => 'Resolve every Error and Conflict before confirming Student Import V2.']);
         }
-        $school = $this->context($actor);
-        $this->assertCentralReady($school);
+        $this->context($actor);
 
         try {
         $created = DB::transaction(function () use ($rows, $actor): array {
@@ -182,10 +182,12 @@ final class StudentImportV2Service
                         'enrollment_status' => $row['enrollment_status'],
                     ]);
                 }
-                $assignmentService = app(StudentFeeAssignmentService::class);
-                $draft = $assignmentService->saveDraft($student, $actor, []);
-                $confirmed = $assignmentService->confirm($student, $actor, $draft->uuid);
-                $created[] = ['student_id' => $student->id, 'user_id' => $studentUser->id, 'student_code' => $identity->student_code, 'import_reference' => $row['import_reference'], 'assignment_uuid' => $confirmed->uuid];
+                $created[] = [
+                    'student_id' => $student->id,
+                    'user_id' => $studentUser->id,
+                    'student_code' => $identity->student_code,
+                    'import_reference' => $row['import_reference'],
+                ];
             }
             return $created;
         });
@@ -251,7 +253,7 @@ final class StudentImportV2Service
     }
 
     /** @param array<string,mixed> $row @param array<string,bool> $seen @return array<string,mixed> */
-    private function prepareRow(array $row, int $line, User $actor, School $school, array $classSections, array $academicYears, array $customFields, array $seen): array
+    private function prepareRow(array $row, int $line, User $actor, array $classSections, array $academicYears, array $customFields, array $seen): array
     {
         $errors = [];
         $warnings = [];
@@ -314,7 +316,6 @@ final class StudentImportV2Service
         }
         if ($this->secondaryMatch($prepared, (int) $actor->school_id)) $warnings[] = 'A Student with the same name, date of birth, and Guardian email may already exist.';
         try {
-            $this->assertCentralReady($school);
             if ($errors === []) {
                 [$year, $section] = $this->placementById($actor, (int) $prepared['academic_year_id'], (int) $prepared['class_section_id']);
             }
@@ -358,19 +359,6 @@ final class StudentImportV2Service
             if ($value !== null && $value !== '') $result[] = ['form_field_id' => $field['id'], 'input_type' => $field['type'], 'data' => $value];
         }
         return $result;
-    }
-
-    private function assertCentralReady(School $school): void
-    {
-        app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed((int) $school->id);
-    }
-
-    private function assertCompulsorySetup(User $actor, SessionYear $year, ClassSection $section): void
-    {
-        $query = FeesClassType::query()->with('fee')->where('school_id', $actor->school_id)->where('class_id', $section->class_id)->where('optional', false);
-        if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
-        $exists = $query->get()->contains(fn (FeesClassType $item) => $item->fee !== null && (int) $item->fee->session_year_id === (int) $year->id);
-        if (!$exists) throw ValidationException::withMessages(['fee_setup' => 'Compulsory Fee Setup is not ready for this Academic Year and Class.']);
     }
 
     private function identityExists(User $actor, string $reference): bool

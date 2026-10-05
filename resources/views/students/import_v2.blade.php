@@ -52,7 +52,8 @@
         valid: 'NEW', new: 'NEW', duplicate: 'DUPLICATE',
         error: 'ERROR', conflict: 'CONFLICT', loading: '{{ __('Loading') }}…',
         failed: '{{ __('Preview failed') }}', confirm: '{{ __('Confirm Import') }}',
-        confirming: '{{ __('Confirming import') }}…', complete: '{{ __('Import completed') }}'
+        confirming: '{{ __('Confirming import') }}…', complete: '{{ __('Import completed') }}',
+        reconciliationRequired: '{{ __('The confirmation response was not received. Reload and preview the workbook again before retrying so the import result can be reconciled safely.') }}'
     };
     const clear = () => { while (result.firstChild) result.removeChild(result.firstChild); };
     const appendText = (tag, value, className = '') => { const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; result.appendChild(node); return node; };
@@ -87,9 +88,15 @@
         const unsafe = Number(payload.summary?.error || 0) + Number(payload.summary?.conflict || 0); const confirm = document.createElement('button'); confirm.className = 'btn btn-theme mt-3'; confirm.type = 'button'; confirm.textContent = labels.confirm; confirm.disabled = unsafe > 0 || Number(payload.summary?.new || 0) === 0; result.appendChild(confirm);
         confirm.addEventListener('click', async () => {
             confirm.disabled = true; confirm.textContent = labels.confirming;
-            const confirmed = await fetch('{{ route('students.import-v2.confirm') }}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}, body: JSON.stringify({preview_token: payload.preview_token})});
-            const final = await confirmed.json().catch(() => ({}));
-            appendText('div', confirmed.ok ? (final.message || labels.complete) : (final.message || labels.failed), confirmed.ok ? 'alert alert-success mt-3' : 'alert alert-danger mt-3');
+            try {
+                const confirmed = await fetch('{{ route('students.import-v2.confirm') }}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'}, body: JSON.stringify({preview_token: payload.preview_token})});
+                const final = await confirmed.json().catch(() => ({}));
+                appendText('div', confirmed.ok ? (final.message || labels.complete) : (final.message || labels.failed), confirmed.ok ? 'alert alert-success mt-3' : 'alert alert-danger mt-3');
+                if (!confirmed.ok) { confirm.disabled = false; confirm.textContent = labels.confirm; }
+            } catch (error) {
+                appendText('div', labels.reconciliationRequired, 'alert alert-warning mt-3');
+                confirm.disabled = false; confirm.textContent = labels.confirm;
+            }
         });
     });
 })();

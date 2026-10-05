@@ -149,7 +149,7 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringNotContainsString('Head Finance', $v2Controller);
     }
 
-    public function test_preview_contract_is_no_write_and_confirm_reuses_the_canonical_student_fee_assignment_path(): void
+    public function test_preview_contract_is_no_write_and_confirm_creates_admission_identity_without_finance_documents(): void
     {
         $source = file_get_contents(app_path('Services/StudentImportV2Service.php'));
         $preview = substr($source, strpos($source, 'public function preview'), strpos($source, 'public function confirm') - strpos($source, 'public function preview'));
@@ -159,9 +159,12 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringNotContainsString('createStudentUser(', $preview);
         $this->assertStringNotContainsString('StudentImportIdentity::create', $preview);
         $this->assertStringContainsString('createStudentUser(', $confirm);
-        $this->assertStringContainsString('saveDraft($student, $actor, [])', $confirm);
-        $this->assertStringContainsString('confirm($student, $actor, $draft->uuid)', $confirm);
+        $this->assertStringNotContainsString('StudentFeeAssignmentService', $confirm);
+        $this->assertStringNotContainsString('saveDraft($student, $actor, [])', $confirm);
+        $this->assertStringNotContainsString('assignment_uuid', $confirm);
         $this->assertStringNotContainsString('CentralFinancePaymentService', $source);
+        $this->assertStringNotContainsString('CentralFinanceReceipt', $source);
+        $this->assertStringNotContainsString('StudentFeeAssignment', $confirm);
         $this->assertStringNotContainsString('max(\'id\')', $confirm);
         $this->assertStringContainsString("'IMP-'.\$actor->school_id", $source);
     }
@@ -192,7 +195,7 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertSame('legacy-date', $snapshotDate->invoke($service, 'legacy-date'));
     }
 
-    public function test_phase_two_contract_keeps_school_routing_server_side_and_finance_effects_receivable_only(): void
+    public function test_import_contract_keeps_school_routing_server_side_and_has_no_finance_side_effect(): void
     {
         $source = file_get_contents(app_path('Services/StudentImportV2Service.php'));
         $controller = file_get_contents(app_path('Http/Controllers/StudentController.php'));
@@ -204,15 +207,27 @@ final class StudentImportV2ContractTest extends TestCase
         $this->assertStringContainsString("session('school_database_name'", $source);
         $this->assertStringContainsString("DB::connection('school')->getDatabaseName()", $source);
         $this->assertStringContainsString('(int) $school->id !== (int) $actor->school_id', $source);
-        $this->assertStringContainsString('assertCentralWritesAllowed', $source);
-        $this->assertStringContainsString('assertCompulsorySetup', $source);
-        $this->assertStringContainsString('saveDraft($student, $actor, [])', $source);
+        $this->assertStringNotContainsString('assertCentralWritesAllowed', $source);
+        $this->assertStringNotContainsString('assertCompulsorySetup', $source);
+        $this->assertStringNotContainsString('saveDraft($student, $actor, [])', $source);
+        $this->assertStringNotContainsString('StudentFeeAssignmentService', $source);
         $this->assertStringNotContainsString('CentralFinancePaymentService', $source);
         $this->assertStringNotContainsString('CentralFinanceReceipt', $source);
         $this->assertStringNotContainsString("'session_year_id' => ['required'", $controller);
         $this->assertStringContainsString("'file' => ['required', 'file', 'mimes:xlsx'", $controller);
         $this->assertStringContainsString('accept=".xlsx"', $view);
         $this->assertStringNotContainsString('name="school_code"', $view);
+    }
+
+    public function test_fee_setup_keeps_its_non_empty_draft_protection_outside_student_import(): void
+    {
+        $feeSetup = file_get_contents(app_path('Services/StudentFeeAssignmentService.php'));
+        $import = file_get_contents(app_path('Services/StudentImportV2Service.php'));
+        $confirm = substr($feeSetup, strpos($feeSetup, 'public function confirm'), strpos($feeSetup, 'private function snapshot') - strpos($feeSetup, 'public function confirm'));
+
+        $this->assertStringContainsString("\$assignment->status !== StudentFeeAssignment::DRAFT || \$assignment->items->isEmpty()", $confirm);
+        $this->assertStringContainsString('A non-empty draft assignment is required before confirmation.', $confirm);
+        $this->assertStringNotContainsString('StudentFeeAssignmentService', $import);
     }
 
     public function test_v21_contract_uses_single_names_and_never_fakes_or_fuzzy_merges_email_less_guardians(): void

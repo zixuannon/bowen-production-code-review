@@ -1,5 +1,38 @@
 # eSchool Current State
 
+## Student Import V2 confirmation isolation — local candidate
+
+- Production incident diagnosis: `POST /students/import-v2/confirm` reached
+  `StudentImportV2Service::confirm()`, which incorrectly created and
+  immediately confirmed an empty `StudentFeeAssignment`. The Fee Setup guard
+  correctly rejected that empty draft with `A non-empty draft assignment is
+  required before confirmation.` The outer tenant transaction therefore rolled
+  the admission import back atomically.
+- Read-only Production reconciliation for Zixuan / `MMBOWEN01` references
+  `000001`–`000010` found zero matching import identities, Students, tenant
+  users, or Fee Assignments; the incident is classified as **ATOMIC ROLLBACK**,
+  not a partial import. No Production retry has been performed.
+- The local fix removes only the accidental Fee Setup invocation. Confirm now
+  creates the Student admission identity, code, Guardian/profile, placement,
+  and import identity inside its existing transaction. Fee Setup, Promotions,
+  Receivables, Collections, Payments, Receipts, Ledger, and Fund Accounts stay
+  separate workflows. The non-empty draft guard remains unchanged in
+  `StudentFeeAssignmentService::confirm()`.
+- The browser now always leaves the confirming state after a failed HTTP
+  response. A network/uncertain response shows a reconciliation-and-repreview
+  warning instead of inviting a blind retry; consumed tokens remain rejected.
+- Local evidence: Student Import V2 contract suite passes (13 tests / 111
+  assertions); full PHPUnit passes (993 tests / 7,878 assertions, 34 skips);
+  disposable BOWEN_QA browser E2E passes at 1440px and 390px. It previewed and
+  confirmed ten NEW rows with text references `000001`–`000010`, verified ten
+  unique Student Codes and Student List visibility, then rejected a duplicate
+  confirmation. It recorded zero automatic Fee Assignments. The disposable
+  fixture was reset afterward.
+- No migration is required. This candidate is local-only and must receive
+  explicit Production deployment approval before it is pushed or released.
+
+Last updated: 2026-10-05
+
 ## Promotion duplicate-code validation — local hotfix candidate
 
 - Production incident on `2026-10-02`: Head Finance submitted a valid
