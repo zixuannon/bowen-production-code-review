@@ -597,22 +597,36 @@ final class CentralFinanceDataIsolationService
             ])->lockForUpdate()->first();
             $before = $record?->classification;
             if ($record === null) {
-                $record = CentralFinanceDataClassification::on('mysql')->create([
+                $record = new CentralFinanceDataClassification([
                     'school_id' => $schoolId, 'subject_scope' => $subjectScope, 'subject_type' => $subjectType, 'subject_id' => $subjectId,
-                    'classification' => $classification, 'reason' => $reason, 'classified_by' => $actor->id,
                 ]);
-            } else {
-                $record->update(['classification' => $classification, 'reason' => $reason, 'classified_by' => $actor->id]);
             }
-            CentralFinanceDataClassificationAudit::on('mysql')->create([
+            $record->fill(['classification' => $classification, 'reason' => $reason, 'classified_by' => $actor->id]);
+            // Current attribution must replace any inherited tenant actor. These
+            // optional fields are server-owned and not mass assignable by callers.
+            $record->forceFill($this->centralActorMetadata(self::TABLE))->save();
+            $audit = new CentralFinanceDataClassificationAudit([
                 'classification_id' => $record->id, 'school_id' => $schoolId,
                 'subject_scope' => $subjectScope, 'subject_type' => $subjectType, 'subject_id' => $subjectId,
                 'before_classification' => $before, 'after_classification' => $classification,
                 'reason' => $reason, 'actor_id' => $actor->id,
             ]);
+            $audit->forceFill($this->centralActorMetadata(self::AUDIT_TABLE))->save();
 
             return $record->fresh();
         });
+    }
+
+    /** Preserve compatibility before and during the additive actor migration. */
+    private function centralActorMetadata(string $table): array
+    {
+        $metadata = ['actor_scope' => 'central', 'actor_school_id' => null, 'actor_tenant_user_id' => null];
+        if ($table === self::AUDIT_TABLE) {
+            $metadata['action'] = 'classification_changed';
+        }
+        $schema = Schema::connection('mysql');
+
+        return array_filter($metadata, static fn (string $column): bool => $schema->hasColumn($table, $column), ARRAY_FILTER_USE_KEY);
     }
 
     /** @param Builder<\Illuminate\Database\Eloquent\Model> $query */

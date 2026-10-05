@@ -122,6 +122,20 @@ class ProductionMigrationGuardTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_classification_actor_runner_allows_only_its_exact_central_extension(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $guard->assertAllowed('migrate', 'finance:migrate-classification-actors', [
+            database_path('migrations/2026_10_05_000001_add_tenant_actor_to_finance_data_classifications.php'),
+        ], true, true);
+        $this->addToAssertionCount(1);
+
+        $this->expectException(RuntimeException::class);
+        $guard->assertAllowed('migrate', 'finance:migrate-classification-actors', [
+            database_path('migrations/2026_09_14_000003_create_central_finance_data_classifications.php'),
+        ], true, true);
+    }
+
     public function test_student_import_v2_runner_allows_its_v3_exact_path_in_production(): void
     {
         (new ProductionMigrationGuard())->assertAllowed(

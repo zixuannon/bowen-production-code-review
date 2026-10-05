@@ -73,6 +73,19 @@ final class StaffRoleAssignmentScopeTest extends TestCase
         );
     }
 
+    public function test_school_admin_role_is_not_assignable_through_staff_creation(): void
+    {
+        $this->expectException(HttpException::class);
+        $this->expectExceptionMessage('Invalid staff role assignment.');
+
+        $this->assertRolesAreAssignable(
+            collect([$this->role(1, 'School Admin', 19, 0)]),
+            expectedCount: 1,
+            assignedSchoolIds: [],
+            authenticatedSchoolId: 19
+        );
+    }
+
     private function assertRolesAreAssignable(
         Collection $roles,
         int $expectedCount,

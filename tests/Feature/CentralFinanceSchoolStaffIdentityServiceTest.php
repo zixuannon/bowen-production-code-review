@@ -9,6 +9,8 @@ use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Services\CentralFinanceSchoolStaffIdentityService;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Services\QaStaffClassificationService;
+use App\Exceptions\StaffClassificationException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
@@ -39,7 +41,7 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
         Schema::connection('mysql')->create('roles', function (Blueprint $table): void { $table->id(); $table->string('name'); $table->string('guard_name')->default('web'); $table->unsignedBigInteger('school_id')->nullable(); $table->timestamps(); });
         Schema::connection('mysql')->create('model_has_roles', function (Blueprint $table): void { $table->unsignedBigInteger('role_id'); $table->string('model_type'); $table->unsignedBigInteger('model_id'); });
         foreach (['2026_08_18_000001_create_finance_group_scope_tables.php', '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php', '2026_08_21_000002_create_central_finance_operating_documents.php', '2026_08_21_000003_create_central_finance_internal_transfer_documents.php', '2026_08_24_000002_create_central_finance_school_staff_identities.php', '2026_09_04_000001_create_central_finance_pending_collections.php', '2026_09_14_000003_create_central_finance_data_classifications.php'] as $migration) (require database_path('migrations/'.$migration))->up();
-        DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan', 'code' => 'MMBOWEN01', 'database_name' => $this->zixuan, 'installed' => true, 'status' => 'active']);
+        DB::connection('mysql')->table('schools')->insert(['id' => 1, 'name' => 'Zixuan', 'code' => 'STAFF_IDENTITY_FIXTURE', 'database_name' => $this->zixuan, 'installed' => true, 'status' => 'active']);
         DB::connection('mysql')->table('users')->insert(['id' => 900, 'first_name' => 'QA', 'last_name' => 'Operator', 'email' => 'qa.operator@example.test', 'password' => bcrypt('qa-only'), 'status' => true]);
 
         Schema::connection('school')->create('users', function (Blueprint $table): void { $table->id(); $table->uuid('central_finance_source_uuid')->nullable()->unique(); $table->unsignedBigInteger('school_id'); $table->string('first_name'); $table->string('last_name'); $table->string('email')->nullable(); $table->string('password')->nullable(); $table->boolean('status')->default(true); $table->boolean('two_factor_enabled')->default(true); $table->text('two_factor_secret')->nullable(); $table->timestamp('two_factor_expires_at')->nullable(); $table->timestamps(); $table->softDeletes(); });
@@ -246,6 +248,159 @@ class CentralFinanceSchoolStaffIdentityServiceTest extends TestCase
 
         $this->expectException(ValidationException::class);
         app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 301);
+    }
+
+    public function test_new_qa_front_desk_inherits_inside_the_tenant_transaction_and_audits_the_real_operator(): void
+    {
+        [$group, $actor] = $this->qaProvisioningFixture('new.qa@example.test');
+        $probe = $this->classificationProbe();
+        $id = app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300, $actor);
+
+        $this->assertSame([[$id, 900, 1]], $probe->calls);
+        $this->assertSame(1, DB::connection('school')->table('staffs')->where('user_id', $id)->count());
+        $this->assertSame(1, DB::connection('school')->table('model_has_roles')->where('model_id', $id)->count());
+        $this->assertDatabaseHas('central_finance_document_audits', ['document_type' => 'central_finance_staff_identity', 'document_id' => 300, 'actor_id' => 900], 'mysql');
+    }
+
+    public function test_new_staff_profile_on_existing_qa_user_inherits_without_creating_a_duplicate_user(): void
+    {
+        [$group, $actor] = $this->qaProvisioningFixture('existing.login@example.test');
+        DB::connection('school')->table('users')->insert(['id' => 40, 'school_id' => 1, 'first_name' => 'Existing', 'last_name' => 'Login', 'email' => 'existing.login@example.test']);
+        $probe = $this->classificationProbe();
+        $id = app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300, $actor);
+
+        $this->assertSame(40, $id);
+        $this->assertSame([[40, 900, 1]], $probe->calls);
+        $this->assertSame(1, DB::connection('school')->table('users')->where('email', 'existing.login@example.test')->count());
+        $this->assertSame(1, DB::connection('school')->table('staffs')->where('user_id', 40)->count());
+    }
+
+    public function test_existing_qa_staff_is_not_silently_reclassified_during_provisioning(): void
+    {
+        [$group, $actor] = $this->qaProvisioningFixture('front.desk@example.test');
+        $probe = $this->classificationProbe();
+        $id = app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300, $actor);
+
+        $this->assertSame(11, $id);
+        $this->assertSame([], $probe->calls);
+        $this->assertDatabaseHas('central_finance_document_audits', ['document_type' => 'central_finance_staff_identity', 'document_id' => 300, 'actor_id' => 900], 'mysql');
+    }
+
+    public function test_required_qa_classification_failure_rolls_back_user_staff_and_role_creation(): void
+    {
+        [$group, $actor] = $this->qaProvisioningFixture('rollback.qa@example.test');
+        $probe = $this->classificationProbe(true);
+        $before = [];
+        foreach (['users', 'staffs', 'roles', 'model_has_roles', 'role_has_permissions'] as $table) {
+            $before[$table] = DB::connection('school')->table($table)->count();
+        }
+        try {
+            app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300, $actor);
+            $this->fail('Required classification failure must propagate.');
+        } catch (StaffClassificationException $e) {
+            $this->assertSame('Injected classification audit failure.', $e->getMessage());
+        }
+        $this->assertCount(1, $probe->calls);
+        foreach ($before as $table => $count) {
+            $this->assertSame($count, DB::connection('school')->table($table)->count(), $table.' must roll back.');
+        }
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_document_audits')->where('document_type', 'central_finance_staff_identity')->count());
+    }
+
+    public function test_new_qa_provisioning_without_operator_fails_before_any_tenant_write(): void
+    {
+        [$group] = $this->qaProvisioningFixture('no.actor@example.test');
+        $before = DB::connection('school')->table('users')->count();
+        try {
+            app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300);
+            $this->fail('QA provisioning requires a real actor.');
+        } catch (StaffClassificationException $e) {
+            $this->assertStringContainsString('real Central actor', $e->getMessage());
+        }
+        $this->assertSame($before, DB::connection('school')->table('users')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_document_audits')->where('document_type', 'central_finance_staff_identity')->count());
+    }
+
+    /** @dataProvider inconsistentCanonicalQaClassifications */
+    public function test_canonical_qa_school_with_non_qa_classification_rejects_provisioning_before_any_write(?string $classification): void
+    {
+        [$group, $actor] = $this->qaProvisioningFixture('inconsistent.qa@example.test', $classification);
+        $before = [];
+        foreach (['users', 'staffs', 'roles', 'model_has_roles', 'role_has_permissions'] as $table) {
+            $before[$table] = DB::connection('school')->table($table)->get()->all();
+        }
+        $probe = $this->classificationProbe();
+
+        try {
+            app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300, $actor);
+            $this->fail('The canonical QA School cannot provision Official Staff.');
+        } catch (StaffClassificationException $e) {
+            $this->assertSame('Canonical QA School classification is inconsistent.', $e->getMessage());
+        }
+
+        foreach ($before as $table => $rows) {
+            $this->assertEquals($rows, DB::connection('school')->table($table)->get()->all(), $table.' must remain unchanged.');
+        }
+        $this->assertSame([], $probe->calls);
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_document_audits')->where('document_type', 'central_finance_staff_identity')->count());
+    }
+
+    public static function inconsistentCanonicalQaClassifications(): array
+    {
+        return ['missing' => [null], 'official' => ['production'], 'archived' => ['archived']];
+    }
+
+    public function test_provisioning_rejects_existing_login_bound_to_another_school_before_linking_it(): void
+    {
+        [$group, $actor] = $this->qaProvisioningFixture('other.school@example.test');
+        DB::connection('school')->table('users')->insert(['id' => 40, 'school_id' => 2, 'first_name' => 'Other', 'last_name' => 'School', 'email' => 'other.school@example.test']);
+        $before = DB::connection('school')->table('users')->where('id', 40)->first();
+        $probe = $this->classificationProbe();
+
+        try {
+            app(CentralFinanceSchoolStaffIdentityService::class)->provisionTenantFrontDesk($group, 1, 300, $actor);
+            $this->fail('A matching email cannot override a different School binding.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('central_user_id', $e->errors());
+        }
+
+        $this->assertEquals($before, DB::connection('school')->table('users')->where('id', 40)->first());
+        $this->assertSame(0, DB::connection('school')->table('staffs')->where('user_id', 40)->count());
+        $this->assertSame(0, DB::connection('school')->table('model_has_roles')->where('model_id', 40)->count());
+        $this->assertSame([], $probe->calls);
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_document_audits')->where('document_type', 'central_finance_staff_identity')->count());
+    }
+
+    private function qaProvisioningFixture(string $email, ?string $classification = CentralFinanceDataClassification::QA_TEST): array
+    {
+        DB::connection('mysql')->table('schools')->where('id', 1)->update(['code' => 'MMBOWEN01']);
+        $group = app(\App\Services\FinanceGroupScopeService::class)->createGroup(['name' => 'QA provision', 'code' => 'QA_PROVISION', 'status' => 'active']);
+        app(\App\Services\FinanceGroupScopeService::class)->addSchool($group, 1);
+        $actor = CentralFinanceUser::on('mysql')->findOrFail(900);
+        if ($classification !== null) {
+            app(\App\Services\CentralFinanceDataIsolationService::class)->classify($actor, 1, 'school', 1, $classification, 'Permanent QA School provisioning fixture.');
+        }
+        DB::connection('mysql')->table('users')->insert(['id' => 300, 'first_name' => 'Front', 'last_name' => 'Desk', 'email' => $email, 'password' => bcrypt('qa-only')]);
+
+        return [$group, $actor];
+    }
+
+    private function classificationProbe(bool $fail = false): object
+    {
+        // Exercise the real provisioning transaction on isolated SQLite files;
+        // the classification service's cross-schema writes have separate MySQL tests.
+        $probe = new class($fail) {
+            public array $calls = [];
+            public function __construct(private readonly bool $fail) {}
+            public function inheritCentral(\App\Models\User $target, CentralFinanceUser $actor): void
+            {
+                $this->calls[] = [(int) $target->getKey(), (int) $actor->getKey(), DB::connection('school')->transactionLevel()];
+                if ($this->fail) throw new StaffClassificationException('Injected classification audit failure.');
+            }
+        };
+        $this->app->instance(QaStaffClassificationService::class, $probe);
+
+        return $probe;
     }
 
     public function test_pending_collection_schema_is_additive_and_reversible(): void

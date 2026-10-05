@@ -2,6 +2,8 @@
 
 namespace App\Imports;
 
+use App\Services\QaStaffClassificationService;
+
 use App\Repositories\User\UserInterface;
 use App\Services\CachingService;
 use App\Services\ResponseService;
@@ -20,9 +22,7 @@ use App\Repositories\Staff\StaffInterface;
 use App\Repositories\StaffSupportSchool\StaffSupportSchoolInterface;
 use App\Services\SubscriptionService;
 use App\Services\UserService;
-use Str;
 use Throwable;
-use TypeError;
 
 class StaffImport implements ToCollection, WithHeadingRow
 {
@@ -114,7 +114,7 @@ class StaffImport implements ToCollection, WithHeadingRow
                     $users->givePermissionTo($leave_permission);
                 }
                 
-                $staff->updateOrCreate( ['user_id' => $users->id] ,[
+                $staffProfile = $staff->updateOrCreate( ['user_id' => $users->id] ,[
                     'user_id'       => $users->id,
                     'qualification' => null,
                     'salary'        => $row['salary'] ?? 0,
@@ -131,6 +131,10 @@ class StaffImport implements ToCollection, WithHeadingRow
                     // $staffSupportSchool->upsert($data, ['user_id', 'school_id'], ['user_id', 'school_id']);
                 }
 
+                if ($staffProfile->wasRecentlyCreated && $school_id) {
+                    app(QaStaffClassificationService::class)->inherit($users, Auth::user());
+                }
+
                 if ($users->school_id) {
                     $sendEmail = app(UserService::class);
                     if ($this->is_send_notification) {
@@ -142,12 +146,11 @@ class StaffImport implements ToCollection, WithHeadingRow
                 $sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Staff', $users->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
 
             } catch (Throwable $e) {
-                // IF Exception is TypeError and message contains Mail keywords then email is not sent successfully
-                if (Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
-                    DB::commit();
-                    continue;
+                // Invitation delivery handles its own failures. A creation
+                // exception must never commit the batch or escape its transaction.
+                if (DB::transactionLevel() > 0) {
+                    DB::rollBack();
                 }
-                DB::rollBack();
                 throw $e;
             }
         }
@@ -155,5 +158,3 @@ class StaffImport implements ToCollection, WithHeadingRow
         return true;
     }
 }
-
-

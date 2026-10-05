@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\StaffClassificationException;
+use App\Services\QaStaffClassificationService;
+
 use App\Repositories\Staff\StaffInterface;
 use App\Repositories\Subscription\SubscriptionInterface;
 use App\Repositories\User\UserInterface;
@@ -228,13 +231,16 @@ class TeacherController extends Controller {
                 $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Teacher', $user->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             }
 
+            app(QaStaffClassificationService::class)->inherit($user, Auth::user());
+
             DB::commit();
             $sendEmail = app(UserService::class);
             $sendEmail->sendStaffRegistrationEmail($user);
             DB::commit();
             ResponseService::successResponse('Data Stored Successfully');
         } catch (Throwable $e) {
-            if (Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
+            if (! ($e instanceof StaffClassificationException)
+                && Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
                 DB::commit();
                 ResponseService::warningResponse("Teacher Registered successfully. But Email not sent.");
             } else {

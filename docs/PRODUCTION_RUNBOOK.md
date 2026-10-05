@@ -172,6 +172,30 @@ does not itself update or reload the production vhost.
 
 ## Multi-tenant migrations
 
+### QA Staff classification actor attribution
+
+`finance:migrate-classification-actors` is Central-only and read-only by
+default. It requires complete existing data-isolation schema/history and
+accepts only `eligible` or `complete`; partial state fails closed. Its
+`--execute` form permits only
+`2026_10_05_000001_add_tenant_actor_to_finance_data_classifications.php`, from
+an immutable Production release through the `www` runtime wrapper and after
+a fresh remotely verified encrypted backup. No tenant schema is migrated.
+
+The extension preserves Central actor foreign keys, makes their columns
+nullable for true tenant actors, and adds nullable actor scope/School/tenant
+identity plus audit action. It does not backfill historical audit rows. Once
+new actor attribution is used, rollback refuses to discard it; retain the
+schema and forward-fix. Before use, an unused extension can roll back and
+reapply, as rehearsed locally.
+
+Staff creation writes tenant identity and qualified Central classification
+metadata on the same tenant PDO transaction. Database co-location, actual
+schema identity, canonical School binding, InnoDB and actor trust are checked.
+Never satisfy a tenant actor foreign key by substituting a Central numeric ID.
+Existing missing Staff classifications require a separately bounded audited
+reconciliation; do not silently reclassify Staff during ordinary edits.
+
 Tenant schema changes must be run against the school connection / correct tenant database.
 
 When unrelated pending migrations exist, use targeted migration paths rather than a broad migration command.

@@ -16,6 +16,7 @@ use App\Services\CachingService;
 use App\Services\FeaturesService;
 use App\Services\ResponseService;
 use App\Services\StaffLeave\TwoStageLeaveService;
+use App\Services\QaStaffClassificationService;
 use App\Services\SubscriptionService;
 use Carbon\Carbon;
 use GuzzleHttp\RetryMiddleware;
@@ -422,6 +423,10 @@ class StaffController extends Controller
             if (Auth::user() && Auth::user()->school_id) {
                 $sessionYear = $this->cache->getDefaultSessionYear();
                 $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Staff', $staff->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
+            }
+
+            if (Auth::user()->school_id) {
+                app(QaStaffClassificationService::class)->inherit($user, Auth::user());
             }
 
             DB::commit();

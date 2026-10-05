@@ -2,6 +2,8 @@
 
 namespace App\Imports;
 
+use App\Services\QaStaffClassificationService;
+
 use App\Repositories\User\UserInterface;
 use App\Services\CachingService;
 use App\Services\ResponseService;
@@ -18,9 +20,7 @@ use App\Repositories\Staff\StaffInterface;
 use App\Services\SubscriptionService;
 use App\Services\UserService;
 use App\Repositories\FormField\FormFieldsInterface;
-use Str;
 use Throwable;
-use TypeError;
 
 class TeacherImport implements ToCollection, WithHeadingRow
 {
@@ -113,7 +113,7 @@ class TeacherImport implements ToCollection, WithHeadingRow
                 
                 $users->assignRole('Teacher');
 
-                $staff->updateOrCreate( ['user_id' => $users->id] ,[
+                $staffProfile = $staff->updateOrCreate( ['user_id' => $users->id] ,[
                     'user_id'       => $users->id,
                     'qualification' => $row['qualification'],
                     'salary'        => $row['salary'],
@@ -170,18 +170,21 @@ class TeacherImport implements ToCollection, WithHeadingRow
                     
                 }
 
+                if ($staffProfile->wasRecentlyCreated) {
+                    app(QaStaffClassificationService::class)->inherit($users, Auth::user());
+                }
+
                 $sendEmail = app(UserService::class);
                 if ($this->is_send_notification) {
                     $sendEmail->sendStaffRegistrationEmail($users);
                 }
 
             } catch (Throwable $e) {
-                // IF Exception is TypeError and message contains Mail keywords then email is not sent successfully
-                if (Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
-                    DB::commit();
-                    continue;
+                // Invitation delivery handles its own failures. A creation
+                // exception must never commit the batch or escape its transaction.
+                if (DB::transactionLevel() > 0) {
+                    DB::rollBack();
                 }
-                DB::rollBack();
                 throw $e;
             }
         }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\StaffClassificationException;
 use App\Models\CentralFinanceSchoolStaffIdentity;
 use App\Models\CentralFinanceDocumentAudit;
 use App\Models\CentralFinanceUser;
@@ -159,12 +160,22 @@ final class CentralFinanceSchoolStaffIdentityService
     }
 
     /** Provision (or locate) the tenant login for an existing Central staff identity. */
-    public function provisionTenantFrontDesk(FinanceGroup $group, int $schoolId, int $centralUserId): int
+    public function provisionTenantFrontDesk(FinanceGroup $group, int $schoolId, int $centralUserId, ?CentralFinanceUser $actor = null): int
     {
         $school = School::on('mysql')->whereKey($schoolId)->where('installed', 1)->firstOrFail();
         abort_unless($group->schools()->where(['school_id' => $schoolId, 'status' => 'active'])->exists(), 422);
         $central = CentralFinanceUser::on('mysql')->findOrFail($centralUserId);
-        $tenantId = $this->inSchool($school, function () use ($central, $school): int {
+        $isQa = $this->dataIsolation->isQaTestSchool($schoolId);
+        if ($school->code === 'MMBOWEN01' && !$isQa) {
+            throw new StaffClassificationException('Canonical QA School classification is inconsistent.');
+        }
+        // QA provisioning must always attribute its document audit to the
+        // actual Central operator, including repeat links of an existing Staff.
+        if ($isQa && (!$actor || !CentralFinanceUser::on('mysql')->whereKey($actor->getKey())
+            ->where('email', $actor->getRawOriginal('email'))->whereNull('school_id')->where('status', 1)->exists())) {
+            throw new StaffClassificationException('A real Central actor is required for QA Staff provisioning.');
+        }
+        $tenantId = $this->inSchool($school, fn (): int => DB::connection('school')->transaction(function () use ($central, $school, $actor, $isQa): int {
             $db = DB::connection('school');
             $query = $db->table('users');
             $centralAttributes = $central->getAttributes();
@@ -187,9 +198,12 @@ final class CentralFinanceSchoolStaffIdentityService
                 $uuid = sprintf('%s-%s-%s-%s-%s', substr($hex, 0, 8), substr($hex, 8, 4), substr($hex, 12, 4), substr($hex, 16, 4), substr($hex, 20, 12));
             }
             $tenant = Schema::connection('school')->hasColumn('users', 'central_finance_source_uuid')
-                ? $query->where('central_finance_source_uuid', $uuid)->first()
+                ? (clone $query)->where('central_finance_source_uuid', $uuid)->first()
                 : null;
-            if (!$tenant && $central->email) $tenant = $query->where('email', $central->email)->first();
+            if (!$tenant && $central->email) $tenant = (clone $query)->where('email', $central->email)->first();
+            if ($tenant && (int) $tenant->school_id !== (int) $school->id) {
+                throw ValidationException::withMessages(['central_user_id' => [__('The selected School Staff identity does not belong to this School.')]]);
+            }
             if ($tenant && !empty($tenant->central_finance_source_uuid)
                 && $tenant->central_finance_source_uuid !== $uuid) {
                 throw ValidationException::withMessages(['central_user_id' => [__('The selected Central identity conflicts with an existing linked School Staff identity.')]]);
@@ -227,11 +241,15 @@ final class CentralFinanceSchoolStaffIdentityService
             TenantFrontDeskFeeSetupPermissionContract::synchronize($db, $roleId);
             $exists = $db->table('model_has_roles')->where(['role_id' => $roleId, 'model_id' => $tenantId, 'model_type' => User::class])->exists();
             if (!$exists) $db->table('model_has_roles')->insert(['role_id' => $roleId, 'model_id' => $tenantId, 'model_type' => User::class]);
+            if ($isQa && (!$tenant || !$staffId)) {
+                $target = User::on('school')->withTrashed()->findOrFail($tenantId);
+                app(QaStaffClassificationService::class)->inheritCentral($target, $actor);
+            }
             return $tenantId;
-        });
+        }));
         CentralFinanceDocumentAudit::on('mysql')->create([
             'school_id' => $schoolId, 'document_type' => 'central_finance_staff_identity',
-            'document_id' => $centralUserId, 'action' => 'provisioned', 'actor_id' => auth()->id() ?: $centralUserId,
+            'document_id' => $centralUserId, 'action' => 'provisioned', 'actor_id' => $actor?->getKey() ?? (auth()->id() ?: $centralUserId),
             'reason' => 'Tenant Staff identity provision/link', 'before_values' => [],
             'after_values' => ['tenant_user_id' => $tenantId, 'school_id' => $schoolId],
         ]);

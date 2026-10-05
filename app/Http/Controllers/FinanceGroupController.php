@@ -6,6 +6,7 @@ use App\Models\FinanceGroup;
 use App\Models\School;
 use App\Models\User;
 use App\Models\CentralFinanceDocumentAudit;
+use App\Models\CentralFinanceUser;
 use App\Services\FinanceGroupScopeService;
 use App\Services\CentralFinanceSchoolStaffIdentityService;
 use Illuminate\Http\RedirectResponse;
@@ -208,7 +209,10 @@ class FinanceGroupController extends Controller
     {
         $this->assertCentralSuperAdmin();
         $data = $request->validate(['school_id' => ['required', 'integer'], 'central_user_id' => ['required', 'integer']]);
-        $tenantId = $this->staffIdentities->provisionTenantFrontDesk($financeGroup, (int) $data['school_id'], (int) $data['central_user_id']);
+        $actor = CentralFinanceUser::on('mysql')->whereKey(Auth::id())
+            ->where('email', Auth::user()->getRawOriginal('email'))
+            ->whereNull('school_id')->where('status', 1)->firstOrFail();
+        $tenantId = $this->staffIdentities->provisionTenantFrontDesk($financeGroup, (int) $data['school_id'], (int) $data['central_user_id'], $actor);
         return redirect()->route('finance-groups.index')->with('success', __('Tenant Front Desk identity provisioned (#'.$tenantId.').'));
     }
 

@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\StaffClassificationException;
+use App\Services\QaStaffClassificationService;
+
 use App\Models\Role;
 use App\Repositories\School\SchoolInterface;
 use App\Repositories\Staff\StaffInterface;
@@ -312,6 +315,10 @@ class DriverHelperController extends Controller
                 $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\Staff', $staff->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             }
 
+            if (Auth::user()->school_id) {
+                app(QaStaffClassificationService::class)->inherit($user, Auth::user());
+            }
+
             DB::commit();
 
             if ($user->school_id) {
@@ -322,7 +329,8 @@ class DriverHelperController extends Controller
             ResponseService::successResponse('Data Stored Successfully');
 
         } catch (Throwable $e) {
-            if (Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
+            if (! ($e instanceof StaffClassificationException)
+                && Str::contains($e->getMessage(), ['Failed', 'Mail', 'Mailer', 'MailManager'])) {
                 DB::commit();
                 ResponseService::warningResponse("Staff Registered successfully. But Email not sent.");
             } else {
