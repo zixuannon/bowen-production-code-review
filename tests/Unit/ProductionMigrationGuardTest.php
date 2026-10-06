@@ -189,6 +189,34 @@ class ProductionMigrationGuardTest extends TestCase
         ]));
     }
 
+    public function test_qa_run_staged_migration_requires_exact_active_baseline_and_candidate_release_identity(): void
+    {
+        $command = \App\Console\Commands\MigrateCentralFinanceQaRuns::class;
+        $baseline = '7d6e73c12f6de23c24e5dd62312df53fcef8d497';
+        $active = 'b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2';
+        $candidate = 'd06f31d06833ca702d647999168d5ef085ec9218';
+
+        $this->assertTrue($command::hasExpectedActiveProductionIdentity([
+            'commit_sha' => $active, 'baseline_sha' => $baseline,
+        ], $active));
+        $this->assertFalse($command::hasExpectedActiveProductionIdentity([
+            'commit_sha' => '74d7a3608e23ceebe4a624562a55a562e7d53ff4', 'baseline_sha' => $baseline,
+        ], '74d7a3608e23ceebe4a624562a55a562e7d53ff4'));
+        $this->assertFalse($command::hasExpectedActiveProductionIdentity([
+            'commit_sha' => $active, 'baseline_sha' => '6b9ec7feec56e2b96907558a9d5e984fc60a0e21',
+        ], $active));
+
+        $this->assertTrue($command::hasApprovedCandidateIdentity([
+            'commit_sha' => $candidate, 'baseline_sha' => $baseline,
+        ], $candidate));
+        $this->assertFalse($command::hasApprovedCandidateIdentity([
+            'commit_sha' => $candidate, 'baseline_sha' => '6b9ec7feec56e2b96907558a9d5e984fc60a0e21',
+        ], $candidate));
+        $this->assertFalse($command::hasApprovedCandidateIdentity([
+            'commit_sha' => $active, 'baseline_sha' => $baseline,
+        ], $active));
+    }
+
     public function test_student_import_v2_runner_allows_its_v3_exact_path_in_production(): void
     {
         (new ProductionMigrationGuard())->assertAllowed(

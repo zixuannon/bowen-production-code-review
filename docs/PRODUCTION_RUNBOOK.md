@@ -454,22 +454,31 @@ Historical staging-only changes retained for a future cleanup/reuse decision inc
 ## Zixuan QA Finance Run schema and operations
 
 The QA Run candidate adds Central-only tables through the exact-path
-`finance:qa-runs-migrate` command. In Production, the runner verifies the
-fixed Central database, the exact `7d6e73c12f6de23c24e5dd62312df53fcef8d497`
-baseline, and the active immutable release marker/manifest. The global
+`finance:qa-runs-migrate` command. In Production, run it from the staged
+immutable candidate release before switching the active symlink. With
+`--execute`, the runner asks for confirmation before any database connection
+or schema preflight. After confirmation it verifies the fixed Central
+database, that the active immutable release is exactly
+`b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2`, the candidate marker/manifest,
+and candidate ancestry from both that active release and the previously
+approved QA Run candidate. It also verifies the exact
+`7d6e73c12f6de23c24e5dd62312df53fcef8d497` release contract. The global
 migration guard permits only the pinned SHA-256 of
 `2026_10_05_000001_create_central_finance_qa_runs.php` (currently
 `74e22c730e31468ef4047188c4e20b054f92ca2e1a63929ad00c37e0bdbbdc79`) through
 this runner.
-With `--execute`, the outer runner first asks for interactive Production
-confirmation. It then verifies the Central target and baseline, the exact
-migration file identity/path, the same pinned allowlist/hash guard, and only
-then the schema state. After all checks pass, it invokes Laravel's nested
+After confirmation, the runner verifies the exact migration file
+identity/path, the same pinned allowlist/hash guard, and only then the schema
+state. It rechecks active/candidate release identity immediately before
+execution. After all checks pass, it invokes Laravel's nested
 exact-path `migrate` command with `--force`; nested Artisan cannot complete its
 own interactive prompt. Laravel's global migration guard repeats the
-allowlist/hash check at execution. Run the read-only preflight first, then
-execute only after the separately approved Production migration gate and
-remotely verified encrypted backup. No tenant migration is part of this
-schema. QA Run archive changes lifecycle only and must preserve all Student
-and Finance history. Never reset or delete Payments, Receipts, Ledger, or
-prior Run records to prepare another test.
+allowlist/hash check at execution. Run the post-migration read-only preflight
+and repeat execution while the approved baseline is still active; both must
+report `complete` before atomically switching to the prepared candidate. A
+denied confirmation must not connect to the migration database or inspect
+migration state. Production execution still requires a separately approved
+exact candidate and a fresh remotely verified encrypted backup. No tenant
+migration is part of this schema. QA Run archive changes lifecycle only and
+must preserve all Student and Finance history. Never reset or delete Payments,
+Receipts, Ledger, or prior Run records to prepare another test.

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 
 /** Exact-path central migration gate for permanent Zixuan QA Run tables. */
 final class MigrateCentralFinanceQaRuns extends Command
@@ -18,6 +19,10 @@ final class MigrateCentralFinanceQaRuns extends Command
     public const MIGRATION = '2026_10_05_000001_create_central_finance_qa_runs';
     private const PRODUCTION_DATABASE = 'sql_43_160_241_126';
     private const APPROVED_PRODUCTION_BASELINE = '7d6e73c12f6de23c24e5dd62312df53fcef8d497';
+    private const EXPECTED_ACTIVE_PRODUCTION_SHA = 'b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2';
+    private const PRIOR_APPROVED_CANDIDATE_SHA = 'd06f31d06833ca702d647999168d5ef085ec9218';
+    private const ACTIVE_PRODUCTION_ROOT = '/www/wwwroot/43.160.241.126';
+    private const PRODUCTION_RELEASES_ROOT = '/www/wwwroot/releases';
 
     protected $signature = 'finance:qa-runs-migrate {--execute : Apply only the exact Central QA Run migration}';
     protected $description = 'Verify or apply the Central Finance Zixuan QA Run schema';
@@ -74,6 +79,10 @@ final class MigrateCentralFinanceQaRuns extends Command
             }
             if (!$this->option('execute') || $state === 'complete') return self::SUCCESS;
 
+            if ($production) {
+                $this->assertProductionTarget($db->getDriverName(), $database);
+            }
+
             $exit = Artisan::call('migrate', [
                 '--database' => 'mysql', '--path' => $migrationPath,
                 '--realpath' => true, '--force' => true,
@@ -92,29 +101,68 @@ final class MigrateCentralFinanceQaRuns extends Command
         if ($driver !== 'mysql' || $database !== self::PRODUCTION_DATABASE) {
             throw new RuntimeException('Production Central database target does not match the approved identity.');
         }
-        if (!\App\Console\Commands\MigrateCentralFinanceStaffUuid::isAllowedProductionExecutionPath(base_path())) {
-            throw new RuntimeException('Production execution is allowed only from an immutable release path.');
+        $candidatePath = realpath(base_path());
+        $activePath = realpath(self::ACTIVE_PRODUCTION_ROOT);
+        $releasesRoot = realpath(self::PRODUCTION_RELEASES_ROOT);
+        if ($candidatePath === false || $activePath === false || $releasesRoot === false
+            || $candidatePath === $activePath
+            || !str_starts_with($candidatePath, $releasesRoot.DIRECTORY_SEPARATOR)
+            || !\App\Console\Commands\MigrateCentralFinanceStaffUuid::isAllowedProductionExecutionPath($candidatePath)) {
+            throw new RuntimeException('Production migration must run from a staged immutable release while the approved baseline remains active.');
         }
-        $contractPath = base_path('config/production-baseline.json');
-        $contract = is_file($contractPath) ? json_decode((string) file_get_contents($contractPath), true) : null;
+
+        $active = $this->releaseIdentity($activePath);
+        if (!self::hasExpectedActiveProductionIdentity($active['manifest'], $active['marker'])) {
+            throw new RuntimeException('The active Production release is not the exact approved pre-migration baseline.');
+        }
+
+        $candidate = $this->releaseIdentity($candidatePath);
+        if (!self::hasApprovedCandidateIdentity($candidate['manifest'], $candidate['marker'])) {
+            throw new RuntimeException('The staged immutable release does not match the approved QA Run candidate lineage.');
+        }
+        $head = new Process(['git', '-c', 'safe.directory='.$candidatePath, '-C', $candidatePath, 'rev-parse', 'HEAD']);
+        $head->run();
+        if (!$head->isSuccessful() || trim($head->getOutput()) !== $candidate['marker']) {
+            throw new RuntimeException('The staged immutable release Git checkout does not match its release marker.');
+        }
+        $this->assertCandidateDescendsFromApprovedCommits($candidatePath, $candidate['marker'], $active['marker']);
+
+        $contractPath = $candidatePath.'/config/production-baseline.json';
+        $contract = is_file($contractPath) && !is_link($contractPath)
+            ? json_decode((string) file_get_contents($contractPath), true)
+            : null;
         if (!self::hasApprovedProductionBaseline($contract)) {
             throw new RuntimeException('Production baseline contract does not match the approved exact SHA.');
         }
-        $releasePath = realpath(base_path());
-        if ($releasePath === false || $releasePath !== realpath('/www/wwwroot/43.160.241.126')) {
-            throw new RuntimeException('Production migration must run from the active immutable release.');
-        }
+    }
+
+    /** @return array{marker:string,manifest:?array<string,mixed>} */
+    private function releaseIdentity(string $releasePath): array
+    {
         $markerPath = $releasePath.'/.release-commit';
         $manifestPath = $releasePath.'/.release-manifest.json';
         if (!is_file($markerPath) || is_link($markerPath) || !is_file($manifestPath) || is_link($manifestPath)) {
-            throw new RuntimeException('Active release identity metadata is missing or indirect.');
+            throw new RuntimeException('Immutable release identity metadata is missing or indirect.');
         }
+
         $marker = trim((string) file_get_contents($markerPath));
         $manifest = json_decode((string) file_get_contents($manifestPath), true);
         if (preg_match('/\A[0-9a-f]{40}\z/', $marker) !== 1 || !is_array($manifest)
-            || ($manifest['commit_sha'] ?? null) !== $marker
-            || ($manifest['baseline_sha'] ?? null) !== self::APPROVED_PRODUCTION_BASELINE) {
-            throw new RuntimeException('Active release SHA/baseline manifest does not match the approved Production lineage.');
+            || ($manifest['commit_sha'] ?? null) !== $marker) {
+            throw new RuntimeException('Immutable release SHA/manifest identity is inconsistent.');
+        }
+
+        return ['marker' => $marker, 'manifest' => $manifest];
+    }
+
+    private function assertCandidateDescendsFromApprovedCommits(string $candidatePath, string $candidateSha, string $activeSha): void
+    {
+        foreach ([$activeSha, self::PRIOR_APPROVED_CANDIDATE_SHA] as $ancestor) {
+            $process = new Process(['git', '-c', 'safe.directory='.$candidatePath, '-C', $candidatePath, 'merge-base', '--is-ancestor', $ancestor, $candidateSha]);
+            $process->run();
+            if (!$process->isSuccessful()) {
+                throw new RuntimeException('The staged candidate is not a descendant of the active baseline and approved QA Run candidate.');
+            }
         }
     }
 
@@ -122,6 +170,25 @@ final class MigrateCentralFinanceQaRuns extends Command
     public static function hasApprovedProductionBaseline(?array $contract): bool
     {
         return ($contract['accepted_production_sha'] ?? null) === self::APPROVED_PRODUCTION_BASELINE;
+    }
+
+    /** @param array<string, mixed>|null $manifest */
+    public static function hasExpectedActiveProductionIdentity(?array $manifest, string $marker): bool
+    {
+        return $marker === self::EXPECTED_ACTIVE_PRODUCTION_SHA
+            && is_array($manifest)
+            && ($manifest['commit_sha'] ?? null) === self::EXPECTED_ACTIVE_PRODUCTION_SHA
+            && ($manifest['baseline_sha'] ?? null) === self::APPROVED_PRODUCTION_BASELINE;
+    }
+
+    /** @param array<string, mixed>|null $manifest */
+    public static function hasApprovedCandidateIdentity(?array $manifest, string $marker): bool
+    {
+        return preg_match('/\\A[0-9a-f]{40}\\z/', $marker) === 1
+            && $marker !== self::EXPECTED_ACTIVE_PRODUCTION_SHA
+            && is_array($manifest)
+            && ($manifest['commit_sha'] ?? null) === $marker
+            && ($manifest['baseline_sha'] ?? null) === self::APPROVED_PRODUCTION_BASELINE;
     }
 
     private function schemaState(): string

@@ -227,7 +227,8 @@ Balances move only on designated receiver confirmation.
 - [x] Guarded exact-path Production migration capability was added under the
   separate security-boundary approval. The runner pins the Central migration
   SHA-256, exact Production baseline, target database, and active release
-  manifest. It uses Laravel's normal confirmation and does not pass `--force`.
+  manifest. The outer runner confirms before DB/schema preflight; its fixed
+  exact-path inner migrate call uses `--force` only after all guards pass.
 - [x] Paired exact-Production-baseline and candidate full regression after
   fail-closed disposable fixture recovery: baseline 1,098 tests / 8,648
   assertions; candidate 1,109 tests / 8,702 assertions; zero failures/errors,
@@ -236,11 +237,18 @@ Balances move only on designated receiver confirmation.
 - [x] Targeted QA Run/migration/ownership checks (27 tests / 105 assertions),
   guarded migration path rehearsal, and archived Run history desktop/mobile
   browser smoke at 390 × 844 with no horizontal overflow.
-- [ ] Production release remains incomplete: approved SHA
-  `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2` is the active release symlink,
-  but the guarded Central migration remains `eligible`. The pushed successor
-  `74d7a3608e23ceebe4a624562a55a562e7d53ff4` is not deployed because its
-  confirmation/check order did not match the approved sequence. A further
-  successor is being prepared; it needs separate exact-SHA approval before
-  push, deployment, or migration. No Finance history was rewritten and no QA
-  Run was created.
+- [x] Production baseline and candidate were verified before the approved
+  release action: active SHA `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2`,
+  candidate `d06f31d06833ca702d647999168d5ef085ec9218`, exact descendant chain,
+  and remote ref match. A fresh encrypted recovery set covers Central plus all
+  eight trusted tenants; local checksums and independent COS HEAD checks passed
+  for all 12 objects.
+- [ ] Production release remains incomplete. No migration or release switch
+  was run. The d06 runner required the candidate to be active, conflicting
+  with migration-before-activation ordering. A local successor now accepts
+  only a staged immutable candidate while requiring the exact `b87bac3...`
+  active baseline and ancestry from d06. Targeted checks pass (24 tests / 80
+  assertions); isolated full regression passes (1,111 tests / 8,711 assertions,
+  34 existing skips). The new SHA requires separate approval before push or
+  any Production action. No Finance history was rewritten and no QA Run was
+  created.
