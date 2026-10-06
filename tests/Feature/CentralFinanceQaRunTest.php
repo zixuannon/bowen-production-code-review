@@ -209,11 +209,30 @@ final class CentralFinanceQaRunTest extends TestCase
         Schema::connection('mysql')->dropIfExists('central_finance_qa_run_records');
         Schema::connection('mysql')->dropIfExists('central_finance_qa_runs');
         Schema::connection('mysql')->create('migrations', function (Blueprint $table): void { $table->id(); $table->string('migration'); $table->integer('batch'); });
+        if (!Schema::connection('mysql')->hasTable('schools')) {
+            Schema::connection('mysql')->create('schools', function (Blueprint $table): void { $table->id(); });
+        }
+        if (!Schema::connection('mysql')->hasTable('users')) {
+            Schema::connection('mysql')->create('users', function (Blueprint $table): void { $table->id(); });
+        }
         $this->artisan('finance:qa-runs-migrate')->assertExitCode(0);
         $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_qa_runs'));
         $this->artisan('finance:qa-runs-migrate', ['--execute' => true])->assertExitCode(0);
         $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_qa_run_records'));
         $this->artisan('finance:qa-runs-migrate')->assertExitCode(0);
+        $this->artisan('finance:qa-runs-migrate', ['--execute' => true])->assertExitCode(0);
+        $this->assertSame(1, DB::connection('mysql')->table('migrations')->where('migration', \App\Console\Commands\MigrateCentralFinanceQaRuns::MIGRATION)->count());
+        $migrationPath = database_path('migrations/2026_10_05_000001_create_central_finance_qa_runs.php');
+        $migrator = app('migrator');
+        $migrator->usingConnection('mysql', function () use ($migrator, $migrationPath): void {
+            $migrator->rollback([$migrationPath], ['pretend' => false, 'step' => false]);
+        });
+        $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_qa_runs'));
+        $this->assertFalse(Schema::connection('mysql')->hasTable('central_finance_qa_run_records'));
+        $this->artisan('finance:qa-runs-migrate')->assertExitCode(0);
+        $this->artisan('finance:qa-runs-migrate')->expectsOutputToContain('central=eligible')->assertExitCode(0);
+        $this->artisan('finance:qa-runs-migrate', ['--execute' => true])->assertExitCode(0);
+        $this->assertTrue(Schema::connection('mysql')->hasTable('central_finance_qa_run_records'));
         Schema::connection('mysql')->drop('central_finance_qa_run_records');
         $this->artisan('finance:qa-runs-migrate', ['--execute' => true])->assertExitCode(1);
     }

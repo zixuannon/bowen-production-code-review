@@ -454,9 +454,18 @@ Historical staging-only changes retained for a future cleanup/reuse decision inc
 ## Zixuan QA Finance Run schema and operations
 
 The QA Run candidate adds Central-only tables through the exact-path
-`finance:qa-runs-migrate` command. The command is restricted to local
-configuration and must never be run against Production. Review this candidate's
-exact migration and tenant impact before any separately approved release; no
-tenant migration is part of this schema. QA Run archive changes lifecycle only
-and must preserve all Student and Finance history. Never reset or delete
-Payments, Receipts, Ledger, or prior Run records to prepare another test.
+`finance:qa-runs-migrate` command. In Production, the runner verifies the
+fixed Central database, the exact `7d6e73c12f6de23c24e5dd62312df53fcef8d497`
+baseline, and the active immutable release marker/manifest. The global
+migration guard permits only the pinned SHA-256 of
+`2026_10_05_000001_create_central_finance_qa_runs.php` (currently
+`74e22c730e31468ef4047188c4e20b054f92ca2e1a63929ad00c37e0bdbbdc79`) through
+this runner.
+The runner invokes Laravel's exact-path `migrate` command without `--force`,
+so the normal Production confirmation remains enabled; Production execution
+requires an interactive confirmation as well as `--execute`. Run its
+read-only preflight first, then execute only after the separately approved
+Production migration gate and remotely verified encrypted backup. No tenant
+migration is part of this schema. QA Run archive changes lifecycle only and
+must preserve all Student and Finance history. Never reset or delete Payments,
+Receipts, Ledger, or prior Run records to prepare another test.

@@ -82,6 +82,9 @@ final class ProductionMigrationGuard
         'finance:migrate-payment-corrections' => [
             'database/migrations/2026_09_28_000001_add_payment_correction_fields_and_reversals.php',
         ],
+        'finance:qa-runs-migrate' => [
+            'database/migrations/2026_10_05_000001_create_central_finance_qa_runs.php',
+        ],
         'finance:migrate-collection-v2' => [
             'database/migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php',
             'database/migrations/2026_09_29_000002_add_finance_collection_v2_documents.php',
@@ -92,6 +95,10 @@ final class ProductionMigrationGuard
             'database/migrations/schools/2026_10_02_000001_add_student_specific_discount_drafts.php',
             'database/migrations/schools/2026_10_02_000002_add_student_discount_request_reference.php',
         ],
+    ];
+
+    private const PINNED_MIGRATION_HASHES = [
+        'database/migrations/2026_10_05_000001_create_central_finance_qa_runs.php' => '74e22c730e31468ef4047188c4e20b054f92ca2e1a63929ad00c37e0bdbbdc79',
     ];
 
     /**
@@ -116,6 +123,12 @@ final class ProductionMigrationGuard
             if (!str_ends_with($normalized, '.php') || !in_array($normalized, $approved, true)) {
                 throw new RuntimeException('Production migration path is not in the selected runner allowlist.');
             }
+            $relative = substr($normalized, strlen($this->normalize(base_path())) + 1);
+            if (isset(self::PINNED_MIGRATION_HASHES[$relative])) {
+                if (!self::matchesPinnedMigration($relative, $normalized, base_path())) {
+                    throw new RuntimeException('Production migration file identity/hash does not match the approved exact migration.');
+                }
+            }
         }
     }
 
@@ -123,6 +136,16 @@ final class ProductionMigrationGuard
     public static function allowedRunners(): array
     {
         return array_keys(self::RUNNER_PATHS);
+    }
+
+    public static function matchesPinnedMigration(string $relativePath, string $path, string $basePath): bool
+    {
+        if (!isset(self::PINNED_MIGRATION_HASHES[$relativePath])) return false;
+        $file = realpath($path);
+        $expectedPath = str_replace('\\', '/', preg_replace('#/+#', '/', $basePath.'/'.$relativePath));
+        $hash = $file === false || is_link($path) ? false : hash_file('sha256', $file);
+        return $file !== false && str_replace('\\', '/', $file) === $expectedPath
+            && is_string($hash) && hash_equals(self::PINNED_MIGRATION_HASHES[$relativePath], $hash);
     }
 
     private function normalize(string $path): string

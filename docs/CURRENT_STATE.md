@@ -1,3 +1,28 @@
+# Zixuan QA Run guarded Production migration — local candidate validation
+
+- Approved scope: add one fail-closed Production-capable runner for the exact
+  Central QA Run migration, based on Production `7d6e73c12f6de23c24e5dd62312df53fcef8d497`.
+  The candidate pins the migration path and SHA-256, checks the fixed Central
+  database and active immutable release marker/manifest, validates full schema
+  columns/indexes/foreign keys, and routes execution through Laravel's normal
+  Production migration confirmation without `--force`. No tenant path or broad
+  migration was added. `UserService` and `StaffInvitationService` are unchanged.
+- Guard + QA Run rehearsal: **22 tests / 71 assertions PASS**, including exact
+  migration allow, unrelated/unknown/tenant deny, altered-file and wrong
+  baseline deny, complete no-op, fail-closed partial state, and disposable
+  SQLite apply/rollback/reapply. Existing PHP 8.5 PDO deprecation remains.
+- Full PHPUnit was attempted against a fresh disposable MySQL 9.6 instance on
+  localhost port 3317. It did not pass: **1,109 tests / 7,530 assertions / 239
+  errors / 1 failure / 34 skips**. The suite's `school_testing` DB lacked the
+  expected tenant schema (`fees`, `users`, and related tables); one unrelated
+  role-onboarding assertion also disagreed with its expected fixture. This is
+  not a passing regression result. Existing candidate QA Run #1/#2 browser E2E
+  evidence remains valid for unchanged application/UI behavior; browser E2E
+  was not rerun for this migration-runner-only change.
+- No Production migration, push, deployment, or business-data write was
+  performed. Full regression and fresh browser verification remain required
+  before calling this a Production-ready candidate.
+
 ## Zixuan permanent QA Finance Runs — reconciled local candidate
 
 - Reconciled directly onto current Production SHA

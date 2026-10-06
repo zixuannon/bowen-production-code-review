@@ -136,6 +136,59 @@ class ProductionMigrationGuardTest extends TestCase
         ], true, true);
     }
 
+    public function test_qa_run_runner_allows_only_the_pinned_exact_central_migration(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $migration = database_path('migrations/2026_10_05_000001_create_central_finance_qa_runs.php');
+        $guard->assertAllowed('migrate', 'finance:qa-runs-migrate', [$migration], true, true);
+        $this->addToAssertionCount(1);
+
+        foreach ([
+            database_path('migrations/2026_10_05_000001_add_tenant_actor_to_finance_data_classifications.php'),
+            database_path('migrations/schools/2026_10_05_000001_create_central_finance_qa_runs.php'),
+            database_path('migrations/2026_10_06_999999_unknown.php'),
+        ] as $unapproved) {
+            try {
+                $guard->assertAllowed('migrate', 'finance:qa-runs-migrate', [$unapproved], true, true);
+                $this->fail('Unrelated or tenant migration was accepted by the QA Run runner.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('not in the selected runner allowlist', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_qa_run_migration_hash_must_match_the_pinned_file_identity(): void
+    {
+        $relative = 'database/migrations/2026_10_05_000001_create_central_finance_qa_runs.php';
+        $real = base_path($relative);
+        $this->assertTrue(ProductionMigrationGuard::matchesPinnedMigration($relative, $real, base_path()));
+        $this->assertFalse(ProductionMigrationGuard::matchesPinnedMigration($relative, __FILE__, base_path()));
+        $this->assertFalse(ProductionMigrationGuard::matchesPinnedMigration('database/migrations/unknown.php', $real, base_path()));
+
+        $root = sys_get_temp_dir().'/qa-run-migration-hash-'.bin2hex(random_bytes(5));
+        $copy = $root.'/'.$relative;
+        mkdir(dirname($copy), 0777, true);
+        file_put_contents($copy, file_get_contents($real)."\n// altered identity\n");
+        try {
+            $this->assertFalse(ProductionMigrationGuard::matchesPinnedMigration($relative, $copy, $root));
+        } finally {
+            unlink($copy);
+            rmdir(dirname($copy));
+            rmdir(dirname(dirname($copy)));
+            rmdir(dirname(dirname(dirname($copy))));
+        }
+    }
+
+    public function test_qa_run_command_requires_the_exact_approved_production_baseline(): void
+    {
+        $this->assertTrue(\App\Console\Commands\MigrateCentralFinanceQaRuns::hasApprovedProductionBaseline([
+            'accepted_production_sha' => '7d6e73c12f6de23c24e5dd62312df53fcef8d497',
+        ]));
+        $this->assertFalse(\App\Console\Commands\MigrateCentralFinanceQaRuns::hasApprovedProductionBaseline([
+            'accepted_production_sha' => '6b9ec7feec56e2b96907558a9d5e984fc60a0e21',
+        ]));
+    }
+
     public function test_student_import_v2_runner_allows_its_v3_exact_path_in_production(): void
     {
         (new ProductionMigrationGuard())->assertAllowed(
