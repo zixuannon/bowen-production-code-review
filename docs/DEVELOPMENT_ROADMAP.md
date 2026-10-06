@@ -261,8 +261,16 @@ Balances move only on designated receiver confirmation.
   Central migration apply/rollback/reapply rehearsal pass against the dedicated
   disposable MySQL fixture. Existing Run #1/#2 browser E2E applies unchanged;
   the trust-boundary repair changes no business/UI flow.
-- [ ] The bounded successor push and Production migration/release are still
-  pending. Reconfirm b87, create a fresh encrypted backup with independent COS
-  verification, migrate only the exact Central QA Run schema before activating
-  this same verified candidate, and stop at read-only operator UAT. No QA Run
-  or Finance business record may be created.
+- [x] Staged release validation exposed generated `.env`, bootstrap cache, and
+  shared-storage symlinks as expected worktree differences. The root verifier
+  now excludes only those exact runtime paths, which the runtime-link/release
+  guards check independently; synthetic tests prove two generated releases
+  pass while other tracked application tampering is rejected. The correction
+  also passes read-only against the preserved Production staged release.
+- [x] Fresh encrypted R2E backup
+  `eschool-prod-20261006T102819Z-b87bac3a2bc6` completed after candidate
+  staging; all 12 checksums and post-upload COS HEAD checks pass.
+- [ ] Push the corrected validated successor, prepare its exact immutable
+  release, and rerun guarded migration preflight. Then migrate only the exact
+  Central QA Run schema before activating that same candidate, and stop at
+  read-only operator UAT. No QA Run or Finance business record may be created.

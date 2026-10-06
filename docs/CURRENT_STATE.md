@@ -4,10 +4,9 @@
   Candidate `e9d0be2efe82bd0882377799d17ea9fb5d6efbfe` is pushed and staged,
   but not activated. Its guarded migration has not executed; schema remains
   eligible. No QA Run #001 or Finance business record was created.
-- A fresh encrypted recovery set,
-  `eschool-prod-20261006T093550Z-b87bac3a2bc6`, covers Central and eight
-  trusted tenants. All 12 encrypted artifact checksums and independent COS
-  HEADs passed. No migration or release switch followed that backup.
+- Fresh encrypted recovery set `eschool-prod-20261006T102819Z-b87bac3a2bc6`
+  covers Central and eight trusted tenants. R2E completed successfully; all 12
+  encrypted artifact checksums and post-upload COS HEAD checks passed.
 - Root cause: immutable release and Git metadata are deployment-owned
   `root:root`, while Artisan runs as `www`. `MigrateCentralFinanceQaRuns`
   incorrectly invoked Git from the runtime identity. Production Git is
@@ -30,10 +29,17 @@
   fixture at port 3317. Existing Run #1/#2 desktop/mobile browser E2E remains
   applicable because this repair changes only migration/deployment trust
   boundaries; it changes no Finance or UI workflow.
+- The first successor's staged preflight exposed expected generated runtime
+  paths (`.env`, `bootstrap/cache/**`, `public/storage`, and `storage/**`) in
+  the Git worktree diff even though their independent runtime-link checks had
+  passed. The deployment verifier now excludes only those exact paths and
+  keeps all other tracked source covered. Both synthetic releases test those
+  generated paths plus rejection of tampered tracked application source; the
+  corrected verifier also passes read-only against the preserved staged
+  release. The corrective successor is being finalized before migration.
 - Production remains on b87; no migration, activation, service reload, Finance
   write, role change, or QA Run creation has occurred in this attempt. Local
-  candidate review is complete; the authorized bounded successor release path
-  is next.
+  final release verification is next.
 
 # Zixuan QA Run — full regression fixture recovery complete
 

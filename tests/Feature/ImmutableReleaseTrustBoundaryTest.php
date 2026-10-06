@@ -30,11 +30,19 @@ final class ImmutableReleaseTrustBoundaryTest extends TestCase
         $this->activeLink = $this->root.'/active';
         mkdir($this->repo, 0775, true);
         mkdir($this->releaseRoot, 0775, true);
+        mkdir($this->repo.'/app', 0775, true);
+        mkdir($this->repo.'/bootstrap/cache', 0775, true);
+        mkdir($this->repo.'/public', 0775, true);
+        mkdir($this->repo.'/storage/app', 0775, true);
 
         $this->git($this->root, ['init', $this->repo]);
         $this->git($this->repo, ['config', 'user.name', 'QA Release Test']);
         $this->git($this->repo, ['config', 'user.email', 'qa-release@example.invalid']);
         file_put_contents($this->repo.'/source.txt', "baseline\n");
+        file_put_contents($this->repo.'/app/RuntimeReadable.php', "<?php // tracked application source\n");
+        file_put_contents($this->repo.'/bootstrap/cache/packages.php', "<?php // generated baseline cache\n");
+        file_put_contents($this->repo.'/public/storage', "tracked link placeholder\n");
+        file_put_contents($this->repo.'/storage/app/.gitignore', "*\n!.gitignore\n");
         $this->commit('baseline');
         $this->activeSha = $this->gitHead();
         file_put_contents($this->repo.'/source.txt', "prior\n");
@@ -62,10 +70,12 @@ final class ImmutableReleaseTrustBoundaryTest extends TestCase
 
     public function test_two_synthetic_releases_pass_deployment_git_verification_without_runtime_git(): void
     {
+        $this->applyGeneratedRuntimePaths($this->releaseA, 'shared-a');
         $this->assertVerifierPasses($this->releaseA, $this->activeSha);
         $this->runtimeCheck($this->releaseA, 'staged', 0, $this->candidateASha);
 
         $this->git($this->repo, ['update-ref', 'refs/remotes/origin/'.$this->branch, $this->candidateBSha]);
+        $this->applyGeneratedRuntimePaths($this->releaseB, 'shared-b');
         $this->assertVerifierPasses($this->releaseB, $this->candidateASha);
         $this->runtimeCheck($this->releaseB, 'staged', 0, $this->candidateBSha);
 
@@ -92,9 +102,9 @@ final class ImmutableReleaseTrustBoundaryTest extends TestCase
             file_put_contents($gitHead, $originalHead);
         }
 
-        file_put_contents($this->releaseA.'/source.txt', "tampered\n");
+        file_put_contents($this->releaseA.'/app/RuntimeReadable.php', "<?php // tampered application source\n");
         $this->assertVerifierDenies($this->releaseA, $this->priorSha, 'tracked application files differ');
-        file_put_contents($this->releaseA.'/source.txt', "candidate-a\n");
+        file_put_contents($this->releaseA.'/app/RuntimeReadable.php', "<?php // tracked application source\n");
 
         $this->git($this->repo, ['update-ref', 'refs/remotes/origin/'.$this->branch, $this->candidateBSha]);
         $this->assertVerifierDenies($this->releaseA, $this->priorSha, 'remote SHA does not match staged candidate');
@@ -211,7 +221,7 @@ final class ImmutableReleaseTrustBoundaryTest extends TestCase
     {
         $path = $this->releaseRoot.'/'.$name;
         $this->git($this->repo, ['worktree', 'add', '--detach', $path, $sha]);
-        foreach (['app', 'bootstrap/cache', 'config', 'database', 'routes', 'resources', 'vendor'] as $directory) {
+        foreach (['app', 'bootstrap/cache', 'config', 'database', 'routes', 'resources', 'vendor', 'public', 'storage/app'] as $directory) {
             if (!is_dir($path.'/'.$directory)) mkdir($path.'/'.$directory, 0775, true);
         }
         foreach (['artisan', 'bootstrap/app.php', 'config/app.php', 'database/example.php', 'routes/web.php', 'resources/example.php', 'vendor/autoload.php', 'app/RuntimeReadable.php'] as $file) {
@@ -225,9 +235,24 @@ final class ImmutableReleaseTrustBoundaryTest extends TestCase
         return $path;
     }
 
+    private function applyGeneratedRuntimePaths(string $release, string $suffix): void
+    {
+        file_put_contents($release.'/bootstrap/cache/packages.php', "<?php // regenerated cache {$suffix}\n");
+
+        $sharedPublicStorage = $this->root.'/'.$suffix.'-public-storage';
+        mkdir($sharedPublicStorage, 0775, true);
+        unlink($release.'/public/storage');
+        symlink($sharedPublicStorage, $release.'/public/storage');
+
+        $sharedStorage = $this->root.'/'.$suffix.'-storage';
+        mkdir($sharedStorage, 0775, true);
+        $this->removeDirectory($release.'/storage');
+        symlink($sharedStorage, $release.'/storage');
+    }
+
     private function commit(string $message): void
     {
-        $this->git($this->repo, ['add', 'source.txt']);
+        $this->git($this->repo, ['add', '-A']);
         $this->git($this->repo, ['commit', '-m', $message]);
     }
 

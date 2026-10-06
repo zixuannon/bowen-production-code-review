@@ -470,6 +470,13 @@ HEAD = remote SHA = marker SHA = manifest SHA. No per-release or wildcard
 `safe.directory` entry is used. Git repository operations belong to the
 deployment actor; the `www` runtime actor never runs Git.
 
+The Git diff check continues to cover tracked application and release source.
+It excludes only `.env`, `bootstrap/cache/**`, `public/storage`, and
+`storage/**`, which the release builder intentionally links or regenerates.
+The exact shared-link targets and runtime ownership/read/write requirements
+for those paths are checked independently by the runtime-link and runtime
+release guards before migration or activation.
+
 The wrapper then verifies application readability, Laravel/PHP bootstrap,
 active/staged symlink state, shared runtime links, and writable runtime
 directories as `www`. Artisan checks the root-owned immutable marker and
