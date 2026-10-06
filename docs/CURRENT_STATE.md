@@ -7,17 +7,20 @@
   Laravel canceled at its Production prompt. Recheck remained `eligible`;
   no QA Run tables/history were written, no tenant migration ran, no Finance
   history or permissions changed, and no first Production QA Run was created.
-- Correct the runner to ask for the interactive Production confirmation at
-  the outer exact-purpose command, then pass `--force` only to the pinned
-  exact-path inner migration. The correction requires a new exact SHA and
-  separate Production deployment/migration approval. The current active
-  symlink is still b87; graceful PHP-FPM reload and authenticated Production
-  QA Runs smoke have not been performed.
-- Implemented the correction locally. QA Run and migration-guard tests pass
-  (22 tests / 71 assertions); complete disposable regression passes (1,109
-  tests / 8,702 assertions, 0 failures, 0 errors, 34 existing skips). Existing
-  PHP 8.5 PDO and PHPUnit configuration deprecations remain. No Production
-  connection was used for these tests.
+- The exact approved runner order is confirmation first, then Central target/
+  baseline, migration identity/path, pinned allowlist/hash, schema state, and
+  finally the fixed inner `migrate --force`. The pushed SHA
+  `74d7a3608e23ceebe4a624562a55a562e7d53ff4` is not deployed: it asked for
+  confirmation after schema checks and relied on the inner migration for the
+  allowlist check. A local successor now uses Laravel's explicit
+  `ConfirmableTrait`, confirms before DB access, and invokes the same pinned
+  `ProductionMigrationGuard` before schema-state inspection. Its new exact SHA
+  requires separate approval before push or Production use.
+- The current local code passes the QA Run/guard suite (23 tests / 74
+  assertions) and full disposable regression (1,110 tests / 8,705 assertions,
+  0 failures, 0 errors, 34 existing skips). Existing PHP 8.5 PDO and PHPUnit
+  configuration deprecations remain. Production is still on b87, migration is
+  still eligible, and no Production smoke/FPM reload has occurred.
 
 # Zixuan QA Run — full regression fixture recovery complete
 

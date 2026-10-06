@@ -236,4 +236,27 @@ final class CentralFinanceQaRunTest extends TestCase
         Schema::connection('mysql')->drop('central_finance_qa_run_records');
         $this->artisan('finance:qa-runs-migrate', ['--execute' => true])->assertExitCode(1);
     }
+
+    public function test_production_execute_confirms_before_database_preflight(): void
+    {
+        $previousEnvironment = $this->app['env'];
+        $previousConnection = Config::get('database.connections.mysql');
+        DB::purge('mysql');
+        Config::set('database.connections.mysql', [
+            'driver' => 'mysql', 'host' => '192.0.2.1', 'port' => 3306,
+            'database' => 'must_not_connect_before_confirmation', 'username' => 'root', 'password' => '',
+        ]);
+        $this->app->detectEnvironment(fn () => 'production');
+        $this->assertTrue($this->app->environment('production'));
+
+        try {
+            $exitCode = \Illuminate\Support\Facades\Artisan::call('finance:qa-runs-migrate', ['--execute' => true]);
+            $this->assertSame(1, $exitCode);
+            $this->assertStringContainsString('Command cancelled.', \Illuminate\Support\Facades\Artisan::output());
+        } finally {
+            $this->app['env'] = $previousEnvironment;
+            Config::set('database.connections.mysql', $previousConnection);
+            DB::purge('mysql');
+        }
+    }
 }

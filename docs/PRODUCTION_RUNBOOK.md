@@ -461,13 +461,15 @@ migration guard permits only the pinned SHA-256 of
 `2026_10_05_000001_create_central_finance_qa_runs.php` (currently
 `74e22c730e31468ef4047188c4e20b054f92ca2e1a63929ad00c37e0bdbbdc79`) through
 this runner.
-With `--execute`, the runner verifies that the schema is eligible, then asks
-for an interactive Production confirmation before invoking Laravel's nested
-exact-path `migrate` command with `--force`. The inner command needs `--force`
-because nested Artisan calls cannot complete Laravel's interactive prompt;
-the outer confirmation remains the human gate. Run the read-only preflight
-first, then execute only after the separately approved Production migration
-gate and remotely verified encrypted backup. No tenant migration is part of
-this schema. QA Run archive changes lifecycle only and must preserve all
-Student and Finance history. Never reset or delete Payments, Receipts, Ledger,
-or prior Run records to prepare another test.
+With `--execute`, the outer runner first asks for interactive Production
+confirmation. It then verifies the Central target and baseline, the exact
+migration file identity/path, the same pinned allowlist/hash guard, and only
+then the schema state. After all checks pass, it invokes Laravel's nested
+exact-path `migrate` command with `--force`; nested Artisan cannot complete its
+own interactive prompt. Laravel's global migration guard repeats the
+allowlist/hash check at execution. Run the read-only preflight first, then
+execute only after the separately approved Production migration gate and
+remotely verified encrypted backup. No tenant migration is part of this
+schema. QA Run archive changes lifecycle only and must preserve all Student
+and Finance history. Never reset or delete Payments, Receipts, Ledger, or
+prior Run records to prepare another test.

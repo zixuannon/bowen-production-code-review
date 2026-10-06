@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Services\ProductionMigrationGuard;
 use Illuminate\Console\Command;
+use Illuminate\Console\ConfirmableTrait;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -11,6 +13,8 @@ use RuntimeException;
 /** Exact-path central migration gate for permanent Zixuan QA Run tables. */
 final class MigrateCentralFinanceQaRuns extends Command
 {
+    use ConfirmableTrait;
+
     public const MIGRATION = '2026_10_05_000001_create_central_finance_qa_runs';
     private const PRODUCTION_DATABASE = 'sql_43_160_241_126';
     private const APPROVED_PRODUCTION_BASELINE = '7d6e73c12f6de23c24e5dd62312df53fcef8d497';
@@ -21,9 +25,14 @@ final class MigrateCentralFinanceQaRuns extends Command
     public function handle(): int
     {
         try {
+            $production = app()->environment('production');
+            if ($production && $this->option('execute')) {
+                $confirmed = $this->confirmToProceed('Apply the exact Central QA Run migration to Production?');
+                if (!$confirmed) return self::FAILURE;
+            }
+
             $db = DB::connection('mysql');
             $database = $db->getDatabaseName();
-            $production = app()->environment('production');
             if ($production) {
                 $this->assertProductionTarget($db->getDriverName(), $database);
             } else {
@@ -47,6 +56,11 @@ final class MigrateCentralFinanceQaRuns extends Command
             if (!is_file($migrationPath) || is_link($migrationPath)) {
                 throw new RuntimeException('The exact Central QA Run migration file is missing or indirect.');
             }
+            if ($production) {
+                app(ProductionMigrationGuard::class)->assertAllowed(
+                    'migrate', 'finance:qa-runs-migrate', [$migrationPath], true, true,
+                );
+            }
             foreach (['migrations', 'schools', 'users'] as $table) {
                 if (!Schema::connection('mysql')->hasTable($table)) {
                     throw new RuntimeException('Required Central schema missing: '.$table);
@@ -59,13 +73,6 @@ final class MigrateCentralFinanceQaRuns extends Command
                 throw new RuntimeException('QA Run schema/history is partial or inconsistent; no migration was run.');
             }
             if (!$this->option('execute') || $state === 'complete') return self::SUCCESS;
-
-            // Keep the human Production gate on this exact-purpose runner. The
-            // nested migrate command is non-interactive, so it receives
-            // --force only after the operator confirms here.
-            if ($production && !$this->confirmToProceed('Apply the exact Central QA Run migration to Production?')) {
-                return self::FAILURE;
-            }
 
             $exit = Artisan::call('migrate', [
                 '--database' => 'mysql', '--path' => $migrationPath,
