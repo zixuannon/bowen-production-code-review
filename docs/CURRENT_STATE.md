@@ -115,36 +115,49 @@ Last updated: 2026-10-06
 
 # eSchool Current State
 
-## P1-A optional Fee due date — reconciled candidate, local gates
+## P1-A optional Fee due date — reconciled candidate, full regression green
 
-- Reconciled only the P1-A Fee due-date change and exact migration-runner fix
-  onto verified Production baseline `7d6e73c12f6de23c24e5dd62312df53fcef8d497`.
-  The P1-A implementation is committed on `codex/p1a-prod-reconcile`; no
-  unfinished Zixuan QA Run work was included.
-- Cherry-pick conflicts were limited to `docs/CURRENT_STATE.md`; the newer
-  Production state was retained. No code conflicts remained. `UserService`,
-  `StaffInvitationService`, canonical School identity, Staff Invitation,
-  QA Staff classification, tenant actor audit, and User #77 recovery changes
-  are unchanged from the Production baseline.
-- Focused fee regression passes: 35 tests / 183 assertions. The model tests,
-  offline payment authority cases, and collection aging contract cover an
-  undated overall Fee, no overall late charge, and a dated installment charge.
-- Full regression is **not green** on the isolated test DB rebuilt for this
-  candidate: 1,104 tests / 8,585 assertions, 8 errors, 20 failures, 34 skips.
-  The failures are concentrated in legacy fee payment/import tests whose
-  fixture data/schema does not match their assumptions; none are in the P1-A
-  focused set. Resolve or validate this full-suite fixture mismatch before
-  marking the candidate deployment-ready.
-- Exact `fees:due-date-schema --tenant=BOWEN_QA` rehearsal passed locally:
-  read-only preflight `eligible`, exact-path migration applied, repeat preflight
-  `complete`. Two synthetic Fee rows and their IDs remained unchanged.
-- Local browser acceptance passed for creating a Fee with an empty overall due
-  date and clearing an existing unpaid Fee's due date; both persisted as SQL
-  `NULL`. No payment was made. The browser also observed the known unrelated
-  Online Exam subjects endpoint HTTP 400; it did not affect either due-date
-  flow.
-- Production was not changed and nothing was deployed. Do not mark this
-  candidate ready for Production until the full regression is green.
+- Candidate lineage remains based on exact Production SHA
+  `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; no unfinished Zixuan QA Run
+  work was included. The current Production SHA was rechecked read-only and is
+  still the same. No Production change or deployment occurred.
+- Before fixture repair, the identical normalized snapshot produced 1,098
+  baseline tests / 8,556 assertions / 9 errors / 20 failures and 1,104
+  candidate tests / 8,580 assertions / 9 errors / 20 failures. Failure identity
+  comparison was exact: 9 errors and 20 failures were present on both revisions;
+  there were no baseline-only or candidate-only failures. This accounts for
+  the 28 reported fee/import errors and failures; the clean paired run also
+  surfaced the same fixed-ID collision in `InitializeTenantDatabaseTest` on
+  both revisions.
+- Root cause was invalid legacy test setup, not P1-A behavior. The rebuilt
+  tenant schema requires a Guardian FK but import helpers omitted it while
+  using `INSERT IGNORE`, so their Student rows were silently absent. The test
+  tenant's year ID 1 also held a different default year than the import fixture
+  expected. Cross-school payments reused hard-coded year IDs, and tenant-login
+  setup reused a user ID already present in the synthetic tenant. Two denied
+  HTTP tests expected redirects while the current route returns 403.
+- Test-only repairs now create a valid Guardian identity, seed the exact default
+  test year in a guarded localhost-only fixture preparer, give cross-school
+  tests their own SessionYear, select that year's actual ID, and allocate a
+  tenant-login ID free in both databases. Permission tests assert the current
+  403 denial. No business validation was removed, no assertion was weakened,
+  and no skips were added.
+- P1-A targeted set passes: 35 tests / 183 assertions. After repair, the exact
+  Production baseline passes 1,098 tests / 8,648 assertions; the P1-A candidate
+  passes 1,104 tests / 8,672 assertions. Both have zero failures, zero errors,
+  34 existing skips, and one PHP 8.5 PDO deprecation.
+- Explicit optional-date coverage remains in place for NULL model persistence
+  and formatting, undated-fee collection without an overall late charge, dated
+  installment charges under an undated Fee, outstanding/current aging behavior,
+  and dated Fee compatibility. The local browser E2E previously passed create
+  with no overall date and edit from dated to undated; executable application
+  files did not change during fixture repair.
+- Current read-only `fees:due-date-schema --tenant=BOWEN_QA` preflight reports
+  `complete`. The exact-path migration rehearsal previously passed and the
+  migration/runner sources are unchanged by this test-only repair. No schema
+  changed in this regression pass.
+- The regression repair is frozen as a local candidate. Production deployment
+  remains unperformed.
 
 ## QA Staff classification and tenant actor audit — 2026-10-05 LOCAL GATES PASS
 
