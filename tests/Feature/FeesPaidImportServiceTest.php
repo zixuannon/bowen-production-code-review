@@ -270,6 +270,7 @@ class FeesPaidImportServiceTest extends TestCase
     private function createStudentUser(string $first, string $last, int $schoolId, string $admissionNo, int $classId, int $sessionYearId): int
     {
         $userId = $this->createUser($first, $last, $schoolId);
+        $guardianId = $this->createGuardianFixtureUser($schoolId);
         $role = DB::table('roles')->where('name', 'Student')->where('school_id', $schoolId)->first();
         DB::table('model_has_roles')->insertOrIgnore([
             'role_id'    => $role->id,
@@ -280,6 +281,7 @@ class FeesPaidImportServiceTest extends TestCase
         // Create Students record with admission_no
         DB::table('students')->insertOrIgnore([
             'user_id'       => $userId,
+            'guardian_id'   => $guardianId,
             'class_id'      => $classId,
             'admission_no'  => $admissionNo,
             'admission_date'=> now()->format('Y-m-d'),

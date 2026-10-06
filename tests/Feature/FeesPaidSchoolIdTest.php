@@ -237,6 +237,7 @@ class FeesPaidSchoolIdTest extends TestCase
         string $admissionNo, int $classId, int $sessionYearId
     ): int {
         $userId = $this->createUser($first, $last, $schoolId);
+        $guardianId = $this->createGuardianFixtureUser($schoolId);
 
         // Assign Student role
         $role = DB::table('roles')->where('name', 'Student')->where('school_id', $schoolId)->first();
@@ -251,6 +252,7 @@ class FeesPaidSchoolIdTest extends TestCase
         // Create Students record
         DB::table('students')->insertOrIgnore([
             'user_id'         => $userId,
+            'guardian_id'     => $guardianId,
             'class_id'        => $classId,
             'class_section_id'=> 1,
             'admission_no'    => $admissionNo,
@@ -278,7 +280,7 @@ class FeesPaidSchoolIdTest extends TestCase
             'due_charges'           => 0,
             'class_id'              => $this->classId,
             'school_id'             => $schoolId,
-            'session_year_id'       => $this->sessionYearId,
+            'session_year_id'       => DB::table('session_years')->where('school_id', $schoolId)->where('default', 1)->value('id') ?? $this->sessionYearId,
             'total_compulsory_fees' => $total,
         ]);
         $fee->save();
@@ -688,9 +690,10 @@ class FeesPaidSchoolIdTest extends TestCase
             ]);
         } catch (\Throwable) {}
         try {
-            DB::table('session_years')->insertOrIgnore([
-                'id' => 2, 'name' => '2025-2026', 'default' => 1,
+            DB::table('session_years')->insert([
+                'name' => '2025-2026', 'default' => 1,
                 'start_date' => '2025-06-01', 'end_date' => '2026-05-31', 'school_id' => $school2Id,
+                'created_at' => now(), 'updated_at' => now(),
             ]);
         } catch (\Throwable) {}
 

@@ -57,7 +57,7 @@ abstract class TestCase extends BaseTestCase
 
         if ($schema->hasTable('session_years')) {
             $years = DB::connection('school')->table('session_years');
-            foreach ([1 => '2025-2026', 2 => '2026-2027'] as $id => $name) {
+            foreach ([1 => '2025-2026'] as $id => $name) {
                 $years->insertOrIgnore([
                         'id' => $id,
                         'name' => $name,
@@ -108,6 +108,29 @@ abstract class TestCase extends BaseTestCase
                 'created_at' => now(), 'updated_at' => now(),
             ], $pivotColumns));
         }
+    }
+
+    protected function createGuardianFixtureUser(int $schoolId): int
+    {
+        $roleId = DB::connection('school')->table('roles')
+            ->where('name', 'Guardian')->where('school_id', $schoolId)->value('id');
+        if (! $roleId) {
+            $roleId = DB::connection('school')->table('roles')->insertGetId([
+                'name' => 'Guardian', 'guard_name' => 'web', 'school_id' => $schoolId,
+                'custom_role' => 1, 'editable' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $userId = DB::connection('school')->table('users')->insertGetId([
+            'first_name' => 'QA', 'last_name' => 'Guardian',
+            'email' => 'qa-guardian-' . bin2hex(random_bytes(10)) . '@local.test',
+            'password' => bcrypt('local-only'), 'school_id' => $schoolId, 'status' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::connection('school')->table('model_has_roles')->insertOrIgnore([
+            'role_id' => $roleId, 'model_type' => \App\Models\User::class, 'model_id' => $userId,
+        ]);
+
+        return $userId;
     }
 
     protected function ensureCentralSchoolFixture(): void

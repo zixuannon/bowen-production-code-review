@@ -150,7 +150,7 @@ class CompulsoryFeeSchoolIdTest extends TestCase
             'due_charges'           => 0,
             'class_id'              => 1,
             'school_id'             => $schoolId,
-            'session_year_id'       => $schoolId,
+            'session_year_id'       => DB::table('session_years')->where('school_id', $schoolId)->where('default', 1)->value('id') ?? $this->schoolId,
             'total_compulsory_fees' => $total,
         ]);
         $fee->save();
@@ -246,9 +246,10 @@ class CompulsoryFeeSchoolIdTest extends TestCase
             ]);
         } catch (\Throwable) {}
         try {
-            DB::table('session_years')->insertOrIgnore([
-                'id' => 2, 'name' => '2025-2026', 'default' => 1,
+            DB::table('session_years')->insert([
+                'name' => '2025-2026', 'default' => 1,
                 'start_date' => '2025-06-01', 'end_date' => '2026-05-31', 'school_id' => 2,
+                'created_at' => now(), 'updated_at' => now(),
             ]);
         } catch (\Throwable) {}
 

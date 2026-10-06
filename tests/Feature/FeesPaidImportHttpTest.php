@@ -164,7 +164,7 @@ class FeesPaidImportHttpTest extends TestCase
         $this->actingAs($noPermUser);
 
         $response = $this->get(route('fees.import.template'));
-        $response->assertRedirect();
+        $response->assertForbidden();
     }
 
     /** @test */
@@ -175,7 +175,7 @@ class FeesPaidImportHttpTest extends TestCase
 
         $file = $this->createValidXlsx();
         $response = $this->post(route('fees.import.preview'), ['file' => $file]);
-        $response->assertRedirect();
+        $response->assertForbidden();
     }
 
     // ================================================================
@@ -739,9 +739,11 @@ class FeesPaidImportHttpTest extends TestCase
                 'role_id' => $role->id, 'model_type' => 'App\Models\User', 'model_id' => $userId,
             ]);
         }
-        // Create Students record with admission_no
+        // Create a supported Student record with its required Guardian identity.
+        $guardianId = $this->createGuardianFixtureUser($schoolId);
         DB::table('students')->insertOrIgnore([
             'user_id'        => $userId,
+            'guardian_id'    => $guardianId,
             'class_id'       => $this->classId,
             'admission_no'   => $admissionNo,
             'admission_date' => now()->format('Y-m-d'),

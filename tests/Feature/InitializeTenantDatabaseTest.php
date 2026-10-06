@@ -54,7 +54,12 @@ class InitializeTenantDatabaseTest extends TestCase
         $this->assertSame(1, School::on('mysql')->where('database_name', $tenantDatabase)->count());
         $email = 'tenant-context-' . bin2hex(random_bytes(12)) . '@local.test';
         $password = bcrypt('local-only');
-        $centralId = DB::connection('mysql')->table('users')->insertGetId([
+        $centralId = max(
+            (int) DB::connection('mysql')->table('users')->max('id'),
+            (int) DB::connection('school')->table('users')->max('id')
+        ) + 1;
+        DB::connection('mysql')->table('users')->insert([
+            'id' => $centralId,
             'first_name' => 'Tenant', 'last_name' => 'Context', 'email' => $email, 'password' => $password,
             'school_id' => 1, 'status' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);

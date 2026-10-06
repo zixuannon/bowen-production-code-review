@@ -195,7 +195,7 @@ Balances move only on designated receiver confirmation.
 - Refund / Void / Reversal
 - Reporting / Audit workbench
 
-## Zixuan QA Run system — guarded migration candidate, regression incomplete
+## Zixuan QA Run system — local regression recovered
 
 - [x] Reconciled the completed implementation onto exact current Production
   SHA `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; Staff Invitation, canonical
@@ -228,7 +228,13 @@ Balances move only on designated receiver confirmation.
   separate security-boundary approval. The runner pins the Central migration
   SHA-256, exact Production baseline, target database, and active release
   manifest. It uses Laravel's normal confirmation and does not pass `--force`.
-- [ ] Full regression must be rerun with a correctly provisioned disposable
-  Central and tenant schema. The current attempt failed on missing local tenant
-  test tables; do not report Engineering PASS until that environment issue is
-  resolved and the full suite passes.
+- [x] Paired exact-Production-baseline and candidate full regression after
+  fail-closed disposable fixture recovery: baseline 1,098 tests / 8,648
+  assertions; candidate 1,109 tests / 8,702 assertions; zero failures/errors,
+  34 existing skips, and no new skips. No baseline-only or candidate-only test
+  failures.
+- [x] Targeted QA Run/migration/ownership checks (27 tests / 105 assertions),
+  guarded migration path rehearsal, and archived Run history desktop/mobile
+  browser smoke at 390 × 844 with no horizontal overflow.
+- [ ] Production release gate remains separate; no Production action is part of
+  this local recovery.

@@ -1,27 +1,39 @@
-# Zixuan QA Run guarded Production migration — local candidate validation
+# Zixuan QA Run — full regression fixture recovery complete
 
-- Approved scope: add one fail-closed Production-capable runner for the exact
-  Central QA Run migration, based on Production `7d6e73c12f6de23c24e5dd62312df53fcef8d497`.
-  The candidate pins the migration path and SHA-256, checks the fixed Central
-  database and active immutable release marker/manifest, validates full schema
-  columns/indexes/foreign keys, and routes execution through Laravel's normal
-  Production migration confirmation without `--force`. No tenant path or broad
-  migration was added. `UserService` and `StaffInvitationService` are unchanged.
-- Guard + QA Run rehearsal: **22 tests / 71 assertions PASS**, including exact
-  migration allow, unrelated/unknown/tenant deny, altered-file and wrong
-  baseline deny, complete no-op, fail-closed partial state, and disposable
-  SQLite apply/rollback/reapply. Existing PHP 8.5 PDO deprecation remains.
-- Full PHPUnit was attempted against a fresh disposable MySQL 9.6 instance on
-  localhost port 3317. It did not pass: **1,109 tests / 7,530 assertions / 239
-  errors / 1 failure / 34 skips**. The suite's `school_testing` DB lacked the
-  expected tenant schema (`fees`, `users`, and related tables); one unrelated
-  role-onboarding assertion also disagreed with its expected fixture. This is
-  not a passing regression result. Existing candidate QA Run #1/#2 browser E2E
-  evidence remains valid for unchanged application/UI behavior; browser E2E
-  was not rerun for this migration-runner-only change.
-- No Production migration, push, deployment, or business-data write was
-  performed. Full regression and fresh browser verification remain required
-  before calling this a Production-ready candidate.
+- Candidate branch `codex/zixuan-qa-run-final-candidate` is based on exact
+  Production SHA `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; the Staff
+  Invitation/canonical School identity changes remain preserved.
+  `UserService`, `StaffInvitationService`, application role definitions, and
+  permission assignments were not changed.
+- Paired full regression used the same normalized schema and fixture snapshot
+  on the exact Production baseline and candidate. Initial comparison had 28
+  shared failures: 2 identical and 26 same-test/different fixture-dependent
+  text; no baseline-only or candidate-only failure. Causes were invalid Student
+  fixtures missing required Guardian IDs, stale/default academic-year IDs,
+  hard-coded cross-school year IDs, and obsolete denied-request redirect
+  expectations. Test fixtures were corrected without weakening assertions.
+- Exact Production baseline: **1,098 tests / 8,648 assertions, 0 failures,
+  0 errors, 34 existing skips**. Candidate: **1,109 tests / 8,702 assertions,
+  0 failures, 0 errors, 34 existing skips**. No skips were added.
+- Focused QA Run, guarded migration, and runtime ownership suites: **27 tests /
+  105 assertions PASS**. Exact-path migration runner allowed only the pinned
+  Central migration; complete schema was a no-op. Wrong baseline, wrong
+  tenant, unrelated migration, and partial state were rejected by tests.
+- Disposable local regression fixture preparation is fail-closed to MySQL
+  `127.0.0.1:3317`, datadir `/private/tmp/qa-run-regression-mysql`, Central
+  `eschool_testing`, and tenant `school_testing`. It adds only missing local
+  compatibility columns and normalizes the test academic year; it is not a
+  migration and cannot target Production.
+- Previously verified full Run #1 and Run #2 Finance E2E evidence remains valid:
+  distinct fresh records through Payment, Receipt, Ledger, Complete, and Archive;
+  no record reuse; archived Run #1 history unchanged; Official totals unchanged.
+  This recovery changed test fixtures only. A local browser smoke additionally
+  confirmed QA ONLY and archived Run #1/#2 details are readable and read-only
+  at desktop and 390 × 844 mobile viewport, without horizontal overflow.
+- Production migration, data, users, roles, permissions, and deployment were not
+  changed. The candidate is frozen locally only; any Production gate is separate.
+
+Last updated: 2026-10-06
 
 ## Zixuan permanent QA Finance Runs — reconciled local candidate
 
