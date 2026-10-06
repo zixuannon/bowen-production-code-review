@@ -115,12 +115,14 @@ Last updated: 2026-10-06
 
 # eSchool Current State
 
-## P1-A optional Fee due date — reconciled candidate, full regression green
+## P1-A optional Fee due date — final coverage candidate, all local gates pass
 
-- Candidate lineage remains based on exact Production SHA
+- Final candidate lineage is based on exact Production SHA
   `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; no unfinished Zixuan QA Run
-  work was included. The current Production SHA was rechecked read-only and is
-  still the same. No Production change or deployment occurred.
+  work was included. Read-only SSH verification of the active Production
+  release marker and Git HEAD both returned that exact SHA. The deployed
+  `eschool-rc-7d6e73c12f6d-qa-staff-classification` release is preserved.
+  Production was not changed and P1-A was not deployed.
 - Before fixture repair, the identical normalized snapshot produced 1,098
   baseline tests / 8,556 assertions / 9 errors / 20 failures and 1,104
   candidate tests / 8,580 assertions / 9 errors / 20 failures. Failure identity
@@ -142,22 +144,29 @@ Last updated: 2026-10-06
   tenant-login ID free in both databases. Permission tests assert the current
   403 denial. No business validation was removed, no assertion was weakened,
   and no skips were added.
-- P1-A targeted set passes: 35 tests / 183 assertions. After repair, the exact
-  Production baseline passes 1,098 tests / 8,648 assertions; the P1-A candidate
-  passes 1,104 tests / 8,672 assertions. Both have zero failures, zero errors,
-  34 existing skips, and one PHP 8.5 PDO deprecation.
-- Explicit optional-date coverage remains in place for NULL model persistence
-  and formatting, undated-fee collection without an overall late charge, dated
-  installment charges under an undated Fee, outstanding/current aging behavior,
-  and dated Fee compatibility. The local browser E2E previously passed create
-  with no overall date and edit from dated to undated; executable application
-  files did not change during fixture repair.
+- Three new direct coverage tests verify same-Fee NULL → date → NULL
+  persistence and UI-format accessor behavior, no reminder/notification or
+  epoch fallback for a NULL overall due date, and Fee Setup preview/confirm
+  snapshots for both undated and dated Fees remaining unchanged after later
+  Fee-master edits. No product code changed and no product defect was found.
+- New direct coverage plus the affected Fee/Reminder/Assignment set passes:
+  38 tests / 206 assertions. Complete candidate regression passes **1,107
+  tests / 8,695 assertions**, zero failures, zero errors, 34 existing skips,
+  and one PHP 8.5 PDO deprecation. No new skips were introduced. The first
+  post-coverage run used a stale test snapshot whose year ID 1 was `Bowen QA
+  2026`; after restoring the guarded fixture, the clean full run passed and
+  retained the expected `2025-2026` year row.
+- Focused authenticated local desktop browser E2E passes (1/1): edit a NULL
+  Fee, select 31-12-2026 through the date picker, save, reload and verify the
+  exact date; clear, save, reload and verify blank/SQL NULL. No Payment was
+  created. No executable application files changed, so mobile E2E was not
+  required.
 - Current read-only `fees:due-date-schema --tenant=BOWEN_QA` preflight reports
   `complete`. The exact-path migration rehearsal previously passed and the
   migration/runner sources are unchanged by this test-only repair. No schema
   changed in this regression pass.
-- The regression repair is frozen as a local candidate. Production deployment
-  remains unperformed.
+- The final coverage additions and status update are frozen as a local-only
+  candidate. Production deployment remains unperformed.
 
 ## QA Staff classification and tenant actor audit — 2026-10-05 LOCAL GATES PASS
 
