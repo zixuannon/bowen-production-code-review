@@ -1,26 +1,39 @@
-# Zixuan QA Run — Production migration runner correction in progress
+# Zixuan QA Run — immutable-release trust-boundary repair in progress
 
-- On 2026-10-06 the explicitly approved immutable release
-  `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2` was switched active after a
-  verified R2E recovery set. The exact guarded Central migration preflight
-  reports `eligible`, but its nested Artisan `migrate` lacked `--force` and
-  Laravel canceled at its Production prompt. Recheck remained `eligible`;
-  no QA Run tables/history were written, no tenant migration ran, no Finance
-  history or permissions changed, and no first Production QA Run was created.
-- The exact approved runner order is confirmation first, then Central target/
-  baseline, migration identity/path, pinned allowlist/hash, schema state, and
-  finally the fixed inner `migrate --force`. The pushed SHA
-  `74d7a3608e23ceebe4a624562a55a562e7d53ff4` is not deployed: it asked for
-  confirmation after schema checks and relied on the inner migration for the
-  allowlist check. A local successor now uses Laravel's explicit
-  `ConfirmableTrait`, confirms before DB access, and invokes the same pinned
-  `ProductionMigrationGuard` before schema-state inspection. Its new exact SHA
-  requires separate approval before push or Production use.
-- The current local code passes the QA Run/guard suite (23 tests / 74
-  assertions) and full disposable regression (1,110 tests / 8,705 assertions,
-  0 failures, 0 errors, 34 existing skips). Existing PHP 8.5 PDO and PHPUnit
-  configuration deprecations remain. Production is still on b87, migration is
-  still eligible, and no Production smoke/FPM reload has occurred.
+- Active Production remains `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2`.
+  Candidate `e9d0be2efe82bd0882377799d17ea9fb5d6efbfe` is pushed and staged,
+  but not activated. Its guarded migration has not executed; schema remains
+  eligible. No QA Run #001 or Finance business record was created.
+- A fresh encrypted recovery set,
+  `eschool-prod-20261006T093550Z-b87bac3a2bc6`, covers Central and eight
+  trusted tenants. All 12 encrypted artifact checksums and independent COS
+  HEADs passed. No migration or release switch followed that backup.
+- Root cause: immutable release and Git metadata are deployment-owned
+  `root:root`, while Artisan runs as `www`. `MigrateCentralFinanceQaRuns`
+  incorrectly invoked Git from the runtime identity. Production Git is
+  2.34.1; `www`'s `git -c safe.directory=<release> ... rev-parse HEAD` still
+  fails with dubious ownership. The deployment identity can read the exact
+  same staged HEAD successfully.
+- A bounded successor moves Git HEAD, remote-ref, ancestry, marker, and
+  manifest verification to a root deployment wrapper. Production confirmation
+  comes first; rejected confirmation exits before Git or database work. The
+  wrapper verifies runtime readability and PHP bootstrap as `www`; the Artisan
+  command now checks root-owned marker/manifest plus an attestation from a root
+  `runuser` parent and does not invoke Git. No `safe.directory`, wildcard,
+  permission weakening, or `/etc/gitconfig` change is part of the fix.
+- The two-release synthetic trust-boundary rehearsal passes, including wrong
+  SHA/ref/manifest/ancestry, tracked tampering, symlink, unreadable runtime
+  files, and confirmation cancellation. Targeted regression passes (36 tests /
+  260 assertions); full local PHPUnit passes (1,116 tests / 8,839 assertions,
+  34 existing skips). Exact Central migration apply/rollback/reapply and
+  partial-schema fail-closed rehearsal pass on the dedicated disposable MySQL
+  fixture at port 3317. Existing Run #1/#2 desktop/mobile browser E2E remains
+  applicable because this repair changes only migration/deployment trust
+  boundaries; it changes no Finance or UI workflow.
+- Production remains on b87; no migration, activation, service reload, Finance
+  write, role change, or QA Run creation has occurred in this attempt. Local
+  candidate review is complete; the authorized bounded successor release path
+  is next.
 
 # Zixuan QA Run — full regression fixture recovery complete
 

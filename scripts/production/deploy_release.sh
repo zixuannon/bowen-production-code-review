@@ -71,11 +71,13 @@ if id www >/dev/null 2>&1; then
   chown -R www:www "$release_dir/bootstrap/cache"
   chmod 775 "$release_dir/bootstrap/cache"
 fi
-PHP_BIN="$php_bin" "$runtime_artisan" "$release_dir" package:discover --ansi >/dev/null
+RUNTIME_USER=www PHP_BIN="$php_bin" "$runtime_artisan" "$release_dir" package:discover --ansi >/dev/null
 printf '%s\n' "$commit" > "$release_dir/.release-commit"
 baseline=$($php_bin -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["accepted_production_sha"];' "$baseline_contract")
 SOURCE_REPO="$release_dir" "$release_dir/scripts/production/write_release_manifest.sh" "$release_dir" "$baseline" "${GITHUB_REF:-main}"
 "$release_dir/scripts/production/verify_release_guard.sh" "$release_dir"
+PHP_BIN="$php_bin" runuser -u www -- "$release_dir/scripts/production/verify_runtime_release.sh" \
+  "$release_dir" staged "$active_link" "$commit"
 JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$ownership_guard" "$release_dir" "$baseline_contract"
 echo "DRY_RUN_PASS:$commit:$release_dir"
 
@@ -85,7 +87,9 @@ elif [[ "$action" == "--switch" ]]; then
   [[ -f "$release_dir/.release-manifest.json" ]] || { echo "DEPLOY_FAIL: manifest missing" >&2; exit 1; }
   previous_release=$(readlink -f "$active_link") || { echo "DEPLOY_FAIL: active release unavailable for rollback" >&2; exit 1; }
   ln -sfn "$release_dir" "$active_link"
-  if ! JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$ownership_guard" "$release_dir" "$baseline_contract"; then
+  if ! PHP_BIN="$php_bin" runuser -u www -- "$release_dir/scripts/production/verify_runtime_release.sh" \
+      "$release_dir" active "$active_link" "$commit" \
+      || ! JSON_PHP_BIN="$php_bin" PHP_BIN="$php_bin" "$ownership_guard" "$release_dir" "$baseline_contract"; then
     ln -sfn "$previous_release" "$active_link"
     echo "DEPLOY_FAIL: post-switch runtime ownership invariant failed; previous release restored" >&2
     exit 1

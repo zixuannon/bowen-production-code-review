@@ -217,6 +217,16 @@ class ProductionMigrationGuardTest extends TestCase
         ], $active));
     }
 
+    public function test_qa_run_deployment_attestation_requires_runtime_user_and_root_parent(): void
+    {
+        $command = \App\Console\Commands\MigrateCentralFinanceQaRuns::class;
+        $candidate = 'e9d0be2efe82bd0882377799d17ea9fb5d6efbfe';
+        $this->assertTrue($command::hasTrustedDeploymentProcess($candidate, $candidate, 1002, 1002, 0));
+        $this->assertFalse($command::hasTrustedDeploymentProcess($candidate, str_repeat('0', 40), 1002, 1002, 0));
+        $this->assertFalse($command::hasTrustedDeploymentProcess($candidate, $candidate, 1002, 1002, 1002));
+        $this->assertFalse($command::hasTrustedDeploymentProcess($candidate, $candidate, 1001, 1002, 0));
+    }
+
     public function test_student_import_v2_runner_allows_its_v3_exact_path_in_production(): void
     {
         (new ProductionMigrationGuard())->assertAllowed(

@@ -455,21 +455,37 @@ Historical staging-only changes retained for a future cleanup/reuse decision inc
 
 The QA Run candidate adds Central-only tables through the exact-path
 `finance:qa-runs-migrate` command. In Production, run it from the staged
-immutable candidate release before switching the active symlink. With
-`--execute`, the runner asks for confirmation before any database connection
-or schema preflight. After confirmation it verifies the fixed Central
-database, that the active immutable release is exactly
+immutable candidate release before switching the active symlink. Use the
+root-owned `scripts/production/run_guarded_qa_run_migration.sh` entry point;
+do not invoke the Artisan command directly in Production. With `--execute`,
+the wrapper asks for an explicit `YES` before release verification, runtime
+checks, database connection, or schema preflight. A rejected answer exits
+without Git commands or database access.
+
+After confirmation, the deployment identity runs
+`verify_qa_run_release_identity.sh` and verifies real Git state: staged HEAD,
+remote ref, ancestry from the exact active baseline and previous QA Run
+candidate, marker, manifest, candidate SHA, and baseline contract. It requires
+HEAD = remote SHA = marker SHA = manifest SHA. No per-release or wildcard
+`safe.directory` entry is used. Git repository operations belong to the
+deployment actor; the `www` runtime actor never runs Git.
+
+The wrapper then verifies application readability, Laravel/PHP bootstrap,
+active/staged symlink state, shared runtime links, and writable runtime
+directories as `www`. Artisan checks the root-owned immutable marker and
+manifest, exact baseline, and a matching deployment SHA attestation from a
+root `runuser` parent before connecting to Central. It verifies the fixed
+Central database and that the active immutable release is exactly
 `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2`, the candidate marker/manifest,
-and candidate ancestry from both that active release and the previously
-approved QA Run candidate. It also verifies the exact
+and the exact
 `7d6e73c12f6de23c24e5dd62312df53fcef8d497` release contract. The global
 migration guard permits only the pinned SHA-256 of
 `2026_10_05_000001_create_central_finance_qa_runs.php` (currently
 `74e22c730e31468ef4047188c4e20b054f92ca2e1a63929ad00c37e0bdbbdc79`) through
 this runner.
-After confirmation, the runner verifies the exact migration file
-identity/path, the same pinned allowlist/hash guard, and only then the schema
-state. It rechecks active/candidate release identity immediately before
+After the Central target is validated, the runner verifies the exact migration
+file identity/path, the pinned allowlist/hash guard, and only then the schema
+state. It rechecks the active/candidate marker and manifest immediately before
 execution. After all checks pass, it invokes Laravel's nested
 exact-path `migrate` command with `--force`; nested Artisan cannot complete its
 own interactive prompt. Laravel's global migration guard repeats the

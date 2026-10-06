@@ -7,6 +7,7 @@ php_bin=${PHP_BIN:-/usr/bin/php83}
 json_php_bin=${JSON_PHP_BIN:-$php_bin}
 baseline_file=${BASELINE_FILE:-$(cd "$(dirname "$0")/../.." && pwd)/config/production-baseline.json}
 manifest="$release_dir/.release-manifest.json"
+qa_run_command="$release_dir/app/Console/Commands/MigrateCentralFinanceQaRuns.php"
 
 test -f "$baseline_file" || { echo "GUARD_FAIL: baseline contract missing" >&2; exit 1; }
 test -f "$manifest" || { echo "GUARD_FAIL: release manifest missing" >&2; exit 1; }
@@ -44,6 +45,19 @@ expect "$homepage_assets_sha" "$(read_json "$baseline_file" approved_homepage_as
 expect "$homepage_assets_sha" "$actual_homepage_assets_sha" actual_homepage_assets_sha256
 test -f "$release_dir/resources/views/bowen-school/home.blade.php" || { echo "GUARD_FAIL: homepage view missing" >&2; exit 1; }
 test -d "$release_dir/public/assets/bowen-school" || { echo "GUARD_FAIL: homepage assets missing" >&2; exit 1; }
+
+# QA Run Git integrity belongs to the deployment identity. The runtime Artisan
+# command may validate immutable metadata, but must not execute Git as www.
+for required in \
+  scripts/production/verify_qa_run_release_identity.sh \
+  scripts/production/run_guarded_qa_run_migration.sh \
+  scripts/production/verify_runtime_release.sh; do
+  test -x "$release_dir/$required" || { echo "GUARD_FAIL: QA Run release verifier missing or not executable ($required)" >&2; exit 1; }
+done
+if grep -Eq 'Symfony\\Component\\Process|new Process|merge-base|rev-parse' "$qa_run_command"; then
+  echo "GUARD_FAIL: runtime QA Run migration command contains Git process inspection" >&2
+  exit 1
+fi
 
 # Accepted Xiaobailong and sidebar contracts must remain in every candidate.
 for required in \

@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
-use Symfony\Component\Process\Process;
 
 /** Exact-path central migration gate for permanent Zixuan QA Run tables. */
 final class MigrateCentralFinanceQaRuns extends Command
@@ -20,11 +19,10 @@ final class MigrateCentralFinanceQaRuns extends Command
     private const PRODUCTION_DATABASE = 'sql_43_160_241_126';
     private const APPROVED_PRODUCTION_BASELINE = '7d6e73c12f6de23c24e5dd62312df53fcef8d497';
     private const EXPECTED_ACTIVE_PRODUCTION_SHA = 'b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2';
-    private const PRIOR_APPROVED_CANDIDATE_SHA = 'd06f31d06833ca702d647999168d5ef085ec9218';
     private const ACTIVE_PRODUCTION_ROOT = '/www/wwwroot/43.160.241.126';
     private const PRODUCTION_RELEASES_ROOT = '/www/wwwroot/releases';
 
-    protected $signature = 'finance:qa-runs-migrate {--execute : Apply only the exact Central QA Run migration}';
+    protected $signature = 'finance:qa-runs-migrate {--execute : Apply only the exact Central QA Run migration} {--deployment-verified : Internal: invoked by the trusted deployment wrapper}';
     protected $description = 'Verify or apply the Central Finance Zixuan QA Run schema';
 
     public function handle(): int
@@ -32,14 +30,26 @@ final class MigrateCentralFinanceQaRuns extends Command
         try {
             $production = app()->environment('production');
             if ($production && $this->option('execute')) {
-                $confirmed = $this->confirmToProceed('Apply the exact Central QA Run migration to Production?');
-                if (!$confirmed) return self::FAILURE;
+                if (!$this->option('deployment-verified')) {
+                    $confirmed = $this->confirmToProceed('Apply the exact Central QA Run migration to Production?');
+                    if (!$confirmed) return self::FAILURE;
+                    throw new RuntimeException('Production QA Run migrations must use the trusted deployment wrapper.');
+                }
+            }
+            if ($production) {
+                if (!$this->option('deployment-verified')) {
+                    throw new RuntimeException('Production QA Run preflight must use the trusted deployment wrapper.');
+                }
+                $this->assertProductionReleaseIdentity();
+                if (!$this->hasTrustedDeploymentInvocation(trim((string) getenv('QA_RUN_VERIFIED_RELEASE_SHA')))) {
+                    throw new RuntimeException('Trusted deployment release verification is missing or invalid.');
+                }
             }
 
             $db = DB::connection('mysql');
             $database = $db->getDatabaseName();
             if ($production) {
-                $this->assertProductionTarget($db->getDriverName(), $database);
+                $this->assertProductionDatabaseTarget($db->getDriverName(), $database);
             } else {
                 if (!app()->environment(['local', 'testing'])) {
                     throw new RuntimeException('QA Run migration is limited to local, testing, or the guarded Production Central target.');
@@ -80,7 +90,11 @@ final class MigrateCentralFinanceQaRuns extends Command
             if (!$this->option('execute') || $state === 'complete') return self::SUCCESS;
 
             if ($production) {
-                $this->assertProductionTarget($db->getDriverName(), $database);
+                $this->assertProductionReleaseIdentity();
+                if (!$this->hasTrustedDeploymentInvocation(trim((string) getenv('QA_RUN_VERIFIED_RELEASE_SHA')))) {
+                    throw new RuntimeException('Trusted deployment release verification changed before migration execution.');
+                }
+                $this->assertProductionDatabaseTarget($db->getDriverName(), $database);
             }
 
             $exit = Artisan::call('migrate', [
@@ -96,11 +110,15 @@ final class MigrateCentralFinanceQaRuns extends Command
         }
     }
 
-    private function assertProductionTarget(string $driver, string $database): void
+    private function assertProductionDatabaseTarget(string $driver, string $database): void
     {
         if ($driver !== 'mysql' || $database !== self::PRODUCTION_DATABASE) {
             throw new RuntimeException('Production Central database target does not match the approved identity.');
         }
+    }
+
+    private function assertProductionReleaseIdentity(): void
+    {
         $candidatePath = realpath(base_path());
         $activePath = realpath(self::ACTIVE_PRODUCTION_ROOT);
         $releasesRoot = realpath(self::PRODUCTION_RELEASES_ROOT);
@@ -109,6 +127,11 @@ final class MigrateCentralFinanceQaRuns extends Command
             || !str_starts_with($candidatePath, $releasesRoot.DIRECTORY_SEPARATOR)
             || !\App\Console\Commands\MigrateCentralFinanceStaffUuid::isAllowedProductionExecutionPath($candidatePath)) {
             throw new RuntimeException('Production migration must run from a staged immutable release while the approved baseline remains active.');
+        }
+
+        $releasePermissions = fileperms($candidatePath);
+        if (fileowner($candidatePath) !== 0 || $releasePermissions === false || ($releasePermissions & 0022) !== 0) {
+            throw new RuntimeException('The staged immutable release must remain deployment-owned and not group/world writable.');
         }
 
         $active = $this->releaseIdentity($activePath);
@@ -120,13 +143,6 @@ final class MigrateCentralFinanceQaRuns extends Command
         if (!self::hasApprovedCandidateIdentity($candidate['manifest'], $candidate['marker'])) {
             throw new RuntimeException('The staged immutable release does not match the approved QA Run candidate lineage.');
         }
-        $head = new Process(['git', '-c', 'safe.directory='.$candidatePath, '-C', $candidatePath, 'rev-parse', 'HEAD']);
-        $head->run();
-        if (!$head->isSuccessful() || trim($head->getOutput()) !== $candidate['marker']) {
-            throw new RuntimeException('The staged immutable release Git checkout does not match its release marker.');
-        }
-        $this->assertCandidateDescendsFromApprovedCommits($candidatePath, $candidate['marker'], $active['marker']);
-
         $contractPath = $candidatePath.'/config/production-baseline.json';
         $contract = is_file($contractPath) && !is_link($contractPath)
             ? json_decode((string) file_get_contents($contractPath), true)
@@ -134,6 +150,11 @@ final class MigrateCentralFinanceQaRuns extends Command
         if (!self::hasApprovedProductionBaseline($contract)) {
             throw new RuntimeException('Production baseline contract does not match the approved exact SHA.');
         }
+
+        if (trim((string) getenv('QA_RUN_VERIFIED_RELEASE_SHA')) !== $candidate['marker']) {
+            throw new RuntimeException('Deployment-side Git verification does not attest this exact release SHA.');
+        }
+
     }
 
     /** @return array{marker:string,manifest:?array<string,mixed>} */
@@ -143,6 +164,13 @@ final class MigrateCentralFinanceQaRuns extends Command
         $manifestPath = $releasePath.'/.release-manifest.json';
         if (!is_file($markerPath) || is_link($markerPath) || !is_file($manifestPath) || is_link($manifestPath)) {
             throw new RuntimeException('Immutable release identity metadata is missing or indirect.');
+        }
+
+        foreach ([$markerPath, $manifestPath] as $metadataPath) {
+            $permissions = fileperms($metadataPath);
+            if (fileowner($metadataPath) !== 0 || $permissions === false || ($permissions & 0022) !== 0 || !is_readable($metadataPath)) {
+                throw new RuntimeException('Immutable release metadata must remain deployment-owned, readable, and not runtime-writable.');
+            }
         }
 
         $marker = trim((string) file_get_contents($markerPath));
@@ -155,15 +183,34 @@ final class MigrateCentralFinanceQaRuns extends Command
         return ['marker' => $marker, 'manifest' => $manifest];
     }
 
-    private function assertCandidateDescendsFromApprovedCommits(string $candidatePath, string $candidateSha, string $activeSha): void
+    private function hasTrustedDeploymentInvocation(string $candidateSha): bool
     {
-        foreach ([$activeSha, self::PRIOR_APPROVED_CANDIDATE_SHA] as $ancestor) {
-            $process = new Process(['git', '-c', 'safe.directory='.$candidatePath, '-C', $candidatePath, 'merge-base', '--is-ancestor', $ancestor, $candidateSha]);
-            $process->run();
-            if (!$process->isSuccessful()) {
-                throw new RuntimeException('The staged candidate is not a descendant of the active baseline and approved QA Run candidate.');
-            }
-        }
+        $runtime = function_exists('posix_getpwnam') ? posix_getpwnam('www') : false;
+        $parentPid = function_exists('posix_getppid') ? posix_getppid() : 0;
+        $status = $parentPid > 0 ? @file_get_contents('/proc/'.$parentPid.'/status') : false;
+        if (!is_array($runtime) || !is_string($status)) return false;
+        if (preg_match('/^Uid:\\s+(\\d+)\\s+(\\d+)/m', $status, $matches) !== 1) return false;
+
+        return self::hasTrustedDeploymentProcess(
+            $candidateSha,
+            trim((string) getenv('QA_RUN_VERIFIED_RELEASE_SHA')),
+            function_exists('posix_geteuid') ? posix_geteuid() : -1,
+            (int) $runtime['uid'],
+            (int) $matches[2],
+        );
+    }
+
+    public static function hasTrustedDeploymentProcess(
+        string $candidateSha,
+        string $attestedSha,
+        int $runtimeUid,
+        int $expectedRuntimeUid,
+        int $parentEffectiveUid,
+    ): bool {
+        return preg_match('/\\A[0-9a-f]{40}\\z/', $candidateSha) === 1
+            && hash_equals($candidateSha, $attestedSha)
+            && $runtimeUid === $expectedRuntimeUid
+            && $parentEffectiveUid === 0;
     }
 
     /** @param array<string, mixed>|null $contract */

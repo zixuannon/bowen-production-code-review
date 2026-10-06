@@ -243,12 +243,26 @@ Balances move only on designated receiver confirmation.
   and remote ref match. A fresh encrypted recovery set covers Central plus all
   eight trusted tenants; local checksums and independent COS HEAD checks passed
   for all 12 objects.
-- [ ] Production release remains incomplete. No migration or release switch
-  was run. The d06 runner required the candidate to be active, conflicting
-  with migration-before-activation ordering. A local successor now accepts
-  only a staged immutable candidate while requiring the exact `b87bac3...`
-  active baseline and ancestry from d06. Targeted checks pass (24 tests / 80
-  assertions); isolated full regression passes (1,111 tests / 8,711 assertions,
-  34 existing skips). The new SHA requires separate approval before push or
-  any Production action. No Finance history was rewritten and no QA Run was
-  created.
+- [x] Reconfirmed the exact active Production baseline `b87bac3...`, staged
+  successor `e9d0be2...`, migration SHA, and fresh encrypted recovery set with
+  12 verified COS objects. The migration was not applied and the candidate was
+  not activated because runtime Git inspection failed closed.
+- [x] Root cause proved: Git 2.34.1 runs as `www` inside a root-owned
+  immutable worktree and rejects command-scoped `safe.directory`. No
+  `/etc/gitconfig`, wildcard trust, release ownership, or permissions were
+  changed.
+- [x] Permanent trust-boundary successor moves Git/ref/ancestry verification
+  to the root deployment identity. Production confirmation precedes that
+  verifier and all database checks. Runtime checks remain under `www`; direct
+  runtime Git access is removed. Synthetic two-release verification and
+  negative SHA/ref/manifest/ancestry/tamper/symlink/readability checks pass.
+- [x] Local targeted regression (36 tests / 260 assertions), full PHPUnit
+  regression (1,116 tests / 8,839 assertions / 34 existing skips), and exact
+  Central migration apply/rollback/reapply rehearsal pass against the dedicated
+  disposable MySQL fixture. Existing Run #1/#2 browser E2E applies unchanged;
+  the trust-boundary repair changes no business/UI flow.
+- [ ] The bounded successor push and Production migration/release are still
+  pending. Reconfirm b87, create a fresh encrypted backup with independent COS
+  verification, migrate only the exact Central QA Run schema before activating
+  this same verified candidate, and stop at read-only operator UAT. No QA Run
+  or Finance business record may be created.

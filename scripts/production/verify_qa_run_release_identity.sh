@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deployment-identity check for the Central QA Run migration. This script must
+# run as the trusted deployment actor; the runtime account must never inspect
+# Git metadata inside a deployment-owned immutable release.
+usage() {
+  echo "Usage: $0 RELEASE_DIR ACTIVE_LINK EXPECTED_ACTIVE_SHA PRIOR_QA_SHA EXPECTED_BASELINE_SHA [EXPECTED_GITHUB_REF]" >&2
+  exit 2
+}
+[[ $# -ge 5 && $# -le 6 ]] || usage
+
+release_input=$1
+active_link=$2
+expected_active_sha=$3
+prior_qa_sha=$4
+expected_baseline_sha=$5
+expected_ref=${6:-}
+release_root=${RELEASES_ROOT:-/www/wwwroot/releases}
+php_bin=${PHP_BIN:-/usr/bin/php83}
+
+fail() { echo "QA_RUN_RELEASE_IDENTITY_FAIL: $1" >&2; exit 1; }
+read_json() {
+  "$php_bin" -r '$d=json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR); $v=$d[$argv[2]] ?? null; if (!is_string($v) || $v === "") exit(2); echo $v;' "$1" "$2" \
+    || fail "invalid manifest field $2"
+}
+
+[[ -x "$php_bin" ]] || fail "PHP JSON parser unavailable"
+[[ -d "$release_input" && ! -L "$release_input" ]] || fail "candidate release must be a real directory"
+release=$("$php_bin" -r '$v=realpath($argv[1]); if ($v === false) exit(1); echo $v;' "$release_input") || fail "candidate release path unavailable"
+root=$("$php_bin" -r '$v=realpath($argv[1]); if ($v === false) exit(1); echo $v;' "$release_root") || fail "release root unavailable"
+active=$("$php_bin" -r '$v=realpath($argv[1]); if ($v === false) exit(1); echo $v;' "$active_link") || fail "active release link unavailable"
+[[ "$release" == "$root"/* ]] || fail "candidate is outside the immutable release root"
+[[ "$release" != "$active" ]] || fail "candidate is already active; migration must run from a staged release"
+
+marker_file="$release/.release-commit"
+manifest_file="$release/.release-manifest.json"
+active_marker_file="$active/.release-commit"
+active_manifest_file="$active/.release-manifest.json"
+for file in "$marker_file" "$manifest_file" "$active_marker_file" "$active_manifest_file"; do
+  [[ -f "$file" && ! -L "$file" ]] || fail "release identity metadata missing or indirect: $file"
+done
+
+marker=$(tr -d '\r\n' < "$marker_file")
+manifest_sha=$(read_json "$manifest_file" commit_sha)
+manifest_name=$(read_json "$manifest_file" release_name)
+manifest_baseline=$(read_json "$manifest_file" baseline_sha)
+manifest_ref=$(read_json "$manifest_file" github_ref)
+active_marker=$(tr -d '\r\n' < "$active_marker_file")
+active_manifest_sha=$(read_json "$active_manifest_file" commit_sha)
+active_baseline=$(read_json "$active_manifest_file" baseline_sha)
+[[ "$marker" =~ ^[0-9a-f]{40}$ ]] || fail "candidate marker is not a full commit SHA"
+[[ "$manifest_sha" == "$marker" && "$manifest_name" == "$(basename "$release")" ]] || fail "candidate marker/manifest identity mismatch"
+[[ "$manifest_baseline" == "$expected_baseline_sha" ]] || fail "candidate baseline contract mismatch"
+[[ "$active_marker" == "$expected_active_sha" && "$active_manifest_sha" == "$expected_active_sha" ]] || fail "active release is not the exact approved baseline"
+[[ "$active_baseline" == "$expected_baseline_sha" ]] || fail "active manifest baseline mismatch"
+if [[ -n "$expected_ref" && "$manifest_ref" != "$expected_ref" ]]; then
+  fail "candidate GitHub ref differs from the approved ref"
+fi
+[[ "$manifest_ref" =~ ^[A-Za-z0-9._/-]+$ ]] && [[ "$manifest_ref" != *..* ]] || fail "invalid GitHub ref in candidate manifest"
+
+head=$(git -C "$release" rev-parse --verify 'HEAD^{commit}') || fail "deployment Git cannot resolve candidate HEAD"
+[[ "$head" == "$marker" && "$head" == "$manifest_sha" ]] || fail "Git HEAD, manifest SHA, and release marker disagree"
+active_head=$(git -C "$active" rev-parse --verify 'HEAD^{commit}') || fail "deployment Git cannot resolve active release HEAD"
+[[ "$active_head" == "$expected_active_sha" ]] || fail "active Git HEAD differs from the approved Production baseline"
+git -C "$release" diff --quiet HEAD -- . ':(exclude)bootstrap/cache/**' || fail "tracked application files differ from immutable candidate Git HEAD"
+git check-ref-format "refs/remotes/origin/$manifest_ref" >/dev/null || fail "invalid remote ref"
+remote_sha=$(git -C "$release" rev-parse --verify "refs/remotes/origin/$manifest_ref^{commit}") || fail "approved remote ref unavailable"
+[[ "$remote_sha" == "$head" ]] || fail "remote SHA does not match staged candidate"
+git -C "$release" merge-base --is-ancestor "$expected_active_sha" "$head" || fail "candidate does not descend from active Production"
+git -C "$release" merge-base --is-ancestor "$prior_qa_sha" "$head" || fail "candidate does not descend from prior approved QA Run lineage"
+
+echo "QA_RUN_RELEASE_IDENTITY_PASS:$head:$release"
