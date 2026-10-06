@@ -154,7 +154,10 @@ final class CentralFinancePendingCollectionController extends Controller
         if (Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) $relations[] = 'allocations.receivable';
         $pendingQuery = CentralFinancePendingCollection::on('mysql')->with($relations)
             ->where('school_id', $school->id)->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]);
-        $this->dataIsolation->apply($pendingQuery, 'pending_collection', $includeQaTest);
+        // A selected permanent QA School reviews its own QA Run workflow. The
+        // ordinary finance read-model filter deliberately excludes Run
+        // members so they can never enter Official totals or ledgers.
+        $this->dataIsolation->applySchoolWorkflow($pendingQuery, 'pending_collection', (int) $school->id);
         $pending = $pendingQuery->latest('submitted_at')->paginate(30)->withQueryString();
         $pending->getCollection()->each(function (CentralFinancePendingCollection $row) use ($includeQaTest): void {
             $eligible = $this->dataIsolation->isProduction('pending_collection', (int) $row->id);

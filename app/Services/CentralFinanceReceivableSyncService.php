@@ -136,11 +136,15 @@ final class CentralFinanceReceivableSyncService
         return DB::connection('mysql')->transaction(function () use ($profile, $row, $payload, $currency, $hasCollectionV2Snapshots): CentralFinanceReceivable {
             [$event, $duplicate] = $this->beginEvent($profile, (string) $row['source_id'], $payload);
             $receivable = CentralFinanceReceivable::on('mysql')->where(['school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id']])->lockForUpdate()->first();
-            if ($duplicate && $receivable !== null) return $receivable;
+            if ($duplicate && $receivable !== null) {
+                $this->inheritRunMembership($profile, $receivable);
+                return $receivable;
+            }
             if ($receivable === null) {
                 $values = ['receivable_uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_profile_id' => $profile->id, 'source_type' => self::SOURCE_TYPE, 'source_id' => (string) $row['source_id'], 'description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'amount_due' => $row['amount'], 'source_amount_due' => $row['amount'], 'finance_adjustment_amount' => 0, 'amount_paid' => 0, 'status' => CentralFinanceReceivable::OPEN, 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()];
                 if ($hasCollectionV2Snapshots) $values += ['unit_price_snapshot' => $row['unit_price'] ?? $row['amount'], 'quantity_snapshot' => max(1, (int) ($row['quantity'] ?? 1))];
                 $receivable = CentralFinanceReceivable::on('mysql')->create($values);
+                $this->inheritRunMembership($profile, $receivable);
                 $this->complete($event, 'created');
                 return $receivable;
             }
@@ -165,6 +169,7 @@ final class CentralFinanceReceivableSyncService
             $values = ['description' => $row['description'], 'due_date' => $row['due_date'], 'currency' => $currency, 'source_amount_due' => $row['amount'], 'amount_due' => $effective, 'status' => $paid === 0.0 ? CentralFinanceReceivable::OPEN : ($paid >= $effective ? CentralFinanceReceivable::PAID : CentralFinanceReceivable::PARTIAL), 'source_updated_at' => $row['updated_at'], 'source_created_at' => $row['created_at'], 'last_synced_at' => now()];
             if ($hasCollectionV2Snapshots) $values += ['unit_price_snapshot' => $row['unit_price'] ?? $row['amount'], 'quantity_snapshot' => max(1, (int) ($row['quantity'] ?? 1))];
             $receivable->fill($values)->save();
+            $this->inheritRunMembership($profile, $receivable);
             $this->complete($event, 'updated');
             return $receivable;
         });
@@ -196,6 +201,16 @@ final class CentralFinanceReceivableSyncService
     }
 
     private function complete(CentralFinanceReceivableSyncEvent $event, string $status, ?string $errorCode = null): void { $event->update(['status' => $status, 'error_code' => $errorCode, 'processed_at' => now()]); }
+
+    private function inheritRunMembership(CentralFinanceStudentProfile $profile, CentralFinanceReceivable $receivable): void
+    {
+        app(CentralFinanceQaRunService::class)->inheritCentralDocument(
+            (int) $profile->school_id,
+            'receivable',
+            (int) $receivable->id,
+            true,
+        );
+    }
 
     private function recordFailure(CentralFinanceStudentProfile $profile, string $sourceId, string $errorCode): void
     {

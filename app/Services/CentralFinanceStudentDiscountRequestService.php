@@ -75,6 +75,7 @@ final class CentralFinanceStudentDiscountRequestService
         $this->configuration->assertHeadFinanceCanConfigureGroup($actor, (int) $request->group_id);
         return DB::connection('mysql')->transaction(function () use ($actor, $request): CentralFinanceStudentDiscountRequest {
             $request = CentralFinanceStudentDiscountRequest::on('mysql')->lockForUpdate()->findOrFail($request->id);
+            app(CentralFinanceQaRunService::class)->lockActiveRunForCentralRecord((int) $request->school_id, 'student_discount_request', (int) $request->id);
             if ($request->status === CentralFinanceStudentDiscountRequest::APPROVED) return $request;
             if ($request->status !== CentralFinanceStudentDiscountRequest::PENDING) throw new AuthorizationException('Only a pending student Discount request may be approved.');
             $profile = CentralFinanceStudentProfile::on('mysql')->where(['id' => $request->student_profile_id, 'school_id' => $request->school_id])->firstOrFail();
@@ -97,6 +98,7 @@ final class CentralFinanceStudentDiscountRequestService
         if ($reason === '' || mb_strlen($reason) > 2000) throw ValidationException::withMessages(['rejection_reason' => __('A rejection reason is required.')]);
         return DB::connection('mysql')->transaction(function () use ($actor, $request, $reason): CentralFinanceStudentDiscountRequest {
             $request = CentralFinanceStudentDiscountRequest::on('mysql')->lockForUpdate()->findOrFail($request->id);
+            app(CentralFinanceQaRunService::class)->lockActiveRunForCentralRecord((int) $request->school_id, 'student_discount_request', (int) $request->id);
             if ($request->status !== CentralFinanceStudentDiscountRequest::PENDING) throw new AuthorizationException('Only a pending student Discount request may be rejected.');
             $request->update(['status' => CentralFinanceStudentDiscountRequest::REJECTED, 'decision_by' => $actor->id, 'decided_at' => now(), 'rejection_reason' => $reason]);
             $audit = ['school_id' => $request->school_id, 'document_type' => 'student_discount_request', 'document_id' => $request->id, 'action' => 'rejected', 'actor_id' => $actor->id, 'reason' => $reason, 'before_values' => ['status' => 'pending'], 'after_values' => ['status' => 'rejected']];

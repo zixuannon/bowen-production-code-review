@@ -79,6 +79,7 @@ final class CentralFinancePendingCollectionService
             }
             $receivables = $receivablesQuery;
             if ($receivables->count() !== count($allocations)) throw new AuthorizationException('Every selected receivable must belong to the current Student and School.');
+            app(CentralFinanceQaRunService::class)->lockActiveRunForCentralRecords((int) $school->id, 'receivable', $receivables->keys()->all());
             $currencies = $receivables->pluck('currency')->map(fn ($currency) => strtoupper((string) $currency))->unique();
             if ($currencies->count() !== 1) throw new InvalidArgumentException('A Collection V2 parent payment cannot mix currencies.');
             $classifications = $receivables->keys()->map(fn (int $id) => $this->dataIsolation->classification('receivable', $id))->unique();
@@ -151,6 +152,9 @@ final class CentralFinancePendingCollectionService
                 ]);
                 $this->dataIsolation->inheritWorkflowClassification($actor, (int) $school->id, 'pending_collection_allocation', (int) $line->id);
             }
+            // Multi-allocation Collections are linked only after all allocation
+            // rows exist, allowing the run service to verify every parent.
+            $this->dataIsolation->inheritWorkflowClassification($actor, (int) $school->id, 'pending_collection', (int) $pending->id);
             $this->audits->record($actor, $pending, 'pending_collection', 'submitted', null, null, $this->snapshot($pending));
             return $pending;
         });

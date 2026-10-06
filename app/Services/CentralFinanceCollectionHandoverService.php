@@ -62,6 +62,7 @@ final class CentralFinanceCollectionHandoverService
             if ($batch->status !== CentralFinanceCollectionHandoverBatch::DRAFT) throw new InvalidArgumentException('Only draft handovers can be edited.');
             if ($batch->items()->where('status', CentralFinanceCollectionHandoverItem::ATTACHED)->count() >= self::MAX_ITEMS) throw new InvalidArgumentException('A handover cannot contain more than 50 collections.');
             $pending = CentralFinancePendingCollection::on('mysql')->lockForUpdate()->findOrFail($pendingId);
+            app(CentralFinanceQaRunService::class)->lockActiveRunForCentralRecord((int) $pending->school_id, 'pending_collection', (int) $pending->id);
             if ((int) $pending->school_id !== (int) $batch->school_id || (int) $pending->collected_by !== (int) $batch->collector_id || strtoupper((string) $pending->currency) !== strtoupper((string) $batch->currency) || (string) $pending->payment_method !== (string) $batch->payment_channel || $pending->status !== CentralFinancePendingCollection::SUBMITTED) {
                 throw new InvalidArgumentException('Pending collection is not eligible for this handover.');
             }
@@ -75,11 +76,15 @@ final class CentralFinanceCollectionHandoverService
             if ($existing) {
                 if ($existing->status === CentralFinanceCollectionHandoverItem::REMOVED) {
                     $existing->update(['status' => CentralFinanceCollectionHandoverItem::ATTACHED, 'failure_reason' => null]);
+                    $this->dataIsolation->inheritWorkflowClassification($actor, (int) $batch->school_id, 'collection_handover_item', (int) $existing->id);
+                    $this->dataIsolation->inheritWorkflowClassification($actor, (int) $batch->school_id, 'collection_handover', (int) $batch->id);
                     $this->audits->record($actor, $batch, 'collection_handover', 'item_reattached', null, null, ['pending_collection_id' => $pending->id]);
                 }
                 return $existing->fresh();
             }
             $item = CentralFinanceCollectionHandoverItem::on('mysql')->create(['handover_batch_id' => $batch->id, 'pending_collection_id' => $pending->id, 'expected_amount_snapshot' => $pending->amount, 'currency_snapshot' => $pending->currency, 'status' => CentralFinanceCollectionHandoverItem::ATTACHED]);
+            $this->dataIsolation->inheritWorkflowClassification($actor, (int) $batch->school_id, 'collection_handover_item', (int) $item->id);
+            $this->dataIsolation->inheritWorkflowClassification($actor, (int) $batch->school_id, 'collection_handover', (int) $batch->id);
             $this->audits->record($actor, $batch, 'collection_handover', 'item_attached', null, null, ['pending_collection_id' => $pending->id]);
             return $item;
         });
@@ -90,6 +95,7 @@ final class CentralFinanceCollectionHandoverService
         return DB::connection('mysql')->transaction(function () use ($actor, $batch, $item) {
             $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->findOrFail($batch->id);
             $this->assertOwner($actor, $batch);
+            $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
             if ($batch->status !== CentralFinanceCollectionHandoverBatch::DRAFT) throw new InvalidArgumentException('Only draft handovers can be edited.');
             $item = CentralFinanceCollectionHandoverItem::on('mysql')->lockForUpdate()->findOrFail($item->id);
             if ((int) $item->handover_batch_id !== (int) $batch->id || $item->status !== CentralFinanceCollectionHandoverItem::ATTACHED) {
@@ -106,6 +112,7 @@ final class CentralFinanceCollectionHandoverService
         return DB::connection('mysql')->transaction(function () use ($actor, $batch) {
             $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->with('items')->findOrFail($batch->id);
             $this->assertOwner($actor, $batch);
+            $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
             $activeItems = $batch->items->where('status', CentralFinanceCollectionHandoverItem::ATTACHED);
             if ($batch->status !== CentralFinanceCollectionHandoverBatch::DRAFT || $activeItems->isEmpty()) throw new InvalidArgumentException('A non-empty draft handover is required.');
             $expected = $activeItems->sum(fn ($item) => (float) $item->expected_amount_snapshot);
@@ -132,6 +139,7 @@ final class CentralFinanceCollectionHandoverService
         return DB::connection('mysql')->transaction(function () use ($actor, $batch, $reason) {
             $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->findOrFail($batch->id);
             $this->assertOwner($actor, $batch);
+            $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
             if ($batch->status !== CentralFinanceCollectionHandoverBatch::DRAFT) throw new InvalidArgumentException('Only draft handovers can be cancelled.');
             $batch->update(['status' => CentralFinanceCollectionHandoverBatch::CANCELLED, 'cancelled_by' => $actor->id, 'cancelled_at' => now(), 'cancelled_reason' => trim($reason)]);
             $this->audits->record($actor, $batch, 'collection_handover', 'cancelled', trim($reason), null, $batch->fresh()->toArray());
@@ -146,6 +154,7 @@ final class CentralFinanceCollectionHandoverService
             $batch = CentralFinanceCollectionHandoverBatch::on('mysql')->lockForUpdate()->findOrFail($batch->id);
             $this->workspace->assertHeadFinance($actor);
             $this->workspace->assertCanOperateSchool($actor, (int) $batch->school_id);
+            $this->dataIsolation->assertWorkflowWritable('collection_handover', (int) $batch->id);
             if (!in_array($batch->status, [CentralFinanceCollectionHandoverBatch::SUBMITTED, CentralFinanceCollectionHandoverBatch::HELD], true)) {
                 throw new InvalidArgumentException('Only submitted or held handovers can be reviewed.');
             }

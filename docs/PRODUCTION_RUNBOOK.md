@@ -450,3 +450,13 @@ Prefer application connections or secure temporary client option files with rest
 `staging.school.mmbowen.com` is paused and is not part of the active Pipeline V2. Do not delete, deploy to, authenticate to, or modify it without separate authorization.
 
 Historical staging-only changes retained for a future cleanup/reuse decision include its isolated project/database/runtime, dedicated staging access/error logs, a BT-WAF per-site policy with overseas blocking disabled for the staging hostname only, and synthetic FINANCE_QA fixtures. None of these changes alter the production vhost, production databases, or global WAF policy.
+
+## Zixuan QA Finance Run schema and operations
+
+The QA Run candidate adds Central-only tables through the exact-path
+`finance:qa-runs-migrate` command. The command is restricted to local
+configuration and must never be run against Production. Review this candidate's
+exact migration and tenant impact before any separately approved release; no
+tenant migration is part of this schema. QA Run archive changes lifecycle only
+and must preserve all Student and Finance history. Never reset or delete
+Payments, Receipts, Ledger, or prior Run records to prepare another test.

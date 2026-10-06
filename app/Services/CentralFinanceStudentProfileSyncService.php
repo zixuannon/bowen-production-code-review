@@ -118,6 +118,14 @@ final class CentralFinanceStudentProfileSyncService
                 $result = 'updated';
             }
 
+            // Only Students explicitly provisioned into a QA Run inherit a
+            // Run-linked central profile. Historical Zixuan rows still sync
+            // and remain readable, but are never adopted into a new Run.
+            app(CentralFinanceQaRunService::class)->inheritTenantStudentProfile(
+                (int) $payload->schoolId,
+                (int) $payload->tenantStudentId,
+                (int) $profile->id,
+            );
             $event->update(['status' => 'processed', 'processed_at' => now()]);
             return ['result' => $result, 'profile_id' => (int) $profile->id, 'event_id' => (int) $event->id];
         });

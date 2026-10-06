@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\ClassSection;
+use App\Models\CentralFinanceQaRun;
+use App\Models\CentralFinanceUser;
 use App\Models\FormField;
 use App\Models\School;
 use App\Models\SessionYear;
@@ -16,6 +18,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
@@ -148,7 +151,18 @@ final class StudentImportV2Service
         if ($rows->contains(fn (array $row) => in_array($row['status'], ['error', 'conflict'], true))) {
             throw ValidationException::withMessages(['preview' => 'Resolve every Error and Conflict before confirming Student Import V2.']);
         }
-        $this->context($actor);
+        $school = $this->context($actor);
+        $qaRuns = app(CentralFinanceQaRunService::class);
+        $qaRun = null;
+        foreach ($rows->where('status', 'new') as $row) {
+            $reservation = $qaRuns->reserveStudentImport((int) $school->id, (string) $row['import_reference']);
+            if ($reservation !== null) {
+                if ($qaRun !== null && (int) $qaRun->id !== (int) $reservation->id) {
+                    throw new AuthorizationException('One Student Import cannot span QA Runs.');
+                }
+                $qaRun = $reservation;
+            }
+        }
 
         try {
         $created = DB::transaction(function () use ($rows, $actor): array {
@@ -198,7 +212,24 @@ final class StudentImportV2Service
             throw $exception;
         }
         Cache::forget(self::CACHE_PREFIX.$token);
-        return ['created' => $created, 'created_count' => count($created), 'duplicate_count' => $rows->where('status', 'duplicate')->count()];
+        $reconciliationRequired = false;
+        if ($qaRun !== null && $created !== []) {
+            try {
+                $runCreator = CentralFinanceUser::on('mysql')->findOrFail($qaRun->created_by);
+                $qaRuns->linkImportedStudents($runCreator, (int) $school->id, (int) $qaRun->id, $created);
+            } catch (\Throwable $exception) {
+                $reconciliationRequired = true;
+                Log::warning('QA Run Student Import membership needs reconciliation.', [
+                    'qa_run_id' => $qaRun->id, 'school_id' => $school->id, 'exception_class' => $exception::class,
+                ]);
+            }
+        }
+        return [
+            'created' => $created,
+            'created_count' => count($created),
+            'duplicate_count' => $rows->where('status', 'duplicate')->count(),
+            'qa_run_reconciliation_required' => $reconciliationRequired,
+        ];
     }
 
     private function context(User $actor): School

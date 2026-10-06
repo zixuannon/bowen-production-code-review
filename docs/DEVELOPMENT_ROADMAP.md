@@ -194,3 +194,33 @@ Balances move only on designated receiver confirmation.
 - Bank Reconciliation
 - Refund / Void / Reversal
 - Reporting / Audit workbench
+
+## Zixuan QA Run system — final local candidate, Production approval pending
+
+- [x] Reconciled the completed implementation onto exact current Production
+  SHA `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; Staff Invitation, canonical
+  identity, actor audit, QA Staff inheritance, and User #77 recovery are kept.
+  `UserService` and `StaffInvitationService` have no QA Run changes.
+- [x] Additive Central Run/membership schema, lifecycle, immutable membership,
+  mixed-run guards, permanent QA classification, official-total exclusion,
+  and Head Finance/Super Admin UI entry.
+- [x] Targeted reconciliation suite (130 tests / 842 assertions), full PHPUnit
+  regression (1,106 tests / 8,683 assertions / 34 existing skips), and
+  disposable-clone Central migration apply/rollback/reapply rehearsal.
+- [x] Disposable Run #1 browser workflow reached Payment, Receipt, Ledger,
+  Complete, and Archive; archived history remains visible.
+- [x] Run #2 recovered a partial Student Import V2 provision, created a fresh
+  Student Fee Assignment and Receivables, submitted and confirmed a Pending
+  Collection, and reached Payment, Receipt, and Ledger. Complete and Archive
+  preserved history; Run #1 and Run #2 memberships do not overlap.
+- [x] Late profile synchronization now adopts only existing Receivables for a
+  Run-reserved Student; a feature test covers the recovery path and the local
+  Run #2 fixture was reconciled without moving any record from another Run.
+- [x] Official-filtered counts and money totals are unchanged across Run #2
+  archive. New collection writes receive 403 after Complete and after Archive.
+- [x] Reconciled-tree browser verification passed at 1440 × 900 and 390 × 844
+  with no 403/404/500 responses, console errors, or mobile overflow. Temporary
+  local registry and image fixtures were removed before candidate freeze.
+  Desktop/mobile Run detail passed; Front Desk lifecycle access receives 403.
+- [ ] Production release gate remains separate. No Production change, migration,
+  financial write, or deployment was performed.

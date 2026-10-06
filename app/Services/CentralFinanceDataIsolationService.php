@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceDataClassificationAudit;
+use App\Models\CentralFinanceQaRunRecord;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use App\Models\User;
@@ -39,6 +40,7 @@ final class CentralFinanceDataIsolationService
         'pending_collection' => ['table' => 'central_finance_pending_collections', 'school' => 'school_id'],
         'pending_collection_allocation' => ['table' => 'central_finance_pending_collection_allocations', 'school' => 'school_id'],
         'collection_handover' => ['table' => 'central_finance_collection_handover_batches', 'school' => 'school_id'],
+        'collection_handover_item' => ['table' => 'central_finance_collection_handover_items', 'school' => null],
         'fund_handover' => ['table' => 'central_finance_fund_handovers', 'school' => 'school_id'],
         'import_batch' => ['table' => 'central_finance_import_batches', 'school' => 'school_id'],
         'group_import_batch' => ['table' => 'central_finance_group_import_batches', 'school' => null],
@@ -60,6 +62,7 @@ final class CentralFinanceDataIsolationService
     /** @var array<string, array{table:string,staff_relation?:bool}> */
     private const TENANT_SUBJECTS = [
         'student' => ['table' => 'students'],
+        'student_fee_assignment' => ['table' => 'student_fee_assignments'],
         'staff' => ['table' => 'users', 'staff_relation' => true],
         'fee' => ['table' => 'fees'],
         'fee_type' => ['table' => 'fees_types'],
@@ -108,12 +111,28 @@ final class CentralFinanceDataIsolationService
      */
     public function apply(Builder $query, string $subjectType, bool $includeQaTest = false, ?string $schoolColumn = null): Builder
     {
-        if ($includeQaTest) {
-            return $query;
-        }
         $subject = self::SUBJECTS[$subjectType] ?? null;
         if ($subject === null) {
             throw new RuntimeException("Unsupported Central Finance classification subject: {$subjectType}");
+        }
+        if ($includeQaTest) {
+            // Run membership is permanently outside Official aggregates even
+            // when a manager explicitly reveals legacy QA/Test data. The QA
+            // Run workspace reads members through its own scoped projections.
+            if ($subjectType !== 'school' && Schema::connection('mysql')->hasTable(CentralFinanceQaRunService::RECORDS_TABLE)) {
+                $qualifiedId = $query->getModel()->qualifyColumn($query->getModel()->getKeyName());
+                $query->whereNotExists(function (QueryBuilder $membership) use ($subjectType, $qualifiedId): void {
+                    $membership->selectRaw('1')->from(CentralFinanceQaRunService::RECORDS_TABLE.' as cf_qa_run_member')
+                        ->where('cf_qa_run_member.subject_scope', 'central')
+                        ->where('cf_qa_run_member.subject_type', $subjectType)
+                        ->whereColumn('cf_qa_run_member.subject_id', $qualifiedId);
+                });
+            }
+            if ($subjectType !== 'school') {
+                $schoolColumn ??= $subject['school'];
+                app(CentralFinanceQaRunService::class)->applyPermanentOfficialExclusion($query, $schoolColumn);
+            }
+            return $query;
         }
         if (!$this->schemaAvailable()) {
             if (app()->environment('production')) {
@@ -143,6 +162,8 @@ final class CentralFinanceDataIsolationService
                     ->whereIn('cf_school_classification.classification', [CentralFinanceDataClassification::QA_TEST, CentralFinanceDataClassification::ARCHIVED]);
             });
         }
+
+        app(CentralFinanceQaRunService::class)->applyPermanentOfficialExclusion($query, $schoolColumn);
 
         return $query;
     }
@@ -197,6 +218,9 @@ final class CentralFinanceDataIsolationService
 
     public function classification(string $subjectType, int $subjectId, string $subjectScope = 'central'): string
     {
+        if (app(CentralFinanceQaRunService::class)->isQaSchoolClassificationFallback($subjectType, $subjectId)) {
+            return CentralFinanceDataClassification::QA_TEST;
+        }
         if (!$this->schemaAvailable()) {
             if (app()->environment('production')) {
                 throw new RuntimeException('Central Finance data isolation schema is missing.');
@@ -491,11 +515,20 @@ final class CentralFinanceDataIsolationService
         if ($this->classification('school', (int) $schoolId) === CentralFinanceDataClassification::ARCHIVED) {
             throw new AuthorizationException('Archived School data cannot be used by a workflow.');
         }
+        if ($this->isQaTestSchool((int) $schoolId)
+            && in_array($subjectType, ['receivable', 'receivable_adjustment', 'promotion_application', 'student_discount_request', 'pending_collection', 'pending_collection_allocation', 'payment', 'payment_allocation', 'payment_refund', 'payment_reversal', 'collection_handover', 'collection_handover_item'], true)) {
+            app(CentralFinanceQaRunService::class)->lockActiveRunForCentralRecord((int) $schoolId, $subjectType, $subjectId);
+        }
     }
 
     public function isQaTestSchool(int $schoolId): bool
     {
         return $this->classification('school', $schoolId) === CentralFinanceDataClassification::QA_TEST;
+    }
+
+    public function supportsCentralSubject(string $subjectType): bool
+    {
+        return isset(self::SUBJECTS[$subjectType]);
     }
 
     /**
@@ -538,6 +571,25 @@ final class CentralFinanceDataIsolationService
             CentralFinanceDataClassification::QA_TEST,
             'Inherited from the trusted QA/Test School workflow.',
         );
+        $runs = app(CentralFinanceQaRunService::class);
+        $runs->inheritCentralDocument($schoolId, $subjectType, $subjectId);
+        $auditType = match ($subjectType) {
+            'payment' => 'central_payment',
+            'pending_collection' => 'pending_collection',
+            'receivable_adjustment' => 'central_receivable_adjustment',
+            'payment_refund' => 'central_payment_refund',
+            'payment_reversal' => 'central_payment_reversal',
+            'collection_handover' => 'collection_handover',
+            'student_discount_request' => 'student_discount_request',
+            default => null,
+        };
+        if ($auditType !== null && Schema::connection('mysql')->hasTable('central_finance_document_audits')) {
+            foreach (DB::connection('mysql')->table('central_finance_document_audits')->where([
+                'school_id' => $schoolId, 'document_type' => $auditType, 'document_id' => $subjectId,
+            ])->pluck('id') as $auditId) {
+                $runs->inheritAuditForDocumentAudit($schoolId, $auditType, $subjectId, (int) $auditId);
+            }
+        }
     }
 
     public function classify(CentralFinanceUser $actor, int $schoolId, string $subjectType, int $subjectId, string $classification, string $reason): CentralFinanceDataClassification
@@ -551,6 +603,16 @@ final class CentralFinanceDataIsolationService
         }
         if (!$this->schemaAvailable()) {
             throw new RuntimeException('Central Finance data isolation schema is missing.');
+        }
+        if ($subjectType === 'school') {
+            app(CentralFinanceQaRunService::class)->assertSchoolClassification($subjectId, $classification);
+        }
+        $qaScope = isset(self::TENANT_SUBJECTS[$subjectType]) ? $this->tenantScope($schoolId) : 'central';
+        if ($classification !== CentralFinanceDataClassification::QA_TEST
+            && Schema::connection('mysql')->hasTable(CentralFinanceQaRunService::RECORDS_TABLE)
+            && CentralFinanceQaRunRecord::on('mysql')->where('subject_scope', $qaScope)
+                ->where('subject_type', $subjectType)->where('subject_id', $subjectId)->exists()) {
+            throw new AuthorizationException('QA Run records remain classified as QA/Test for their entire lifetime.');
         }
 
         $tenantSubject = self::TENANT_SUBJECTS[$subjectType] ?? null;
@@ -573,6 +635,9 @@ final class CentralFinanceDataIsolationService
         $recordSchoolId = $tenantSubject !== null ? $schoolId : ($subjectType === 'school'
             ? (int) $subjectId
             : ($rawSchoolId === null ? null : (int) $rawSchoolId));
+        if ($subjectType === 'collection_handover_item') {
+            $recordSchoolId = (int) DB::connection('mysql')->table('central_finance_collection_handover_batches')->where('id', $row->handover_batch_id)->value('school_id');
+        }
         if ($recordSchoolId !== null && $recordSchoolId !== $schoolId) {
             throw new AuthorizationException('The classified record does not belong to the authorized School.');
         }
@@ -675,6 +740,12 @@ final class CentralFinanceDataIsolationService
         }
 
         return $school;
+    }
+
+    /** Run a narrowly scoped read against the trusted registry tenant. */
+    public function withTrustedTenantRead(int $schoolId, string $subjectType, callable $callback): mixed
+    {
+        return $this->withTrustedTenantConnection($schoolId, $subjectType, $callback);
     }
 
     private function withTrustedTenantConnection(int $schoolId, string $subjectType, callable $callback): mixed

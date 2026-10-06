@@ -1,3 +1,38 @@
+## Zixuan permanent QA Finance Runs — reconciled local candidate
+
+- Reconciled directly onto current Production SHA
+  `7d6e73c12f6de23c24e5dd62312df53fcef8d497`. Overlap was limited to
+  `CentralFinanceDataIsolationService`, `zh-cn.json`, and shared status/runbook
+  documentation; no textual conflict remained. Production canonical School
+  identity, Staff Invitation, tenant actor attribution/audit, QA Staff
+  classification inheritance, and User #77 recovery implementation are kept.
+  QA Run adds no changes to `UserService` or `StaffInvitationService`.
+- `MMBOWEN01` resolves through the trusted Central School Registry mapping and
+  remains permanently `qa_test`; records cannot be promoted into Official
+  totals. Historical Zixuan QA data remains readable and is not backfilled into
+  a Run. Membership is immutable; mixed-run Finance composition is rejected.
+- Run lifecycle remains Preparing → Active → Completed → Archived. Completion
+  freezes new business writes; archive retains Students, Finance history, and
+  audits. Run #1 and Run #2 completed the existing Finance E2E with distinct
+  records; Run #1 history remains unchanged and Run #2 records were not reused.
+- Targeted reconciliation suite: **130 tests / 842 assertions, zero failures
+  or errors**. Full PHPUnit on this tree: **1,106 tests / 8,683 assertions,
+  zero failures or errors, 34 existing skips**. PHP 8.5 PDO and PHPUnit
+  deprecations remain.
+- Central-only migration rehearsal passed on a fresh disposable clone. The
+  exact additive migration applied, rolled back, and reapplied; every
+  pre-existing Central table row count matched its source, and the tenant
+  migration ledger checksum was unchanged. No tenant migration or historical
+  Finance rewrite occurred.
+- Browser acceptance passed at 1440 × 900 and 390 × 844. QA ONLY, Run #1/#2
+  history and details, archived read-only state, and Official data scope were
+  verified with no 403/404/500 responses, console errors, or mobile overflow.
+  The local-only synthetic registry/image test overrides were removed before
+  freezing the candidate.
+- Production code, data, migrations, and deployment were not changed.
+
+Last updated: 2026-10-06
+
 # eSchool Current State
 
 ## QA Staff classification and tenant actor audit — 2026-10-05 LOCAL GATES PASS

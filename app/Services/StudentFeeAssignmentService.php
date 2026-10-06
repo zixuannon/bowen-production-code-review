@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
+use App\Services\CentralFinanceQaRunService;
 
 /**
  * Tenant-only student fee setup. Confirmed snapshots are the source for the
@@ -102,6 +103,12 @@ final class StudentFeeAssignmentService
     /** @param list<mixed> $requestedOptionalIds */
     public function saveDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
     {
+        return app(CentralFinanceQaRunService::class)->withActiveTenantStudentRun((int) $student->school_id, (int) $student->id,
+            fn () => $this->saveDraftUnderRun($student, $actor, $requestedOptionalIds, $optionalQuantities, $selectedPromotions, $studentDiscounts));
+    }
+
+    private function saveDraftUnderRun(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
+    {
         $this->assertActor($student, $actor);
         $available = $this->availableItems($student);
         $optionalIds = collect($requestedOptionalIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values();
@@ -129,6 +136,12 @@ final class StudentFeeAssignmentService
     /** @param list<mixed> $requestedOptionalIds */
     public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
     {
+        return app(CentralFinanceQaRunService::class)->withActiveTenantStudentRun((int) $student->school_id, (int) $student->id,
+            fn () => $this->saveAdditionalDraftUnderRun($student, $actor, $requestedOptionalIds, $optionalQuantities, $selectedPromotions, $studentDiscounts));
+    }
+
+    private function saveAdditionalDraftUnderRun(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
+    {
         $this->assertActor($student, $actor);
         $optional = $this->availableAdditionalItems($student)->keyBy('id');
         $selected = collect($requestedOptionalIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values();
@@ -149,6 +162,12 @@ final class StudentFeeAssignmentService
     }
 
     public function confirm(Students $student, User $actor, string $assignmentUuid): StudentFeeAssignment
+    {
+        return app(CentralFinanceQaRunService::class)->withActiveTenantStudentRun((int) $student->school_id, (int) $student->id,
+            fn () => $this->confirmUnderRun($student, $actor, $assignmentUuid));
+    }
+
+    private function confirmUnderRun(Students $student, User $actor, string $assignmentUuid): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         try {
@@ -173,6 +192,9 @@ final class StudentFeeAssignmentService
                 ]);
             }
             $assignment->update(['status' => StudentFeeAssignment::CONFIRMED, 'confirmed_at' => now(), 'confirmed_by' => $actor->id]);
+            app(CentralFinanceQaRunService::class)->inheritTenantStudentRecord(
+                (int) $student->school_id, (int) $student->id, 'student_fee_assignment', (int) $assignment->id,
+            );
             return $assignment->fresh('items');
             });
         } catch (QueryException $exception) {

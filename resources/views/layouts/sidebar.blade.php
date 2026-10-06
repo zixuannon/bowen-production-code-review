@@ -129,6 +129,9 @@
                 <div class="collapse {{ request()->routeIs('central-finance.*') ? 'show' : '' }}" id="central-finance-menu">
                     <ul class="nav flex-column sub-menu">
                         <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.dashboard') ? 'active' : '' }}" href="{{ route('central-finance.dashboard') }}">{{ __('财务总览') }}</a></li>
+                        @if($centralIsHeadFinance || \Illuminate\Support\Facades\Auth::user()?->hasRole('Super Admin'))
+                            <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.qa-runs.*') ? 'active' : '' }}" href="{{ route('central-finance.qa-runs.index') }}">{{ __('Zixuan · QA Runs') }} <span class="badge badge-warning">QA ONLY</span></a></li>
+                        @endif
                         <li class="nav-item"><details class="central-finance-sidebar-group" @if(request()->routeIs('central-finance.student-collection.*','central-finance.receivables.*','central-finance.payments.*','central-finance.student-ledger')) open @endif><summary class="nav-link">{{ __('学生收费') }} <i class="menu-arrow"></i></summary><ul class="nav flex-column sub-menu">
                             <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.student-collection.*') ? 'active' : '' }}" href="{{ route('central-finance.student-collection.index') }}">{{ __('Student Collection') }}</a></li>
                             <li class="nav-item"><a class="nav-link {{ request()->routeIs('central-finance.receivables*') && request('view') !== 'adjustments' ? 'active' : '' }}" href="{{ route('central-finance.receivables') }}">{{ __('Receivables') }}</a></li>

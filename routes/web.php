@@ -1225,6 +1225,13 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/group-import/{batch}/source/{row}', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'source'])->whereNumber('row')->name('central-finance.group-import.source');
     Route::post('central-finance/group-import/{batch}/confirm', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'confirm'])->name('central-finance.group-import.confirm');
     Route::get('central-finance', [CentralFinanceWorkspaceController::class, 'dashboard'])->name('central-finance.dashboard');
+    Route::get('central-finance/zixuan/qa-runs', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'index'])->name('central-finance.qa-runs.index');
+    Route::post('central-finance/zixuan/qa-runs', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'store'])->name('central-finance.qa-runs.store');
+    Route::get('central-finance/zixuan/qa-runs/{run}', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'show'])->whereNumber('run')->name('central-finance.qa-runs.show');
+    Route::post('central-finance/zixuan/qa-runs/{run}/activate', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'activate'])->whereNumber('run')->name('central-finance.qa-runs.activate');
+    Route::post('central-finance/zixuan/qa-runs/{run}/complete', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'complete'])->whereNumber('run')->name('central-finance.qa-runs.complete');
+    Route::post('central-finance/zixuan/qa-runs/{run}/archive', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'archive'])->whereNumber('run')->name('central-finance.qa-runs.archive');
+    Route::post('central-finance/zixuan/qa-runs/{run}/reconcile', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'reconcile'])->whereNumber('run')->name('central-finance.qa-runs.reconcile');
     Route::get('central-finance/unidentified-deposits', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'index'])->name('central-finance.unidentified-deposits.index');
     Route::post('central-finance/unidentified-deposits', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'store'])->name('central-finance.unidentified-deposits.store');
     Route::post('central-finance/unidentified-deposits/{deposit}/match', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'match'])->name('central-finance.unidentified-deposits.match');

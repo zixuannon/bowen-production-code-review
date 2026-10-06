@@ -50,6 +50,10 @@ final class CentralFinancePaymentService {
                 : hash('sha256', implode('|', ['central-payment-v2', $schoolId, $profileIds->first(), implode(',', $receivableIds), $idempotencyReference]));
             $existing=CentralFinancePayment::on('mysql')->where('idempotency_key',$key)->lockForUpdate()->first();
             if ($existing) return ['payment'=>$existing,'receipt'=>CentralFinanceReceipt::on('mysql')->where('payment_id',$existing->id)->firstOrFail()];
+            // The Run lock is acquired before any receivable or money state
+            // changes and held by this transaction through receipt and ledger
+            // posting. Complete/Archive therefore serialize with posting.
+            app(CentralFinanceQaRunService::class)->lockActiveRunForCentralRecords($schoolId, 'receivable', $receivableIds);
             $this->schools->assertCanOperate($actor,$schoolId);
             $this->accounts->assertCanOperate($actor,$account,$schoolId);
             app(CentralFinanceSchoolCutoverService::class)->assertCentralWritesAllowed($schoolId);

@@ -11,7 +11,7 @@ final class CentralFinanceDocumentAuditService
     /** @param array<string,mixed>|null $before @param array<string,mixed>|null $after */
     public function record(CentralFinanceUser $actor, Model $document, string $type, string $action, ?string $reason = null, ?array $before = null, ?array $after = null): CentralFinanceDocumentAudit
     {
-        return CentralFinanceDocumentAudit::on('mysql')->create([
+        $audit = CentralFinanceDocumentAudit::on('mysql')->create([
             'school_id' => $document->school_id,
             'document_type' => $type,
             'document_id' => $document->id,
@@ -21,5 +21,12 @@ final class CentralFinanceDocumentAuditService
             'before_values' => $before,
             'after_values' => $after,
         ]);
+        app(CentralFinanceQaRunService::class)->inheritAuditForDocumentAudit(
+            (int) $document->school_id,
+            $type,
+            (int) $document->id,
+            (int) $audit->id,
+        );
+        return $audit;
     }
 }
