@@ -115,6 +115,37 @@ Last updated: 2026-10-06
 
 # eSchool Current State
 
+## P1-A optional Fee due date — reconciled candidate, local gates
+
+- Reconciled only the P1-A Fee due-date change and exact migration-runner fix
+  onto verified Production baseline `7d6e73c12f6de23c24e5dd62312df53fcef8d497`.
+  The P1-A implementation is committed on `codex/p1a-prod-reconcile`; no
+  unfinished Zixuan QA Run work was included.
+- Cherry-pick conflicts were limited to `docs/CURRENT_STATE.md`; the newer
+  Production state was retained. No code conflicts remained. `UserService`,
+  `StaffInvitationService`, canonical School identity, Staff Invitation,
+  QA Staff classification, tenant actor audit, and User #77 recovery changes
+  are unchanged from the Production baseline.
+- Focused fee regression passes: 35 tests / 183 assertions. The model tests,
+  offline payment authority cases, and collection aging contract cover an
+  undated overall Fee, no overall late charge, and a dated installment charge.
+- Full regression is **not green** on the isolated test DB rebuilt for this
+  candidate: 1,104 tests / 8,585 assertions, 8 errors, 20 failures, 34 skips.
+  The failures are concentrated in legacy fee payment/import tests whose
+  fixture data/schema does not match their assumptions; none are in the P1-A
+  focused set. Resolve or validate this full-suite fixture mismatch before
+  marking the candidate deployment-ready.
+- Exact `fees:due-date-schema --tenant=BOWEN_QA` rehearsal passed locally:
+  read-only preflight `eligible`, exact-path migration applied, repeat preflight
+  `complete`. Two synthetic Fee rows and their IDs remained unchanged.
+- Local browser acceptance passed for creating a Fee with an empty overall due
+  date and clearing an existing unpaid Fee's due date; both persisted as SQL
+  `NULL`. No payment was made. The browser also observed the known unrelated
+  Online Exam subjects endpoint HTTP 400; it did not affect either due-date
+  flow.
+- Production was not changed and nothing was deployed. Do not mark this
+  candidate ready for Production until the full regression is green.
+
 ## QA Staff classification and tenant actor audit — 2026-10-05 LOCAL GATES PASS
 
 - MariaDB metadata follow-up: runner accepts the exact unquoted `NULL` default token only when the live connection identifies MariaDB. Quoted/lowercase/padded/other defaults remain rejected. Migration bytes and application/browser behavior are unchanged. Targeted metadata + disposable MySQL rehearsal: 21 tests/64 assertions PASS; independent review PASS; complete isolated regression: **1098 tests/8648 assertions, zero failures, 34 existing skips**. Prior QA/Official browser E2E evidence remains applicable because only CLI schema verification changed. Production remains `b420e2192c124760759784fb2bece654aed3b857`; ownership guard PASS. Next gate must read the already-applied migration as complete without executing it again.
