@@ -95,7 +95,10 @@ final class MigrateFinanceClassificationActors extends Command
                         : ($column === 'action' ? 'varchar(64)' : 'varchar(20)');
                     // MariaDB may include the legacy integer display width.
                     $actual = preg_replace('/bigint\(\d+\)/', 'bigint', strtolower($definition['type'] ?? ''));
-                    if ($actual !== $expected || ($definition['default'] ?? null) !== null) {
+                    if ($actual !== $expected || !self::hasNullDefault(
+                        $definition['default'] ?? null,
+                        DB::connection('mysql')->isMaria()
+                    )) {
                         return 'unexpected';
                     }
                 }
@@ -103,6 +106,13 @@ final class MigrateFinanceClassificationActors extends Command
         }
 
         return $recorded === 1 ? 'complete' : 'eligible';
+    }
+
+    /** MariaDB exposes SQL NULL as the unquoted metadata token NULL. */
+    public static function hasNullDefault(mixed $default, bool $isMaria): bool
+    {
+        // A literal string default is quoted ('NULL') and must still fail.
+        return $default === null || ($isMaria && $default === 'NULL');
     }
 
     private function reject(string $message): int
