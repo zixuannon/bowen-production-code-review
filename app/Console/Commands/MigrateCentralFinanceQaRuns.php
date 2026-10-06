@@ -60,9 +60,16 @@ final class MigrateCentralFinanceQaRuns extends Command
             }
             if (!$this->option('execute') || $state === 'complete') return self::SUCCESS;
 
+            // Keep the human Production gate on this exact-purpose runner. The
+            // nested migrate command is non-interactive, so it receives
+            // --force only after the operator confirms here.
+            if ($production && !$this->confirmToProceed('Apply the exact Central QA Run migration to Production?')) {
+                return self::FAILURE;
+            }
+
             $exit = Artisan::call('migrate', [
                 '--database' => 'mysql', '--path' => $migrationPath,
-                '--realpath' => true,
+                '--realpath' => true, '--force' => true,
             ]);
             $this->output->write(Artisan::output());
             return $exit === self::SUCCESS && $this->schemaState() === 'complete'

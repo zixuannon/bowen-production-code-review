@@ -236,5 +236,10 @@ Balances move only on designated receiver confirmation.
 - [x] Targeted QA Run/migration/ownership checks (27 tests / 105 assertions),
   guarded migration path rehearsal, and archived Run history desktop/mobile
   browser smoke at 390 × 844 with no horizontal overflow.
-- [ ] Production release gate remains separate; no Production action is part of
-  this local recovery.
+- [ ] Production release remains incomplete: approved SHA
+  `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2` is the active release symlink,
+  but the guarded Central migration remains `eligible`. Its nested Artisan
+  call did not pass `--force`, so Laravel canceled it after its hidden
+  confirmation prompt. No Finance history was rewritten and no QA Run was
+  created. A corrected successor SHA requires separate exact-SHA approval
+  before deployment or migration resumes.

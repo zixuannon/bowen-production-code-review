@@ -1,3 +1,24 @@
+# Zixuan QA Run — Production migration runner correction in progress
+
+- On 2026-10-06 the explicitly approved immutable release
+  `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2` was switched active after a
+  verified R2E recovery set. The exact guarded Central migration preflight
+  reports `eligible`, but its nested Artisan `migrate` lacked `--force` and
+  Laravel canceled at its Production prompt. Recheck remained `eligible`;
+  no QA Run tables/history were written, no tenant migration ran, no Finance
+  history or permissions changed, and no first Production QA Run was created.
+- Correct the runner to ask for the interactive Production confirmation at
+  the outer exact-purpose command, then pass `--force` only to the pinned
+  exact-path inner migration. The correction requires a new exact SHA and
+  separate Production deployment/migration approval. The current active
+  symlink is still b87; graceful PHP-FPM reload and authenticated Production
+  QA Runs smoke have not been performed.
+- Implemented the correction locally. QA Run and migration-guard tests pass
+  (22 tests / 71 assertions); complete disposable regression passes (1,109
+  tests / 8,702 assertions, 0 failures, 0 errors, 34 existing skips). Existing
+  PHP 8.5 PDO and PHPUnit configuration deprecations remain. No Production
+  connection was used for these tests.
+
 # Zixuan QA Run — full regression fixture recovery complete
 
 - Candidate branch `codex/zixuan-qa-run-final-candidate` is based on exact
