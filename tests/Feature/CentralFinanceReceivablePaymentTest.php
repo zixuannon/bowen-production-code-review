@@ -543,7 +543,68 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $allocation=$service->match($this->head,$deposit->id,$receivable->id,'250.0000',$this->at(),'Matched by remittance advice.','P0-UNIDENTIFIED-MATCH-1');
   $this->assertSame('250.0000',(string)$allocation->amount); $this->assertSame(2,CentralFinanceLedgerEntry::on('mysql')->count()); $this->assertSame(1,CentralFinancePayment::on('mysql')->count()); $this->assertSame(CentralFinancePayment::on('mysql')->sole()->id,(int)$allocation->payment_id); $this->assertSame(1,DB::connection('mysql')->table('central_finance_payment_allocations')->count()); $this->assertSame(1,DB::connection('mysql')->table('central_finance_receipts')->count()); $this->assertSame(250.0,app(CentralFinanceFundAccountBalanceService::class)->currentBalance($this->hq)); $this->assertSame('250.0000',(string)$receivable->fresh()->amount_paid); $this->assertSame('applied',$deposit->fresh()->status);
  }
- private function receivable(CentralFinanceStudentProfile $p): CentralFinanceReceivable { app(CentralFinanceReceivableSyncService::class)->syncProfile($p);return CentralFinanceReceivable::on('mysql')->where('student_profile_id',$p->id)->firstOrFail(); }
+ private function receivable(CentralFinanceStudentProfile $p): CentralFinanceReceivable {
+  if (app(CentralFinanceDataIsolationService::class)->isQaTestSchool((int) $p->school_id)) {
+   $this->confirmedQaAssignmentFixture($p);
+  }
+  app(CentralFinanceReceivableSyncService::class)->syncProfile($p);
+  return CentralFinanceReceivable::on('mysql')->where('student_profile_id',$p->id)->firstOrFail();
+ }
+
+ /**
+  * These legacy payment fixtures have no assignment schema. QA templates now
+  * require an explicit confirmed, classified Student snapshot before projection.
+  * Add only that source fixture; keep the Central pre-V2 migration shape and
+  * the Official legacy class-fee path used by the other tests unchanged.
+  */
+ private function confirmedQaAssignmentFixture(CentralFinanceStudentProfile $profile): void {
+  $original = config('database.connections.school.database');
+  $database = School::on('mysql')->findOrFail($profile->school_id)->database_name;
+  Config::set('database.connections.school.database', $database);
+  DB::purge('school');
+  try {
+   if (!Schema::connection('school')->hasTable('student_fee_assignments')) {
+    $this->assertSame([], app(\App\Services\CentralFinanceTenantFeeAssignmentSource::class)->allForProfile($profile));
+    (require database_path('migrations/schools/2026_08_27_000001_create_student_fee_assignment_tables.php'))->up();
+    Schema::connection('school')->create('fees_types', function (Blueprint $table): void {
+     $table->id(); $table->unsignedBigInteger('school_id'); $table->string('name'); $table->timestamps();
+    });
+   }
+   $db = DB::connection('school');
+   if ($db->table('student_fee_assignments')->where('student_id', $profile->tenant_student_id)->exists()) return;
+   $feeTypeId = $db->table('fees_types')->insertGetId([
+    'school_id' => $profile->school_id, 'name' => 'QA payment source', 'created_at' => now(), 'updated_at' => now(),
+   ]);
+   $assignmentId = $db->table('student_fee_assignments')->insertGetId([
+    'uuid' => (string) Str::uuid(), 'school_id' => $profile->school_id, 'student_id' => $profile->tenant_student_id,
+    'academic_year_id' => 1, 'class_id' => $profile->class_id, 'status' => 'confirmed',
+    'confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+   ]);
+   $subjects = [['student_fee_assignment', $assignmentId], ['fee_type', $feeTypeId]];
+   foreach ($db->table('fees_class_types')->where('class_id', $profile->class_id)->where('optional', false)->get() as $template) {
+    $fee = $db->table('fees')->where('id', $template->fees_id)->sole();
+    $itemId = $db->table('student_fee_assignment_items')->insertGetId([
+     'uuid' => (string) Str::uuid(), 'student_fee_assignment_id' => $assignmentId,
+     'fee_id' => $fee->id, 'fees_class_type_id' => $template->id, 'fees_type_id' => $feeTypeId,
+     'description_snapshot' => $fee->name, 'due_date_snapshot' => $fee->due_date,
+     'amount_snapshot' => $template->amount, 'currency_snapshot' => $template->fee_currency ?: 'MMK',
+     'optional_snapshot' => false, 'source_type' => 'fees_class_type', 'source_id' => (string) $template->id,
+     'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $subjects[] = ['fee', (int) $fee->id];
+    $subjects[] = ['fee_item', (int) $template->id];
+    $subjects[] = ['student_fee_assignment_item', $itemId];
+   }
+   $isolation = app(CentralFinanceDataIsolationService::class);
+   foreach ($subjects as [$type, $id]) {
+    $isolation->classify($this->head, (int) $profile->school_id, $type, $id,
+     CentralFinanceDataClassification::QA_TEST, 'Explicit synthetic confirmed QA payment source.');
+   }
+  } finally {
+   DB::purge('school');
+   Config::set('database.connections.school.database', $original);
+  }
+ }
  private function at():CarbonImmutable{return CarbonImmutable::parse('2026-08-21 10:00','Asia/Yangon');}
  /** Minimal additive identity fence preserves this suite's intentional pre-V2 migration fixtures. */
  private function bankIdentityFixture(): void {

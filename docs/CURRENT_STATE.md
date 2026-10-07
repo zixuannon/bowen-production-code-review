@@ -1,5 +1,115 @@
 # eSchool Current State
 
+## Local PASS — QA Fee classification / reusable School templates (2026-10-07)
+
+- Scope is local-only on exact Production `fbf3b5270425ff2ec7122eee137535d693b1f839`;
+  no Production Fee, QA Run, transaction, migration or deployment is authorized.
+- SELECT-only Production inventory under `www`, with read-only transactions on
+  Central and the canonically resolved MMBOWEN01 tenant, confirms School #15:
+  Fee #45, Fee Type #3 and Fee Item #54 already have `qa_test` metadata and one
+  classification audit each (2026-09-18). Legacy actor-scope fields are NULL.
+  Assignments #4/#5/#6 (Students #9/#10/#11) and matching assignment items
+  #4/#5/#6 have no direct classification, audit or Run membership. QA Runs = 0.
+  No historical backfill was performed. Any reconciliation must be separately
+  approved, audited, and preserve all financial history; do not attach these
+  historical records to a future fresh Run.
+- Root cause: Fee list/search use Official-only filtering, normal creation does
+  not inherit classification, and assignment/source QA paths bypass filtering.
+  Projection must fail closed on incomplete historical classification rather
+  than silently filtering a source and allowing cancellation of its receivable.
+- Implemented audited creation-time classification for Fee/Type/Item and fresh
+  assignment/item snapshots, with same-transaction Run membership on co-located
+  MySQL/InnoDB. Fee lists/search and assignment sources enforce School workflow
+  classification; confirmed historical snapshots are never repriced from a
+  template. Missing historical assignment metadata fails closed, not cancellation.
+- Trusted Staff session -> canonical Central principal -> tenant actor is now
+  explicitly propagated by both Student Fee Setup controller and Central optional
+  assignment adapter. Canonical School Staff principals intentionally have
+  `status=0` (non-login); authority requires active tenant user, exact UUID mapping,
+  trusted School/tenant, eligible role, `fees-create`, and existing Central submit
+  or operate scope. No principal is enabled and no role/permission is granted.
+  Ordinary disabled Central users, forged UUIDs, wrong Schools and stale grants
+  remain denied. Read-only `finance-payment-view` Fee search remains supported.
+- Business decision A explicitly approved: Fee master definitions are School
+  configuration, classified to the School but never Run members; reuse across
+  Runs is allowed. Each Run creates fresh Students, assignments/items and
+  receivables; confirmed snapshots and all financial history stay immutable.
+  Template price changes affect only subsequent snapshots. No P0/P1-B changes.
+- Follow-up SELECT-only dependency audit: assignments/items #4/#5/#6 belong to
+  Students/Profiles #9/#10/#11, source Fee #45 / Item #54, each 100,000 MMK.
+  Receivables #5/#6/#7 are fully paid; Pending #37/#38/#39, Payments/Receipts
+  #34/#35/#36/#37, allocations #1–#4, Ledger #88–#91 and confirmed cash Handover
+  #2 / item #21 depend on these snapshots. Payment #37's historical identity
+  must remain untouched. Do not reclassify or attach this history to a new Run.
+  Separate append-only classification reconciliation would require explicit
+  approval and verified before/after money/history fingerprints, not a backfill
+  hidden inside this release. Current Production QA Run count remains zero.
+- Final targeted: 89 tests / 882 assertions, zero failures/errors. Includes 23
+  assignment/actor tests with real status-0 Staff principals and nine invalid
+  authority cases. Previously failing legacy QA fixtures now use confirmed,
+  classified V2 assignment snapshots; templates alone create no receivables.
+- Full regression: 1,326 tests / 10,909 assertions, zero failures/errors;
+  existing 34 skips unchanged, existing PHP/PHPUnit deprecations unchanged.
+  Evidence: `/private/tmp/qa-fee-final-targeted.log`,
+  `/private/tmp/qa-fee-final-full.log`, `/private/tmp/qa-fee-final-full.xml`.
+- Actual local browser E2E (PHP 8.3, HTTP 8039, isolated MySQL 3329): School Admin
+  imports a fresh Student per Run; Head Finance prepares/activates Runs; Front
+  Desk creates/edits reusable QA template, previews/confirms Fee Setup and adds
+  optional Uniform quantity 2 through the real Central adapter. Run 001 retains
+  tuition 400,000 + Uniform 100,000 after Complete/Archive. Template tuition is
+  changed to 450,000 through Fee Edit; Run 002 fresh Student/Assignment/Items/
+  Receivables use 450,000 + 100,000. Old snapshots remain 400,000 + 100,000.
+  Read-only evidence confirms template Run memberships=0, each business record
+  in its own Run, all relevant records qa_test, Official receivable count/total=0,
+  and Payment/Receipt/Ledger=0. No Production browser transaction was performed.
+  Evidence: `/private/tmp/qa-fee-e2e.UyqsZo/final-evidence.json`.
+- After evidence capture, stopped only the owned disposable PHP 8039 and MySQL
+  3329 processes and closed the test tab; both listeners absent. Isolated data
+  directory retained offline for audit, not reused as a future Run fixture.
+- No new migration. Disposable rehearsal includes existing baseline nullable
+  due-date and classification actor migrations; no migration file was changed.
+  Security/diff review: no remaining blocker, `git diff --check` clean. Freeze
+  this tested tree into one local candidate; do not push/deploy without approval.
+- Backlog outside this bounded fix: generic legacy Student Details list still
+  omits QA Students (Finance Student Collection correctly shows them); Fee list
+  displays an existing `undefined` label, and dense Collection table headings
+  overlap at 1280px. No broader student/UI/P1-B redesign included here.
+
+## Latest — P0 Production activated, Official use still withheld (2026-10-07)
+
+- Under explicit exact-SHA/write-window/migration/runtime approval, activated
+  `fbf3b5270425ff2ec7122eee137535d693b1f839` at
+  `/www/wwwroot/releases/eschool-rc-fbf3b5270425-consolidated` from exact
+  `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`. Remote SHA, marker, manifest,
+  immutable content and live FastCGI proof agree. No substitute code deployed.
+- Fresh recovery `eschool-prod-20261007T071945Z-135341bf2f9e`: Central + eight
+  trusted tenants, 12 encrypted artifacts, checksums and independent COS HEAD PASS.
+- Pinned Central P0 migration: eligible -> complete, exactly one history entry;
+  repeat execution verified no-op. No tenant migration. All 177 write guards
+  verified closed before DDL and atomically reopened only after exact runtime
+  and durable financial-preservation checks. Guards remain dormant, not removed.
+- Post-smoke SELECT-only comparison: all 51 original Central Finance table
+  fingerprints equal the pre-migration receipt. Payment/Allocation/Receipt/Ledger
+  counts remain 4 each; Fund Accounts 3; Unidentified Deposits/Allocations 0.
+  Payment #37 remains 50,000 MMK, NULL bank reference, verified historical QA.
+- PHP-FPM master 2559698 / ten workers, Queue 2559709 and WebSocket 2559716
+  verified PHP 8.3.27 and new release. Queue empty; two historical failures
+  untouched; workers stable beyond four minutes. Runtime cache/views/sessions
+  root-owned=0; Nginx/MySQL/Redis and both R2E timers healthy.
+- Real Head Finance browser login via fresh GET succeeds (POST 302), overview
+  and deposit page return 200; list/create/manual-identity/QA visibility render;
+  console errors=0, HTTP 500=0 in observed window, no new SQLSTATE 1046.
+  Earlier stale-page 419 did not recur; no session/cache clear or password reset.
+- No existing deposits: live search/allocation cannot be exercised without a
+  separately approved fixture. Local E2E/regression coverage remains preserved;
+  do not report these as executed Production transaction checks. Stop for Zixuan
+  QA Run UAT; no Run or real transaction was created. Official use remains NO.
+- Existing login-logo asset 404 was observed on Oct 6 and earlier Oct 7, before
+  this release; shared file is absent. Separate follow-up, no upload/config repair.
+  A read-only CLI verifier initially called the operational latch API within a
+  read-only transaction and was safely rejected; direct SELECT verification then
+  passed. This diagnostic log is not an HTTP 500 or financial write.
+
 ## Latest — P0 COS HEAD deployment blocker corrected locally (2026-10-07)
 
 - Approved candidate `d5f86b86cb3d4106f47e7041b36a1411eefabe8e` was pushed

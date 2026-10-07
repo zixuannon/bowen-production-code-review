@@ -81,7 +81,7 @@ final class CentralFinanceOptionalFeeAssignmentService
         }
 
         $promotions = $this->canonicalPromotionSelection($selected, $requestedPromotions);
-        $sourceIds = $this->withinTenant($actor, $profile, function (Students $student) use ($selected, $requestedQuantities): array {
+        $sourceIds = $this->withinTenant($actor, $profile, function (Students $student, \App\Models\User $tenantActor) use ($actor, $selected, $requestedQuantities): array {
             $configured = $this->assignments->configuredAdditionalItems($student)->keyBy('id');
             if ($selected->diff($configured->keys())->isNotEmpty()) {
                 throw ValidationException::withMessages(['optional_fee_ids' => __('Selected optional items are not valid for this Student.')]);
@@ -98,8 +98,8 @@ final class CentralFinanceOptionalFeeAssignmentService
 
             if ($new->isNotEmpty()) {
                 $quantities = collect($requestedQuantities)->only($new->map(fn (int $id) => (string) $id)->all())->all();
-                $draft = $this->assignments->saveAdditionalDraft($student, $student->user, $new->all(), $quantities);
-                $this->assignments->confirm($student, $student->user, $draft->uuid);
+                $draft = $this->assignments->saveAdditionalDraft($student, $tenantActor, $new->all(), $quantities, [], [], $actor);
+                $this->assignments->confirm($student, $tenantActor, $draft->uuid);
             }
 
             return $selected->map(fn (int $id) => (string) $id)->all();
@@ -169,7 +169,13 @@ final class CentralFinanceOptionalFeeAssignmentService
         $this->cutovers->assertCentralWritesAllowed($school->id);
 
         return $this->executeAsTrustedTenant($actor, $school, function ($tenant) use ($profile, $operation) {
-            $this->dataIsolation->assertTenantProduction('student', (int) $profile->school_id, (int) $profile->tenant_student_id);
+            if ($this->dataIsolation->isQaTestSchool((int) $profile->school_id)) {
+                if ($this->dataIsolation->classification('student', (int) $profile->tenant_student_id, 'tenant:'.$profile->school_id) !== 'qa_test') {
+                    throw new AuthorizationException('QA Fee Setup requires an explicitly classified QA Student.');
+                }
+            } else {
+                $this->dataIsolation->assertTenantProduction('student', (int) $profile->school_id, (int) $profile->tenant_student_id);
+            }
             $student = Students::on('school')->where([
                 'id' => $profile->tenant_student_id,
                 'school_id' => $profile->school_id,
@@ -177,7 +183,7 @@ final class CentralFinanceOptionalFeeAssignmentService
             if ($student->user === null) {
                 throw new AuthorizationException('The Student tenant identity is unavailable.');
             }
-            return $operation($student);
+            return $operation($student, $tenant);
         });
     }
 

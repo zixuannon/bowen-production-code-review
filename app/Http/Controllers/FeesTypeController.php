@@ -6,6 +6,8 @@ use App\Repositories\FeesType\FeesTypeInterface;
 use App\Models\FeesType;
 use App\Services\BootstrapTableService;
 use App\Services\ResponseService;
+use App\Services\CentralFinanceDataIsolationService;
+use App\Services\QaFeeClassificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -26,19 +28,34 @@ class FeesTypeController extends Controller
         return view('Income.fees_types');
     }
 
+    private function workflowQuery(bool $withTrashed = false)
+    {
+        $schoolId = (int) auth()->user()->school_id;
+        $query = FeesType::query()->where('school_id', $schoolId);
+        if ($withTrashed) $query->withTrashed();
+        return app(CentralFinanceDataIsolationService::class)->applyTenantForSchoolWorkflow($query, 'fee_type', $schoolId, 'fees_types.id');
+    }
+
+    private function feeResponse(string $message, bool $error = false)
+    {
+        return response()->json(['error' => $error, 'message' => __($message), 'data' => null,
+            'code' => config($error ? 'constants.RESPONSE_CODE.EXCEPTION_ERROR' : 'constants.RESPONSE_CODE.SUCCESS')]);
+    }
+
     public function store(Request $request)
     {
         ResponseService::noFeatureThenSendJson('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-type-create');
         try {
             DB::beginTransaction();
-            $feesType = $this->feesType->create($request->except('_token'));
+            $feesType = FeesType::create(array_merge($request->only('name', 'description'), ['school_id' => (int) auth()->user()->school_id]));
+            app(QaFeeClassificationService::class)->inheritCreated('fee_type', $feesType, auth()->user());
             DB::commit();
-            ResponseService::successResponse('Data Stored Successfully');
+            return $this->feeResponse('Data Stored Successfully');
         } catch (Throwable $e) {
             DB::rollback();
-            ResponseService::logErrorResponse($e, "FeesTypeController -> store method");
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, "FeesTypeController -> store method", 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -53,7 +70,7 @@ class FeesTypeController extends Controller
         $search = request('search');
         $showDeleted = request('show_deleted');
 
-        $sql = $this->feesType->builder()
+        $sql = $this->workflowQuery()
             ->when($search, function ($query) use ($search) {
                 $query->where(function ($query) use ($search) {
                     $query->where('id', 'LIKE', "%$search%")
@@ -66,9 +83,6 @@ class FeesTypeController extends Controller
             ->when(!empty($showDeleted), function ($query) {
                 $query->onlyTrashed();
             });
-        app(\App\Services\CentralFinanceDataIsolationService::class)
-            ->applyTenant($sql, 'fee_type', (int) auth()->user()->school_id, false, 'fees_types.id');
-
         $total = $sql->count();
         if ($offset >= $total && $total > 0) {
             $lastPage = floor(($total - 1) / $limit) * $limit; // calculate last page offset
@@ -102,14 +116,16 @@ class FeesTypeController extends Controller
         ResponseService::noFeatureThenSendJson('Fees Management');
         ResponseService::noPermissionThenSendJson('fees-type-edit');
         try {
-            $this->feesType->update($id, [
-                'name' => $request->edit_name,
-                'description' => $request->edit_description,
-            ]);
-            ResponseService::successResponse("Data Updated Successfully");
+            DB::transaction(function () use ($request, $id): void {
+                $this->workflowQuery()->lockForUpdate()->findOrFail($id)->update([
+                    'name' => $request->edit_name,
+                    'description' => $request->edit_description,
+                ]);
+            });
+            return $this->feeResponse('Data Updated Successfully');
         } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e, "FeesTypeController -> Update method");
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, "FeesTypeController -> Update method", 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -125,15 +141,15 @@ class FeesTypeController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $feesType = FeesType::query()->where('school_id', auth()->user()->school_id)->findOrFail($id);
+            $feesType = $this->workflowQuery()->lockForUpdate()->findOrFail($id);
             $feesType->delete();
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(auth()->user(), $feesType, \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE, $data['reason']);
             DB::commit();
-            ResponseService::successResponse('Fee type configuration deactivated.');
+            return $this->feeResponse('Fee type configuration deactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e, "FeesTypeController -> destroy method");
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, "FeesTypeController -> destroy method", 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -144,15 +160,15 @@ class FeesTypeController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $feesType = FeesType::withTrashed()->where('school_id', auth()->user()->school_id)->findOrFail($id);
+            $feesType = $this->workflowQuery(true)->lockForUpdate()->findOrFail($id);
             $feesType->restore();
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(auth()->user(), $feesType, \App\Models\SchoolRecordLifecycleAudit::REACTIVATE, $data['reason']);
             DB::commit();
-            ResponseService::successResponse('Fee type configuration reactivated.');
+            return $this->feeResponse('Fee type configuration reactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e, "FeesTypeController -> reactivate method");
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, "FeesTypeController -> reactivate method", 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 

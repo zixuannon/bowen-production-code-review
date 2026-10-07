@@ -6,6 +6,9 @@ use App\Models\BankAccount;
 use App\Models\Fee;
 use App\Models\FeesAdvance;
 use App\Models\FeesClassType;
+use App\Models\FeesType;
+use App\Services\CentralFinanceDataIsolationService;
+use App\Services\QaFeeClassificationService;
 use App\Models\FinanceCategory;
 use App\Repositories\ClassSchool\ClassSchoolInterface;
 use App\Repositories\ClassSection\ClassSectionInterface;
@@ -118,13 +121,59 @@ class FeesController extends Controller
         $this->sessionYearsTrackingsService = $sessionYearsTrackingsService;
     }
 
+    private function workflowQuery($query, string $subjectType)
+    {
+        if ($query instanceof \Illuminate\Database\Eloquent\Relations\Relation) {
+            $query = $query->getQuery();
+        }
+        $schoolId = (int) Auth::user()->school_id;
+        $query->where($query->getModel()->qualifyColumn('school_id'), $schoolId);
+        return app(CentralFinanceDataIsolationService::class)->applyTenantForSchoolWorkflow(
+            $query, $subjectType, $schoolId, $query->getModel()->qualifyColumn('id')
+        );
+    }
+
+    private function feeResponse(string $message, bool $error = false, $data = null)
+    {
+        return response()->json(['error' => $error, 'message' => __($message), 'data' => $data,
+            'code' => config($error ? 'constants.RESPONSE_CODE.EXCEPTION_ERROR' : 'constants.RESPONSE_CODE.SUCCESS')]);
+    }
+
+    private function assertFeeTypes(Request $request): void
+    {
+        $ids = collect(array_merge((array) $request->compulsory_fees_type, (array) $request->optional_fees_type))
+            ->pluck('fees_type_id')->map(fn ($id) => (int) $id)->unique()->values();
+        if ($this->workflowQuery(FeesType::query(), 'fee_type')->whereIn('id', $ids)->lockForUpdate()->count() !== $ids->count()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['compulsory_fees_type' => 'Select active Fee Types belonging to this School workflow.']);
+        }
+    }
+
+    private function saveFeeItems(Fee $fee, array $rows): void
+    {
+        foreach ($rows as $row) {
+            $row['school_id'] = (int) Auth::user()->school_id;
+            $existing = FeesClassType::withTrashed()->where('school_id', $row['school_id'])
+                ->where('fees_id', $fee->id)->where('class_id', $row['class_id'])
+                ->where('fees_type_id', $row['fees_type_id'])->lockForUpdate()->first();
+            if ($existing) {
+                $item = $this->workflowQuery(FeesClassType::query(), 'fee_item')->lockForUpdate()->findOrFail($existing->id);
+                // Keep identity and lifecycle fields immutable during an amount/configuration edit.
+                $item->update(\Illuminate\Support\Arr::only($row, ['amount', 'optional', 'quantity_enabled', 'finance_category_id',
+                    'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']));
+            } else {
+                $item = FeesClassType::create($row);
+                app(QaFeeClassificationService::class)->inheritCreated('fee_item', $item, Auth::user());
+            }
+        }
+    }
+
     /* START : Fees Module */
     public function index()
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-list');
         $classes = $this->class->all(['*'], ['stream', 'medium', 'stream']);
-        $feesTypeData = $this->feesType->all();
+        $feesTypeData = $this->workflowQuery(FeesType::query(), 'fee_type')->get();
         $sessionYear = $this->sessionYear->builder()->pluck('name', 'id');
         $defaultSessionYear = $this->cache->getDefaultSessionYear();
         $mediums = $this->medium->builder()->pluck('name', 'id');
@@ -170,13 +219,14 @@ class FeesController extends Controller
                 $totalCompulsoryFees = collect($request->compulsory_fees_type)->sum('amount');
 
                 if ((float) $totalInstallments !== (float) $totalCompulsoryFees) {
-                    return ResponseService::errorResponse('Total amount of Fees Installments is not equal to the total amount of Compulsory Fees');
+                    return $this->feeResponse('Total amount of Fees Installments is not equal to the total amount of Compulsory Fees', true);
                 }
             }
 
             DB::beginTransaction();
+            $this->assertFeeTypes($request);
             $sessionYear = $this->cache->getDefaultSessionYear();
-            $classes = $this->class->builder()->whereIn("id", $request->class_id)->with('stream', 'medium')->get();
+            $classes = $this->class->builder()->where('school_id', Auth::user()->school_id)->whereIn("id", $request->class_id)->with('stream', 'medium')->get();
 
             $notifyUser = $this->student->builder()->whereHas('class_section', function ($q) use ($request) {
                 $q->whereIn('class_id', $request->class_id);
@@ -193,10 +243,11 @@ class FeesController extends Controller
                 });
                 if (!$class) {
                     DB::rollback();
-                    return ResponseService::errorResponse('Selected class not found.');
+                    return $this->feeResponse('Selected class not found.', true);
                 }
                 $name = (!empty($request->name)) ? $request->name . " - " : "";
-                $fees = $this->fees->create([
+                $fees = Fee::create([
+                    'school_id' => (int) Auth::user()->school_id,
                     'name' => $name . $class->full_name,
                     'due_date' => $request->input('due_date') ?: null,
                     'due_charges' => $request->due_charges_percentage ?? 0,
@@ -204,6 +255,7 @@ class FeesController extends Controller
                     'class_id' => $class_id,
                     'session_year_id' => $sessionYear->id,
                 ]);
+                app(QaFeeClassificationService::class)->inheritCreated('fee', $fees, Auth::user());
 
                 $semester = $this->cache->getDefaultSemesterData();
                 if ($semester) {
@@ -286,7 +338,7 @@ class FeesController extends Controller
                 }
 
                 if (count($feeClassType) > 0) {
-                    $this->feesClassType->upsert($feeClassType, ['class_id', 'fees_type_id'], ['amount', 'optional', 'quantity_enabled', 'finance_category_id', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']);
+                    $this->saveFeeItems($fees, $feeClassType);
                 }
 
                 if ($request->include_fee_installments && count($request->fees_installments)) {
@@ -318,21 +370,11 @@ class FeesController extends Controller
             // Best-effort Central projection only. Tenant fee configuration is
             // already committed and remains authoritative if Central is down.
             app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, array_map('intval', (array) $request->class_id));
-            ResponseService::successResponse('Data Stored Successfully');
+            return $this->feeResponse('Data Stored Successfully');
         } catch (Throwable $e) {
-            if (
-                Str::contains($e->getMessage(), [
-                    'does not exist',
-                    'file_get_contents'
-                ])
-            ) {
-                DB::commit();
-                ResponseService::warningResponse("Data Stored successfully. But App push notification not send.");
-            } else {
-                DB::rollback();
-                ResponseService::logErrorResponse($e, "FeesController -> Store Method");
-                ResponseService::errorResponse();
-            }
+            DB::rollback();
+            ResponseService::logErrorResponse($e, "FeesController -> Store Method", 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -349,7 +391,8 @@ class FeesController extends Controller
         $session_year_id = request('session_year_id');
         $medium_id = request('medium_id');
 
-        $sql = $this->fees->builder()->with('installments', 'class:id,name,stream_id,medium_id', 'class.medium:id,name', 'class.stream:id,name', 'fees_class_type.fees_type:id,name')
+        $sql = $this->workflowQuery($this->fees->builder(), 'fee')->with('installments', 'class:id,name,stream_id,medium_id', 'class.medium:id,name', 'class.stream:id,name', 'fees_class_type.fees_type:id,name')
+            ->with(['fees_class_type' => fn ($query) => $this->workflowQuery($query, 'fee_item')])
             ->where(function ($q) use ($search) {
                 $q->when($search, function ($query) use ($search) {
                     $query->where('id', 'LIKE', "%$search%")
@@ -367,9 +410,6 @@ class FeesController extends Controller
                     $q->where('medium_id', $medium_id);
                 });
             });
-        app(\App\Services\CentralFinanceDataIsolationService::class)
-            ->applyTenant($sql, 'fee', (int) Auth::user()->school_id, false, 'fees.id');
-
         $total = $sql->count();
         if ($offset >= $total && $total > 0) {
             $lastPage = floor(($total - 1) / $limit) * $limit; // calculate last page offset
@@ -418,9 +458,9 @@ class FeesController extends Controller
         ResponseService::noFeatureThenRedirect('Fees Management');
         ResponseService::noPermissionThenRedirect('fees-edit');
         $classes = $this->class->all(['*'], ['stream', 'medium', 'stream']);
-        $feesTypeData = $this->feesType->all();
+        $feesTypeData = $this->workflowQuery(FeesType::query(), 'fee_type')->get();
 
-        $fees = $this->fees->builder()->with(['fees_class_type', 'installments', 'class.medium'])->withCount('fees_paid')->findOrFail($id);
+        $fees = $this->workflowQuery($this->fees->builder(), 'fee')->with(['fees_class_type' => fn ($query) => $this->workflowQuery($query, 'fee_item'), 'installments', 'class.medium'])->withCount('fees_paid')->findOrFail($id);
         
         // 修复部署后出现的 Undefined variable $student 错误
         // 由于 Income/edit.blade.php 中引用了 $student 变量来显示详情，
@@ -538,7 +578,9 @@ class FeesController extends Controller
                 'due_charges' => $normalizeAmount($request->due_charges_percentage),
                 'due_charges_amount' => $normalizeAmount($request->due_charges_amount)
             );
-            $fees = $this->fees->update($id, $feesData);
+            $this->assertFeeTypes($request);
+            $fees = $this->workflowQuery(Fee::query(), 'fee')->lockForUpdate()->findOrFail($id);
+            $fees->update($feesData);
 
             Log::info('Fees update repository result', [
                 'id' => $id,
@@ -640,11 +682,7 @@ class FeesController extends Controller
             ]);
 
             if (count($feeClassTypeRows) > 0) {
-                DB::table('fees_class_types')->upsert(
-                    $feeClassTypeRows,
-                    ['class_id', 'fees_id', 'fees_type_id', 'school_id'],
-                    ['amount', 'optional', 'quantity_enabled', 'finance_category_id', 'updated_at', 'fee_currency', 'fee_original_amount', 'fee_exchange_rate_snapshot', 'fee_amount_mmk']
-                );
+                $this->saveFeeItems($fees, $feeClassTypeRows);
             }
 
             if (!empty($request->fees_installments)) {
@@ -667,6 +705,9 @@ class FeesController extends Controller
                     );
 
                     if (!empty($data->id)) {
+                        if (!DB::table('fees_installments')->where('id', $data->id)->where('fees_id', $fees->id)->where('school_id', $schoolId)->lockForUpdate()->exists()) {
+                            throw new \RuntimeException('Selected installment does not belong to this Fee.');
+                        }
                         $payload['id'] = $data->id;
                         $installmentUpsertRows[] = $payload;
                     } else {
@@ -717,7 +758,7 @@ class FeesController extends Controller
 
             DB::commit();
             app(\App\Services\CentralFinanceReceivablePublisher::class)->feeAssignmentsChanged((int) Auth::user()->school_id, [(int) $fees->class_id]);
-            ResponseService::successRedirectResponse(route('fees.index'), 'Data Update Successfully');
+            return redirect()->route('fees.index')->with('success', __('Data Update Successfully'));
         } catch (Throwable $e) {
             DB::rollback();
             Log::error('Fees update failed', [
@@ -728,7 +769,7 @@ class FeesController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'user_id' => Auth::id(),
             ]);
-            return ResponseService::errorRedirectResponse(route('fees.edit', $id), 'Fees update fail');
+            return redirect()->route('fees.edit', $id)->withErrors(['message' => __('Fees update fail')]);
         }
     }
 
@@ -744,7 +785,7 @@ class FeesController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $fee = Fee::query()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $fee = $this->workflowQuery(Fee::query(), 'fee')->lockForUpdate()->findOrFail($id);
             $classIds = FeesClassType::query()->where('fees_id', $fee->id)->pluck('class_id')->map(fn ($classId) => (int) $classId)->all();
             $fee->delete();
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $fee, \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE, $data['reason'], ['class_ids' => $classIds]);
@@ -753,11 +794,11 @@ class FeesController extends Controller
             DB::commit();
             // Deactivation changes availability for future setup only. It must
             // not re-project or mutate confirmed Central Finance history.
-            ResponseService::successResponse('Fee configuration deactivated.');
+            return $this->feeResponse('Fee configuration deactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e, 'FeesController -> deactivate');
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, 'FeesController -> deactivate', 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -768,15 +809,15 @@ class FeesController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $fee = Fee::withTrashed()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $fee = $this->workflowQuery(Fee::withTrashed(), 'fee')->lockForUpdate()->findOrFail($id);
             $fee->restore();
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $fee, \App\Models\SchoolRecordLifecycleAudit::REACTIVATE, $data['reason']);
             DB::commit();
-            ResponseService::successResponse('Fee configuration reactivated.');
+            return $this->feeResponse('Fee configuration reactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e, 'FeesController -> reactivate');
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, 'FeesController -> reactivate', 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -788,15 +829,14 @@ class FeesController extends Controller
     public function search(Request $request)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
+        abort_unless(Auth::user()->can('fees-list') || app(FinanceAuthorizationService::class)->can(Auth::user(), 'finance-payment-view'), 403);
         try {
-            $query = $this->fees->builder()->where('session_year_id', $request->session_year_id);
-            app(\App\Services\CentralFinanceDataIsolationService::class)
-                ->applyTenant($query, 'fee', (int) Auth::user()->school_id, false, 'fees.id');
+            $query = $this->workflowQuery($this->fees->builder(), 'fee')->where('session_year_id', $request->session_year_id);
             $data = $query->get();
-            ResponseService::successResponse("Data Restored Successfully", $data);
+            return $this->feeResponse('Data Restored Successfully', false, $data);
         } catch (Throwable $e) {
-            ResponseService::logErrorResponse($e);
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, 'FeesController -> search', 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -815,17 +855,22 @@ class FeesController extends Controller
     public function deleteInstallment($id)
     {
         ResponseService::noFeatureThenRedirect('Fees Management');
+        ResponseService::noPermissionThenSendJson('fees-delete');
         try {
             DB::beginTransaction();
+            $installment = DB::table('fees_installments')->where('id', $id)
+                ->where('school_id', Auth::user()->school_id)->lockForUpdate()->first();
+            if (!$installment) throw new \RuntimeException('Selected installment does not belong to this School.');
+            $this->workflowQuery(Fee::query(), 'fee')->lockForUpdate()->findOrFail($installment->fees_id);
             $this->feesInstallment->DeleteById($id);
             $sessionYear = $this->cache->getDefaultSessionYear();
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\FeesInstallment', $id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             DB::commit();
-            ResponseService::successResponse("Data Deleted Successfully");
+            return $this->feeResponse('Data Deleted Successfully');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e);
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, 'FeesController -> deleteInstallment', 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -841,17 +886,18 @@ class FeesController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $item = FeesClassType::query()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $item = $this->workflowQuery(FeesClassType::query(), 'fee_item')->lockForUpdate()->findOrFail($id);
+            $this->workflowQuery(Fee::query(), 'fee')->findOrFail($item->fees_id);
             $item->delete();
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $item, \App\Models\SchoolRecordLifecycleAudit::DEACTIVATE, $data['reason'], ['fee_id' => $item->fees_id]);
             $sessionYear = $this->cache->getDefaultSessionYear();
             $this->sessionYearsTrackingsService->storeSessionYearsTracking('App\Models\FeesClassType', $item->id, Auth::user()->id, $sessionYear->id, Auth::user()->school_id, null);
             DB::commit();
-            ResponseService::successResponse('Fee class type deactivated.');
+            return $this->feeResponse('Fee class type deactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e);
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, 'FeesController -> deactivateClassType', 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 
@@ -862,15 +908,16 @@ class FeesController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         try {
             DB::beginTransaction();
-            $item = FeesClassType::withTrashed()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+            $item = $this->workflowQuery(FeesClassType::withTrashed(), 'fee_item')->lockForUpdate()->findOrFail($id);
+            $this->workflowQuery(Fee::query(), 'fee')->findOrFail($item->fees_id);
             $item->restore();
             app(\App\Services\SchoolRecordLifecycleAuditService::class)->record(Auth::user(), $item, \App\Models\SchoolRecordLifecycleAudit::REACTIVATE, $data['reason'], ['fee_id' => $item->fees_id]);
             DB::commit();
-            ResponseService::successResponse('Fee class type reactivated.');
+            return $this->feeResponse('Fee class type reactivated.');
         } catch (Throwable $e) {
             DB::rollBack();
-            ResponseService::logErrorResponse($e);
-            ResponseService::errorResponse();
+            ResponseService::logErrorResponse($e, 'FeesController -> reactivateClassType', 'Error Occurred', false);
+            return $this->feeResponse('Error Occurred', true);
         }
     }
 

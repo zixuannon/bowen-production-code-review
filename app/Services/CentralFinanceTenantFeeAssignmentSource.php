@@ -47,6 +47,12 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 // item set replaces class-wide projection for this Student.
                 if ($assigned['has_confirmed_assignment']) return $assigned['rows'];
             }
+            // Reusable QA templates never create a Student's business facts.
+            // Only explicitly confirmed, classified snapshots may project.
+            if ($includeQaTest) {
+                $this->assertQaProfileRun($fresh);
+                return [];
+            }
             $hasCurrency = Schema::connection('school')->hasColumn('fees_class_types', 'fee_currency');
             // The cutoff is based on source creation, never an incidental
             // later update. A tenant without this timestamp fails closed.
@@ -78,6 +84,7 @@ final class CentralFinanceTenantFeeAssignmentSource {
     private function confirmedStudentAssignmentRows(CentralFinanceStudentProfile $profile): array
     {
         $assignments = DB::connection('school')->table('student_fee_assignments')
+            ->where('school_id', $profile->school_id)
             ->where('student_id', $profile->tenant_student_id)
             ->where('class_id', $profile->class_id)
             ->where('status', 'confirmed')
@@ -88,17 +95,25 @@ final class CentralFinanceTenantFeeAssignmentSource {
             ->whereIn('student_fee_assignment_id', $assignments->pluck('id'))
             ->where('status', 'active')
             ->where('source_type', 'fees_class_type');
-        // A QA/Test School is allowed to project its own explicitly
-        // classified fixture fee into a QA/Test receivable.  Official
-        // Schools continue to exclude QA/Test source metadata.
-        $this->dataIsolation->applyTenantMetadata(
-            $rowsQuery,
-            'fee_item',
-            (int) $profile->school_id,
-            $this->dataIsolation->isQaTestSchool((int) $profile->school_id),
-            'source_id',
-        );
         $rows = $rowsQuery->orderBy('id')->get();
+        // Never filter invalid snapshots into an apparently complete empty
+        // source: sync interprets absence as cancellation of receivables.
+        $qa = $this->dataIsolation->isQaTestSchool((int) $profile->school_id);
+        foreach ($assignments as $assignment) {
+            $this->assertSnapshotClassification($profile, 'student_fee_assignment', (int) $assignment->id);
+            if ($qa) $this->assertSnapshotRun($profile, 'student_fee_assignment', (int) $assignment->id);
+        }
+        foreach ($rows as $row) {
+            $this->assertSnapshotClassification($profile, 'student_fee_assignment_item', (int) $row->id);
+            if ($qa) {
+                $this->assertSnapshotRun($profile, 'student_fee_assignment_item', (int) $row->id);
+                foreach (['fee_item' => $row->source_id, 'fee' => $row->fee_id, 'fee_type' => $row->fees_type_id] as $type => $id) {
+                    $this->assertSnapshotClassification($profile, $type, (int) $id);
+                }
+            } else {
+                $this->assertSnapshotClassification($profile, 'fee_item', (int) $row->source_id);
+            }
+        }
         $confirmedAt = $assignments->keyBy('id');
         return ['has_confirmed_assignment' => true, 'rows' => $rows->map(function (object $row) use ($confirmedAt): array {
             $time = $confirmedAt->get($row->student_fee_assignment_id)->confirmed_at ?? $row->created_at;
@@ -118,6 +133,37 @@ final class CentralFinanceTenantFeeAssignmentSource {
                 'updated_at' => $at,
             ];
         })->all()];
+    }
+
+    private function assertSnapshotClassification(CentralFinanceStudentProfile $profile, string $type, int $id): void
+    {
+        if (!$this->dataIsolation->isTenantFeeMetadataWorkflowWritable($type, (int) $profile->school_id, $id)) {
+            throw new AuthorizationException('Fee projection classification is missing or inconsistent for '.$type.' #'.$id.'. Existing receivables are preserved; historical data requires separate reconciliation.');
+        }
+    }
+
+    private function assertSnapshotRun(CentralFinanceStudentProfile $profile, string $type, int $id): void
+    {
+        $runs = app(CentralFinanceQaRunService::class);
+        if (!$runs->isPermanentQaSchool((int) $profile->school_id)) return;
+        $studentRun = $this->assertQaProfileRun($profile);
+        $snapshotRun = $runs->runForRecord('tenant:'.$profile->school_id, $type, $id);
+        if (!$snapshotRun || (int) $snapshotRun->id !== (int) $studentRun->id) {
+            throw new AuthorizationException('Fee projection has missing or inconsistent QA Run membership. Existing receivables are preserved.');
+        }
+    }
+
+    private function assertQaProfileRun(CentralFinanceStudentProfile $profile): ?\App\Models\CentralFinanceQaRun
+    {
+        $runs = app(CentralFinanceQaRunService::class);
+        if (!$runs->isPermanentQaSchool((int) $profile->school_id)) return null;
+        $studentRun = $runs->runForRecord('tenant:'.$profile->school_id, 'student', (int) $profile->tenant_student_id);
+        $profileRun = $runs->runForRecord('central', 'student_profile', (int) $profile->id);
+        if (!$studentRun || !$profileRun || (int) $studentRun->school_id !== (int) $profile->school_id
+            || (int) $profileRun->id !== (int) $studentRun->id) {
+            throw new AuthorizationException('Fee projection has missing or inconsistent QA Student Run membership. Historical receivables are preserved.');
+        }
+        return $studentRun;
     }
 
     /** @param array{created_at:CarbonImmutable} $row */

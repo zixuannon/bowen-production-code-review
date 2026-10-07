@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Students;
 use App\Models\StudentFeeAssignment;
 use App\Models\CentralFinanceReceivable;
+use App\Models\CentralFinanceUser;
 use App\Services\ResponseService;
 use App\Services\CentralFinanceStudentReadBridge;
 use App\Services\CentralFinanceWorkspaceService;
@@ -104,7 +105,7 @@ final class StudentFeeAssignmentController extends Controller
         if (array_intersect(array_keys($promotions), array_keys($discounts)) !== []) {
             return back()->withErrors(['student_discounts' => __('Choose either an approved Promotion or a student-specific Discount for each Fee Item.')])->withInput();
         }
-        $assignment = $this->assignments->saveDraft($student, Auth::user(), $data['optional_fee_ids'] ?? [], $data['optional_fee_quantities'] ?? [], $promotions, $discounts);
+        $assignment = $this->assignments->saveDraft($student, Auth::user(), $data['optional_fee_ids'] ?? [], $data['optional_fee_quantities'] ?? [], $promotions, $discounts, $this->centralPrincipalForFeeSetup($student));
         $assignment = $this->promotionSelections->materializeDraftStudentDiscounts(Auth::user(), $student, $assignment);
         return redirect()->route('students.fee-assignment.show', $studentId)->with('success', 'Fee assignment draft saved.')->with('assignment_uuid', $assignment->uuid);
     }
@@ -165,7 +166,7 @@ final class StudentFeeAssignmentController extends Controller
         if (array_intersect(array_keys($promotions), array_keys($discounts)) !== []) {
             return back()->withErrors(['student_discounts' => __('Choose either an approved Promotion or a student-specific Discount for each Fee Item.')])->withInput();
         }
-        $assignment = $this->assignments->saveAdditionalDraft($student, Auth::user(), $data['optional_fee_ids'], $data['optional_fee_quantities'] ?? [], $promotions, $discounts);
+        $assignment = $this->assignments->saveAdditionalDraft($student, Auth::user(), $data['optional_fee_ids'], $data['optional_fee_quantities'] ?? [], $promotions, $discounts, $this->centralPrincipalForFeeSetup($student));
         $assignment = $this->promotionSelections->materializeDraftStudentDiscounts(Auth::user(), $student, $assignment);
         return redirect()->route('students.fee-assignment.show', $studentId)->with('success', 'Additional fee assignment draft saved.')->with('assignment_uuid', $assignment->uuid);
     }
@@ -173,6 +174,21 @@ final class StudentFeeAssignmentController extends Controller
     private function student(int $id): Students
     {
         return Students::query()->where('school_id', Auth::user()->school_id)->findOrFail($id);
+    }
+
+    private function centralPrincipalForFeeSetup(Students $student): ?CentralFinanceUser
+    {
+        $context = session(CentralFinanceSchoolStaffIdentityService::SESSION_KEY);
+        if ($context === null) return null;
+        $authenticated = Auth::user();
+        if (!is_array($context) || !$authenticated || $authenticated instanceof CentralFinanceUser
+            || (int) ($context['school_id'] ?? 0) !== (int) $student->school_id
+            || (int) $authenticated->getRawOriginal('school_id') !== (int) $student->school_id
+            || (string) $authenticated->getRawOriginal('central_finance_source_uuid') === ''
+            || !hash_equals((string) ($context['user_uuid'] ?? ''), (string) $authenticated->getRawOriginal('central_finance_source_uuid'))) {
+            throw new AuthorizationException('A matching trusted School Staff session is required.');
+        }
+        return $this->staffIdentities->resolveTrustedSession($context);
     }
 
     private function canCollectForStudent(Students $student): bool

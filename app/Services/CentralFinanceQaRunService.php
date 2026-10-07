@@ -28,7 +28,7 @@ final class CentralFinanceQaRunService
     public const RECORDS_TABLE = 'central_finance_qa_run_records';
 
     /** Types whose identities are tenant-local and must include tenant:<school_id>. */
-    private const TENANT_TYPES = ['student', 'student_fee_assignment', 'student_import_reference'];
+    private const TENANT_TYPES = ['student', 'student_fee_assignment', 'student_fee_assignment_item', 'student_import_reference'];
 
     public function __construct(private readonly CentralFinanceQaSchoolIdentity $qaSchool) {}
 
@@ -472,6 +472,119 @@ final class CentralFinanceQaRunService
             }
             return $callback($run);
         });
+    }
+
+    /**
+     * Fee snapshots, their classification and membership use one tenant PDO.
+     * Locking the Run on a separate Central transaction would deadlock its FK
+     * during membership insertion and could leave committed orphan snapshots.
+     */
+    public function withActiveTenantFeeAssignmentRun(int $schoolId, int $studentId, callable $callback): mixed
+    {
+        if (!app(CentralFinanceDataIsolationService::class)->isQaTestSchool($schoolId)) {
+            return DB::connection('school')->transaction(fn () => $callback(null));
+        }
+        $central = $this->feeAssignmentCentralDatabase();
+        return DB::connection('school')->transaction(function () use ($schoolId, $studentId, $callback, $central): mixed {
+            $db = DB::connection('school');
+            $school = $db->table($central.'.schools')->where('id', $schoolId)->where('installed', 1)
+                ->where('status', 1)->whereNull('deleted_at')->lockForUpdate()->first();
+            if (!$school || $school->database_name !== $db->getDatabaseName()
+                || DB::getDefaultConnection() !== 'school'
+                || config('database.connections.school.database') !== $db->getDatabaseName()) {
+                throw new AuthorizationException('QA Fee assignment requires the trusted tenant connection.');
+            }
+            foreach ([['central', 'school', $schoolId], ['tenant:'.$schoolId, 'student', $studentId]] as [$scope, $type, $id]) {
+                if ($db->table($central.'.'.CentralFinanceDataIsolationService::TABLE)->where([
+                    'subject_scope' => $scope, 'subject_type' => $type, 'subject_id' => $id, 'school_id' => $schoolId,
+                ])->lockForUpdate()->value('classification') !== CentralFinanceDataClassification::QA_TEST) {
+                    throw new AuthorizationException('QA Fee Setup requires explicit active QA School and Student classification.');
+                }
+            }
+            if (!$this->isPermanentQaSchool($schoolId)) return $callback(null);
+            $this->assertRunSchema();
+            $run = $this->tenantFeeStudentRun($central, $schoolId, $studentId);
+            return $callback($run);
+        });
+    }
+
+    /** Creation only: existing history must never be adopted into a fresh Run. */
+    public function inheritCreatedTenantFeeRecord(int $schoolId, int $studentId, string $type, \Illuminate\Database\Eloquent\Model $record): void
+    {
+        if (!$this->isPermanentQaSchool($schoolId)) return;
+        $tables = ['student_fee_assignment' => 'student_fee_assignments', 'student_fee_assignment_item' => 'student_fee_assignment_items'];
+        $db = DB::connection('school');
+        if (!isset($tables[$type]) || $record->getTable() !== $tables[$type] || !$record->wasRecentlyCreated
+            || !$record->exists || $record->getConnection()->getPdo() !== $db->getPdo() || $db->transactionLevel() < 1) {
+            throw new AuthorizationException('QA Run membership requires a newly created atomic Fee snapshot.');
+        }
+        $central = $this->feeAssignmentCentralDatabase();
+        $run = $this->tenantFeeStudentRun($central, $schoolId, $studentId);
+        $assignmentId = $type === 'student_fee_assignment' ? $record->id : $record->student_fee_assignment_id;
+        if (!$db->table('student_fee_assignments')->where(['id' => $assignmentId, 'school_id' => $schoolId, 'student_id' => $studentId])->whereNull('deleted_at')->exists()
+            || !$db->table($central.'.'.CentralFinanceDataIsolationService::TABLE)->where([
+                'subject_scope' => 'tenant:'.$schoolId, 'subject_type' => $type, 'subject_id' => $record->id,
+                'school_id' => $schoolId, 'classification' => CentralFinanceDataClassification::QA_TEST,
+            ])->exists()) {
+            throw new AuthorizationException('QA Fee snapshot ownership or classification is missing.');
+        }
+        if ($type === 'student_fee_assignment_item') {
+            $this->assertTenantFeeRecordInStudentRun($schoolId, $studentId, 'student_fee_assignment', (int) $assignmentId);
+        }
+        $identity = ['subject_scope' => 'tenant:'.$schoolId, 'subject_type' => $type, 'subject_id' => $record->id];
+        $existing = $db->table($central.'.'.self::RECORDS_TABLE)->where($identity)->lockForUpdate()->first();
+        if ($existing) {
+            if ((int) $existing->qa_run_id !== (int) $run->id || (int) $existing->school_id !== $schoolId) {
+                throw new AuthorizationException('QA Run membership cannot be moved between Runs.');
+            }
+            return;
+        }
+        $db->table($central.'.'.self::RECORDS_TABLE)->insert($identity + [
+            'qa_run_id' => $run->id, 'school_id' => $schoolId, 'created_at' => now(),
+        ]);
+    }
+
+    public function assertTenantFeeRecordInStudentRun(int $schoolId, int $studentId, string $type, int $id): void
+    {
+        if (!$this->isPermanentQaSchool($schoolId)) return;
+        $central = $this->feeAssignmentCentralDatabase();
+        $run = $this->tenantFeeStudentRun($central, $schoolId, $studentId);
+        if (!DB::connection('school')->table($central.'.'.self::RECORDS_TABLE)->where([
+            'subject_scope' => 'tenant:'.$schoolId, 'subject_type' => $type, 'subject_id' => $id,
+            'school_id' => $schoolId, 'qa_run_id' => $run->id,
+        ])->exists()) {
+            throw new AuthorizationException('QA Fee assignment has missing or different Run membership; historical records remain read-only.');
+        }
+    }
+
+    private function tenantFeeStudentRun(string $central, int $schoolId, int $studentId): object
+    {
+        $db = DB::connection('school');
+        if ($db->transactionLevel() < 1) throw new RuntimeException('QA Fee Run locking requires an active tenant transaction.');
+        $membership = $db->table($central.'.'.self::RECORDS_TABLE)->where([
+            'subject_scope' => 'tenant:'.$schoolId, 'subject_type' => 'student', 'subject_id' => $studentId, 'school_id' => $schoolId,
+        ])->lockForUpdate()->first();
+        $run = $membership ? $db->table($central.'.'.self::TABLE)->where('id', $membership->qa_run_id)->lockForUpdate()->first() : null;
+        if (!$run || (int) $run->school_id !== $schoolId || $run->status !== CentralFinanceQaRun::ACTIVE) {
+            throw new AuthorizationException('Student Fee Setup requires the Student own Active QA Run; historical Students remain read-only.');
+        }
+        return $run;
+    }
+
+    private function feeAssignmentCentralDatabase(): string
+    {
+        $db = DB::connection('school');
+        $central = DB::connection('mysql');
+        $name = (string) $central->getDatabaseName();
+        if ($db->getDriverName() !== 'mysql' || !preg_match('/^[A-Za-z0-9_]+$/D', $name)) {
+            throw new RuntimeException('Atomic QA Fee Run membership requires co-located MySQL databases.');
+        }
+        foreach (['driver', 'host', 'port', 'unix_socket'] as $key) {
+            if ((string) $db->getConfig($key) !== (string) $central->getConfig($key)) {
+                throw new RuntimeException('Atomic QA Fee Run membership requires co-located MySQL databases.');
+            }
+        }
+        return $name;
     }
 
     /** Propagate an imported tenant Student identity to its central profile. */

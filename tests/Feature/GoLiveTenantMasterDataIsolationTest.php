@@ -177,6 +177,37 @@ final class GoLiveTenantMasterDataIsolationTest extends TestCase
         $this->assertSame(2, DB::connection('school')->table('users')->count(), 'Tenant staff history must remain intact.');
     }
 
+    public function test_fee_workflow_requires_matching_classification_and_rejects_unknown_metadata(): void
+    {
+        $this->isolation->classify($this->actor, 17, 'school', 17, 'qa_test', 'QA School.');
+        $this->useTenant($this->bahanDatabase);
+        foreach (['fee' => 'fees', 'fee_type' => 'fees_types', 'fee_item' => 'fees_class_types'] as $type => $table) {
+            $this->assertFalse($this->isolation->isTenantFeeMetadataWorkflowWritable($type, 17, 1));
+            $this->isolation->classify($this->actor, 17, $type, 2, 'qa_test', 'Reusable QA template.');
+            $this->assertTrue($this->isolation->isTenantFeeMetadataWorkflowWritable($type, 17, 2));
+            $query = DB::connection('school')->table($table);
+            $this->isolation->applyTenantForSchoolWorkflow($query, $type, 17);
+            $this->assertSame([2], $query->pluck('id')->map(fn ($id) => (int) $id)->all());
+            $this->assertTrue($this->isolation->isTenantFeeMetadataWorkflowWritable($type, 19, 2), 'Numeric IDs do not share tenant metadata.');
+            DB::connection('mysql')->table(CentralFinanceDataIsolationService::TABLE)
+                ->where(['subject_scope' => 'tenant:17', 'subject_type' => $type, 'subject_id' => 2])
+                ->update(['classification' => 'unknown']);
+            $this->assertFalse($this->isolation->isTenantFeeMetadataWorkflowWritable($type, 17, 2));
+            $query = DB::connection('school')->table($table);
+            $this->isolation->applyTenantForSchoolWorkflow($query, $type, 17);
+            $this->assertSame(0, $query->count());
+        }
+        $this->isolation->classify($this->actor, 19, 'fee', 2, 'qa_test', 'Excluded QA data.');
+        DB::connection('mysql')->table(CentralFinanceDataIsolationService::TABLE)
+            ->where(['subject_scope' => 'tenant:19', 'subject_type' => 'fee', 'subject_id' => 2])
+            ->update(['classification' => 'unknown']);
+        $this->useTenant($this->timecityDatabase);
+        $query = DB::connection('school')->table('fees');
+        $this->isolation->applyTenantForSchoolWorkflow($query, 'fee', 19);
+        $this->assertSame([1], $query->pluck('id')->map(fn ($id) => (int) $id)->all());
+        $this->assertFalse($this->isolation->isTenantFeeMetadataWorkflowWritable('fee', 19, 2));
+    }
+
     private function createTenant(string $database): void
     {
         $this->useTenant($database);

@@ -63,6 +63,7 @@ final class CentralFinanceDataIsolationService
     private const TENANT_SUBJECTS = [
         'student' => ['table' => 'students'],
         'student_fee_assignment' => ['table' => 'student_fee_assignments'],
+        'student_fee_assignment_item' => ['table' => 'student_fee_assignment_items'],
         'staff' => ['table' => 'users', 'staff_relation' => true],
         'fee' => ['table' => 'fees'],
         'fee_type' => ['table' => 'fees_types'],
@@ -193,7 +194,17 @@ final class CentralFinanceDataIsolationService
     public function applyTenantMetadataForSchoolWorkflow(Builder|QueryBuilder $query, string $subjectType, int $schoolId, string $subjectColumn = 'id'): Builder|QueryBuilder
     {
         if (!$this->isQaTestSchool($schoolId)) {
-            return $this->applyTenantMetadata($query, $subjectType, $schoolId, false, $subjectColumn);
+            $this->applyTenantMetadata($query, $subjectType, $schoolId, false, $subjectColumn);
+            if ($this->isFeeLifecycleSubject($subjectType) && $this->schemaAvailable()) {
+                // Do not treat an unknown explicit classification as Official.
+                $excluded = CentralFinanceDataClassification::on('mysql')
+                    ->where('subject_scope', $this->tenantScope($schoolId))
+                    ->where('subject_type', $subjectType)
+                    ->where('classification', '<>', CentralFinanceDataClassification::PRODUCTION)
+                    ->pluck('subject_id')->all();
+                $query->whereNotIn($subjectColumn, $excluded);
+            }
+            return $query;
         }
         if (!isset(self::TENANT_SUBJECTS[$subjectType])) {
             throw new RuntimeException("Unsupported tenant classification subject: {$subjectType}");
@@ -374,6 +385,31 @@ final class CentralFinanceDataIsolationService
 
         return $this->classification($subjectType, $subjectId, $this->tenantScope($schoolId)) !== CentralFinanceDataClassification::ARCHIVED
             && $this->classification('school', $schoolId) !== CentralFinanceDataClassification::ARCHIVED;
+    }
+
+    /**
+     * Fee lifecycle uses a stricter contract than legacy metadata consumers:
+     * QA Schools require an explicit QA record; unknown/archived/mismatched
+     * classifications must never become selectable Fee Setup sources.
+     * Existing unclassified Official records retain the canonical Production
+     * default. This helper does not reclassify any historical record.
+     */
+    public function isTenantFeeMetadataWorkflowWritable(string $subjectType, int $schoolId, int $subjectId): bool
+    {
+        if (!$this->isFeeLifecycleSubject($subjectType)) {
+            throw new RuntimeException('Unsupported Fee lifecycle classification subject.');
+        }
+        $schoolClass = $this->classification('school', $schoolId);
+        if (!in_array($schoolClass, [CentralFinanceDataClassification::PRODUCTION, CentralFinanceDataClassification::QA_TEST], true)) {
+            return false;
+        }
+
+        return $this->classification($subjectType, $subjectId, $this->tenantScope($schoolId)) === $schoolClass;
+    }
+
+    private function isFeeLifecycleSubject(string $subjectType): bool
+    {
+        return in_array($subjectType, ['fee', 'fee_type', 'fee_item', 'student_fee_assignment', 'student_fee_assignment_item'], true);
     }
 
     public function isTenantProduction(string $subjectType, int $schoolId, int $subjectId): bool

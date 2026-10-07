@@ -45,14 +45,15 @@ final class StudentFeeAssignmentService
             ->where('class_id', $classId)
             ->where('school_id', $student->school_id)
             ->whereNotIn('id', $assigned);
-        $includeQaTest = $this->dataIsolation->isQaTestSchool((int) $student->school_id);
-        $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $student->school_id, $includeQaTest, 'fees_class_types.id');
+        $this->dataIsolation->applyTenantMetadataForSchoolWorkflow($query, 'fee_item', (int) $student->school_id, 'fees_class_types.id');
         if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
         return $query->get()
             ->filter(fn (FeesClassType $item) => $item->fee !== null && $item->fee->getRawOriginal('deleted_at') === null
+                && (int) $item->fee->school_id === (int) $student->school_id
                 && (int) $item->fee->session_year_id === (int) $student->session_year_id
-                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
-                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
+                && $item->fees_type !== null && (int) $item->fees_type->school_id === (int) $student->school_id
+                && $this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
+                && $this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
             ->values();
     }
 
@@ -88,26 +89,27 @@ final class StudentFeeAssignmentService
             ->where('class_id', $this->studentClassId($student))
             ->where('school_id', $student->school_id)
             ->where('optional', true);
-        $includeQaTest = $this->dataIsolation->isQaTestSchool((int) $student->school_id);
-        $this->dataIsolation->applyTenantMetadata($query, 'fee_item', (int) $student->school_id, $includeQaTest, 'fees_class_types.id');
+        $this->dataIsolation->applyTenantMetadataForSchoolWorkflow($query, 'fee_item', (int) $student->school_id, 'fees_class_types.id');
         if (\Illuminate\Support\Facades\Schema::hasColumn('fees_class_types', 'deleted_at')) $query->whereNull('deleted_at');
 
         return $query->get()
             ->filter(fn (FeesClassType $item) => $item->fee !== null && $item->fee->getRawOriginal('deleted_at') === null
+                && (int) $item->fee->school_id === (int) $student->school_id
                 && (int) $item->fee->session_year_id === (int) $student->session_year_id
-                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
-                && $this->dataIsolation->isTenantMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
+                && $item->fees_type !== null && (int) $item->fees_type->school_id === (int) $student->school_id
+                && $this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $item->fees_id)
+                && $this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $item->fees_type_id))
             ->values();
     }
 
     /** @param list<mixed> $requestedOptionalIds */
-    public function saveDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
+    public function saveDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = [], ?\App\Models\CentralFinanceUser $centralActor = null): StudentFeeAssignment
     {
-        return app(CentralFinanceQaRunService::class)->withActiveTenantStudentRun((int) $student->school_id, (int) $student->id,
-            fn () => $this->saveDraftUnderRun($student, $actor, $requestedOptionalIds, $optionalQuantities, $selectedPromotions, $studentDiscounts));
+        return app(CentralFinanceQaRunService::class)->withActiveTenantFeeAssignmentRun((int) $student->school_id, (int) $student->id,
+            fn () => $this->saveDraftUnderRun($student, $actor, $requestedOptionalIds, $optionalQuantities, $selectedPromotions, $studentDiscounts, $centralActor));
     }
 
-    private function saveDraftUnderRun(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
+    private function saveDraftUnderRun(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = [], ?\App\Models\CentralFinanceUser $centralActor = null): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         $available = $this->availableItems($student);
@@ -119,28 +121,39 @@ final class StudentFeeAssignmentService
 
         $selected = $available->filter(fn (FeesClassType $item) => !(bool) $item->optional || $optionalIds->contains((int) $item->id));
         $quantities = $this->validatedFeeQuantities($selected, $optionalQuantities);
-        return DB::transaction(function () use ($student, $selected, $quantities, $selectedPromotions, $studentDiscounts): StudentFeeAssignment {
-            $assignment = $this->latestDraft($student) ?? StudentFeeAssignment::create([
+        return DB::transaction(function () use ($student, $actor, $selected, $quantities, $selectedPromotions, $studentDiscounts, $centralActor): StudentFeeAssignment {
+            $previousDraft = $this->latestDraft($student);
+            if ($previousDraft && $this->dataIsolation->isQaTestSchool((int) $student->school_id)) {
+                $this->assertAssignmentWorkflow($student, $previousDraft);
+                // QA identities are permanent Run history. Supersede a draft
+                // without deleting its classified items or their audit trail.
+                $previousDraft->update(['status' => StudentFeeAssignment::CANCELLED]);
+                $previousDraft = null;
+            }
+            $assignment = $previousDraft ?? StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
                 'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student), 'assignment_type' => StudentFeeAssignment::INITIAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
+            $this->classifyCreatedAssignmentRecord($student, $actor, 'student_fee_assignment', $assignment, $centralActor);
+            $this->assertAssignmentWorkflow($student, $assignment);
             // Drafts are the only mutable records. Confirmed snapshots are never rebuilt.
             $assignment->items()->delete();
             foreach ($selected as $template) {
-                $assignment->items()->create($this->snapshot($template, $quantities[(int) $template->id] ?? 1, $selectedPromotions[(int) $template->id] ?? null, $studentDiscounts[(int) $template->id] ?? null));
+                $item = $assignment->items()->create($this->snapshot($template, $quantities[(int) $template->id] ?? 1, $selectedPromotions[(int) $template->id] ?? null, $studentDiscounts[(int) $template->id] ?? null));
+                $this->classifyCreatedAssignmentRecord($student, $actor, 'student_fee_assignment_item', $item, $centralActor);
             }
             return $assignment->fresh('items');
         });
     }
 
     /** @param list<mixed> $requestedOptionalIds */
-    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
+    public function saveAdditionalDraft(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = [], ?\App\Models\CentralFinanceUser $centralActor = null): StudentFeeAssignment
     {
-        return app(CentralFinanceQaRunService::class)->withActiveTenantStudentRun((int) $student->school_id, (int) $student->id,
-            fn () => $this->saveAdditionalDraftUnderRun($student, $actor, $requestedOptionalIds, $optionalQuantities, $selectedPromotions, $studentDiscounts));
+        return app(CentralFinanceQaRunService::class)->withActiveTenantFeeAssignmentRun((int) $student->school_id, (int) $student->id,
+            fn () => $this->saveAdditionalDraftUnderRun($student, $actor, $requestedOptionalIds, $optionalQuantities, $selectedPromotions, $studentDiscounts, $centralActor));
     }
 
-    private function saveAdditionalDraftUnderRun(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = []): StudentFeeAssignment
+    private function saveAdditionalDraftUnderRun(Students $student, User $actor, array $requestedOptionalIds, array $optionalQuantities = [], array $selectedPromotions = [], array $studentDiscounts = [], ?\App\Models\CentralFinanceUser $centralActor = null): StudentFeeAssignment
     {
         $this->assertActor($student, $actor);
         $optional = $this->availableAdditionalItems($student)->keyBy('id');
@@ -150,21 +163,29 @@ final class StudentFeeAssignmentService
         }
         $selectedItems = $selected->map(fn (int $id) => $optional->get($id));
         $quantities = $this->validatedFeeQuantities($selectedItems, $optionalQuantities);
-        return DB::transaction(function () use ($student, $selected, $optional, $quantities, $selectedPromotions, $studentDiscounts): StudentFeeAssignment {
+        return DB::transaction(function () use ($student, $actor, $selected, $optional, $quantities, $selectedPromotions, $studentDiscounts, $centralActor): StudentFeeAssignment {
             $assignment = StudentFeeAssignment::create([
                 'uuid' => (string) Str::uuid(), 'school_id' => $student->school_id, 'student_id' => $student->id,
                 'academic_year_id' => $student->session_year_id, 'class_id' => $this->studentClassId($student),
                 'assignment_type' => StudentFeeAssignment::ADDITIONAL, 'status' => StudentFeeAssignment::DRAFT,
             ]);
-            foreach ($selected as $id) $assignment->items()->create($this->snapshot($optional->get($id), $quantities[(int) $id], $selectedPromotions[(int) $id] ?? null, $studentDiscounts[(int) $id] ?? null));
+            $this->classifyCreatedAssignmentRecord($student, $actor, 'student_fee_assignment', $assignment, $centralActor);
+            foreach ($selected as $id) {
+                $item = $assignment->items()->create($this->snapshot($optional->get($id), $quantities[(int) $id], $selectedPromotions[(int) $id] ?? null, $studentDiscounts[(int) $id] ?? null));
+                $this->classifyCreatedAssignmentRecord($student, $actor, 'student_fee_assignment_item', $item, $centralActor);
+            }
             return $assignment->fresh('items');
         });
     }
 
     public function confirm(Students $student, User $actor, string $assignmentUuid): StudentFeeAssignment
     {
-        return app(CentralFinanceQaRunService::class)->withActiveTenantStudentRun((int) $student->school_id, (int) $student->id,
+        $assignment = app(CentralFinanceQaRunService::class)->withActiveTenantFeeAssignmentRun((int) $student->school_id, (int) $student->id,
             fn () => $this->confirmUnderRun($student, $actor, $assignmentUuid));
+        // Publication switches tenant connections, so it must run after the
+        // atomic source/classification/Run transaction has committed.
+        DB::connection('school')->afterCommit(fn () => $this->publisher->studentFeeAssignmentConfirmed((int) $student->school_id, (int) $student->id));
+        return $assignment;
     }
 
     private function confirmUnderRun(Students $student, User $actor, string $assignmentUuid): StudentFeeAssignment
@@ -175,11 +196,13 @@ final class StudentFeeAssignmentService
             $assignment = StudentFeeAssignment::query()->with('items')->where([
                 'uuid' => $assignmentUuid, 'school_id' => $student->school_id, 'student_id' => $student->id,
             ])->lockForUpdate()->firstOrFail();
+            $this->assertAssignmentWorkflow($student, $assignment);
             if ($assignment->status === StudentFeeAssignment::CONFIRMED) return $assignment;
             if ($assignment->status !== StudentFeeAssignment::DRAFT || $assignment->items->isEmpty()) {
                 throw ValidationException::withMessages(['assignment' => 'A non-empty draft assignment is required before confirmation.']);
             }
             foreach ($assignment->items->where('status', StudentFeeAssignmentItem::ACTIVE) as $item) {
+                $this->assertTemplateStillEligible($student, $item);
                 DB::table('student_fee_assignment_source_locks')->insert([
                     'school_id' => $student->school_id,
                     'student_id' => $student->id,
@@ -192,9 +215,6 @@ final class StudentFeeAssignmentService
                 ]);
             }
             $assignment->update(['status' => StudentFeeAssignment::CONFIRMED, 'confirmed_at' => now(), 'confirmed_by' => $actor->id]);
-            app(CentralFinanceQaRunService::class)->inheritTenantStudentRecord(
-                (int) $student->school_id, (int) $student->id, 'student_fee_assignment', (int) $assignment->id,
-            );
             return $assignment->fresh('items');
             });
         } catch (QueryException $exception) {
@@ -204,9 +224,63 @@ final class StudentFeeAssignmentService
 
             throw $exception;
         }
-        // Central outages cannot roll back the tenant source-of-truth. The established publisher logs a deferred retry.
-        $this->publisher->studentFeeAssignmentConfirmed((int) $student->school_id, (int) $student->id);
         return $assignment;
+    }
+
+    private function classifyCreatedAssignmentRecord(Students $student, User $actor, string $type, \Illuminate\Database\Eloquent\Model $record, ?\App\Models\CentralFinanceUser $centralActor = null): void
+    {
+        if (!$record->wasRecentlyCreated || !$this->dataIsolation->isQaTestSchool((int) $student->school_id)) return;
+        app(QaFeeClassificationService::class)->inheritCreated($type, $record, $actor, $centralActor);
+        app(CentralFinanceQaRunService::class)->inheritCreatedTenantFeeRecord((int) $student->school_id, (int) $student->id, $type, $record);
+    }
+
+    private function assertAssignmentWorkflow(Students $student, StudentFeeAssignment $assignment): void
+    {
+        if ((int) $assignment->academic_year_id !== (int) $student->session_year_id
+            || (int) $assignment->class_id !== $this->studentClassId($student)) {
+            throw ValidationException::withMessages(['assignment' => 'This assignment no longer matches the Student academic year and class.']);
+        }
+        $this->assertAssignmentRecordWorkflow($student, 'student_fee_assignment', (int) $assignment->id);
+        foreach ($assignment->items as $item) {
+            $this->assertAssignmentRecordWorkflow($student, 'student_fee_assignment_item', (int) $item->id);
+        }
+    }
+
+    private function assertAssignmentRecordWorkflow(Students $student, string $type, int $id): void
+    {
+        if ($this->dataIsolation->isQaTestSchool((int) $student->school_id)) {
+            // Read on the tenant PDO so metadata created in this transaction
+            // is visible and cannot be mistaken for historical missing data.
+            $central = DB::connection('mysql')->getDatabaseName();
+            $classified = DB::connection('school')->table($central.'.'.CentralFinanceDataIsolationService::TABLE)
+                ->where(['subject_scope' => 'tenant:'.$student->school_id, 'school_id' => $student->school_id,
+                    'subject_type' => $type, 'subject_id' => $id, 'classification' => 'qa_test'])->exists();
+            if (!$classified) throw new AuthorizationException('QA Fee assignment classification is missing or inconsistent; historical records require separate reconciliation.');
+            app(CentralFinanceQaRunService::class)->assertTenantFeeRecordInStudentRun((int) $student->school_id, (int) $student->id, $type, $id);
+        } elseif (!$this->dataIsolation->isTenantFeeMetadataWorkflowWritable($type, (int) $student->school_id, $id)) {
+            throw new AuthorizationException('Fee assignment classification does not match this School workflow.');
+        }
+    }
+
+    private function assertTemplateStillEligible(Students $student, StudentFeeAssignmentItem $item): void
+    {
+        $template = FeesClassType::query()->with(['fee', 'fees_type'])->where('id', $item->fees_class_type_id)
+            ->where('school_id', $student->school_id)->where('class_id', $this->studentClassId($student))->first();
+        if (!$template || !$template->fee || !$template->fees_type
+            || $template->getRawOriginal('deleted_at') !== null || $template->fee->getRawOriginal('deleted_at') !== null
+            || $template->fees_type->getRawOriginal('deleted_at') !== null
+            || (int) $template->fee->school_id !== (int) $student->school_id
+            || (int) $template->fees_type->school_id !== (int) $student->school_id
+            || (int) $template->fee->session_year_id !== (int) $student->session_year_id
+            || (int) $template->fees_id !== (int) $item->fee_id || (int) $template->fees_type_id !== (int) $item->fees_type_id
+            || $item->source_type !== StudentFeeAssignmentItem::FEES_CLASS_TYPE || (string) $item->source_id !== (string) $template->id
+            || !$this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee_item', (int) $student->school_id, (int) $template->id)
+            || !$this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee', (int) $student->school_id, (int) $template->fees_id)
+            || !$this->dataIsolation->isTenantFeeMetadataWorkflowWritable('fee_type', (int) $student->school_id, (int) $template->fees_type_id)) {
+            throw ValidationException::withMessages(['assignment' => 'An assigned Fee template is no longer eligible for this School workflow.']);
+        }
+        // Eligibility is rechecked; price, currency, quantity and due date
+        // remain exactly the immutable values accepted in the draft snapshot.
     }
 
     /** @param array{discount_type:string,discount_value:string,reason:string,effective_date:string}|null $studentDiscount */
