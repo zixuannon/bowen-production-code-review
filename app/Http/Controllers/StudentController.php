@@ -1010,11 +1010,7 @@ class StudentController extends Controller
             if (Auth::user()) {
                 $schoolSettings = $this->cache->getSchoolSettings();
             } else {
-                $fullDomain = $_SERVER['HTTP_HOST'] ?? '';
-                $parts = explode('.', $fullDomain);
-                $subdomain = $parts[0];
-
-                $school = School::on('mysql')->where('domain', $fullDomain)->orwhere('domain', $subdomain)->first();
+                $school = app(\App\Services\SchoolHostResolver::class)->resolveTenantHost(request()->getHost());
                 if ($school) {
                     $schoolSettings = $this->cache->getSchoolSettings('*', $school->id);
                 }

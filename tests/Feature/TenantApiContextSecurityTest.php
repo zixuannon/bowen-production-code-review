@@ -79,6 +79,21 @@ final class TenantApiContextSecurityTest extends TestCase
         $this->assertSame($before, config('database.connections.school.database'));
     }
 
+    public function test_api_school_code_must_match_the_registered_request_host(): void
+    {
+        $request = $this->apiRequest('MMBOWEN01', '1|school-a-token', 'student');
+        $request->attributes->set('resolved_school_host_id', 2);
+
+        try {
+            app(TrustedTenantContextService::class)->forApiRequest($request, fn () => response('unexpected'));
+            $this->fail('An API School Code must not select a tenant different from the registered request host.');
+        } catch (AuthorizationException $exception) {
+            $this->assertStringContainsString('API School Code', $exception->getMessage());
+        }
+
+        $this->assertSame('mysql', DB::getDefaultConnection());
+    }
+
     public function test_valid_api_token_runs_only_in_authorized_school_and_restores_context(): void
     {
         $request = $this->apiRequest('MMBOWEN01', '1|school-a-token', 'student');
@@ -148,6 +163,24 @@ final class TenantApiContextSecurityTest extends TestCase
         });
         $this->assertSame(204, $response->getStatusCode());
         $this->assertSame('mysql', DB::getDefaultConnection());
+    }
+
+    public function test_tenant_session_cannot_be_reused_under_another_registered_school_host(): void
+    {
+        $request = Request::create('/tenant-probe');
+        $request->setLaravelSession(app('session.store'));
+        $this->establishTenantSession($request, 1, 10);
+        $request->attributes->set('resolved_school_host_id', 2);
+
+        try {
+            app(TrustedTenantContextService::class)->forWebRequest($request, fn () => response('unexpected'));
+            $this->fail('A valid tenant session must not cross into a different registered School host.');
+        } catch (AuthorizationException $exception) {
+            $this->assertStringContainsString('host does not match', $exception->getMessage());
+        }
+
+        $this->assertSame('mysql', DB::getDefaultConnection());
+        $this->assertSame($this->schoolA, config('database.connections.school.database'));
     }
 
     public function test_retained_tenant_session_pins_actor_lookup_to_central_before_school_is_configured(): void

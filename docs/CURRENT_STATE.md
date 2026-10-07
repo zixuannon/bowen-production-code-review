@@ -1,5 +1,14 @@
 # eSchool Current State
 
+## Local candidate — fail-closed School host resolution (2026-10-07)
+
+- Based on exact Production `d95d6e630d6cae20ae733aa6c6a2256383cee38e`.
+- Default tenant hosts resolve only through one active, installed Central School Registry row with a configured tenant database. Unknown, inactive, deleted, uninstalled, ambiguous, malformed, and IP hosts fail closed. Custom domains resolve only as exact `domain_type=custom` registry matches. `X-Forwarded-Host` is not trusted for tenant routing.
+- Tenant web sessions and API School Codes must match the School resolved from the request host. No tenant schema or business-data migration is included.
+- Focused host/session/API tests: 26 tests / 111 assertions passed. Full suite could not be certified in this environment: its MySQL integration cases require an isolated local test database, and sandbox access to localhost MySQL is denied. Do not release until full regression and focused browser host smoke run in the guarded local environment.
+- DNS, TLS, Nginx, Production data, QA Fee, and QA Run were not changed.
+
+
 ## Local PASS — QA Fee classification / reusable School templates (2026-10-07)
 
 - Scope is local-only on exact Production `fbf3b5270425ff2ec7122eee137535d693b1f839`;

@@ -191,6 +191,10 @@ final class TrustedTenantContextService
         if ((int) $school->id !== $assertion['school_id']) {
             throw new AuthorizationException('The tenant session assertion targets a different School.');
         }
+        $resolvedHostSchoolId = $request->attributes->get('resolved_school_host_id');
+        if ($resolvedHostSchoolId !== null && (int) $resolvedHostSchoolId !== (int) $school->id) {
+            throw new AuthorizationException('The current School host does not match the authenticated tenant session.');
+        }
         $this->assertActiveInstalledSchool($school);
 
         return $this->connections->forSchool($school, function () use ($request, $callback, $school, $assertion): mixed {
@@ -235,6 +239,10 @@ final class TrustedTenantContextService
         }
 
         $school = $this->canonicalSchool((string) $request->header('school-code'));
+        $resolvedHostSchoolId = $request->attributes->get('resolved_school_host_id');
+        if ($resolvedHostSchoolId !== null && (int) $resolvedHostSchoolId !== (int) $school->id) {
+            throw new AuthorizationException('The current School host does not match the API School Code.');
+        }
         $family = $this->apiFamily($request);
 
         // Sanctum personal tokens are tenant-local. Resolve the token using an

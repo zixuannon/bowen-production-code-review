@@ -96,13 +96,8 @@ class Controller extends BaseController
         if ($this->isBowenPublicSiteRequest()) {
             return view('bowen-school.home');
         }
-        $currentDatabaseName = DB::connection()->getDatabaseName();
-        // School website
-        $fullDomain = $_SERVER['HTTP_HOST'];
-        $fullDomain = str_replace("www.", "", $fullDomain);
-        $parts = explode('.', $fullDomain);
-        $subdomain = $parts[0];
-        $school = '';
+        // School websites are selected from an active canonical Registry host.
+        $school = app(\App\Services\SchoolHostResolver::class)->resolveTenantHost(request()->getHost());
         $extraFields = [];
         $demoSchoolUrl = '';
         $isDemoSchool = 0;
@@ -135,12 +130,6 @@ class Controller extends BaseController
                     $demoSchoolUrl .= $baseUrlParts['path'];
                 }
             }
-        } catch (\Throwable $th) {
-
-        }
-
-        try {
-            $school = School::on('mysql')->where('domain', $fullDomain)->orwhere('domain', $subdomain)->where('installed', 1)->first();
         } catch (\Throwable $th) {
 
         }
@@ -467,11 +456,8 @@ class Controller extends BaseController
 
     public function checkPageStatus($page)
     {
-        $fullDomain = $_SERVER['HTTP_HOST'];
-        $parts = explode('.', $fullDomain);
-        $subdomain = $parts[0];
-
-        $school = School::on('mysql')->where('domain', $fullDomain)->orwhere('domain', $subdomain)->first();
+        $school = app(\App\Services\SchoolHostResolver::class)->resolveTenantHost(request()->getHost());
+        abort_if($school === null, 404);
 
         Config::set('database.connections.school.database', $school->database_name);
         DB::purge('school');
@@ -494,13 +480,8 @@ class Controller extends BaseController
 
     public function contact_form(Request $request)
     {
-
-
-        $fullDomain = $_SERVER['HTTP_HOST'];
-        $parts = explode('.', $fullDomain);
-        $subdomain = $parts[0];
-
-        $school = School::on('mysql')->where('domain', $fullDomain)->orwhere('domain', $subdomain)->first();
+        $school = app(\App\Services\SchoolHostResolver::class)->resolveTenantHost($request->getHost());
+        abort_if($school === null, 404);
 
         // Verify google captcha
         $schoolSettings = $this->cache->getSchoolSettings('*', $school->id);
@@ -746,11 +727,8 @@ class Controller extends BaseController
         try {
             DB::beginTransaction();
             $admission_date = Carbon::now()->format('Y-m-d');
-            $fullDomain = $_SERVER['HTTP_HOST'];
-            $parts = explode('.', $fullDomain);
-            $subdomain = $parts[0];
-
-            $school = School::on('mysql')->where('domain', $fullDomain)->orwhere('domain', $subdomain)->first();
+            $school = app(\App\Services\SchoolHostResolver::class)->resolveTenantHost($request->getHost());
+            abort_if($school === null, 404);
 
             Config::set('database.connections.school.database', $school->database_name);
             DB::purge('school');

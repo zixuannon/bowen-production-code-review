@@ -7,6 +7,7 @@ use App\Models\Package;
 use App\Models\School;
 use App\Models\User;
 use App\Services\CachingService;
+use App\Services\SchoolHostResolver;
 use App\Services\TrustedTenantContextService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -35,11 +36,9 @@ class ViewServiceProvider extends ServiceProvider {
         $teachers = '';
         $schoolSettings = '';
         $school = '';
-        // Get school domain
-        $fullDomain = $_SERVER['HTTP_HOST'] ?? '';
-        $parts = explode('.', $fullDomain);
-        $subdomain = $parts[0];
-        
+        // Resolve tenant identity only from a canonical host registered in the
+        // Central School Registry. Never infer a School from the first label.
+        $resolvedSchool = null;
         $demoSchoolUrl = '';
         try {
 
@@ -107,9 +106,14 @@ class ViewServiceProvider extends ServiceProvider {
         }
         
         try {
-            $school = School::on('mysql')->with('user')->where('domain', $fullDomain)->orwhere('domain', $subdomain)->where('installed', 1)->first();
+            if (!app()->runningInConsole()) {
+                $resolvedSchool = app(SchoolHostResolver::class)->resolveTenantHost(request()->getHost());
+                if ($resolvedSchool !== null) {
+                    $school = School::on('mysql')->with('user')->find($resolvedSchool->id);
+                }
+            }
         } catch (\Throwable $th) {
-            
+            // The global host middleware returns a denial for unresolved hosts.
         }
         
         

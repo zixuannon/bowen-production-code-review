@@ -109,7 +109,7 @@ class SchoolController extends Controller
     {
         ResponseService::noAnyPermissionThenSendJson(['schools-create']);
 
-        $fullDomain = $_SERVER['HTTP_HOST'];
+        $fullDomain = request()->getHost();
         $parts = explode('.', $fullDomain);
         $subdomain = $parts[0];
 
