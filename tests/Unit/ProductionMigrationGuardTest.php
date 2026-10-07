@@ -157,6 +157,34 @@ class ProductionMigrationGuardTest extends TestCase
         }
     }
 
+    public function test_p1a_due_date_runner_allows_only_its_exact_tenant_migration_in_production(): void
+    {
+        $guard = new ProductionMigrationGuard();
+        $migration = database_path('migrations/schools/2026_10_05_000001_make_fee_due_date_nullable.php');
+
+        $guard->assertAllowed('migrate', 'fees:due-date-schema', [$migration], true, true);
+        $this->addToAssertionCount(1);
+
+        foreach ([
+            database_path('migrations/schools/2026_10_05_000001_create_central_finance_qa_runs.php'),
+            database_path('migrations/schools'),
+            $migration,
+        ] as $index => $unapproved) {
+            try {
+                $guard->assertAllowed(
+                    'migrate',
+                    $index === 2 ? 'finance:qa-runs-migrate' : 'fees:due-date-schema',
+                    [$unapproved],
+                    true,
+                    true,
+                );
+                $this->fail('An unrelated path, directory, or runner was accepted by the P1-A due-date guard.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('not in the selected runner allowlist', $exception->getMessage());
+            }
+        }
+    }
+
     public function test_qa_run_migration_hash_must_match_the_pinned_file_identity(): void
     {
         $relative = 'database/migrations/2026_10_05_000001_create_central_finance_qa_runs.php';

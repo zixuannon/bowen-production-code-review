@@ -28,8 +28,25 @@
 - Focused BOWEN_QA desktop browser smoke passes **1/1**: dated save/reload and
   clear/reload both verified. It created no Payment; fixture and temporary
   permission were removed, and the canonical School mapping remained intact.
-- The new candidate is not deployed. Production remains at the exact baseline
-  above and no Production state changed.
+- The first deployment attempt stopped before migration or activation: the
+  P1-A command and exact migration were missing from
+  `ProductionMigrationGuard::RUNNER_PATHS`. The active Production release
+  remains at the exact baseline above; no schema or Finance business data was
+  changed.
+- A fresh encrypted R2E recovery set,
+  `eschool-prod-20261007T043049Z-162375bd6038`, completed before the attempt.
+  All 12 encrypted artifact checksums and independent COS HEAD checks passed.
+  The original accepted candidate remains staged but inactive.
+- The local correction adds only `fees:due-date-schema` →
+  `2026_10_05_000001_make_fee_due_date_nullable.php` to the exact-path
+  production allowlist, with positive and negative guard coverage. The
+  targeted suite passes **116 tests / 406 assertions**; the full suite passes
+  **1,126 tests / 8,890 assertions, zero failures/errors, 34 existing skips**.
+  Production-mode local BOWEN_QA rehearsal passes eligible → applied →
+  complete against the disposable localhost fixture.
+- A new candidate SHA has been frozen locally for review. It has not been pushed,
+  staged, migrated, or deployed. The previous inactive staged candidate is
+  not approved for activation. No P1-B work has started.
 
 ## Zixuan QA Run — immutable-release trust-boundary repair (historical attempt, 2026-10-06)
 

@@ -85,6 +85,9 @@ final class ProductionMigrationGuard
         'finance:qa-runs-migrate' => [
             'database/migrations/2026_10_05_000001_create_central_finance_qa_runs.php',
         ],
+        'fees:due-date-schema' => [
+            'database/migrations/schools/2026_10_05_000001_make_fee_due_date_nullable.php',
+        ],
         'finance:migrate-collection-v2' => [
             'database/migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php',
             'database/migrations/2026_09_29_000002_add_finance_collection_v2_documents.php',

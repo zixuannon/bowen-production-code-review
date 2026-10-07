@@ -172,6 +172,23 @@ does not itself update or reload the production vhost.
 
 ## Multi-tenant migrations
 
+### P1-A optional Fee due date
+
+`fees:due-date-schema` is the only approved Production runner for the exact
+tenant migration
+`2026_10_05_000001_make_fee_due_date_nullable.php`. It is read-only by default;
+`--execute` discovers active Schools from the Central registry and applies only
+that exact migration through Laravel's real-path migration guard. Run it from
+the prepared immutable release through the `www` runtime wrapper, after a fresh
+encrypted recovery set is independently verified. Preflight must report only
+`eligible` or `complete`; partial or inconsistent state blocks execution.
+
+The migration changes only `fees.due_date` nullability. It does not rewrite
+Fee, Fee Assignment, Receivable, Payment, Receipt, Ledger, or QA Run data. Verify
+dated values remain unchanged and the exact migration history plus nullable
+column state report `complete` for every selected tenant. Once undated Fees are
+created, prefer a forward fix rather than restoring `NOT NULL`.
+
 ### QA Staff classification actor attribution
 
 `finance:migrate-classification-actors` is Central-only and read-only by
