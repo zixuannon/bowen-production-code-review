@@ -2,6 +2,17 @@
 
 ## Unidentified Deposit P0 — local closure (2026-10-07)
 
+- Migration/write-window engineering now passes local verification: exact pinned
+  Central runner, 59-table atomic latch fence, durable preservation receipt,
+  guarded release/runtime evidence and failure rehearsal. Final full regression
+  is 1,291 tests / 10,404 assertions, zero failures/errors/new skips.
+- Separately approved stale-runtime cleanup is complete; read-only runtime
+  inventory passes and all 51 Central Finance table fingerprints are unchanged.
+  Final regression/review pass; the local candidate freeze then stops
+  for exact-SHA deployment approval. See `UNIDENTIFIED_DEPOSIT_P0_RUNTIME_BLOCKER.md`
+  and the exact migration-gate runbook.
+  No Production migration, P0 deployment or Official Finance activation occurred.
+
 - [x] Preserve unknown-School bank fact; physical account moves exactly once.
 - [x] Reuse canonical Payment/Allocation/Receipt writer for later settlement;
   append School income attribution without a second bank movement.

@@ -1,5 +1,107 @@
 # eSchool Current State
 
+## Latest — P0 stale-runtime cleanup and final gate validation (2026-10-07)
+
+- Under explicit bounded lifecycle approval, rediscovered the old September 7
+  e904db9 Artisan service and independent sandbox FPM. Confirmed Production DB
+  identity, no active HTTP/FastCGI clients, no sandbox workers, zero database
+  transactions, zero queued jobs, and no log activity since September 7.
+- At **06:44:05–06:44:09 UTC**, stopped only HTTP child 2799088 with SIGINT;
+  Artisan parent 2799084 exited. Sandbox master 2797859 exited with SIGQUIT.
+  No SIGTERM/SIGKILL, formal-service restart, server config change, database
+  write, migration or deployment. The old port and sandbox socket disappeared.
+- All **51 Central Finance table** counts/content fingerprints remained equal;
+  queue stayed empty and both historical failed jobs stayed unchanged. Current
+  Production remains `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`.
+- Read-only P0 process/launcher inventory now passes: zero extra eSchool PHP
+  runtimes, normal FPM master 2507293 and 11 children accounted for, Queue
+  2058057 and WebSocket 2058061 unchanged. Nginx/MySQL/Redis and R2E remain
+  healthy; three /login GETs returned 200, no new Laravel log entries or HTTP
+  500 during the observation window. No historical failed job was replayed.
+- Independent final review identified a **local** OPEN-gate compatibility
+  issue: non-dumpable Linux FPM children deny www access to /proc exe/cwd.
+  Consumer now uses existing fresh root-attested FPM paths, retains live birth
+  identity and validates child-to-master linkage; CLI workers still require
+  direct paths/command checks. Actual read-only www /proc validation passed for
+  all 11 Production children. No server permissions/configuration were changed.
+- Exact migration bytes unchanged. Focused release-gate checks pass **7 tests /
+  47 assertions**; Python **19 tests PASS**; isolated real PHP 8.3 FPM switch /
+  reload rehearsal passes again. Exact-runner disposable MySQL rehearsal passes
+  all **37 checks**, including mid-DDL and failed-activation closure.
+- Final full regression: **1,291 tests / 10,404 assertions**, zero failures/errors;
+  exact 34 prior skips unchanged. Initial default 128MB CLI run exhausted memory;
+  successful rerun used a process-only 1GB limit (peak 301MB), no config change.
+  Existing PHP/PHPUnit deprecations remain reported. Independent review has no
+  remaining blockers. Approved-scope local candidate freeze is ready; no push.
+- **ENGINEERING PASS YES; read-only runtime readiness PASS; READY FOR PRODUCTION
+  DEPLOYMENT APPROVAL YES. Production migration/deployment remain NOT RUN.**
+  A future rollout still requires explicit full-SHA approval, fresh encrypted
+  backup/COS verification and repeat live gates. See cleanup evidence/runbook;
+  this task does not authorize write-window installation or Production DDL.
+
+## Earlier — P0 migration gate implemented locally; Production runtime blocker (2026-10-07)
+
+- Follow-up: old processes remain ad-hoc root-session services, with a loopback
+  built-in server on 18081 and independent sandbox FPM socket; no matching
+  launcher/proxy references were found in inspected config trees. No currently
+  connected clients observed, but stopping them still requires explicit approval.
+  Normal PHP 8.3 master is separate and healthy despite SysV `MainPID=0`.
+  Corrected only the local collector's exact PID-file identity validation;
+  operational tests now **19 PASS**, isolated PHP 8.3 FPM rehearsal passes again.
+  Prior 1,290-test PHP regression remains applicable to unchanged PHP/migration
+  code. Production SHA remains exact; no server lifecycle/config action occurred.
+
+- Read-only recheck: active symlink, marker and Git remain exact
+  `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`, release
+  `eschool-rc-135341bf2f9e-consolidated`. Parent P0 candidate remains
+  `0798e13b3ba94fac16229ccc057d5031ce698ac1`. Historical Payment #37 audit is
+  still present once; original NULL reference, 50,000 payment, 100,000 receivable
+  paid and 200,000 account balance match accepted evidence. No P0 schema/history
+  exists on Production. No Production data/configuration/process was changed.
+- Local dedicated `finance:unidentified-deposit-p0-migrate` runner pins the
+  exact Central migration and unchanged SHA-256 `8cb9cc668a4ad17ad4c7543564beba3b21f9d6d6ad583ce4acb3f18e1ea4c432`.
+  Tenant migrations NONE; strict guard/schema/history/identity states and a
+  durable pre/post financial preservation receipt are required.
+- Native temporary write window: exact 59-table / 177-trigger InnoDB fence,
+  current locking reads, metadata-lock draining and advisory serialization.
+  One atomic durable latch opens writers only after exact candidate/runtime,
+  complete schema, original preservation receipt and empty queue verify.
+  Partial DDL, failed activation and stale/missing receipts retain closure.
+  Dormant triggers remain after OPEN; no sequential-drop partial reopening.
+- Root-owned deployment evidence independently validates immutable release,
+  remote SHA, fresh encrypted recovery set + COS HEAD, trusted active tenant
+  coverage, actual worker commands/backend, extra PHP processes and real FPM
+  response. Existing deployment/scheduler locks stay held by a live root
+  issuer through the www-only Artisan action. No global cache clearing or
+  ownership repair is used.
+- Final full regression: **1,290 tests / 10,395 assertions, zero failures/errors**.
+  Exact 34 existing skips are unchanged; zero new skips. Final targeted classes
+  within that run: **186 tests / 1,495 assertions**. Native write-fence tests:
+  **15 / 712**; migration runner tests: **37 / 83**; guard/release tests: **23 / 81**.
+  Python operational contracts: **15 PASS**, including producer-to-PHP evidence.
+  Existing PHP 8.5 / PHPUnit deprecation warnings remain, not hidden.
+- Exact-runner disposable MySQL rehearsal: **37 checks PASS**, including
+  historical identity, real mid-DDL constraint collision, closed failure state,
+  preserved original rows, durable receipt failures, retry no-op and atomic OPEN.
+  Only Linux/root deployment evidence is simulated there. Separate real local
+  PHP **8.3.32 FPM** rehearsal passes old-runtime rejection, activation failure,
+  atomic switch, graceful reload and fresh candidate response. Only its own
+  disposable process is stopped; no Production FPM action occurred.
+- **Deployment/final-freeze HOLD:** read-only investigation found old eSchool
+  built-in PHP processes 2799084/2799088 and sandbox FPM 2797859 referencing the
+  e904db9 release; the old environment's DB host/name/connection match current
+  Production. No process was stopped. These cannot be presumed isolated tests.
+  The new gate intentionally denies them. Separate lifecycle approval and a
+  fresh identity check are required; historical PIDs are not future kill targets.
+- Therefore ENGINEERING PASS YES, local gate/rehearsal PASS, actual Production
+  migration readiness NO, READY FOR DEPLOYMENT APPROVAL NO. No new final commit
+  was frozen because the requested all-gates condition is unmet. Changes remain
+  reviewable in the existing isolated P0 worktree; no push/deploy/Official enable.
+- Runbook: [exact migration and write window](UNIDENTIFIED_DEPOSIT_P0_MIGRATION_GATE.md).
+  Evidence/follow-up: [old runtime blocker](UNIDENTIFIED_DEPOSIT_P0_RUNTIME_BLOCKER.md).
+  Backlog: root Laravel scheduler still uses generic PHP resolving to 8.1; this
+  was recorded, not repaired outside this task's approved scope.
+
 ## Latest — Historical QA identity reconciled; P0 data preflight CLEAN (2026-10-07)
 
 - Exact Production parent remains `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`.

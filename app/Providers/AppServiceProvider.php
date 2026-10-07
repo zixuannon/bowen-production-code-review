@@ -50,9 +50,11 @@ class AppServiceProvider extends ServiceProvider {
         Event::listen(CommandStarting::class, function (CommandStarting $event): void {
             $paths = [];
             $realPath = false;
+            $database = null;
             try {
                 $paths = (array) ($event->input->getOption('path') ?? []);
                 $realPath = (bool) $event->input->getOption('realpath');
+                $database = $event->input->getOption('database');
             } catch (\Throwable) {
                 // Commands without migration options remain fail-closed below.
             }
@@ -62,7 +64,8 @@ class AppServiceProvider extends ServiceProvider {
                 $_SERVER['argv'][1] ?? null,
                 $paths,
                 $realPath,
-                app()->environment('production')
+                app()->environment('production'),
+                is_string($database) ? $database : null,
             );
         });
 

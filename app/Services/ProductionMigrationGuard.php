@@ -8,6 +8,9 @@ final class ProductionMigrationGuard
 {
     /** @var array<string, list<string>> */
     private const RUNNER_PATHS = [
+        'finance:unidentified-deposit-p0-migrate' => [
+            'database/migrations/2026_10_07_000001_close_unidentified_deposit_p0.php',
+        ],
         'finance:p1-audit-safety' => [
             'database/migrations/schools/2026_08_10_000001_add_soft_deletes_to_expenses.php',
             'database/migrations/schools/2026_08_10_000002_add_updated_by_to_expenses.php',
@@ -101,13 +104,14 @@ final class ProductionMigrationGuard
     ];
 
     private const PINNED_MIGRATION_HASHES = [
+        'database/migrations/2026_10_07_000001_close_unidentified_deposit_p0.php' => '8cb9cc668a4ad17ad4c7543564beba3b21f9d6d6ad583ce4acb3f18e1ea4c432',
         'database/migrations/2026_10_05_000001_create_central_finance_qa_runs.php' => '74e22c730e31468ef4047188c4e20b054f92ca2e1a63929ad00c37e0bdbbdc79',
     ];
 
     /**
      * @param list<string> $paths
      */
-    public function assertAllowed(string $command, ?string $outerCommand, array $paths, bool $realPath, bool $production): void
+    public function assertAllowed(string $command, ?string $outerCommand, array $paths, bool $realPath, bool $production, ?string $database = null): void
     {
         if (!$production || !str_starts_with($command, 'migrate')) {
             return;
@@ -132,6 +136,12 @@ final class ProductionMigrationGuard
                     throw new RuntimeException('Production migration file identity/hash does not match the approved exact migration.');
                 }
             }
+        }
+        if ($outerCommand === 'finance:unidentified-deposit-p0-migrate') {
+            if ($command !== 'migrate' || $database !== 'mysql' || count($paths) !== 1) {
+                throw new RuntimeException('P0 requires one exact Central mysql migration; rollback and alternate connections are denied.');
+            }
+            app(UnidentifiedDepositP0ReleaseGate::class)->assertReadyForMigration();
         }
     }
 

@@ -614,3 +614,12 @@ exact candidate and a fresh remotely verified encrypted backup. No tenant
 migration is part of this schema. QA Run archive changes lifecycle only and
 must preserve all Student and Finance history. Never reset or delete Payments,
 Receipts, Ledger, or prior Run records to prepare another test.
+# Unidentified Deposit P0 migration gate (2026-10-07)
+
+Use [the exact P0 migration/write-window runbook](UNIDENTIFIED_DEPOSIT_P0_MIGRATION_GATE.md),
+not a generic migration. The candidate is local only. The known
+[old Production writer blocker](UNIDENTIFIED_DEPOSIT_P0_RUNTIME_BLOCKER.md) was
+resolved under separate bounded operational approval; repeat the read-only
+inventory before any separately approved release.
+No trigger/latch installation or Production migration is authorized by the
+local gate implementation task.
