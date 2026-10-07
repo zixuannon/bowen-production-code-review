@@ -1,4 +1,37 @@
-# Zixuan QA Run — immutable-release trust-boundary repair in progress
+# eSchool Current State
+
+## Latest — P1-A reconciled after Zixuan QA Run Production PASS (2026-10-07)
+
+- Read-only Production release marker and Git HEAD both match
+  `162375bd6038e4a8a458eaf8710c2f5a6fd819ee`. This is the QA Run release and
+  the exact parent of the P1-A reconciliation branch. The frozen accepted
+  P1-A source remains `6d58da9b4a257fe0bcbef8c2e7075bef177bf353`; the frozen
+  source branch was left untouched.
+- Reconciliation is isolated on `codex/p1a-post-qa-run`. The accepted P1-A
+  commit range reapplied without conflicts. QA Run app, central migration,
+  release scripts and migration guards remain from the exact Production base.
+  Shared QA fixture edits were already present at that base. Only the release
+  contract's accepted baseline is advanced to the exact current Production
+  SHA; the QA Run migration's prior one-time deployment identity remains
+  historical and unchanged. No QA Run migration is being rerun.
+- Conflict audit found no application or migration-path conflict. P1-A and QA
+  Run Chinese locale additions both remain, and all QA Run runtime/release
+  files are byte-identical to the exact Production baseline.
+- Merged targeted regression passes **99 tests / 363 assertions**. Full
+  regression passes **1,125 tests / 8,886 assertions, zero failures, zero
+  errors, 34 existing skips**, with one existing PHP 8.5 PDO deprecation and
+  no new skips.
+- P1-A exact tenant migration rehearsal on the disposable localhost fixture
+  passed eligible → applied → complete. BOWEN_QA read-only due-date preflight
+  reports complete; QA Run read-only migration preflight reports
+  `central=complete`. No Production migration was run.
+- Focused BOWEN_QA desktop browser smoke passes **1/1**: dated save/reload and
+  clear/reload both verified. It created no Payment; fixture and temporary
+  permission were removed, and the canonical School mapping remained intact.
+- The new candidate is not deployed. Production remains at the exact baseline
+  above and no Production state changed.
+
+## Zixuan QA Run — immutable-release trust-boundary repair (historical attempt, 2026-10-06)
 
 - Active Production remains `b87bac3a2bc6eaf32cada9cdbfa19c565d5e61b2`.
   Candidate `e9d0be2efe82bd0882377799d17ea9fb5d6efbfe` is pushed and staged,
@@ -41,7 +74,7 @@
   write, role change, or QA Run creation has occurred in this attempt. Local
   final release verification is next.
 
-# Zixuan QA Run — full regression fixture recovery complete
+## Zixuan QA Run — full regression fixture recovery complete
 
 - Candidate branch `codex/zixuan-qa-run-final-candidate` is based on exact
   Production SHA `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; the Staff
@@ -113,16 +146,12 @@ Last updated: 2026-10-06
 
 Last updated: 2026-10-06
 
-# eSchool Current State
+## P1-A optional Fee due date — accepted source candidate, previously passed gates
 
-## P1-A optional Fee due date — final coverage candidate, all local gates pass
-
-- Final candidate lineage is based on exact Production SHA
-  `7d6e73c12f6de23c24e5dd62312df53fcef8d497`; no unfinished Zixuan QA Run
-  work was included. Read-only SSH verification of the active Production
-  release marker and Git HEAD both returned that exact SHA. The deployed
-  `eschool-rc-7d6e73c12f6d-qa-staff-classification` release is preserved.
-  Production was not changed and P1-A was not deployed.
+- This frozen source was originally based on
+  `7d6e73c12f6de23c24e5dd62312df53fcef8d497`. It is now being reconciled onto
+  `162375bd6038e4a8a458eaf8710c2f5a6fd819ee` after QA Run reached Production
+  PASS; see the current entry above for this reconciliation's gates.
 - Before fixture repair, the identical normalized snapshot produced 1,098
   baseline tests / 8,556 assertions / 9 errors / 20 failures and 1,104
   candidate tests / 8,580 assertions / 9 errors / 20 failures. Failure identity
