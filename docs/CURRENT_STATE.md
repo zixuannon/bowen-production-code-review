@@ -1,5 +1,37 @@
 # eSchool Current State
 
+## Latest — P0 COS HEAD deployment blocker corrected locally (2026-10-07)
+
+- Approved candidate `d5f86b86cb3d4106f47e7041b36a1411eefabe8e` was pushed
+  exactly to `origin/codex/unidentified-deposit-p0-reconciled`. Fresh recovery
+  `eschool-prod-20261007T070528Z-135341bf2f9e` covers Central + eight tenants,
+  shared storage, recovery configuration and encrypted manifest (12 artifacts).
+  An immutable d5f86b86 release was prepared but **never activated**.
+- Its gate stopped before the Finance write window, migration or runtime
+  lifecycle: COSCLI `stat --disable-log` exits zero but suppresses all HEAD
+  metadata. The collector correctly refused empty evidence, but misdiagnosed it
+  as a size mismatch. Independent stat returned matching sizes for all objects;
+  every encrypted local checksum passed. No backup corruption was found.
+- Local-only correction preserves captured stat output, isolated credentials /
+  temporary logs, clean environment and exact object target. Empty, duplicate,
+  malformed, zero or mismatching length and nonzero exit remain fail-closed.
+  No application/PHP/schema/migration/business behavior changes.
+- **24 Python tests PASS**, including a real local child-process reproduction of
+  exit-zero/empty output. The corrected `verify_backup` function was separately
+  streamed for read-only verification (not installed) against the existing COS
+  recovery set: **12 objects / 9 databases PASS**. No upload, policy change,
+  Finance write-window action or migration was performed. Independent review
+  found no blockers. Final PHP regression: **1,291 tests / 10,404 assertions**,
+  zero failures/errors; the exact 34 baseline skips are unchanged. Existing
+  PHP/PHPUnit deprecations remain. Migration bytes are unchanged from rehearsal.
+- Production remains `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`. Historical
+  Payment/Receipt/Ledger/Fund Account fingerprints and two failed jobs were
+  unchanged at the stopped rollout. The prior exact-SHA approval does not cover
+  this new local correction: freeze a new candidate and request approval again.
+- Official Finance enablement and Zixuan QA Run UAT remain **NO**. Browser 419
+  is a separate, unresolved login/session issue, not the COS failure; no password
+  reset or global session/cache clear was attempted.
+
 ## Latest — P0 stale-runtime cleanup and final gate validation (2026-10-07)
 
 - Under explicit bounded lifecycle approval, rediscovered the old September 7

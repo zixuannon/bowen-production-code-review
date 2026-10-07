@@ -100,6 +100,19 @@ def release_identity(release, expected):
     return manifest
 
 
+def verify_cos_head(client, profile, temporary, key, expected_size):
+    # COSCLI stat emits HEAD metadata through its logger. --disable-log makes
+    # a successful HEAD return empty stdout; keep output captured and any log
+    # files inside the caller's root-only disposable profile directory.
+    output = run([str(client), '--config-path', str(profile),
+                  '--log-path', str(temporary), 'stat', 'cos://'+BUCKET+'/'+key],
+                 env={'PATH': '/usr/bin:/bin', 'HOME': str(temporary)})
+    sizes = re.findall(r'Content-Length:[ \t]*([0-9]+)[ \t]*\r?$', output, re.I | re.M)
+    require(len(sizes) == 1, 'Authoritative COS HEAD size metadata missing or ambiguous')
+    require(int(sizes[0]) == expected_size > 0, 'Authoritative COS HEAD size mismatch')
+    return int(sizes[0])
+
+
 def verify_backup(recovery):
     require(re.fullmatch(r'eschool-prod-\d{8}T\d{6}Z-135341bf2f9e', recovery),
             'Backup is not for the exact baseline')
@@ -158,13 +171,8 @@ def verify_backup(recovery):
         profile.chmod(0o600)
         for artifact, expected in files:
             key = prefix+'/recovery-sets/'+recovery+'/'+str(artifact.relative_to(root))
-            output = run([str(client), '--config-path', str(profile), '--disable-log',
-                          '--log-path', temp, 'stat', 'cos://'+BUCKET+'/'+key],
-                         env={'PATH': '/usr/bin:/bin', 'HOME': temp})
-            sizes = re.findall(r'Content-Length:\s*(\d+)', output, re.I)
-            require(len(sizes) == 1 and int(sizes[0]) == artifact.stat().st_size > 0,
-                    'Authoritative COS HEAD size mismatch')
-            remote.append({'key': key, 'size': int(sizes[0]), 'sha256': expected})
+            size = verify_cos_head(client, profile, temp, key, artifact.stat().st_size)
+            remote.append({'key': key, 'size': size, 'sha256': expected})
     completed = int(result_path.stat().st_mtime)
     require(created <= completed <= time.time(), 'Backup completion time invalid')
     return {'recovery_set': recovery, 'created_at': int(created), 'completed_at': completed,

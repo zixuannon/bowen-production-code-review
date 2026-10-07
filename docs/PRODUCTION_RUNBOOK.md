@@ -6,6 +6,14 @@ Production is a Human Gate.
 
 ### Unidentified Deposit P0 — future gate, not deployment authorization
 
+COS HEAD verification must retain COSCLI `stat` metadata output. Do not pass
+`--disable-log` to that read: COSCLI then returns success with empty metadata.
+Capture output privately, use the isolated root-only temporary profile/log path,
+and require one positive remote Content-Length matching the encrypted local
+artifact. Never replace authoritative verification with an exit-code check.
+The d5f86b86 rollout stopped on this collector defect before write-window/DDL;
+its staged release must not be patched or activated as a substitute candidate.
+
 #### Explicit historical QA identity maintenance (separate approval)
 
 Normal bank Payment/Other Income still require a real reference. A missing

@@ -102,6 +102,11 @@ Only after exact full-SHA approval and resolution of the runtime blocker:
    backup age (two hours maximum), registry coverage, exact launchers and process
    inventory. Credentials remain in a private temporary profile, not arguments
    or logs. No upload, deletion or CAM change is made by the collector.
+   COSCLI `stat` must retain captured metadata output: **do not use
+   `--disable-log` for HEAD**, since it suppresses Content-Length even on success.
+   `--log-path` is confined to the same root-only disposable directory; neither
+   stdout nor stderr is printed. Require exactly one positive Content-Length
+   equal to the encrypted local size; exit code alone is never verification.
 4. Repeat with phase `close`. The wrapper holds deployment and existing scheduler
    locks. The runner requires zero queued/reserved database jobs; unsupported
    backends and worker argument overrides are rejected. Never replay failed jobs.

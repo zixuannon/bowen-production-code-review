@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -16,6 +17,52 @@ spec.loader.exec_module(evidence)
 
 
 class EvidenceContracts(unittest.TestCase):
+    def test_cos_stat_requires_visible_captured_metadata_not_disabled_logging(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            client = root / 'coscli'
+            client.write_text('#!'+sys.executable+'\nimport sys\n'
+                              'if "--disable-log" not in sys.argv:\n'
+                              '    print("Content-Length: 77006")\n')
+            client.chmod(0o700)
+            profile = root / 'coscli.yaml'
+            profile.write_text('{}')
+            profile.chmod(0o600)
+            # Reproduce the observed exit-0 / empty-stdout failure locally.
+            old = evidence.run([str(client), '--disable-log', 'stat'])
+            self.assertEqual('', old)
+            self.assertEqual(77006, evidence.verify_cos_head(client, profile, root, 'synthetic.age', 77006))
+
+    def test_cos_head_command_is_stat_only_and_uses_isolated_profile_and_environment(self):
+        with patch.object(evidence, 'run', return_value='Content-Length: 12\n') as command:
+            self.assertEqual(12, evidence.verify_cos_head('/trusted/coscli', '/private/profile', '/private', 'fixture.age', 12))
+            command.assert_called_once_with(
+                ['/trusted/coscli', '--config-path', '/private/profile', '--log-path', '/private',
+                 'stat', 'cos://'+evidence.BUCKET+'/fixture.age'],
+                env={'PATH': '/usr/bin:/bin', 'HOME': '/private'})
+
+    def test_cos_head_empty_duplicate_malformed_and_error_output_fail_closed(self):
+        for output in ['', 'Success', 'AccessDenied', 'Content-Length: 12\nContent-Length: 12',
+                       'Content-Length: 12\ncontent-length: 13', 'Content-Length: -12',
+                       'Content-Length: 12.5', 'Content-Length: 12oops', 'Content-Length:\n12']:
+            with self.subTest(output=output), patch.object(evidence, 'run', return_value=output):
+                with self.assertRaisesRegex(RuntimeError, 'missing or ambiguous'):
+                    evidence.verify_cos_head('/client', '/profile', '/private', 'fixture.age', 12)
+
+    def test_cos_head_zero_or_wrong_remote_size_is_denied(self):
+        for output, expected in [('Content-Length: 0', 0), ('Content-Length: 0', 12),
+                                  ('Content-Length: 13', 12), ('Content-Length: 12', 0)]:
+            with self.subTest(output=output, expected=expected), patch.object(evidence, 'run', return_value=output):
+                with self.assertRaisesRegex(RuntimeError, 'size mismatch'):
+                    evidence.verify_cos_head('/client', '/profile', '/private', 'fixture.age', expected)
+
+    def test_cos_head_nonzero_exit_never_accepts_metadata_or_exposes_output(self):
+        result = subprocess.CompletedProcess([], 1, 'Content-Length: 12\nsynthetic-secret', 'synthetic-secret')
+        with patch.object(evidence.subprocess, 'run', return_value=result):
+            with self.assertRaises(RuntimeError) as captured:
+                evidence.verify_cos_head('/client', '/profile', '/private', 'fixture.age', 12)
+            self.assertNotIn('synthetic-secret', str(captured.exception))
+
     def fpm_identity(self):
         return [{'ActiveState': 'active', 'MainPID': '0', 'Type': 'forking',
                  'FragmentPath': '/run/systemd/generator.late/php-fpm-83.service', 'PIDFile': ''},
