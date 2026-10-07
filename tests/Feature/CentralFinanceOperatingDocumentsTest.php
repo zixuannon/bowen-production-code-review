@@ -57,11 +57,15 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
             '2026_08_20_000003_create_central_finance_student_sync_tables.php',
             '2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php',
             '2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php',
+            '2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php',
             '2026_09_03_000001_create_central_finance_fund_account_school_allocations.php',
             '2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php',
             '2026_08_21_000002_create_central_finance_operating_documents.php',
             '2026_08_21_000005_create_central_finance_school_cutovers.php',
             '2026_08_26_000001_complete_central_finance_reimbursement_workflow.php',
+            '2026_09_04_000001_create_central_finance_pending_collections.php',
+            '2026_09_29_000002_add_finance_collection_v2_documents.php',
+            '2026_10_07_000001_close_unidentified_deposit_p0.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }
@@ -150,6 +154,53 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
         $this->assertSame(0.0, $totals['operating_income']);
         $this->assertSame(0.0, $totals['operating_net']);
         $this->assertSame(2, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_bank_other_income_rejects_an_existing_deposit_identity_without_posting(): void
+    {
+        DB::connection('mysql')->transaction(fn () => app(\App\Services\CentralFinanceBankTransactionIdentityService::class)->reserve(
+            $this->hqAccount, 'MMK', '250', 'unidentified_deposit', hash('sha256', 'deposit-origin'), 'BANK-DUPLICATE',
+        ));
+        try {
+            app(CentralFinanceOperatingDocumentService::class)->createOtherIncome($this->head, 2, $this->timecityIncome->id, $this->hqAccount, 250, 'Bank', $this->at(), 'IMPORT-OTHER-1', 'bank-duplicate');
+            $this->fail('Other Income import must share the bank receipt identity.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('already recorded', $e->getMessage());
+        }
+        $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_bank_other_income_claims_identity_before_a_later_deposit_and_retries_once(): void
+    {
+        $service = app(CentralFinanceOperatingDocumentService::class);
+        $first = $service->createOtherIncome($this->head, 2, $this->timecityIncome->id, $this->hqAccount, 250, 'Bank', $this->at(), 'IMPORT-OTHER-2', 'BANK-OTHER-2');
+        $retry = $service->createOtherIncome($this->head, 2, $this->timecityIncome->id, $this->hqAccount, 250, 'Bank', $this->at(), 'IMPORT-OTHER-2', 'BANK-OTHER-2');
+        $this->assertSame($first->id, $retry->id);
+        $this->assertSame('other_income', DB::connection('mysql')->table('central_finance_bank_transaction_identities')->value('source_type'));
+        $this->assertSame(250.0, app(CentralFinanceFundAccountBalanceService::class)->currentBalance($this->hqAccount));
+        try {
+            DB::connection('mysql')->transaction(fn () => app(\App\Services\CentralFinanceBankTransactionIdentityService::class)->reserve(
+                $this->hqAccount, 'MMK', '250', 'unidentified_deposit', hash('sha256', 'later-deposit-origin'), 'BANK-OTHER-2',
+            ));
+            $this->fail('Deposit must reject a bank receipt already claimed by Other Income.');
+        } catch (InvalidArgumentException $e) { $this->assertStringContainsString('already recorded', $e->getMessage()); }
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+    }
+
+    public function test_bank_other_income_requires_reference_and_void_does_not_release_identity(): void
+    {
+        $service = app(CentralFinanceOperatingDocumentService::class);
+        try { $service->createOtherIncome($this->head, 2, $this->timecityIncome->id, $this->hqAccount, 250, 'Bank', $this->at(), 'NO-BANK-REF'); $this->fail(); }
+        catch (InvalidArgumentException $e) { $this->assertStringContainsString('missing Bank Reference', $e->getMessage()); }
+        $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
+        $income = $service->createOtherIncome($this->head, 2, $this->timecityIncome->id, $this->hqAccount, 250, 'Bank', $this->at(), 'VOIDED-BANK-REF', 'VOIDED-BANK-REF');
+        $service->voidOtherIncome($this->head, $income->id, 'Duplicate source correction.', $this->at()->addMinute());
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_bank_transaction_identities')->count());
+        $this->expectException(InvalidArgumentException::class);
+        DB::connection('mysql')->transaction(fn () => app(\App\Services\CentralFinanceBankTransactionIdentityService::class)->reserve(
+            $this->hqAccount, 'MMK', '250', 'unidentified_deposit', hash('sha256', 'later-voided-deposit'), 'VOIDED-BANK-REF',
+        ));
     }
 
     public function test_soft_delete_adds_exactly_one_reversal_and_keeps_reference_reserved(): void
@@ -261,6 +312,7 @@ class CentralFinanceOperatingDocumentsTest extends TestCase
             'account_uuid' => (string) Str::uuid(), 'group_id' => 1,
             'account_code' => $code, 'account_name' => $name, 'owner_type' => $ownerType,
             'school_id' => $schoolId, 'currency' => 'MMK', 'opening_balance' => 0, 'is_active' => true,
+            'account_type' => $ownerType === 'hq' ? 'bank' : 'cash',
         ]);
         if ($schoolId !== null) {
             $this->allocate($account, $schoolId);

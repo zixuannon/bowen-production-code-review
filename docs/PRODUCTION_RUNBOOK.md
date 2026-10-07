@@ -4,6 +4,98 @@
 
 Production is a Human Gate.
 
+### Unidentified Deposit P0 — future gate, not deployment authorization
+
+#### Explicit historical QA identity maintenance (separate approval)
+
+Normal bank Payment/Other Income still require a real reference. A missing
+reference must never be filled with a receipt number, random token, or another
+transaction's reference. The bounded historical QA service supports only an
+operator-confirmed simulated pre-QA-Run collection with a complete immutable
+Pending/Payment/Allocation/Receipt/Ledger chain, trusted permanent QA registry,
+explicit classification audits, no Run membership and exactly one money-in.
+
+The maintenance procedure appends one `historical_qa_identity_reconciled`
+document audit, preserving NULL references and every original financial row.
+Its deterministic `historical_qa` namespace is distinct from bank evidence.
+Only this independently revalidated audit permits the P0 migration's historical
+inventory to accept that missing-reference source. There is no live HTTP or
+ordinary bank-posting fallback, bulk QA conversion, or QA Run assignment.
+
+Use `scripts/production/reconcile_historical_qa_identity.php` only after explicit
+bounded operator approval, active Central Head Finance actor verification,
+local targeted/full tests, exact database rehearsal and fresh encrypted R2E
+backup with independent COS verification. An isolated reviewed maintenance
+bundle may load the unchanged current release's dependencies as `www`; it must
+not activate the P0 release or run migration. Supply the private exact scope,
+baseline and reviewed evidence via STDIN, never in shell history or committed
+Production fixtures. `--preflight` is read-only. `--execute` uses a short-lived
+SERIALIZABLE connection, locks the evidence before snapshots, appends only the
+audit, and compares financial/classification/Run hashes before commit. Exact
+retry returns the existing audit; drift or changed content fails closed.
+`--inventory` invokes only the SELECT-only candidate migration inventory and
+returns counts/schema observations, not deployment approval. Separately review
+Pending/Import conflicts and partial schema before declaring migration ready.
+
+Historical QA reconciliation does not authorize the P0 migration/deployment.
+Official missing references, additional unapproved historical exceptions, or
+duplicate physical effects remain blockers. Never use normal Refund/Reversal
+to undo zero-cash deposit attribution. Once a historical identity is recorded,
+retain the audit; do not delete it to reopen identity reuse.
+
+Reconciled local parent: `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`.
+Only Central connection `mysql` has a new migration:
+`database/migrations/2026_10_07_000001_close_unidentified_deposit_p0.php`.
+No tenant migration, role expansion, fake School or financial-history repair is
+part of this candidate. Never run broad `migrate` or `migrate:school` for it.
+
+Before any separately approved rollout:
+
+1. Verify exact candidate/remote SHA, ancestry, immutable content, fresh encrypted
+   R2E backup and authoritative remote verification. Verify the Central schema,
+   expected named unique index and unrelated migration state.
+2. Inventory historical bank Payments, Deposits and Other Income, including
+   voided/deleted history. Missing references/accounts, duplicate normalized
+   account+currency+identity, inconsistent currency, or invalid origins block
+   migration **before DDL**. Never invent references or repair history silently.
+3. Require a controlled quiescent bank-posting window across HTTP/Queue/import
+   writers throughout inventory, DDL, identity backfill and activation. MySQL/
+   MariaDB DDL is not transactional; old writers must not race the identity
+   backfill. Plan the exact approved execution/history recording and schema
+   verification on Production MariaDB before running this Central path as
+   `www` through the runtime-user wrapper. Local MySQL rehearsal is not proof
+   that Production history passes this preflight.
+4. Verify identity uniqueness/FKs, nullable Payment/allocation links, removed
+   deposit+receivable unique index, migration history and unchanged historical
+   Payment/Receipt/Receivable/Ledger/balance snapshots. Partial schema is a
+   FAIL-CLOSED forward-fix situation, not permission to rerun blindly.
+5. Complete immutable switch and runtime/ownership checks under the existing
+   deployment contract. No old posting worker may continue after activation.
+   Automatic schema rollback is forbidden once identities or new links exist;
+   financial-history preservation takes priority. `down()` only permits unused
+   schema. If a release must revert after use, block affected bank write paths
+   and seek a reviewed forward fix; old code lacks the new identity fence.
+
+Business contract: uniqueness is physical Fund Account + currency + normalized
+reference (case/whitespace normalized; punctuation preserved). Deposit without
+a bank reference requires a stable alternative identity and explanatory reason,
+not a random idempotency token. Manual and bank reference identities share the
+same uniqueness namespace. Normal bank Payment/Other Income still require a
+reference. An operator must not re-enter the same bank fact under another
+invented reference; automated bank-statement identity matching remains P1.
+
+Existing noncanonical allocation history is preserved, not silently converted.
+New allocations create canonical documents and zero-cash income Ledger entries.
+Ordinary Refund/Reversal for such Payments is denied pending a separately
+approved deposit-aware correction lifecycle.
+
+After code deployment, use a separately approved **Active Zixuan QA Run** with
+a clearly QA-classified Group bank account bound to that QA context. Unknown
+cash keeps `school_id=NULL`; QA Run membership does not assign School revenue.
+Run a synthetic full E2E, Complete/Archive it, then operator UAT. Do not enable
+Official money until that gate is approved. Never use a real student's Finance
+records for automated mutation QA.
+
 ### Finance Layer 4 date and official go-live gate
 
 Before an official School moves to `CENTRAL`, use

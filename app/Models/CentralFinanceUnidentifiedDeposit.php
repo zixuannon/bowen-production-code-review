@@ -22,6 +22,7 @@ final class CentralFinanceUnidentifiedDeposit extends Model
         'deposit_uuid', 'group_id', 'fund_account_id', 'idempotency_key', 'bank_reference',
         'description', 'known_payer', 'amount', 'currency', 'status', 'received_date',
         'recorded_at', 'recorded_by', 'reversed_at', 'reversed_by', 'reversal_reason',
+        'request_hash', 'manual_identity', 'manual_reason',
     ];
 
     protected $casts = ['amount' => 'decimal:4', 'received_date' => 'date', 'recorded_at' => 'datetime', 'reversed_at' => 'datetime'];

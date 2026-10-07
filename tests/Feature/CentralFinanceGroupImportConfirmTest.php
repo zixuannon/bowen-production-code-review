@@ -105,6 +105,9 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             '2026_09_02_000003_create_central_finance_group_import_previews.php',
             '2026_09_02_000004_add_group_import_confirm_links.php',
             '2026_09_14_000003_create_central_finance_data_classifications.php',
+            '2026_09_04_000001_create_central_finance_pending_collections.php',
+            '2026_09_29_000002_add_finance_collection_v2_documents.php',
+            '2026_10_07_000001_close_unidentified_deposit_p0.php',
         ] as $migration) {
             (require database_path('migrations/'.$migration))->up();
         }

@@ -23,6 +23,9 @@ final class CentralFinancePaymentRefundService
         if ($amount <= 0 || !is_finite($amount) || !preg_match('/^[A-Za-z0-9 _.-]{2,40}$/', trim($method)) || trim($reason) === '' || mb_strlen($reason) > 2000 || !preg_match('/^[A-Za-z0-9_.:-]{2,100}$/', $idempotencyReference)) throw new InvalidArgumentException('Central payment refund input is invalid.');
         return DB::connection('mysql')->transaction(function () use ($actor, $paymentId, $account, $amount, $method, $effectiveDate, $reason, $refundedAt, $idempotencyReference, $refundReference): CentralFinancePaymentRefund {
             $payment = CentralFinancePayment::on('mysql')->lockForUpdate()->findOrFail($paymentId);
+            if ($payment->unidentified_deposit_id !== null) {
+                throw new InvalidArgumentException('Deposit-funded settlements require the allocation-aware correction workflow; no cash correction was posted.');
+            }
             if ($payment->receivable_id === null) {
                 throw new InvalidArgumentException('Refund for a multi-receivable parent payment requires the allocation-aware correction release.');
             }

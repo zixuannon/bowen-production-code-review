@@ -90,7 +90,7 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         CentralFinanceCategory::on('mysql')->create(['school_id'=>1,'type'=>'income','name'=>'Activity','is_active'=>true]);
         Session::start(); Session::forget(CentralFinanceWorkspaceService::SESSION_SCHOOL_KEY);
     }
-    protected function tearDown(): void { DB::purge('mysql'); @unlink($this->database); parent::tearDown(); }
+    protected function tearDown(): void { $this->travelBack(); DB::purge('mysql'); @unlink($this->database); parent::tearDown(); }
 
     public function test_all_schools_is_central_read_model_and_school_switcher_is_scope_limited(): void
     {
@@ -988,6 +988,115 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
 
         $this->assertSame([601], $view->getData()['receivables']->pluck('student_profile_id')->all());
         $this->assertSame(CentralFinanceReceivable::VOIDED, $view->getData()['filters']['receivable_status']);
+    }
+
+    public function test_unassigned_group_bank_cash_is_visible_once_and_school_attribution_is_noncash(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-07 14:30:00', 'Asia/Yangon'));
+        $this->grantHeadFinanceRole();
+        // Exercise the permanent QA exclusion as well as normal classifications.
+        Schema::connection('mysql')->table('schools', function (Blueprint $t): void { $t->boolean('installed')->default(true); $t->string('status')->default('active'); });
+        DB::connection('mysql')->table('schools')->where('id', 2)->update(['code' => 'MMBOWEN01', 'database_name' => 'deposit_qa_fixture']);
+        Config::set('finance_release.p31_p32_tenants.MMBOWEN01', 'deposit_qa_fixture');
+        $this->assertSame(2, app(\App\Services\CentralFinanceQaRunService::class)->permanentQaSchoolId());
+        Schema::connection('mysql')->table('central_finance_ledger_entries', fn (Blueprint $t) => $t->unsignedBigInteger('school_id')->nullable()->change());
+        $hq = CentralFinanceFundAccount::on('mysql')->create([
+            'account_uuid' => (string) Str::uuid(), 'group_id' => 1, 'account_code' => 'GROUP-BANK',
+            'account_name' => 'Group bank', 'owner_type' => 'hq', 'school_id' => null,
+            'account_type' => 'bank', 'currency' => 'MMK', 'opening_balance' => 100, 'is_active' => true,
+        ]);
+        $this->grantAccount($this->head, $hq);
+        $cash = CentralFinanceLedgerEntry::on('mysql')->create([
+            'entry_uuid' => (string) Str::uuid(), 'school_id' => null, 'fund_account_id' => $hq->id,
+            'entry_date' => '2026-06-15', 'occurred_at' => '2026-06-15 00:00:00',
+            'source_type' => 'central_unidentified_deposit', 'source_id' => 1, 'source_line' => 'receipt',
+            'transaction_type' => 'unidentified_deposit', 'reference_no' => 'BANK-500', 'currency' => 'MMK',
+            'money_in' => 500000, 'money_out' => 0, 'operating_income' => 0, 'operating_expense' => 0, 'created_by' => 100,
+        ]);
+        $this->actingAs($this->head);
+        $controller = app(CentralFinanceWorkspaceController::class);
+        $filters = new Request(['from' => '2026-06-01', 'to' => '2026-06-30']);
+        $before = $controller->fundAccountStatement($filters, $hq->id)->getData();
+        $this->assertSame([$cash->id], $before['statementEntries']->pluck('id')->all());
+        $this->assertSame(500000.0, $before['statementTotals']['money_in']);
+        $this->assertSame(500100.0, $before['statementEntries']->first()->running_balance);
+        $this->assertSame(500000.0, $controller->reports($filters)->getData()['currencyTotals']['MMK']['money_in']);
+        $this->assertSame(0.0, $controller->reports($filters)->getData()['currencyTotals']['MMK']['operating_income']);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $this->assertTrue($controller->ledger($filters)->getData()['ledger']->isEmpty());
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+        DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->insert([
+            'fund_account_id' => $hq->id, 'school_id' => 1, 'opening_allocation_amount' => 0,
+            'effective_from' => '2026-06-01', 'status' => 'active', 'is_active' => true,
+            'assigned_by' => $this->head->id, 'assignment_reason' => 'Group deposit report fixture.',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $attribution = CentralFinanceLedgerEntry::on('mysql')->create(array_merge($cash->only([
+            'fund_account_id', 'entry_date', 'occurred_at', 'reference_no', 'currency', 'money_out', 'operating_expense', 'created_by',
+        ]), ['entry_uuid' => (string) Str::uuid(), 'school_id' => 1, 'source_type' => 'central_payment',
+            'source_id' => 1, 'source_line' => 'deposit_allocation', 'transaction_type' => 'unidentified_deposit_allocation', 'money_in' => 0, 'operating_income' => 500000]));
+        foreach ([$cash, $attribution] as $depositEntry) {
+            $detail = $controller->ledgerDetail($depositEntry->id);
+            $display = $detail->getData()['entry'];
+            $this->assertSame('2026-06-15', $display->entry_date->toDateString());
+            $this->assertSame('2026-06-15', $display->occurred_at->toDateString());
+            $this->assertSame('2026-10-07', $display->display_recorded_at->toDateString());
+            $html = $detail->with('errors', new \Illuminate\Support\ViewErrorBag())->render();
+            $this->assertStringContainsString($display->created_at->timezone('Asia/Yangon')->format('Y-m-d H:i:s'), $html);
+        }
+        $after = $controller->fundAccountStatement($filters, $hq->id)->getData();
+        $this->assertSame(500000.0, $after['statementTotals']['money_in']);
+        $this->assertSame([500100.0], $after['statementEntries']->pluck('running_balance')->unique()->values()->all());
+        $period = $controller->fundAccountStatement(new Request(['from' => '2026-08-01']), $hq->id)->getData();
+        $this->assertSame(500100.0, $period['statementOpeningBalance']);
+        $this->assertSame(0.0, $period['statementTotals']['money_in']);
+        app(CentralFinanceWorkspaceService::class)->enterSchool($this->head, 1);
+        $school = $controller->reports($filters)->getData();
+        $this->assertSame([$attribution->id], $school['ledger']->pluck('id')->all());
+        $this->assertSame(0.0, $school['currencyTotals']['MMK']['money_in']);
+        $this->assertSame(500000.0, $school['currencyTotals']['MMK']['operating_income']);
+        $this->assertSame(500000.0, (float) $school['reportCategoryAnalysis']->sum('income'));
+
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+        $qaCash = CentralFinanceLedgerEntry::on('mysql')->create(array_merge($cash->only([
+            'school_id', 'fund_account_id', 'entry_date', 'occurred_at', 'source_type', 'source_line', 'transaction_type',
+            'currency', 'money_out', 'operating_income', 'operating_expense', 'created_by',
+        ]), ['entry_uuid' => (string) Str::uuid(), 'source_id' => 2, 'reference_no' => 'QA-BANK-100', 'money_in' => 100]));
+        DB::connection('mysql')->table('central_finance_data_classifications')->insert([
+            'classification_uuid' => (string) Str::uuid(), 'school_id' => null, 'subject_scope' => 'central',
+            'subject_type' => 'ledger', 'subject_id' => $qaCash->id, 'classification' => 'qa_test',
+            'reason' => 'Synthetic QA bank movement.', 'classified_by' => $this->head->id, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertSame(500000.0, $controller->reports($filters)->getData()['currencyTotals']['MMK']['money_in']);
+        $this->assertFalse($controller->ledger($filters)->getData()['ledger']->pluck('id')->contains($qaCash->id));
+
+        // Follow the actual rendered statement links with the authorized QA
+        // filter. Dropping it makes these same rows correctly return 404.
+        $qaRequest = new Request(['include_qa_test' => 1]);
+        $this->app->instance('request', $qaRequest);
+        $qaStatement = $controller->fundAccountStatement($qaRequest, $hq->id)->getData();
+        $statementHtml = view('central-finance.partials.account-statements', $qaStatement)->render();
+        $sourceUrl = route('central-finance.ledger.source', ['ledger' => $qaCash->id, 'include_qa_test' => 1]);
+        $detailUrl = route('central-finance.ledger.show', ['ledger' => $qaCash->id, 'include_qa_test' => 1]);
+        $this->assertStringContainsString('href="'.$sourceUrl.'"', $statementHtml);
+        $this->assertStringContainsString('href="'.$detailUrl.'"', $statementHtml);
+        $this->assertStringContainsString('name="include_qa_test" value="1"', $statementHtml);
+        $sourceView = $controller->ledgerSource($qaCash->id);
+        $this->assertTrue($sourceView->getData()['includeQaTest']);
+        $this->assertStringContainsString('href="'.$detailUrl.'"', $sourceView->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
+        $detailView = $controller->ledgerDetail($qaCash->id);
+        $this->assertTrue($detailView->getData()['includeQaTest']);
+        $this->assertStringContainsString('href="'.$sourceUrl.'"', $detailView->with('errors', new \Illuminate\Support\ViewErrorBag())->render());
+        $this->app->instance('request', new Request());
+
+        // Readable account membership cannot grant the Group controller's NULL scope.
+        app(CentralFinanceWorkspaceService::class)->exitSchool();
+        $this->actingAs($this->zixuanAccountant);
+        $this->grantAccount($this->zixuanAccountant, $hq);
+        $this->assertFalse($controller->ledger($filters)->getData()['ledger']->pluck('id')->contains($cash->id));
+        $this->app->instance('request', $qaRequest);
+        $this->expectException(AuthorizationException::class);
+        $controller->ledgerSource($qaCash->id);
     }
 
     private function account(string $code,string $name,int $school): CentralFinanceFundAccount

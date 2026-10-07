@@ -36,6 +36,23 @@ final class CentralFinanceLedgerService
         return $this->recordSingle($actor, $account, $schoolId, $sourceType, $sourceId, 'primary', CentralFinanceLedgerEntry::TYPE_OPERATING_EXPENSE, $amount, $occurredAt, $referenceNo, $operating, $memo);
     }
 
+    /** Attribute a canonical settlement backed by existing bank cash, never receive cash again. */
+    public function recordDepositPaymentAttribution(User $actor, \App\Models\CentralFinancePayment $payment): CentralFinanceLedgerEntry
+    {
+        $payment = \App\Models\CentralFinancePayment::on('mysql')->findOrFail($payment->id);
+        $deposit = \App\Models\CentralFinanceUnidentifiedDeposit::on('mysql')->findOrFail($payment->unidentified_deposit_id);
+        $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail($payment->fund_account_id);
+        if ((int) $deposit->fund_account_id !== (int) $account->id || $deposit->currency !== $payment->currency) {
+            throw new InvalidArgumentException('The settlement must retain its original deposit account and currency.');
+        }
+        $this->scope->assertCanOperate($actor, $account, (int) $payment->school_id);
+        $this->assertSchoolAttribution((int) $payment->school_id, $account);
+        return $this->append($actor, $account, (int) $payment->school_id, 'central_payment', $payment->payment_uuid,
+            'primary', 'unidentified_deposit_allocation', 0, 0, (string) $payment->amount, 0,
+            $payment->paid_at, $payment->receipt?->receipt_no,
+            'Allocation of previously received deposit '.$deposit->deposit_uuid.'; no new physical cash movement.');
+    }
+
     /**
      * Reversals are append-only corrections for a soft-deleted source record.
      * The signed operating amount restores the operating result without

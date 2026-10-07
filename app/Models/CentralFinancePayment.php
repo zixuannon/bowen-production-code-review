@@ -10,7 +10,7 @@ use Carbon\CarbonImmutable;
 use RuntimeException;
 class CentralFinancePayment extends Model {
     protected $connection='mysql';
-    protected $fillable=['payment_uuid','school_id','receivable_id','fund_account_id','idempotency_key','payment_reference','payment_method','note','currency','amount','paid_at','received_by'];
+    protected $fillable=['payment_uuid','school_id','receivable_id','fund_account_id','idempotency_key','payment_reference','payment_method','note','currency','amount','paid_at','received_by','unidentified_deposit_id','request_hash'];
     protected $casts=['amount'=>'decimal:4'];
     /** Payment timestamps are stored and reported as Yangon business time. */
     protected function paidAt(): Attribute { return Attribute::make(
@@ -25,4 +25,5 @@ class CentralFinancePayment extends Model {
     public function reversal(): HasOne { return $this->hasOne(CentralFinancePaymentReversal::class, 'payment_id'); }
     public function fundAccount(): BelongsTo { return $this->belongsTo(CentralFinanceFundAccount::class, 'fund_account_id'); }
     public function receivedBy(): BelongsTo { return $this->belongsTo(CentralFinanceUser::class, 'received_by'); }
+    public function unidentifiedDeposit(): BelongsTo { return $this->belongsTo(CentralFinanceUnidentifiedDeposit::class, 'unidentified_deposit_id'); }
 }

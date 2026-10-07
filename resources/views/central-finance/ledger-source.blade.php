@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="content-wrapper">
-    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-1">{{ __('Central Finance') }} / {{ __('Source document') }}</h4><small class="text-muted">{{ $school?->name ?? __('All authorized Schools') }}</small></div><a class="btn btn-outline-secondary" href="{{ route('central-finance.ledger.show', $entry->id) }}">{{ __('Back to Ledger entry') }}</a></div>
+    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-1">{{ __('Central Finance') }} / {{ __('Source document') }}</h4><small class="text-muted">{{ $school?->name ?? __('All authorized Schools') }}</small></div><a class="btn btn-outline-secondary" href="{{ route('central-finance.ledger.show', ['ledger' => $entry->id, 'include_qa_test' => $includeQaTest ? 1 : null]) }}">{{ __('Back to Ledger entry') }}</a></div>
     <div class="card"><div class="card-body">
         <h5>{{ $source['label'] }}</h5>
         @if($source['model'])
@@ -14,6 +14,10 @@
                 <dt class="col-sm-4">{{ __('Status') }}</dt><dd class="col-sm-8"><span class="badge badge-{{ in_array($source['status'], ['reversal','reversed']) ? 'warning' : 'success' }}">{{ __($source['status']) }}</span></dd>
                 <dt class="col-sm-4">{{ __('Canonical Ledger reference') }}</dt><dd class="col-sm-8">{{ $entry->entry_uuid }}</dd>
                 <dt class="col-sm-4">{{ __('Reference') }}</dt><dd class="col-sm-8">{{ $entry->reference_no ?: '—' }}</dd>
+                @if($document instanceof \App\Models\CentralFinanceUnidentifiedDeposit)
+                    <dt class="col-sm-4">{{ __('Original Bank Transaction Date') }}</dt><dd class="col-sm-8">{{ $document->received_date?->format('Y-m-d') }}</dd>
+                    <dt class="col-sm-4">{{ __('Known payer') }}</dt><dd class="col-sm-8">{{ $document->known_payer ?: '—' }}</dd>
+                @endif
                 @if($document->getAttribute('amount') !== null)<dt class="col-sm-4">{{ __('Amount') }}</dt><dd class="col-sm-8">{{ number_format((float) $document->getAttribute('amount'), 2) }} {{ $document->getAttribute('currency') }}</dd>@endif
                 @if($document->getAttribute('description'))<dt class="col-sm-4">{{ __('Description') }}</dt><dd class="col-sm-8">{{ $document->getAttribute('description') }}</dd>@endif
                 @if($document->getAttribute('reason'))<dt class="col-sm-4">{{ __('Reason') }}</dt><dd class="col-sm-8">{{ $document->getAttribute('reason') }}</dd>@endif

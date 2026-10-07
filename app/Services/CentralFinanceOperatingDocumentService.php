@@ -84,6 +84,15 @@ final class CentralFinanceOperatingDocumentService
             $this->availability->assertAccountAvailableForSchool($account, $schoolId);
             $category = $this->category($schoolId, $categoryId, CentralFinanceCategory::INCOME, (int) $account->group_id);
             $this->assertReferenceFree(CentralFinanceOtherIncome::class, $schoolId, $referenceNo);
+            if ($account->account_type === CentralFinanceFundAccount::TYPE_BANK) {
+                // Group Import and manual Income share this canonical posting
+                // seam. A bank receipt cannot bypass an existing Deposit or
+                // Payment by entering through a different document type.
+                app(CentralFinanceBankTransactionIdentityService::class)->reserve(
+                    $account, (string) $account->currency, number_format($amount, 4, '.', ''),
+                    'other_income', $key, $referenceNo,
+                );
+            }
             $income = CentralFinanceOtherIncome::on('mysql')->create([
                 'school_id' => $schoolId, 'category_id' => $categoryId,
                 'fund_account_id' => $account->id, 'idempotency_key' => $key,

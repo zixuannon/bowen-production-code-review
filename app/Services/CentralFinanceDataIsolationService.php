@@ -592,6 +592,33 @@ final class CentralFinanceDataIsolationService
         }
     }
 
+    /** Group cash has no invented School: snapshot the authorized account's classification. */
+    public function inheritUnidentifiedCashClassification(CentralFinanceUser $actor, \App\Models\CentralFinanceFundAccount $account, string $subjectType, int $subjectId): void
+    {
+        if (!in_array($subjectType, ['unidentified_deposit', 'ledger'], true) || !$this->schemaAvailable()) {
+            throw new RuntimeException('Group cash classification schema or subject is invalid.');
+        }
+        app(CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureGroup($actor, (int) $account->group_id);
+        $row = DB::connection('mysql')->table(self::SUBJECTS[$subjectType]['table'])->where('id', $subjectId)->first();
+        if (!$row || (int) $row->fund_account_id !== (int) $account->id || ($subjectType === 'ledger' && ($row->school_id !== null || $row->source_type !== 'central_unidentified_deposit'))) {
+            throw new AuthorizationException('Group cash classification must match its original Fund Account.');
+        }
+        $classification = $this->classification('fund_account', (int) $account->id);
+        if (!in_array($classification, [CentralFinanceDataClassification::PRODUCTION, CentralFinanceDataClassification::QA_TEST], true)) {
+            throw new AuthorizationException('Archived accounts cannot receive unidentified money.');
+        }
+        $reason = 'Inherited from original Group Fund Account; School ownership is unknown.';
+        $record = CentralFinanceDataClassification::on('mysql')->create([
+            'school_id' => null, 'subject_scope' => 'central', 'subject_type' => $subjectType, 'subject_id' => $subjectId,
+            'classification' => $classification, 'classified_by' => $actor->id, 'reason' => $reason,
+        ]);
+        CentralFinanceDataClassificationAudit::on('mysql')->create([
+            'classification_id' => $record->id, 'school_id' => null, 'subject_scope' => 'central', 'subject_type' => $subjectType,
+            'subject_id' => $subjectId, 'before_classification' => null, 'after_classification' => $classification,
+            'reason' => $reason, 'actor_id' => $actor->id,
+        ]);
+    }
+
     public function classify(CentralFinanceUser $actor, int $schoolId, string $subjectType, int $subjectId, string $classification, string $reason): CentralFinanceDataClassification
     {
         if ((!isset(self::SUBJECTS[$subjectType]) && !isset(self::TENANT_SUBJECTS[$subjectType])) || !in_array($classification, CentralFinanceDataClassification::VALUES, true)) {

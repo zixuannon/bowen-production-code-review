@@ -176,7 +176,7 @@ final class CentralFinancePendingCollectionService
         return array_values($result);
     }
 
-    private function reservedAmount(int $receivableId): string
+    public function reservedAmount(int $receivableId, bool $lock = true): string
     {
         // Existing installations remain readable/testable while the additive
         // P0 migration is being rehearsed.  Once the allocation table exists
@@ -184,12 +184,12 @@ final class CentralFinancePendingCollectionService
         if (!Schema::connection('mysql')->hasTable('central_finance_pending_collection_allocations')) {
             $amounts = CentralFinancePendingCollection::on('mysql')->where('receivable_id', $receivableId)
                 ->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD])
-                ->lockForUpdate()->pluck('amount');
+                ->when($lock, fn ($query) => $query->lockForUpdate())->pluck('amount');
             return $amounts->reduce(fn (string $sum, mixed $amount): string => CentralFinanceDecimal::add($sum, (string) $amount), CentralFinanceDecimal::normalize('0'));
         }
         $amounts = CentralFinancePendingCollectionAllocation::on('mysql')->where('receivable_id', $receivableId)
             ->whereHas('pendingCollection', fn ($query) => $query->whereIn('status', [CentralFinancePendingCollection::SUBMITTED, CentralFinancePendingCollection::HELD]))
-            ->lockForUpdate()->pluck('amount');
+            ->when($lock, fn ($query) => $query->lockForUpdate())->pluck('amount');
         return $amounts->reduce(fn (string $sum, mixed $amount): string => CentralFinanceDecimal::add($sum, (string) $amount), CentralFinanceDecimal::normalize('0'));
     }
 

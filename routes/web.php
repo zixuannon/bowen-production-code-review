@@ -1235,6 +1235,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/unidentified-deposits', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'index'])->name('central-finance.unidentified-deposits.index');
     Route::post('central-finance/unidentified-deposits', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'store'])->name('central-finance.unidentified-deposits.store');
     Route::post('central-finance/unidentified-deposits/{deposit}/match', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'match'])->name('central-finance.unidentified-deposits.match');
+    Route::get('central-finance/unidentified-deposits/{deposit}/receivables', [\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class, 'receivables'])->name('central-finance.unidentified-deposits.receivables');
     Route::post('central-finance/school', [CentralFinanceWorkspaceController::class, 'enterSchool'])->name('central-finance.school.enter');
     Route::post('central-finance/all-schools', [CentralFinanceWorkspaceController::class, 'exitSchool'])->name('central-finance.school.exit');
     Route::get('central-finance/student-collection', [CentralFinanceStudentCollectionController::class, 'collection'])->name('central-finance.student-collection.index');

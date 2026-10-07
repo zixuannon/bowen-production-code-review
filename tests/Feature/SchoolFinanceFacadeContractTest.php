@@ -15,7 +15,11 @@ final class SchoolFinanceFacadeContractTest extends TestCase
         $this->assertStringContainsString('function usesSchoolFinanceFacade', $workspace);
         $this->assertStringContainsString('return $this->isSchoolStaffPrincipal($actor);', $workspace);
         $this->assertStringContainsString('requireOperatingSchool($actor)', $controller);
-        $this->assertStringContainsString('readableAccounts($actor,$school?->id,$includeQaTest)', $controller);
+        $this->assertStringContainsString('readableLedgerAccounts($actor,$school?->id,$includeQaTest)', $controller);
+        $readableLedgerAccounts = substr($controller, strpos($controller, 'private function readableLedgerAccounts('));
+        $readableLedgerAccounts = strstr($readableLedgerAccounts, 'private function viewableFundAccounts(', true);
+        $this->assertStringContainsString('$this->workspace->readableAccounts($actor, $schoolId, $includeQaTest)', $readableLedgerAccounts);
+        $this->assertStringContainsString('if ($schoolId !== null) return $accounts;', $readableLedgerAccounts);
         $this->assertStringContainsString('currentBalance($accountReport)', $controller);
         $this->assertStringContainsString('schoolActivity($accountReport, $schoolId)', $controller);
     }

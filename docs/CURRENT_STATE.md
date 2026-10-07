@@ -1,5 +1,77 @@
 # eSchool Current State
 
+## Latest — Historical QA identity reconciled; P0 data preflight CLEAN (2026-10-07)
+
+- Exact Production parent remains `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`.
+  Accepted P0 is reconciled locally on this parent, retaining P1-A, QA Runs,
+  permanent QA School isolation and guarded release infrastructure.
+- Operator explicitly confirmed the bounded historical collection was simulated
+  QA and authorized a real Central Head Finance audit actor. After fresh encrypted
+  Central + eight-tenant R2E recovery and 12 independent COS HEAD/checksum checks,
+  the reviewed isolated maintenance bundle appended one historical identity audit.
+  No financial row, original NULL reference, classification or Run membership was
+  changed; all ten before/after financial/classification/Run hashes matched.
+- The exception requires trusted QA registry, audited classification, pre-Run
+  source evidence, no Run membership, one proven money-in and explicit bounded
+  approval. It is not bank evidence or a fallback for normal bank posting.
+  Official missing-reference transactions remain denied.
+- Post-maintenance exact SELECT-only migration inventory recognizes two bank
+  reference identities and one historical QA identity. No duplicate identity,
+  unresolved Pending/Import/Other Income conflict or partial P0 schema remains.
+  The raw cash Pending account difference is expected: destination was selected
+  at cash confirmation, not a second physical bank receipt.
+- Full regression: **1,232 tests / 9,562 assertions, zero failures/errors**;
+  the exact 34 existing skips are unchanged. Historical + bank identity target:
+  **46 tests / 272 assertions**. Disposable MySQL exact maintenance preflight,
+  execute, idempotent retry, read-only verification and migration checks pass;
+  eight historical checks and 25 generic migration checks pass.
+- Reconciled-tree browser smoke passes at 1440px and 390px: deposit list,
+  Student Code/GR search, allocation controls, canonical receipts and Group
+  statement. Original synthetic 500,000 cash with 400,000 + 100,000 zero-cash
+  allocations remains intact. No browser settlement was submitted. Existing
+  full accepted P0 E2E evidence is retained; no executable live-posting behavior
+  changed in the historical identity seam.
+- Production migration, P0 activation and push remain prohibited until separate
+  exact-candidate approval. Data-preflight CLEAN does not authorize a deployment
+  or bypass the migration guard. Final rollout must still define the exact
+  guarded runner/history recording and quiescent bank-writer window.
+- Deposit-allocation ordinary Refund/Reversal remains intentionally denied;
+  zero-cash attribution correction is not part of this scope.
+- Local fixture limitation/backlog: direct legacy dashboard rendering assumes
+  every synthetic School has an administrator; the retained test fixture has a
+  NULL administrator and raises a null relation error there. P0 Finance pages
+  pass with the correct synthetic Head Finance session. No unrelated dashboard
+  code or Production data was changed to mask this fixture issue.
+
+## Earlier — Unidentified Deposit P0 reconciliation BLOCKED (2026-10-07)
+
+- Actual Production Git HEAD and active symlink were read-only verified as
+  `135341bf2f9eb1e470be7bd6e3fd8f3515c60e0e`, release
+  `eschool-rc-135341bf2f9e-consolidated`. No Production changes were made.
+- Accepted prior candidate `abcd66e0d262daa5a3fd9b5a1daba537cd1c20d5`
+  remains frozen. Its changes are reapplied without commit on isolated branch
+  `codex/unidentified-deposit-p0-reconciled` at the exact current Production
+  base. The sole conflict was this historical status document; both histories
+  are retained. P1-A code/migration/guard changes remain in the base.
+- Production preflight classification: **HISTORICAL DATA RECONCILIATION
+  REQUIRED**. Four Payments exist, three bank-scoped; one bank Payment has a
+  NULL reference. There are zero duplicate nonblank physical identities or
+  duplicate origins. The exact P0 migration refuses this missing reference
+  before any DDL. No reference was invented or financial history repaired.
+- Three Pending Collections are confirmed and linked to existing Payments;
+  two are bank-scoped and one has a missing reference. One linked Pending/
+  Payment identity comparison differs; its exact business explanation has not
+  been established. These linked records are not independent money-in facts.
+- Deposits, Deposit Allocations, Other Income, all inspected Import tables:
+  zero records. No new P0 columns/table/history are present; the expected old
+  allocation unique index remains. No partially applied P0 schema detected.
+- Per the explicit stop gate, no post-reconciliation test suite, migration
+  rehearsal, browser smoke, final commit, push, or deployment was performed.
+  Prior local engineering/E2E evidence is historical, not a PASS for this
+  uncommitted reconciled tree. See the read-only preflight evidence document.
+- Allocation-linked ordinary Refund/Reversal must continue to fail closed;
+  no zero-cash attribution correction engine is approved in this task.
+
 ## Latest — P1-A reconciled after Zixuan QA Run Production PASS (2026-10-07)
 
 - Read-only Production release marker and Git HEAD both match
@@ -47,6 +119,55 @@
 - A new candidate SHA has been frozen locally for review. It has not been pushed,
   staged, migrated, or deployed. The previous inactive staged candidate is
   not approved for activation. No P1-B work has started.
+
+## Unidentified Deposit P0 — prior local closure candidate (2026-10-07)
+
+- Exact audited Production parent: `162375bd6038e4a8a458eaf8710c2f5a6fd819ee`,
+  release `eschool-rc-162375bd6038-zixuan-qa-run-active`. Work is isolated on
+  `codex/unidentified-deposit-p0`; Production has not been modified.
+- Unknown-School bank receipt now retains the original cash fact. Allocation
+  reuses the canonical Payment writer, producing Payment Allocation, Receipt,
+  and append-only School income attribution with zero additional physical
+  cash movement. Partial and repeated allocations to one receivable are
+  supported; exact retries return the original result, changed content fails.
+- A shared physical bank identity fence covers Deposit, normal Payment,
+  Pending confirmation, Finance Import and bank Other Income. Missing bank
+  reference requires an explicit stable manual identity and reason for Deposit;
+  bank Payment/Income without a reference fail closed. This does not implement
+  automated Bank Import matching or claim that arbitrary operator-entered
+  references can identify the same bank transaction without bank evidence.
+- Pending reservations, account availability, Central cutover, currencies,
+  Group/School authority, and QA/Official isolation remain server enforced.
+  Permanent Zixuan QA deposits require an Active QA Run and cannot be allocated
+  across Runs; original cash still has no School revenue attribution.
+- Group statements retain NULL-School bank facts. Deposit allocation income
+  appears separately with zero cash. Bank date remains the original date;
+  Recorded/Allocated timestamps are actual system times. Canonical receipt
+  identifies the original bank receipt rather than implying a second receipt.
+- Final disposable browser rerun completed at 1440px and 390px: create 500,000,
+  allocate 400,000 Tuition then 100,000 Uniform, inspect Payment/Receipt/Ledger
+  and Group statement. Physical balance stays 500,000; final graph has two
+  Payments, two Receipts, two Payment Allocations, three Ledger entries and one
+  physical bank identity. QA links and actual Recorded At display were fixed
+  and reverified. No Production browser mutation or real School fixture used.
+- Focused final regression: 203 tests / 1,207 assertions, zero errors/failures/
+  skips. Final full regression: 1,194 tests / 9,286 assertions, zero errors or
+  failures, 34 existing skips and zero new skips. All 37 implementation/test
+  file hashes stayed unchanged through the final run; independent safety review
+  found no blocking issue. Only documentation was updated after these gates.
+  Exact Central migration rehearsal on dedicated local MySQL 9.6.0 passed 25
+  checks (apply/unused rollback/reapply, pre-DDL ambiguity rejection, financial
+  history preservation, FKs/uniqueness, used rollback refusal). This is not a
+  Production MariaDB migration execution or approval.
+- Deposit-linked ordinary Refund/Reversal is explicitly denied until a
+  deposit-aware correction contract is separately approved. Advanced matching,
+  correction UI, aging, attachments and investigation workflow remain P1/P2.
+- Next gate: approve the frozen full SHA separately, verified backup and exact
+  Central migration preflight, immutable deployment, then Zixuan QA Run E2E,
+  Complete/Archive and operator UAT. Official Finance enablement is NOT approved.
+  See `docs/finance/UNIDENTIFIED_DEPOSIT_P0_LOCAL_EVIDENCE.md` and the runbook.
+
+The entries below are historical and do not supersede this task's verified parent.
 
 ## Zixuan QA Run — immutable-release trust-boundary repair (historical attempt, 2026-10-06)
 

@@ -10,6 +10,7 @@ use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinancePayment;
 use App\Models\CentralFinancePaymentRefund;
+use App\Models\CentralFinanceUnidentifiedDeposit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -49,6 +50,11 @@ final class CentralFinanceLedgerPresentationService
         if ($model !== null && (int) $model->getAttribute('school_id') !== (int) $entry->school_id) {
             $model = null;
         }
+        if ($model instanceof CentralFinanceUnidentifiedDeposit
+            && (int) $model->fund_account_id !== (int) $entry->fund_account_id) $model = null;
+        if ($model instanceof CentralFinancePayment && $model->unidentified_deposit_id) {
+            $label = __('Allocation of previously received deposit — no new bank receipt');
+        }
         return [
             'label' => $label,
             'document_number' => $this->documentNumber($entry, $model),
@@ -67,6 +73,12 @@ final class CentralFinanceLedgerPresentationService
             $entry->setAttribute('source_status', $source['status']);
             $entry->setAttribute('direction_label', $this->direction($entry));
             $entry->setAttribute('operating_label', $this->operating($entry));
+            $depositFlow = $entry->source_type === 'central_unidentified_deposit'
+                || $entry->transaction_type === 'unidentified_deposit_allocation';
+            $entry->setAttribute('is_deposit_flow', $depositFlow);
+            // Deposit occurred_at preserves the bank business date. Its
+            // system recording time is the append-only row's created_at.
+            $entry->setAttribute('display_recorded_at', $depositFlow ? $entry->created_at : $entry->occurred_at);
             $this->decorateTransferLeg($entry, $source['model']);
         });
     }
@@ -102,6 +114,7 @@ final class CentralFinanceLedgerPresentationService
     public function direction(CentralFinanceLedgerEntry $entry): string
     {
         if ($entry->transaction_type === CentralFinanceLedgerEntry::TYPE_INTERNAL_TRANSFER) return __('Internal Transfer');
+        if ((float) $entry->money_in === 0.0 && (float) $entry->money_out === 0.0) return __('No cash movement');
         return (float) $entry->money_in > 0 ? __('Money In') : __('Money Out');
     }
 
@@ -114,6 +127,8 @@ final class CentralFinanceLedgerPresentationService
     {
         return match ($documentType) {
             'central_finance_payment', 'central_payment' => __('Student Payment'),
+            'unidentified_deposit' => __('Unidentified Deposit'),
+            'unidentified_deposit_allocation' => __('Deposit allocation'),
             'central_finance_payment_refund', 'central_payment_refund' => __('Payment Refund'),
             'central_finance_payment_reversal', 'central_payment_reversal' => __('Payment Reversal'),
             'central_finance_expense', 'expense' => __('Expense'),
@@ -175,6 +190,7 @@ final class CentralFinanceLedgerPresentationService
     private function definition(string $sourceType): ?array
     {
         return match ($sourceType) {
+            'central_unidentified_deposit' => ['label' => __('Unidentified Deposit'), 'query' => fn (string $id) => \Illuminate\Support\Facades\Schema::connection('mysql')->hasTable('central_finance_unidentified_deposits') ? CentralFinanceUnidentifiedDeposit::on('mysql')->where('deposit_uuid', $id)->first() : null],
             'central_payment' => ['label' => __('Student Payment'), 'query' => fn (string $id) => CentralFinancePayment::on('mysql')->where('payment_uuid', $id)->first()],
             'central_payment_refund' => ['label' => __('Payment Refund'), 'query' => fn (string $id) => CentralFinancePaymentRefund::on('mysql')->where('refund_uuid', $id)->first()],
             'central_payment_reversal' => ['label' => __('Payment Reversal'), 'query' => fn (string $id) => \App\Models\CentralFinancePaymentReversal::on('mysql')->where('reversal_uuid', $id)->first()],
@@ -193,6 +209,7 @@ final class CentralFinanceLedgerPresentationService
     private function documentNumber(CentralFinanceLedgerEntry $entry, ?Model $model): string
     {
         if ($model instanceof CentralFinancePayment) return $model->receipt?->receipt_no ?: ($model->payment_reference ?: $entry->reference_no ?: $model->payment_uuid);
+        if ($model instanceof CentralFinanceUnidentifiedDeposit) return $model->bank_reference ?: $model->manual_identity ?: $model->deposit_uuid;
         if ($model instanceof CentralFinancePaymentRefund) return $model->refund_reference ?: $entry->reference_no ?: $model->refund_uuid;
         if ($model instanceof CentralFinanceExpense || $model instanceof CentralFinanceOtherIncome) return $model->reference_no ?: $entry->reference_no ?: (string) $model->getKey();
         if ($model instanceof CentralFinanceInternalTransfer || $model instanceof CentralFinanceFundHandover || $model instanceof CentralFinanceHqFundingRequest) return $model->reference_no ?: $entry->reference_no ?: (string) $model->getKey();

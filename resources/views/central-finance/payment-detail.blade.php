@@ -19,7 +19,9 @@
         <tr><th>{{ __('Fund Account') }}</th><td>{{ $receipt->fundAccount['name'] }} · {{ $receipt->fundAccount['code'] }}</td></tr>
     </tbody></table></div></div>
 
-    @if($canCorrect)
+    @if($document->unidentified_deposit_id)
+    <div class="alert alert-info">{{ __('Deposit allocation corrections require a separate deposit correction workflow.') }}</div>
+    @elseif($canCorrect)
     <div class="row">
         <div class="col-lg-6 mb-3"><div class="card cf-danger-panel"><div class="card-body"><h5>{{ __('Initiate Refund') }}</h5><p class="small text-muted">{{ __('Refund means money is actually returned to the parent/customer.') }}</p>
         @if($document->reversal)<div class="alert alert-secondary mb-0">{{ __('Refund is unavailable because this payment has been fully reversed.') }}</div>

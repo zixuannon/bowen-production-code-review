@@ -23,6 +23,9 @@ final class CentralFinanceReceiptViewModelFactory
             $relations[] = 'allocations.receivable.studentProfile';
         }
         $payment->loadMissing($relations);
+        $depositAllocation = Schema::connection('mysql')->hasColumn('central_finance_unidentified_deposit_allocations', 'payment_id')
+            ? \App\Models\CentralFinanceUnidentifiedDepositAllocation::on('mysql')->with('deposit')->where('payment_id', $payment->id)->first()
+            : null;
 
         $receivable = $payment->receivable;
         $allocations = $payment->relationLoaded('allocations') ? $payment->allocations->sortBy('id')->values() : collect();
@@ -105,6 +108,7 @@ final class CentralFinanceReceiptViewModelFactory
             student: [
                 'name' => $studentReceivable?->studentProfile?->student_name ?: '—',
                 'admission_no' => $studentReceivable?->studentProfile?->admission_no ?: '—',
+                'student_code' => $studentReceivable?->studentProfile?->student_code ?: ($studentReceivable?->studentProfile?->admission_no ?: '—'),
                 'class_section' => trim(($studentReceivable?->studentProfile?->class_name ?? '').(($studentReceivable?->studentProfile?->section_name ?? '') ? ' · '.$studentReceivable->studentProfile->section_name : '')) ?: '—',
             ],
             payment: [
@@ -119,6 +123,12 @@ final class CentralFinanceReceiptViewModelFactory
                 'payment_method' => $payment->payment_method,
                 'reference' => $payment->payment_reference ?: '—',
                 'collected_by' => $payment->received_by ? optional($payment->receivedBy)->full_name : '—',
+                'unidentified_deposit' => $depositAllocation ? [
+                    'reference' => $depositAllocation->deposit?->bank_reference ?: $depositAllocation->deposit?->manual_identity,
+                    'received_date' => $depositAllocation->deposit?->received_date,
+                    'allocated_at' => $depositAllocation->matched_at,
+                    'deposit_uuid' => $depositAllocation->deposit?->deposit_uuid,
+                ] : null,
             ],
             fundAccount: [
                 'name' => $payment->fundAccount?->account_name ?: '—',

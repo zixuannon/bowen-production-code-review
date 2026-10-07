@@ -13,9 +13,22 @@
     <dt>{{ __('Currency') }}</dt><dd>{{ $receipt->payment['currency'] }}</dd>
 </dl>
 
+@if($receipt->payment['unidentified_deposit'] ?? null)
+<div class="central-receipt__section">
+    <p>{{ __('Allocation of previously received deposit — no new bank receipt') }}</p>
+    <dl>
+        <dt>{{ __('Original Bank Reference') }}</dt><dd>{{ $receipt->payment['unidentified_deposit']['reference'] ?: '—' }}</dd>
+        <dt>{{ __('Original Bank Transaction Date') }}</dt><dd>{{ $receipt->payment['unidentified_deposit']['received_date']?->format('Y-m-d') }}</dd>
+        <dt>{{ __('Allocated At') }}</dt><dd>{{ $receipt->payment['unidentified_deposit']['allocated_at']?->format('Y-m-d H:i:s') }}</dd>
+        <dt>{{ __('Unidentified Deposit') }}</dt><dd>{{ $receipt->payment['unidentified_deposit']['deposit_uuid'] }}</dd>
+    </dl>
+</div>
+@endif
+
 <div class="central-receipt__section"><p class="central-receipt__section-title">{{ __('Student') }}</p><dl>
     <dt>{{ __('Student') }}</dt><dd>{{ $receipt->student['name'] }}</dd>
-    <dt>{{ __('Student Code') }}</dt><dd>{{ $receipt->student['admission_no'] }}</dd>
+    <dt>{{ __('Student Code') }}</dt><dd>{{ $receipt->student['student_code'] ?? $receipt->student['admission_no'] }}</dd>
+    <dt>{{ __('GR Number') }}</dt><dd>{{ $receipt->student['admission_no'] }}</dd>
     <dt>{{ __('Class / Section') }}</dt><dd>{{ $receipt->student['class_section'] }}</dd>
 </dl></div>
 

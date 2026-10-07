@@ -29,6 +29,9 @@ final class CentralFinancePaymentReversalService
 
         return DB::connection('mysql')->transaction(function () use ($actor, $paymentId, $effectiveDate, $reason, $reversedAt, $idempotencyReference, $reference): CentralFinancePaymentReversal {
             $payment = CentralFinancePayment::on('mysql')->with('receipt')->lockForUpdate()->findOrFail($paymentId);
+            if ($payment->unidentified_deposit_id !== null) {
+                throw new InvalidArgumentException('Deposit-funded settlements require the allocation-aware correction workflow; no cash correction was posted.');
+            }
             if ($payment->receivable_id === null) {
                 throw new InvalidArgumentException('Reversal for a multi-receivable parent payment requires the allocation-aware correction release.');
             }

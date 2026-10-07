@@ -228,6 +228,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function ledgerDetail(int $ledger): View
     {
         [$actor, $school, $schools, $accounts, $filters] = $this->readScope(request());
+        $includeQaTest = (bool) $filters['include_qa_test'];
         $entry = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)
             ->with('fundAccount')->findOrFail($ledger);
         $this->ledgerPresentation->decorate(collect([$entry]));
@@ -235,19 +236,20 @@ final class CentralFinanceWorkspaceController extends Controller
             ->where('source_id', $entry->source_id)
             ->where('id', '!=', $entry->id)->orderBy('entry_date')->orderBy('occurred_at')->orderBy('id')->get();
         $this->ledgerPresentation->decorate($related);
-        return view('central-finance.ledger-detail', compact('actor', 'school', 'entry', 'related'));
+        return view('central-finance.ledger-detail', compact('actor', 'school', 'entry', 'related', 'includeQaTest'));
     }
 
     public function ledgerSource(int $ledger): View
     {
         [$actor, $school, $schools, $accounts, $filters] = $this->readScope(request());
+        $includeQaTest = (bool) $filters['include_qa_test'];
         $entry = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)
             ->with('fundAccount')->findOrFail($ledger);
         $source = $this->ledgerPresentation->source($entry);
         $audits = $source['model']
             ? $this->sourceAudits($source['model'], $entry->school_id)
             : collect();
-        return view('central-finance.ledger-source', compact('actor', 'school', 'entry', 'source', 'audits'));
+        return view('central-finance.ledger-source', compact('actor', 'school', 'entry', 'source', 'audits', 'includeQaTest'));
     }
 
     public function reports(?Request $request = null): View
@@ -415,7 +417,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function exportLedger(Request $request, string $format)
     {
         $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
-        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->readableAccounts($actor, $school?->id);
+        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->readableLedgerAccounts($actor, $school?->id);
         $filters = $this->validatedReadFilters($request, $school, $accounts);
         $entries = $this->scopedLedgerQuery($school, $schools, $accounts, $filters)->with('fundAccount')->orderBy('entry_date')->orderBy('occurred_at')->orderBy('id')->get();
         $schoolNames = $schools->pluck('name', 'id'); $operators = CentralFinanceUser::on('mysql')->whereIn('id', $entries->pluck('created_by')->filter()->unique())->get()->mapWithKeys(fn ($user) => [$user->id => $user->full_name]);
@@ -434,7 +436,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function exportPayments(Request $request, string $format)
     {
         $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
-        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->readableAccounts($actor, $school?->id);
+        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->readableLedgerAccounts($actor, $school?->id);
         $filters = $this->validatedReadFilters($request, $school, $accounts);
         $payments = $this->scopedPaymentQuery($school, $schools, $accounts, $filters)->with($this->paymentReadRelations(false))->orderBy('paid_at')->get();
         $schoolNames = $schools->pluck('name', 'id');
@@ -475,7 +477,7 @@ final class CentralFinanceWorkspaceController extends Controller
     public function exportFundAccountReport(Request $request, int $fundAccount, string $format)
     {
         $actor = $this->actor(); $school = $this->workspace->currentSchool($actor);
-        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->workspace->readableAccounts($actor, $school?->id);
+        $schools = $this->workspace->accessibleSchools($actor); $accounts = $this->readableLedgerAccounts($actor, $school?->id);
         abort_unless($accounts->contains('id', $fundAccount), 404);
         $filters = $this->validatedReadFilters($request, $school, $accounts); $filters['fund_account_id'] = $fundAccount;
         $account = $accounts->firstWhere('id', $fundAccount);
@@ -1051,7 +1053,7 @@ final class CentralFinanceWorkspaceController extends Controller
         $includeQaTest = $this->effectiveIncludeQaTest($request, $actor);
         $school = $this->workspace->currentSchool($actor, $includeQaTest);
         $schools = $this->workspace->accessibleSchools($actor, $includeQaTest);
-        $accounts = $this->workspace->readableAccounts($actor, $school?->id, $includeQaTest);
+        $accounts = $this->readableLedgerAccounts($actor, $school?->id, $includeQaTest);
         $filters = $this->validatedReadFilters($request, $school, $accounts, $schools);
         $filters['include_qa_test'] = $includeQaTest;
 
@@ -1122,7 +1124,7 @@ final class CentralFinanceWorkspaceController extends Controller
         // Read models intentionally use strict selected-School accounts. Keep
         // the broader authorised operation set separate: Head Finance may
         // still collect a School's fee into an authorised HQ account.
-        $accounts=$this->workspace->readableAccounts($actor,$school?->id,$includeQaTest);
+        $accounts=$this->readableLedgerAccounts($actor,$school?->id,$includeQaTest);
         $operationAccounts=$this->workspace->accessibleAccounts($actor,$school?->id);
         // Lifecycle history remains readable. Only account-directory/report pages
         // include inactive or archived accounts; transaction selectors still use
@@ -1131,7 +1133,7 @@ final class CentralFinanceWorkspaceController extends Controller
             $accounts = $this->viewableFundAccounts($actor, $school?->id, $includeQaTest);
         }
         if (in_array($page, ['ledger', 'audits'], true)) {
-            $accounts = $this->workspace->readableAccounts($actor, $school?->id, $includeQaTest);
+            $accounts = $this->readableLedgerAccounts($actor, $school?->id, $includeQaTest);
         }
         if ($page === 'account-statements' && $requestedAccountId === null) {
             $requestedAccountId = $accounts->first()?->id;
@@ -1169,7 +1171,7 @@ final class CentralFinanceWorkspaceController extends Controller
                         'income' => (float) $entries->sum('operating_income'), 'expense' => (float) $entries->sum('operating_expense')];
                 })->sortBy('date')->values();
             $reportCategoryAnalysis = $filteredLedgerEntries
-                ->filter(fn (CentralFinanceLedgerEntry $entry): bool => (float) $entry->money_in !== 0.0 || (float) $entry->money_out !== 0.0)
+                ->filter(fn (CentralFinanceLedgerEntry $entry): bool => (float) $entry->money_in !== 0.0 || (float) $entry->money_out !== 0.0 || (float) $entry->operating_income !== 0.0 || (float) $entry->operating_expense !== 0.0)
                 ->groupBy(function (CentralFinanceLedgerEntry $entry) use ($categoryDetails): string {
                     $category = $categoryDetails[$entry->source_type.':'.$entry->source_id] ?? ['id' => null, 'name' => __('Uncategorized')];
                     return $entry->school_id.'|'.$entry->currency.'|'.($category['id'] ?? 'none').'|'.$category['name'];
@@ -1571,8 +1573,16 @@ final class CentralFinanceWorkspaceController extends Controller
      * to the existing append-only audit facts; never manufacture a second
      * audit trail from Ledger data.
      */
-    private function sourceAudits(\Illuminate\Database\Eloquent\Model $source, int $schoolId)
+    private function sourceAudits(\Illuminate\Database\Eloquent\Model $source, ?int $schoolId)
     {
+        if ($schoolId === null) {
+            // Reached only after scopedLedgerQuery has authorized the exact
+            // Group account, and repeat Group authority for NULL audit access.
+            if (!$source instanceof \App\Models\CentralFinanceUnidentifiedDeposit) return collect();
+            $this->configuration->assertHeadFinanceCanConfigureGroup($this->actor(), (int) $source->group_id);
+            return CentralFinanceDocumentAudit::on('mysql')->whereNull('school_id')->where('group_id', $source->group_id)
+                ->where('document_type', 'unidentified_deposit')->where('document_id', $source->id)->latest()->get();
+        }
         $type = match ($source::class) {
             CentralFinancePayment::class => 'central_payment',
             \App\Models\CentralFinancePaymentRefund::class => 'central_payment_refund',
@@ -1598,13 +1608,31 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         $query = CentralFinanceLedgerEntry::on('mysql');
         $this->applyReadVisibility($query, 'ledger', $school, (bool) ($filters['include_qa_test'] ?? false));
-        if ($school) $query->where('school_id', $school->id);
-        elseif ($schools->isNotEmpty()) $query->whereIn('school_id', $schools->pluck('id'));
-        else $query->whereRaw('1 = 0');
+        $this->scopeLedgerSchools($query, $school, $schools, $accounts);
         // A School scope is never a substitute for an explicit Fund Account scope.
         $query->whereIn('fund_account_id', $accounts->pluck('id'));
         if (!empty($filters['fund_account_id'])) $query->where('fund_account_id', (int) $filters['fund_account_id']);
         return $this->applyLedgerFilters($query, $filters);
+    }
+
+    private function scopeLedgerSchools($query, ?School $school, \Illuminate\Support\Collection $schools, \Illuminate\Support\Collection $accounts): void
+    {
+        if ($school) {
+            $query->where('school_id', $school->id);
+            return;
+        }
+        // NULL-School bank facts belong only to the explicit Group controller.
+        // Account read access alone must never grant Group cash visibility.
+        $groupIds = $this->configuration->configurableGroups($this->actor())->pluck('id');
+        $groupAccountIds = $accounts->filter(fn ($account): bool => $account->school_id === null
+            && $account->owner_type === CentralFinanceFundAccount::OWNER_HQ
+            && $groupIds->contains($account->group_id))->pluck('id');
+        $query->where(function ($scope) use ($schools, $groupAccountIds): void {
+            $scope->whereIn('school_id', $schools->pluck('id'));
+            if ($groupAccountIds->isNotEmpty()) {
+                $scope->orWhere(fn ($unassigned) => $unassigned->whereNull('school_id')->whereIn('fund_account_id', $groupAccountIds));
+            }
+        });
     }
 
     /**
@@ -1614,13 +1642,7 @@ final class CentralFinanceWorkspaceController extends Controller
     {
         $canonical = CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id);
         $this->applyReadVisibility($canonical, 'ledger', $school, (bool) ($filters['include_qa_test'] ?? false));
-        if ($school) {
-            $canonical->where('school_id', $school->id);
-        } elseif ($schools->isNotEmpty()) {
-            $canonical->whereIn('school_id', $schools->pluck('id'));
-        } else {
-            $canonical->whereRaw('1 = 0');
-        }
+        $this->scopeLedgerSchools($canonical, $school, $schools, $accounts);
 
         // A School-scoped statement is an activity slice, not a second copy of
         // the physical account balance. Its running movement therefore starts
@@ -1820,6 +1842,19 @@ final class CentralFinanceWorkspaceController extends Controller
         } catch (InvalidArgumentException $exception) {
             throw ValidationException::withMessages([$field => [$exception->getMessage()]]);
         }
+    }
+
+    /** Group cash is readable before any School allocation exists. */
+    private function readableLedgerAccounts(CentralFinanceUser $actor, ?int $schoolId, bool $includeQaTest = false): \Illuminate\Support\Collection
+    {
+        $accounts = $this->workspace->readableAccounts($actor, $schoolId, $includeQaTest);
+        if ($schoolId !== null) return $accounts;
+        $groupIds = $this->configuration->configurableGroups($actor)->pluck('id');
+        if ($groupIds->isEmpty()) return $accounts;
+        $groupAccounts = CentralFinanceFundAccount::on('mysql')->whereIn('group_id', $groupIds)
+            ->whereNull('school_id')->where('owner_type', CentralFinanceFundAccount::OWNER_HQ);
+        $this->dataIsolation->apply($groupAccounts, 'fund_account', $includeQaTest);
+        return $accounts->merge($groupAccounts->get())->unique('id')->sortBy('account_name')->values();
     }
 
     /** @return \Illuminate\Support\Collection<int,CentralFinanceFundAccount> */

@@ -1,5 +1,25 @@
 # eSchool Finance V2 Roadmap
 
+## Unidentified Deposit P0 — local closure (2026-10-07)
+
+- [x] Preserve unknown-School bank fact; physical account moves exactly once.
+- [x] Reuse canonical Payment/Allocation/Receipt writer for later settlement;
+  append School income attribution without a second bank movement.
+- [x] Shared bank identity across Deposit/Payment/Pending/Import/Other Income,
+  strict request retry/conflict contract, pending reservations and scoped allocation.
+- [x] Group NULL-School reconciliation visibility and original bank date contract.
+- [x] Active Zixuan QA Run membership; no cross-Run or QA/Official allocation.
+- [x] Local migration rehearsal, targeted/full regression, real desktop/mobile E2E.
+- [x] Reconcile on current P1-A Production lineage; bounded operator-approved
+  historical QA identity maintenance, unchanged financial facts, CLEAN data preflight.
+- [ ] Exact candidate Production approval, backup/preflight/migration/deployment.
+- [ ] Zixuan QA Run synthetic E2E, Complete/Archive, operator UAT.
+- [ ] Explicit Official Finance enablement after UAT.
+
+P1/P2 deferred: automated unmatched Bank Import, aging/investigation/attachments,
+advanced allocation wizard, and deposit-aware correction/refund/reversal lifecycle.
+Ordinary Payment correction is denied for deposit allocations in P0.
+
 ## Finance Layer 4 — Date Contract + Official Go-Live Foundation — local candidate
 
 - [x] One strict Yangon `YYYY-MM-DD` non-future Transaction Date contract for

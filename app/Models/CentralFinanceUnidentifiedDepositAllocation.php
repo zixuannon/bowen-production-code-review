@@ -15,6 +15,7 @@ final class CentralFinanceUnidentifiedDepositAllocation extends Model
     protected $fillable = [
         'allocation_uuid', 'unidentified_deposit_id', 'school_id', 'student_profile_id',
         'receivable_id', 'idempotency_key', 'amount', 'currency', 'matched_at', 'matched_by', 'reason',
+        'payment_id', 'request_hash',
     ];
 
     protected $casts = ['amount' => 'decimal:4', 'matched_at' => 'datetime'];
@@ -28,4 +29,5 @@ final class CentralFinanceUnidentifiedDepositAllocation extends Model
 
     public function deposit(): BelongsTo { return $this->belongsTo(CentralFinanceUnidentifiedDeposit::class, 'unidentified_deposit_id'); }
     public function receivable(): BelongsTo { return $this->belongsTo(CentralFinanceReceivable::class, 'receivable_id'); }
+    public function payment(): BelongsTo { return $this->belongsTo(CentralFinancePayment::class, 'payment_id'); }
 }

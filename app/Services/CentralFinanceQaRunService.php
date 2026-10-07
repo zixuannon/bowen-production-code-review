@@ -5,9 +5,13 @@ namespace App\Services;
 use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceDataClassificationAudit;
 use App\Models\CentralFinanceDocumentAudit;
+use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceLedgerEntry;
 use App\Models\CentralFinanceQaRun;
 use App\Models\CentralFinanceQaRunRecord;
 use App\Models\CentralFinanceStudentProfile;
+use App\Models\CentralFinanceReceivable;
+use App\Models\CentralFinanceUnidentifiedDeposit;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -59,7 +63,10 @@ final class CentralFinanceQaRunService
             }
             return;
         }
-        $query->where($query->getModel()->qualifyColumn($schoolColumn), '<>', $schoolId);
+        $qualifiedSchool = $query->getModel()->qualifyColumn($schoolColumn);
+        // Unassigned Group cash is not a permanent QA School record. Its
+        // visibility still requires the caller's explicit Group/account scope.
+        $query->where(fn ($scope) => $scope->whereNull($qualifiedSchool)->orWhere($qualifiedSchool, '<>', $schoolId));
     }
 
     public function isQaSchoolClassificationFallback(string $subjectType, int $subjectId): bool
@@ -348,6 +355,81 @@ final class CentralFinanceQaRunService
     public function lockActiveRunForCentralRecord(int $schoolId, string $subjectType, int $subjectId): ?CentralFinanceQaRun
     {
         return $this->lockActiveRunForCentralRecords($schoolId, $subjectType, [$subjectId]);
+    }
+
+    /**
+     * The account's classification School identifies QA ownership only; it
+     * never attributes unidentified physical cash to School revenue.
+     */
+    public function lockActiveRunForUnidentifiedCash(CentralFinanceFundAccount $account): ?CentralFinanceQaRun
+    {
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        if ($isolation->classification('fund_account', (int) $account->id) !== CentralFinanceDataClassification::QA_TEST) return null;
+        $context = CentralFinanceDataClassification::on('mysql')->where([
+            'subject_scope' => 'central', 'subject_type' => 'fund_account', 'subject_id' => $account->id,
+        ])->lockForUpdate()->first();
+        $schoolId = (int) ($context?->school_id ?? 0);
+        $permanentQaSchoolId = $this->permanentQaSchoolId();
+        if (!$schoolId && $permanentQaSchoolId) {
+            throw new AuthorizationException('QA unidentified cash requires an unambiguous Fund Account classification context.');
+        }
+        if (!$permanentQaSchoolId || $schoolId !== $permanentQaSchoolId) return null;
+        $this->assertUnidentifiedPostingTransaction();
+        // The permanent School's classification() fallback deliberately stays
+        // QA/Test, so inspect its explicit archive marker as well.
+        if (CentralFinanceDataClassification::on('mysql')->where([
+            'subject_scope' => 'central', 'subject_type' => 'school', 'subject_id' => $schoolId,
+            'classification' => CentralFinanceDataClassification::ARCHIVED,
+        ])->exists()) {
+            throw new AuthorizationException('Archived QA School context cannot receive unidentified cash.');
+        }
+        $run = $this->currentRun($schoolId, true);
+        if (!$run || $run->status !== CentralFinanceQaRun::ACTIVE) {
+            throw new AuthorizationException('QA unidentified cash requires an Active QA Run.');
+        }
+        return $run;
+    }
+
+    /** Attach the original unknown-school facts to the already-locked QA Run. */
+    public function registerUnidentifiedCash(CentralFinanceQaRun $run, CentralFinanceUnidentifiedDeposit $deposit, CentralFinanceLedgerEntry $ledger, CentralFinanceDocumentAudit $audit): void
+    {
+        $this->assertUnidentifiedPostingTransaction();
+        $run = CentralFinanceQaRun::on('mysql')->lockForUpdate()->findOrFail($run->id);
+        if (!$this->isPermanentQaSchool((int) $run->school_id) || $run->status !== CentralFinanceQaRun::ACTIVE
+            || $ledger->school_id !== null || (int) $ledger->fund_account_id !== (int) $deposit->fund_account_id
+            || $ledger->source_type !== 'central_unidentified_deposit' || $ledger->source_id !== $deposit->deposit_uuid
+            || $audit->school_id !== null || $audit->document_type !== 'unidentified_deposit' || (int) $audit->document_id !== (int) $deposit->id
+            || app(CentralFinanceDataIsolationService::class)->classification('unidentified_deposit', (int) $deposit->id) !== CentralFinanceDataClassification::QA_TEST) {
+            throw new AuthorizationException('Unidentified cash QA membership must preserve its original active Run and unknown School.');
+        }
+        foreach ([['unidentified_deposit', $deposit->id], ['ledger', $ledger->id], ['audit', $audit->id]] as [$type, $id]) {
+            $this->insertMembership($run, (int) $run->school_id, 'central', $type, (int) $id, null, false);
+        }
+    }
+
+    /** Original QA cash can settle only a receivable from its same Active Run. */
+    public function lockActiveRunForUnidentifiedAllocation(CentralFinanceUnidentifiedDeposit $deposit, CentralFinanceReceivable $receivable): ?CentralFinanceQaRun
+    {
+        $depositRun = $this->runForRecord('central', 'unidentified_deposit', (int) $deposit->id);
+        if (!$depositRun && !$this->isPermanentQaSchool((int) $receivable->school_id)) return null;
+        $this->assertUnidentifiedPostingTransaction();
+        if (!$depositRun || !$this->isPermanentQaSchool((int) $depositRun->school_id)
+            || (int) $depositRun->school_id !== (int) $receivable->school_id) {
+            throw new AuthorizationException('Unidentified cash and its target must belong to the same QA Run.');
+        }
+        $this->lockActiveRunForCentralRecord((int) $depositRun->school_id, 'unidentified_deposit', (int) $deposit->id);
+        $targetRun = $this->lockActiveRunForCentralRecord((int) $receivable->school_id, 'receivable', (int) $receivable->id);
+        if ((int) $targetRun?->id !== (int) $depositRun->id) {
+            throw new AuthorizationException('Unidentified cash cannot be reused across QA Runs.');
+        }
+        return $targetRun;
+    }
+
+    private function assertUnidentifiedPostingTransaction(): void
+    {
+        if (DB::connection('mysql')->transactionLevel() < 1) {
+            throw new RuntimeException('Unidentified cash QA Run locking requires the Central posting transaction.');
+        }
     }
 
     public function assertTenantStudentInActiveRun(int $schoolId, int $studentId): ?CentralFinanceQaRun
