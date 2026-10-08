@@ -14,6 +14,7 @@ final class CentralFinanceUnidentifiedDepositQaRunTest extends TestCase {
  protected function setUp(): void { parent::setUp(); @mkdir(storage_path('framework/views'),0777,true); $this->central=tempnam(sys_get_temp_dir(),'cf_recv_c_'); $this->a=tempnam(sys_get_temp_dir(),'cf_recv_a_'); $this->b=tempnam(sys_get_temp_dir(),'cf_recv_b_'); Config::set('database.connections.mysql',['driver'=>'sqlite','database'=>$this->central,'prefix'=>'','foreign_key_constraints'=>true]); Config::set('database.connections.school',['driver'=>'sqlite','database'=>$this->a,'prefix'=>'','foreign_key_constraints'=>true]); DB::purge('mysql'); DB::purge('school'); DB::setDefaultConnection('mysql');
   Schema::connection('mysql')->create('schools',fn(Blueprint $t)=>[$t->id(),$t->string('name'),$t->string('code')->nullable(),$t->string('database_name')->nullable(),$t->softDeletes(),$t->timestamps()]); Schema::connection('mysql')->create('users',fn(Blueprint $t)=>[$t->id(),$t->string('first_name')->nullable(),$t->string('last_name')->nullable(),$t->unsignedBigInteger('school_id')->nullable(),$t->softDeletes(),$t->timestamps()]); Schema::connection('mysql')->create('roles',fn(Blueprint $t)=>[$t->id(),$t->string('name'),$t->string('guard_name')->default('web'),$t->timestamps()]); Schema::connection('mysql')->create('model_has_roles',fn(Blueprint $t)=>[$t->unsignedBigInteger('role_id'),$t->string('model_type'),$t->unsignedBigInteger('model_id')]);
   (require database_path('migrations/2026_08_18_000001_create_finance_group_scope_tables.php'))->up(); (require database_path('migrations/2026_08_20_000003_create_central_finance_student_sync_tables.php'))->up(); (require database_path('migrations/2026_08_20_000004_add_academic_and_guardian_references_to_central_finance_student_profiles.php'))->up(); (require database_path('migrations/2026_08_20_000005_create_central_finance_fund_accounts_and_ledger.php'))->up(); (require database_path('migrations/2026_08_26_000002_add_master_data_to_central_finance_fund_accounts.php'))->up(); (require database_path('migrations/2026_09_03_000001_create_central_finance_fund_account_school_allocations.php'))->up(); (require database_path('migrations/2026_08_21_000001_create_central_finance_receivables_payments_and_receipts.php'))->up(); (require database_path('migrations/2026_08_25_000002_create_central_finance_payment_refunds.php'))->up(); (require database_path('migrations/2026_08_21_000002_create_central_finance_operating_documents.php'))->up(); (require database_path('migrations/2026_08_27_000002_add_note_to_central_finance_payments.php'))->up(); (require database_path('migrations/2026_08_21_000005_create_central_finance_school_cutovers.php'))->up(); (require database_path('migrations/2026_08_25_000001_create_central_finance_receivable_sync_events.php'))->up(); (require database_path('migrations/2026_08_25_000003_create_central_finance_receivable_adjustments.php'))->up(); (require database_path('migrations/2026_08_25_000005_add_fresh_start_receivable_cutoff.php'))->up(); (require database_path('migrations/2026_08_24_000002_create_central_finance_school_staff_identities.php'))->up(); (require database_path('migrations/2026_09_04_000001_create_central_finance_pending_collections.php'))->up(); (require database_path('migrations/2026_09_08_000001_create_central_finance_collection_handover_batches.php'))->up(); (require database_path('migrations/2026_09_14_000003_create_central_finance_data_classifications.php'))->up(); (require database_path('migrations/2026_09_28_000001_add_payment_correction_fields_and_reversals.php'))->up();
+  Schema::connection('mysql')->create('system_settings',fn(Blueprint $t)=>[$t->id(),$t->string('name')->unique(),$t->string('data'),$t->string('type')->nullable()]); Schema::connection('mysql')->create('languages',fn(Blueprint $t)=>[$t->id(),$t->string('name'),$t->string('code')->unique(),$t->string('file'),$t->boolean('status')->default(false),$t->boolean('is_rtl')->default(false),$t->timestamps()]); Schema::connection('mysql')->create('packages',fn(Blueprint $t)=>[$t->id(),$t->string('name')->nullable(),$t->boolean('is_trial')->default(false),$t->timestamps(),$t->softDeletes()]);
   DB::connection('mysql')->table('schools')->insert([['id'=>1,'name'=>'Zixuan QA','code'=>'ZIX','database_name'=>$this->a,'created_at'=>now(),'updated_at'=>now()],['id'=>2,'name'=>'Timecity QA','code'=>'TIM','database_name'=>$this->b,'created_at'=>now(),'updated_at'=>now()]]); DB::connection('mysql')->table('users')->insert([['id'=>100,'first_name'=>'Head','last_name'=>'Finance','school_id'=>null,'central_finance_principal_type'=>'central_user','created_at'=>now(),'updated_at'=>now()],['id'=>200,'first_name'=>'School','last_name'=>'Accountant','school_id'=>null,'central_finance_principal_type'=>'central_user','created_at'=>now(),'updated_at'=>now()],['id'=>300,'first_name'=>'Front','last_name'=>'Desk','school_id'=>1,'central_finance_principal_type'=>'school_staff_identity','created_at'=>now(),'updated_at'=>now()]]); DB::connection('mysql')->table('central_finance_school_staff_identities')->insert(['identity_uuid'=>'00000000-0000-4000-8000-000000000300','school_id'=>1,'tenant_user_uuid'=>'00000000-0000-4000-8000-000000000301','central_user_id'=>300,'status'=>'active','created_at'=>now(),'updated_at'=>now()]); DB::connection('mysql')->table('roles')->insert(['id'=>1,'name'=>'Head Finance','guard_name'=>'web','created_at'=>now(),'updated_at'=>now()]); DB::connection('mysql')->table('model_has_roles')->insert(['role_id'=>1,'model_type'=>\App\Models\User::class,'model_id'=>100]); DB::connection('mysql')->table('finance_groups')->insert(['id'=>1,'name'=>'QA','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1,'created_at'=>now(),'updated_at'=>now()]); DB::connection('mysql')->table('finance_group_schools')->insert([['group_id'=>1,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_id'=>1,'school_id'=>2,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]); DB::connection('mysql')->table('finance_group_users')->insert([['id'=>1,'group_id'=>1,'central_user_id'=>100,'status'=>'active','created_at'=>now(),'updated_at'=>now()],['id'=>2,'group_id'=>1,'central_user_id'=>300,'status'=>'active','created_at'=>now(),'updated_at'=>now()]]); DB::connection('mysql')->table('finance_group_user_scopes')->insert([['group_user_id'=>1,'school_id'=>1,'scope_type'=>'SCHOOL','capability'=>'view_reports','scope_key'=>'school:1','status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_user_id'=>1,'school_id'=>1,'scope_type'=>'SCHOOL','capability'=>'operate_finance','scope_key'=>'school:1','status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_user_id'=>1,'school_id'=>2,'scope_type'=>'SCHOOL','capability'=>'view_reports','scope_key'=>'school:2','status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_user_id'=>1,'school_id'=>2,'scope_type'=>'SCHOOL','capability'=>'operate_finance','scope_key'=>'school:2','status'=>'active','created_at'=>now(),'updated_at'=>now()],['group_user_id'=>2,'school_id'=>1,'scope_type'=>'SCHOOL','capability'=>'view_reports','scope_key'=>'school:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]]); DB::connection('mysql')->table('central_finance_user_school_scopes')->insert(['user_id'=>300,'school_id'=>1,'can_view'=>1,'can_operate'=>0,'can_submit_collections'=>1,'created_at'=>now(),'updated_at'=>now()]); DB::connection('mysql')->table('central_finance_school_cutovers')->insert([['school_id'=>1,'status'=>'central','receivable_sync_effective_at'=>'2026-08-01 00:00:00','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()],['school_id'=>2,'status'=>'central','receivable_sync_effective_at'=>'2026-08-01 00:00:00','cutover_at'=>now(),'created_at'=>now(),'updated_at'=>now()]]); $this->head=CentralFinanceUser::on('mysql')->findOrFail(100); $this->accountant=CentralFinanceUser::on('mysql')->findOrFail(200);
   $this->tenant($this->a,'Zixuan Tuition',1000); $this->tenant($this->b,'Timecity Tuition',2000);
   $this->zixProfile=$this->profile(1,'11111111-1111-4111-8111-111111111111'); $this->timeProfile=$this->profile(2,'22222222-2222-4222-8222-222222222222'); $this->hq=$this->account('CF-HQ','HQ Bank','hq',null); $this->allocate($this->hq,1); $this->allocate($this->hq,2); $this->zix=$this->account('CF-ZIX','Zixuan Cash','school',1); foreach([$this->hq,$this->zix] as $account) $this->grant($this->head,$account); $this->grant($this->accountant,$this->zix); $this->schoolGrant($this->head,1); $this->schoolGrant($this->head,2); $this->schoolGrant($this->accountant,1);
@@ -77,6 +78,51 @@ final class CentralFinanceUnidentifiedDepositQaRunTest extends TestCase {
   $this->assertSame($allocation->id,$this->apply($deposit,$target,'500000.0000')->id);
   $this->assertSame($counts,$this->financeCounts());
   $this->assertNull($ledger->fresh()->school_id);
+ }
+ public function test_qa_run_deposit_workspace_reads_only_the_selected_run_members(): void
+ {
+  $run=$this->qaContext(); $deposit=$this->deposit(); $otherRun=$this->qaContext('active',2);
+  $otherDeposit=$deposit->replicate(); $otherDeposit->deposit_uuid=(string)Str::uuid();
+  $otherDeposit->idempotency_key=hash('sha256','other-run-deposit'); $otherDeposit->bank_reference='OTHER-RUN-BANK'; $otherDeposit->save();
+  $this->classify('unidentified_deposit',$otherDeposit->id);
+  \App\Models\CentralFinanceQaRunRecord::on('mysql')->create([
+   'qa_run_id'=>$otherRun->id,'school_id'=>1,'subject_scope'=>'central','subject_type'=>'unidentified_deposit','subject_id'=>$otherDeposit->id,
+  ]); $this->actingAs($this->head);
+  $view=app(\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class)->index(new Request([
+   'include_qa_test'=>1,'qa_run_id'=>$run->id,
+  ])); $data=$view->getData();
+  $this->assertSame($run->id,$data['qaRun']->id);
+  $this->assertSame([$deposit->id],$data['deposits']->pluck('id')->all());
+  $this->assertNotContains($otherDeposit->id,$data['deposits']->pluck('id')->all());
+  $this->assertSame([1],$data['schools']->pluck('id')->all());
+
+  $runView=app(\App\Http\Controllers\CentralFinanceQaRunController::class)->show($run->id);
+  $runData=$runView->getData();
+  $this->assertSame([$deposit->id],$runData['unidentifiedDeposits']->pluck('id')->all());
+  $this->assertTrue($runData['hasUnidentifiedDeposits']);
+  $this->assertSame('central-finance.qa-runs.show',$runView->name());
+  $this->assertSame('central-finance.unidentified-deposits.index',$view->name());
+ }
+ public function test_qa_deposit_receivable_lookup_excludes_other_run_receivables(): void
+ {
+  $run=$this->qaContext(); $deposit=$this->deposit(); $sameRun=$this->qaTarget($run,'400000.0000');
+  $otherRun=$this->qaContext('active',2); $otherTarget=$this->qaTarget($otherRun,'100000.0000'); $this->actingAs($this->head);
+  $response=app(\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class)->receivables(
+   new Request(['school_id'=>1,'student'=>'Student 1']),$deposit,
+  )->getData(true);
+  $ids=collect($response['receivables'])->pluck('id')->all();
+  $this->assertSame([$sameRun->id],$ids);
+  $this->assertNotContains($otherTarget->id,$ids);
+ }
+ public function test_qa_run_deposit_workspace_requires_explicit_qa_visibility(): void
+ {
+  $run=$this->qaContext(); $this->actingAs($this->head);
+  try {
+   app(\App\Http\Controllers\CentralFinanceUnidentifiedDepositController::class)->index(new Request(['qa_run_id'=>$run->id]));
+   $this->fail('A direct QA Run deposit request without the explicit QA visibility flag must be denied.');
+  } catch (HttpException $exception) {
+   $this->assertSame(403,$exception->getStatusCode());
+  }
  }
  #[\PHPUnit\Framework\Attributes\DataProvider('closedStatuses')]
  public function test_missing_or_nonactive_run_blocks_new_qa_cash_before_any_posting(?string $status): void

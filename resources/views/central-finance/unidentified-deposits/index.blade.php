@@ -7,10 +7,16 @@
         <p class="text-muted">{{ __('Record real Group-held money without assigning a School, Student, or operating income. Matching later settles a receivable without a second physical balance movement.') }}</p>
         @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
         @if($errors->any())<div class="alert alert-danger" role="alert">@foreach($errors->all() as $error)<div>{{ $error }}</div>@endforeach</div>@endif
+        @if($qaRun)
+            <div class="alert alert-warning">QA Run #{{ $qaRun->run_number }} · {{ $qaRun->school?->name }} · {{ ucfirst($qaRun->status) }}. This view contains only deposits linked to this Run.</div>
+            <a class="btn btn-sm btn-outline-secondary mb-3" href="{{ route('central-finance.qa-runs.show', $qaRun->id) }}">Back to QA Run</a>
+        @else
         <form method="GET" class="mb-3">
             <label><input type="checkbox" name="include_qa_test" value="1" @checked($includeQaTest)> {{ __('Include QA/Test') }}</label>
             <button class="btn btn-sm btn-outline-secondary">{{ __('Apply') }}</button>
         </form>
+        @endif
+        @if(!$qaRun)
         <form method="POST" action="{{ route('central-finance.unidentified-deposits.store') }}">
             @csrf
             <input type="hidden" name="idempotency_reference" value="{{ old('idempotency_reference', (string) \Illuminate\Support\Str::uuid()) }}">
@@ -38,6 +44,7 @@
             </details>
             <button class="btn cf-primary-action">{{ __('Record Unidentified Deposit') }}</button>
         </form>
+        @endif
     </div></div>
     <div class="card"><div class="card-body">
         <h5>{{ __('Recorded deposits') }}</h5>
@@ -56,15 +63,17 @@
                     @foreach($deposit->allocations as $allocation)
                         @if($allocation->payment?->receipt)<a class="d-block" href="{{ route('central-finance.payments.receipt', $allocation->payment_id) }}">{{ $allocation->payment->receipt->receipt_no }}</a>@endif
                     @endforeach
-                    @if(in_array($deposit->status, ['unidentified', 'partially_applied'], true))
+                    @if(in_array($deposit->status, ['unidentified', 'partially_applied'], true) && (!$qaRun || $qaRun->status === 'active'))
                         <a href="#deposit-allocation-{{ $deposit->id }}" data-deposit-open="deposit-allocation-{{ $deposit->id }}">{{ __('Allocate to receivable') }}</a>
+                    @elseif($qaRun && $qaRun->status !== 'active')
+                        <span class="text-muted">Run is read-only</span>
                     @endif
                 </td>
             </tr>
         @empty<tr><td colspan="10" class="text-muted">{{ __('No Unidentified Deposits.') }}</td></tr>@endforelse
         </tbody></table></div>
         @foreach($deposits as $deposit)
-            @if(in_array($deposit->status, ['unidentified', 'partially_applied'], true))
+            @if(in_array($deposit->status, ['unidentified', 'partially_applied'], true) && (!$qaRun || $qaRun->status === 'active'))
                     <details id="deposit-allocation-{{ $deposit->id }}" class="border rounded p-3 mt-3">
                         <summary class="cf-break-anywhere">{{ __('Allocate to receivable') }} · {{ $deposit->bank_reference ?: $deposit->manual_identity ?: $deposit->deposit_uuid }} · {{ $deposit->fundAccount?->account_name }}</summary>
                         <form method="POST" action="{{ route('central-finance.unidentified-deposits.match', $deposit) }}" class="mt-2 deposit-allocation-form" data-search-url="{{ route('central-finance.unidentified-deposits.receivables', $deposit) }}">
@@ -95,7 +104,7 @@
                     </details>
             @endif
         @endforeach
-        {{ $deposits->links() }}
+        @if(method_exists($deposits, 'links')){{ $deposits->links() }}@endif
     </div></div>
 </div>
 <script>

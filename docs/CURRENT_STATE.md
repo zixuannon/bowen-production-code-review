@@ -1,5 +1,41 @@
 # eSchool Current State
 
+## QA Run #002 — unidentified deposit visibility recovery (2026-10-08)
+
+- On Production baseline `a7a8f8c52d77b5f7e04beb61d29a9fc49c36615e`, the
+  operator submitted the approved synthetic deposit; the UI confirmed UUID
+  `bf4a6081-00d0-49f2-b77d-3234e257b071`. QA Run #002 then showed Ledger #93,
+  but the generic deposit list and Run detail did not expose the Run-member
+  deposit. No allocation, Payment, Receipt, or further Finance write was made.
+- Root cause: Official/QA reveal filters intentionally exclude Run members;
+  the Run detail did not project unidentified deposits and had no Run-scoped
+  settlement entry point. The local fix projects only deposit memberships of
+  the authorized Run, opens a Run-only deposit workspace, limits School options
+  to that Run, and limits receivable search to receivables in the same Active
+  Run. Closed Runs are read-only. The canonical posting service still enforces
+  same-Run allocation under locks; no isolation rule was weakened.
+- Focused QA Run / Unidentified Deposit isolation regression passes: 15 tests /
+  60 assertions. The dedicated P0 write-gate subset passes: 15 tests / 712
+  assertions on isolated MySQL 9.6.0 at localhost:3324. Full regression passes:
+  1,336 tests / 10,944 assertions, zero failures/errors, and 34 existing skips.
+  PHPUnit required a 512 MiB CLI memory limit; its default 128 MiB exhausted
+  memory while reporting the suite. PHP 8.5 PDO and PHPUnit configuration
+  deprecations remain.
+- Browser E2E passes against disposable cloned Central/tenant MySQL schemas on
+  localhost: the normal local Head Finance session opened Run #1 and showed its
+  500,000 MMK Deposit; Run #1 search returned only its 400,000 MMK receivable,
+  while an archived Run #2 receivable returned no options. The Run form exposed
+  only the QA School, and a direct request for an unscoped Official School was
+  denied (HTTP 403). The normal UI matched 400,000 MMK. The account Ledger stayed
+  at 1,000,000 MMK net, and the new Deposit retained exactly one 500,000 MMK
+  physical cash-in row. School #17 Official Finance counts remained zero. The
+  temporary test user and cloned schemas are disposable and are removed after
+  verification; no Production credential or session was used.
+- No migration. Production application code/data remain unchanged in this
+  local task. The candidate is local-only and has not been approved or deployed;
+  deployment and any live allocation remain separate approval gates. No
+  Production write, migration, push, or deployment occurred during this task.
+
 ## Local candidate — fail-closed School host resolution (2026-10-07)
 
 - Based on exact Production `d95d6e630d6cae20ae733aa6c6a2256383cee38e`.

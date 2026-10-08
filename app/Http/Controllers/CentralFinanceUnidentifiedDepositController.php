@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceQaRun;
+use App\Models\CentralFinanceQaRunRecord;
 use App\Models\CentralFinanceReceivable;
 use App\Models\CentralFinanceUnidentifiedDeposit;
 use App\Services\CentralFinanceConfigurationAuthorizationService;
@@ -11,6 +13,7 @@ use App\Services\CentralFinanceFundAccountSchoolAvailabilityService;
 use App\Services\CentralFinanceSchoolCutoverService;
 use App\Services\CentralFinanceUnidentifiedDepositService;
 use App\Services\CentralFinanceWorkspaceService;
+use App\Services\CentralFinanceQaRunService;
 use App\Support\CentralFinanceDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -31,6 +34,7 @@ final class CentralFinanceUnidentifiedDepositController extends Controller
         private readonly CentralFinanceDataIsolationService $isolation,
         private readonly CentralFinanceFundAccountSchoolAvailabilityService $availability,
         private readonly CentralFinanceSchoolCutoverService $cutovers,
+        private readonly CentralFinanceQaRunService $runs,
     ) {}
 
     public function index(?Request $request = null): View
@@ -40,6 +44,13 @@ final class CentralFinanceUnidentifiedDepositController extends Controller
         $this->workspace->assertHeadFinance($actor);
         $groups = $this->configuration->configurableGroups($actor);
         $includeQaTest = $this->isolation->includeQaTest($request, $actor);
+        $qaRun = null;
+        if ($request->filled('qa_run_id')) {
+            abort_unless($includeQaTest, 403, 'QA Run deposit access requires explicit QA/Test visibility.');
+            $qaRun = CentralFinanceQaRun::on('mysql')->with('records')->findOrFail((int) $request->input('qa_run_id'));
+            abort_unless($this->runs->isPermanentQaSchool((int) $qaRun->school_id)
+                && $this->workspace->accessibleSchools($actor, true)->contains('id', (int) $qaRun->school_id), 404);
+        }
         // Receiving unknown money cannot depend on assigning a School first.
         // Explicit Group control is the authority; School allocation remains
         // mandatory when the deposit is later settled against a receivable.
@@ -52,11 +63,22 @@ final class CentralFinanceUnidentifiedDepositController extends Controller
         $readableAccountIds = $accountQuery->pluck('id');
         $query = CentralFinanceUnidentifiedDeposit::on('mysql')->with(['fundAccount', 'allocations.payment.receipt'])
             ->whereIn('group_id', $groups->pluck('id'))->whereIn('fund_account_id', $readableAccountIds);
-        $this->isolation->apply($query, 'unidentified_deposit', $includeQaTest);
-        $deposits = $query->latest('received_date')->paginate(30)->withQueryString();
-        $deposits->getCollection()->each(fn ($deposit) => $deposit->setAttribute('is_qa_test', $this->isolation->classification('unidentified_deposit', $deposit->id) === 'qa_test'));
-        $schools = $this->workspace->accessibleSchools($actor, true);
-        return view('central-finance.unidentified-deposits.index', compact('accounts', 'deposits', 'schools', 'includeQaTest'));
+        if ($qaRun) {
+            $depositIds = $qaRun->records->where('school_id', (int) $qaRun->school_id)->where('subject_scope', 'central')->where('subject_type', 'unidentified_deposit')->pluck('subject_id')->filter()->all();
+            $deposits = $depositIds === [] ? collect() : $query->whereIn('id', $depositIds)->latest('received_date')->get();
+            $deposits = $deposits->filter(fn (CentralFinanceUnidentifiedDeposit $deposit): bool =>
+                $this->isolation->classification('unidentified_deposit', (int) $deposit->id) === 'qa_test'
+            )->values();
+        } else {
+            $this->isolation->apply($query, 'unidentified_deposit', $includeQaTest);
+            $deposits = $query->latest('received_date')->paginate(30)->withQueryString();
+        }
+        $depositRows = $deposits instanceof \Illuminate\Pagination\AbstractPaginator ? $deposits->getCollection() : $deposits;
+        $depositRows->each(fn ($deposit) => $deposit->setAttribute('is_qa_test', $this->isolation->classification('unidentified_deposit', $deposit->id) === 'qa_test'));
+        $schools = $qaRun
+            ? collect([$this->workspace->assertCanViewSchool($actor, (int) $qaRun->school_id)])
+            : $this->workspace->accessibleSchools($actor, true);
+        return view('central-finance.unidentified-deposits.index', compact('accounts', 'deposits', 'schools', 'includeQaTest', 'qaRun'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -110,6 +132,12 @@ final class CentralFinanceUnidentifiedDepositController extends Controller
         abort_unless(in_array($depositClass, ['production', 'qa_test'], true)
             && $depositClass === $this->isolation->classification('fund_account', $account->id)
             && ($depositClass === 'qa_test') === $this->isolation->isQaTestSchool($school->id), 403);
+        $depositRun = null;
+        if ($depositClass === 'qa_test') {
+            $depositRun = $this->runs->runForRecord('central', 'unidentified_deposit', (int) $deposit->id);
+            abort_unless($depositRun && $depositRun->status === CentralFinanceQaRun::ACTIVE
+                && (int) $depositRun->school_id === (int) $school->id, 403, 'QA deposit lookup requires its Active Run and School.');
+        }
         $term = trim($data['student']);
         abort_if($term === '', 422);
         $query = CentralFinanceReceivable::on('mysql')->with('studentProfile')->where('school_id', $school->id)
@@ -122,6 +150,14 @@ final class CentralFinanceUnidentifiedDepositController extends Controller
                     });
             });
         $this->isolation->applySchoolWorkflow($query, 'receivable', $school->id);
+        if ($depositRun) {
+            $query->whereIn('central_finance_receivables.id', CentralFinanceQaRunRecord::on('mysql')->select('subject_id')->where([
+                'qa_run_id' => $depositRun->id,
+                'school_id' => $school->id,
+                'subject_scope' => 'central',
+                'subject_type' => 'receivable',
+            ]));
+        }
         $results = $query->orderBy('id')->limit(50)->get()->map(function ($receivable): array {
             $reserved = app(\App\Services\CentralFinancePendingCollectionService::class)->reservedAmount($receivable->id, false);
             $available = CentralFinanceDecimal::max(CentralFinanceDecimal::subtract(CentralFinanceDecimal::subtract((string) $receivable->amount_due, (string) $receivable->amount_paid), $reserved), '0');

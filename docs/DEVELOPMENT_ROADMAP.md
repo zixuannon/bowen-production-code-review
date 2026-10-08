@@ -20,6 +20,11 @@
   strict request retry/conflict contract, pending reservations and scoped allocation.
 - [x] Group NULL-School reconciliation visibility and original bank date contract.
 - [x] Active Zixuan QA Run membership; no cross-Run or QA/Official allocation.
+- [x] Run-scoped unidentified deposit visibility and same-Run receivable
+  selector guard; targeted isolation/P0 tests and full regression pass.
+  Disposable local browser E2E verified Run Deposit visibility, same-Run-only
+  receivables, cross-Run exclusion, Official-school denial, and exactly-once
+  physical cash movement. Candidate remains unreviewed/unreleased.
 - [x] Local migration rehearsal, targeted/full regression, real desktop/mobile E2E.
 - [x] Reconcile on current P1-A Production lineage; bounded operator-approved
   historical QA identity maintenance, unchanged financial facts, CLEAN data preflight.

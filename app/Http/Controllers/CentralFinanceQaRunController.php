@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CentralFinanceQaRun;
 use App\Models\CentralFinanceDocumentAudit;
+use App\Models\CentralFinanceUnidentifiedDeposit;
 use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceQaRunService;
 use App\Services\CentralFinanceWorkspaceService;
@@ -41,7 +42,18 @@ final class CentralFinanceQaRunController extends Controller
         $this->assertQaRunVisible($actor, $record);
         $auditIds = $record->records->where('subject_type', 'audit')->pluck('subject_id')->filter()->all();
         $auditEntries = $auditIds === [] ? collect() : CentralFinanceDocumentAudit::on('mysql')->where('school_id', $record->school_id)->whereIn('id', $auditIds)->orderByDesc('id')->get();
-        return view('central-finance.qa-runs.show', ['run' => $record, 'auditEntries' => $auditEntries]);
+        $depositIds = $record->records->where('school_id', (int) $record->school_id)->where('subject_scope', 'central')->where('subject_type', 'unidentified_deposit')->pluck('subject_id')->filter()->all();
+        $unidentifiedDeposits = $depositIds === [] ? collect() : CentralFinanceUnidentifiedDeposit::on('mysql')
+            ->with('fundAccount')
+            ->whereIn('id', $depositIds)
+            ->orderByDesc('id')
+            ->get();
+        return view('central-finance.qa-runs.show', [
+            'run' => $record,
+            'auditEntries' => $auditEntries,
+            'unidentifiedDeposits' => $unidentifiedDeposits,
+            'hasUnidentifiedDeposits' => $unidentifiedDeposits->isNotEmpty(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
