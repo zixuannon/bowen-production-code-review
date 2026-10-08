@@ -55,6 +55,7 @@ test('Head Finance creates and allocates a shared Central Fund Account without S
         await createForm.getByRole('button', { name: 'Create Central Account', exact: true }).click();
 
         await expect(page).toHaveURL(/\/central-finance\/fund-accounts\/\d+\/manage$/);
+        const accountId = new URL(page.url()).pathname.match(/fund-accounts\/(\d+)\/manage$/)[1];
         await expect(page.getByText('Owner: Bowen Group / Central Finance', { exact: false })).toBeVisible();
         await expect(page.getByRole('heading', { name: 'Allocated Schools', exact: true })).toBeVisible();
 
@@ -79,6 +80,34 @@ test('Head Finance creates and allocates a shared Central Fund Account without S
         await page.setViewportSize({ width: 390, height: 844 });
         await page.reload({ waitUntil: 'networkidle' });
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+        // Retire this disposable opening-only account through the same
+        // allocation and lifecycle routes used by Head Finance.
+        await page.goto(`/central-finance/fund-accounts/${accountId}/manage`, { waitUntil: 'networkidle' });
+        const revokeForm = page.locator('form[action$="/school-allocations"]');
+        await revokeForm.locator('input[type="checkbox"]:checked').evaluateAll(inputs => inputs.forEach(input => { input.checked = false; }));
+        await revokeForm.locator('input[name="reason"]').fill('Revoke disposable browser fixture before archive');
+        await revokeForm.evaluate(form => form.submit());
+        await page.waitForLoadState('networkidle');
+
+        const statusForm = page.locator('form[action$="/status"]');
+        await statusForm.locator('select[name="status"]').selectOption('inactive');
+        await statusForm.locator('input[name="reason"]').fill('Deactivate disposable browser fixture');
+        await statusForm.evaluate(form => form.submit());
+        await page.waitForLoadState('networkidle');
+        await statusForm.locator('select[name="status"]').selectOption('archived');
+        await statusForm.locator('input[name="reason"]').fill('Archive disposable browser fixture');
+        await statusForm.evaluate(form => form.submit());
+        await page.waitForLoadState('networkidle');
+        await expect(page).toHaveURL(/\/central-finance\/fund-accounts$/);
+        await expect(page.getByText(`V2-${suffix}`, { exact: true })).toHaveCount(0);
+
+        await page.goto('/central-finance', { waitUntil: 'networkidle' });
+        await expect(page.getByText('125,000.00', { exact: true })).toHaveCount(0);
+        await page.goto(`/central-finance/fund-accounts?include_qa_test=1&account_search=V2-${suffix}`, { waitUntil: 'networkidle' });
+        await expect(page.getByText(`V2-${suffix}`, { exact: true })).toBeVisible();
+        await page.getByRole('link', { name: 'Detail', exact: true }).click();
+        await expect(page.getByText('125,000.00 MMK', { exact: true })).toHaveCount(2);
         expect(consoleErrors).toEqual([]);
     } finally {
         await context.close();

@@ -6,6 +6,7 @@ use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceFundAccountOpeningBalanceAudit;
 use App\Models\CentralFinanceDocumentAudit;
+use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceSchoolStaffIdentity;
 use App\Models\CentralFinanceUser;
 use App\Models\School;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 /** Creates and controls Central Fund Accounts without producing a Ledger entry. */
 final class CentralFinanceFundAccountAdministrationService
@@ -203,7 +205,7 @@ final class CentralFinanceFundAccountAdministrationService
         });
     }
 
-    /** Deactivation/archival preserves all history. Archive is impossible until the real balance is zero. */
+    /** Deactivation/archival preserves all history; only an audited opening-only baseline can retain a non-zero balance. */
     public function changeStatus(CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $requestedAccount, string $status, string $reason): void
     {
         if (!in_array($status, [CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED], true) || trim($reason) === '') {
@@ -213,20 +215,94 @@ final class CentralFinanceFundAccountAdministrationService
             $account = CentralFinanceFundAccount::on('mysql')->lockForUpdate()->findOrFail($requestedAccount->id);
             $groupUser = $this->groupUserForAccount($actor, $school, $account);
             $this->assertAccountInConfigurationScope($account, $school, (int) $groupUser->group_id);
+            $isolation = app(CentralFinanceDataIsolationService::class);
+            $classification = $isolation->classification('fund_account', (int) $account->id);
+            if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED) {
+                if ($classification === CentralFinanceDataClassification::QA_TEST) {
+                    throw ValidationException::withMessages(['status' => [__('A QA/Test Fund Account must remain in its QA lifecycle.')]]);
+                }
+                if ($account->status !== CentralFinanceFundAccount::STATUS_INACTIVE || (bool) $account->is_active) {
+                    throw ValidationException::withMessages(['status' => [__('Deactivate the Fund Account before archiving it.')]]);
+                }
+                $this->assertCanArchive($account);
+            }
             // A double click or replay must not create a second lifecycle
             // mutation/audit row once the requested state is already current.
             if ($account->status === $status && (bool) $account->is_active === ($status === CentralFinanceFundAccount::STATUS_ACTIVE)) {
+                if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED && $classification !== CentralFinanceDataClassification::ARCHIVED) {
+                    $this->classifyArchivedAccount($isolation, $actor, $school, $account, $reason);
+                }
                 return;
             }
-            if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED && abs(app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account)) > 0.0001) {
-                throw ValidationException::withMessages(['status' => [__('A Fund Account with a non-zero balance cannot be archived.')]]);
+            if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED
+                && CentralFinanceFundAccountSchoolAllocation::on('mysql')->where('fund_account_id', $account->id)->where('is_active', true)->exists()) {
+                throw ValidationException::withMessages(['status' => [__('Revoke every active School allocation before archiving this Fund Account.')]]);
             }
             $account->update([
                 'status' => $status, 'is_active' => $status === CentralFinanceFundAccount::STATUS_ACTIVE,
                 'status_reason' => trim($reason), 'status_changed_by' => $actor->id, 'status_changed_at' => now(),
             ]);
             $this->audit($school, $account, $actor, 'lifecycle_'.$status, trim($reason), ['status' => $account->getOriginal('status'), 'is_active' => (bool) $account->getOriginal('is_active')], ['status' => $status, 'is_active' => $status === CentralFinanceFundAccount::STATUS_ACTIVE]);
+            if ($status === CentralFinanceFundAccount::STATUS_ARCHIVED && $classification !== CentralFinanceDataClassification::ARCHIVED) {
+                $this->classifyArchivedAccount($isolation, $actor, $school, $account, $reason);
+            }
         });
+    }
+
+    /**
+     * A non-zero opening baseline is archivable only when it is the account's
+     * sole, audited value and no financial document or movement references the
+     * account. This supports retiring a confirmed pre-go-live test baseline
+     * without zeroing it or inventing a cash movement.
+     */
+    private function assertCanArchive(CentralFinanceFundAccount $account): void
+    {
+        $balance = app(CentralFinanceFundAccountBalanceService::class)->currentBalance($account);
+        if (abs($balance) <= 0.0001) return;
+
+        $opening = (float) $account->opening_balance;
+        $schema = Schema::connection('mysql');
+        $auditTable = 'central_finance_fund_account_opening_balance_audits';
+        if ($opening <= 0 || abs($balance - $opening) > 0.0001 || !$schema->hasTable($auditTable)) {
+            throw ValidationException::withMessages(['status' => [__('A Fund Account with financial activity or an unaudited balance cannot be archived.')]]);
+        }
+        $openingAudits = DB::connection('mysql')->table($auditTable)->where('fund_account_id', $account->id)->get();
+        if ($openingAudits->count() !== 1
+            || $openingAudits->first()->change_type !== CentralFinanceFundAccountOpeningBalanceAudit::INITIAL
+            || $openingAudits->first()->old_opening_balance !== null
+            || abs((float) $openingAudits->first()->new_opening_balance - $opening) > 0.0001) {
+            throw ValidationException::withMessages(['status' => [__('Only a single matching initial Opening Balance audit can be preserved during archive.')]]);
+        }
+
+        $retainedHistoryTables = [
+            'central_finance_fund_account_opening_balance_audits',
+            'central_finance_fund_account_school_allocations',
+            'central_finance_fund_account_users',
+            'central_finance_fund_account_audits',
+        ];
+        foreach ($schema->getTables() as $tableMetadata) {
+            $table = (string) ($tableMetadata['name'] ?? '');
+            if (!str_starts_with($table, 'central_finance_') || in_array($table, $retainedHistoryTables, true)) continue;
+            foreach ($schema->getColumnListing($table) as $column) {
+                if (!str_ends_with($column, 'account_id')) continue;
+                if (DB::connection('mysql')->table($table)->where($column, $account->id)->exists()) {
+                    throw ValidationException::withMessages(['status' => [__('Financial records reference this Fund Account; archive is blocked.')]]);
+                }
+            }
+        }
+    }
+
+    private function classifyArchivedAccount(CentralFinanceDataIsolationService $isolation, CentralFinanceUser $actor, ?School $school, CentralFinanceFundAccount $account, string $reason): void
+    {
+        if (!$isolation->schemaAvailable()) {
+            throw new RuntimeException('Central Finance classification audit schema is required to archive a Fund Account.');
+        }
+        $schoolId = $school?->id ?? DB::connection('mysql')->table('finance_group_schools')
+            ->where('group_id', $account->group_id)->where('status', 'active')->orderBy('school_id')->value('school_id');
+        if (!$schoolId) {
+            throw new RuntimeException('An active School in this Finance Group is required to audit Fund Account archival.');
+        }
+        $isolation->classify($actor, (int) $schoolId, 'fund_account', (int) $account->id, CentralFinanceDataClassification::ARCHIVED, trim($reason));
     }
 
     /** @param array<int,int> $assigneeIds */

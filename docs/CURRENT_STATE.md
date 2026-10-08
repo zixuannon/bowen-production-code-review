@@ -1,5 +1,12 @@
 # eSchool Current State
 
+## Fund Account #16 pre-go-live retirement — local candidate (2026-10-08)
+
+- Read-only Production evidence on reported SHA `44dd7e07fdbe477885859129d2e7e263e82fd58c` confirmed active release, Git HEAD, manifest, and marker all match. Fund Account #16 / BK-0001 is Group-owned, has opening/current balance `496,316,250.6800` MMK, and is unclassified (the normal Production-compatible default). Active allocations are #17 Bahan, #19 Timecity, and #20 Kindergarten; Zixuan #15's allocation is already inactive.
+- The Central reference scan found one initial Opening Balance audit and four allocation rows; no Ledger, Payment, Receipt, transfer, expense, deposit, pending collection, or other movement/document reference was present. No Production write was performed.
+- Local candidate permits the normal audited lifecycle only after every active School allocation has been revoked and the account is explicitly inactive. A positive balance is eligible only when it exactly equals one audited initial Opening Balance and no other Central Finance record references the account. Archive preserves that opening amount/audit, sets inactive/archived status, and records canonical `archived` classification/audit so normal account selectors and physical-balance summaries exclude it. QA/Test accounts and any account with financial activity remain blocked.
+- Targeted Fund Account and workspace/localization regression passed (58 tests / 2,552 assertions); the full suite passed (1,339 tests / 10,980 assertions, 0 failures, 0 errors, 34 existing skips, 1 deprecation). Local browser E2E passed on an isolated disposable MariaDB schema, including archive, Official summary exclusion, and authorized archived-history access. A local logical backup/restore rehearsal also passed: restored account, allocation, lifecycle-audit, and archived-fixture counts matched the source. No candidate has been deployed or pushed. Production backup and cleanup are not yet performed; deployment requires separate exact-SHA approval, and the Production runbook's restore/PITR gate must be satisfied before any real-school cleanup or go-live.
+
 ## QA Run #002 — unidentified deposit visibility recovery (2026-10-08)
 
 - On Production baseline `a7a8f8c52d77b5f7e04beb61d29a9fc49c36615e`, the

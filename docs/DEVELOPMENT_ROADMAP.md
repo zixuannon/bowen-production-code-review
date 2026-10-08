@@ -1,5 +1,20 @@
 # eSchool Finance V2 Roadmap
 
+## Fund Account #16 Official test-balance retirement — local candidate (2026-10-08)
+
+- [x] Read-only Production inventory confirms #16 has an audited initial
+  Opening Balance only, with active Official School allocations and no
+  financial movement/document dependencies; Zixuan's #15 allocation is
+  inactive.
+- [x] Local lifecycle now requires revoking all active allocations, then
+  deactivating before archival. It preserves the opening amount and its audit,
+  blocks QA/Test or financially referenced accounts, and applies the canonical
+  archived classification used by Official selectors and balance summaries.
+- [x] Targeted and full regression passed; isolated local browser acceptance
+  passed; diff review completed. A single local candidate is frozen. Separate
+  exact-SHA deployment approval and Production cleanup Human Gate remain
+  required. Runbook restore/PITR restrictions remain in force.
+
 ## Unidentified Deposit P0 — local closure (2026-10-07)
 
 - Migration/write-window engineering now passes local verification: exact pinned

@@ -367,7 +367,8 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         $this->assertStringContainsString("__('Allocated Schools')", $workspace);
         $this->assertStringContainsString("__('Actions')", $workspace);
         $this->assertStringNotContainsString('<article class="cf-account-card">', $workspace);
-        $this->assertStringContainsString("route('central-finance.accounts.statements', ['fund_account_id' => \$a->id])", $workspace);
+        $this->assertStringContainsString("route('central-finance.accounts.statements'", $workspace);
+        $this->assertStringContainsString("['fund_account_id' => \$a->id] + (!empty(\$filters['include_qa_test'])", $workspace);
         $this->assertStringContainsString('cf-account-statement-workspace', $statement);
         $this->assertStringContainsString('name="fund_account_id"', $statement);
         $this->assertStringContainsString('name="category_id"', $statement);

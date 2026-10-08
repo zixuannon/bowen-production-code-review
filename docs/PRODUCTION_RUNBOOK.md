@@ -418,6 +418,31 @@ allocation can be configured. It must remain unavailable to payments,
 imports, transfers, handovers, operating documents, and Ledger writes until
 the canonical predicate passes.
 
+### Retiring a pre-go-live test Fund Account with an opening-only balance
+
+This is an audited lifecycle operation, not a balance reset. Use only the
+exact reviewed release that implements the opening-only archive guard. First
+re-resolve the active release identity, take and independently verify the
+required fresh encrypted Central/trusted-tenant backup, and confirm the
+restore/PITR gate permits the target operation. Under Head Finance authority,
+revoke every active School allocation through the normal allocation service,
+then deactivate the account, then archive it through the normal lifecycle
+route with the approved reason. The route must reject QA/Test accounts,
+active allocations, a balance that differs from its one matching initial
+Opening Balance audit, any additional Opening Balance audit, or any other
+Central Finance document/movement reference. It preserves the original
+Opening Balance and audit, emits no Payment/Receipt/Ledger/Transfer, and
+records the canonical archived classification and lifecycle audits so
+Official selectors and physical-balance summaries exclude the account.
+
+After archival, verify the account status/classification, allocation and
+audit history, unchanged opening amount, unchanged Zixuan Central/tenant
+fingerprints, Official account/report totals, and absence of new financial
+documents. Do not delete the account or its history, create a compensating
+cash transaction, or change balances directly. This procedure is not
+Production authorization; exact-candidate deployment, fresh backup, and the
+separate Finance Human Gate remain mandatory.
+
 ### Central Fund Account V2 targeted migration and conversion
 
 `finance:migrate-fund-account-v2` is the only approved runner for

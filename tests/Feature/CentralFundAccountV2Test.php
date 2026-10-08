@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceLedgerEntry;
+use App\Models\CentralFinanceDataClassification;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
 use App\Models\School;
@@ -442,10 +443,106 @@ final class CentralFundAccountV2Test extends TestCase
         $this->assertSame(1, DB::connection('mysql')->table('central_finance_document_audits')->where('document_id', $account->id)->where('action', 'lifecycle_inactive')->count());
 
         $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_ACTIVE, 'Reactivate reviewed QA account');
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_INACTIVE, 'Deactivate before archive');
+        $this->ensureClassificationSchema();
         $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_ARCHIVED, 'Archive zero-balance QA account');
         $this->assertSame(CentralFinanceFundAccount::STATUS_ARCHIVED, $account->fresh()->status);
-        $this->assertSame(3, DB::connection('mysql')->table('central_finance_document_audits')->where('document_id', $account->id)->whereIn('action', ['lifecycle_inactive', 'lifecycle_active', 'lifecycle_archived'])->count());
+        $this->assertSame(4, DB::connection('mysql')->table('central_finance_document_audits')->where('document_id', $account->id)->whereIn('action', ['lifecycle_inactive', 'lifecycle_active', 'lifecycle_archived'])->count());
         $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)->count());
+    }
+
+    public function test_opening_balance_only_group_account_can_be_archived_without_movement_and_excluded_from_official_views(): void
+    {
+        $this->ensureClassificationSchema();
+        $admin = app(CentralFinanceFundAccountAdministrationService::class);
+        $account = $admin->createGroupAccount($this->head, $this->group->id, [
+            'account_code' => 'TEST-OPENING-ONLY', 'account_name' => 'Test Opening Only', 'currency' => 'MMK',
+            'opening_balance' => '125.00', 'opening_balance_date' => '2026-09-29', 'opening_reason' => 'Disposable pre-go-live test balance',
+            'account_type' => CentralFinanceFundAccount::TYPE_BANK,
+        ]);
+        $admin->syncSchoolAllocations($this->head, null, $account, [
+            ['school_id' => 1, 'is_active' => true], ['school_id' => 2, 'is_active' => true],
+        ], 'Allocate test account to Official schools');
+
+        $revocations = [
+            ['school_id' => 1, 'is_active' => false], ['school_id' => 2, 'is_active' => false],
+        ];
+        $admin->syncSchoolAllocations($this->head, null, $account, $revocations, 'Revoke test account before archival');
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_INACTIVE, 'Deactivate test account');
+        $admin->changeStatus($this->head, null, $account, CentralFinanceFundAccount::STATUS_ARCHIVED, 'Archive test-only pre-go-live balance');
+
+        $archived = $account->fresh();
+        $this->assertSame(CentralFinanceFundAccount::STATUS_ARCHIVED, $archived->status);
+        $this->assertFalse((bool) $archived->is_active);
+        $this->assertSame('125.0000', $archived->opening_balance);
+        $this->assertSame(125.0, app(CentralFinanceFundAccountBalanceService::class)->currentBalance($archived));
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_fund_account_opening_balance_audits')->where('fund_account_id', $account->id)->count());
+        $this->assertSame(0, CentralFinanceLedgerEntry::on('mysql')->where('fund_account_id', $account->id)->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_payments')->where('fund_account_id', $account->id)->count());
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_internal_transfers')->where('source_fund_account_id', $account->id)->orWhere('destination_fund_account_id', $account->id)->count());
+        $this->assertSame(2, DB::connection('mysql')->table('central_finance_fund_account_school_allocations')->where('fund_account_id', $account->id)->where('is_active', false)->count());
+        $availability = app(CentralFinanceFundAccountSchoolAvailabilityService::class);
+        $this->assertFalse($availability->isAccountAvailableForSchool($archived, 1));
+        $this->assertFalse($availability->isAccountAvailableForSchool($archived, 2));
+        $this->assertSame(CentralFinanceDataClassification::ARCHIVED, app(\App\Services\CentralFinanceDataIsolationService::class)->classification('fund_account', (int) $account->id));
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_data_classification_audits')
+            ->where('subject_type', 'fund_account')->where('subject_id', $account->id)->where('after_classification', CentralFinanceDataClassification::ARCHIVED)->count());
+
+        $officialAccounts = CentralFinanceFundAccount::on('mysql')->where('group_id', $this->group->id)->whereNull('school_id');
+        app(\App\Services\CentralFinanceDataIsolationService::class)->apply($officialAccounts, 'fund_account');
+        $visible = $officialAccounts->get();
+        $this->assertFalse($visible->contains('id', $account->id));
+        $summary = app(CentralFinanceFundAccountBalanceService::class)->physicalSummaryByCurrency($visible);
+        $this->assertSame(0.0, $summary['MMK']['closing_balance'] ?? 0.0);
+        $this->assertDatabaseHas('central_finance_fund_account_opening_balance_audits', [
+            'fund_account_id' => $account->id, 'change_type' => 'initial', 'new_opening_balance' => '125.0000',
+        ], 'mysql');
+        $this->assertDatabaseHas('central_finance_document_audits', [
+            'document_type' => 'fund_account', 'document_id' => $account->id, 'action' => 'lifecycle_archived',
+        ], 'mysql');
+    }
+
+    public function test_group_account_archive_is_blocked_while_school_allocations_remain_active(): void
+    {
+        $this->ensureClassificationSchema();
+        $account = $this->centralAccount('ALLOCATED-CANNOT-ARCHIVE');
+        $this->allocate($account, 1);
+
+        try {
+            app(CentralFinanceFundAccountAdministrationService::class)->changeStatus(
+                $this->head, null, $account, CentralFinanceFundAccount::STATUS_ARCHIVED, 'Must revoke allocation first'
+            );
+            $this->fail('Archiving must fail while any School allocation is active.');
+        } catch (ValidationException $expected) {
+            $this->assertArrayHasKey('status', $expected->errors());
+        }
+
+        $this->assertSame(CentralFinanceFundAccount::STATUS_ACTIVE, $account->fresh()->status);
+        $this->assertSame(CentralFinanceDataClassification::PRODUCTION, app(\App\Services\CentralFinanceDataIsolationService::class)->classification('fund_account', (int) $account->id));
+    }
+
+    public function test_group_account_archive_is_blocked_when_ledger_activity_exists(): void
+    {
+        $this->ensureClassificationSchema();
+        $account = $this->centralAccount('LEDGER-CANNOT-ARCHIVE');
+        $this->allocate($account, 1);
+        $this->ledger($account, 1, 'archive-blocker-ledger', 10);
+        // Seed the post-revocation state directly: the live allocation service
+        // correctly rejects this transition while Ledger history exists.
+        CentralFinanceFundAccountSchoolAllocation::on('mysql')->where('fund_account_id', $account->id)
+            ->where('school_id', 1)->update(['is_active' => false, 'status' => 'inactive']);
+
+        try {
+            app(CentralFinanceFundAccountAdministrationService::class)->changeStatus(
+                $this->head, null, $account, CentralFinanceFundAccount::STATUS_ARCHIVED, 'Ledger activity must block archive'
+            );
+            $this->fail('An account with financial activity must not be archived under the opening-only exception.');
+        } catch (ValidationException $expected) {
+            $this->assertArrayHasKey('status', $expected->errors());
+        }
+
+        $this->assertSame(CentralFinanceFundAccount::STATUS_ACTIVE, $account->fresh()->status);
+        $this->assertSame(CentralFinanceDataClassification::PRODUCTION, app(\App\Services\CentralFinanceDataIsolationService::class)->classification('fund_account', (int) $account->id));
     }
 
     public function test_physical_currency_summary_counts_a_shared_account_once_not_per_school_allocation(): void
@@ -506,6 +603,13 @@ final class CentralFundAccountV2Test extends TestCase
             'currency' => 'MMK', 'opening_balance' => 100, 'is_active' => true,
             'account_type' => CentralFinanceFundAccount::TYPE_BANK, 'status' => CentralFinanceFundAccount::STATUS_ACTIVE,
         ]);
+    }
+
+    private function ensureClassificationSchema(): void
+    {
+        if (!Schema::connection('mysql')->hasTable('central_finance_data_classifications')) {
+            (require database_path('migrations/2026_09_14_000003_create_central_finance_data_classifications.php'))->up();
+        }
     }
 
     private function legacyAccount(string $code, int $schoolId, float $opening): CentralFinanceFundAccount

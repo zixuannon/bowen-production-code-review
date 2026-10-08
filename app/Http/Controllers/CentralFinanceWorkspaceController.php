@@ -621,12 +621,21 @@ final class CentralFinanceWorkspaceController extends Controller
     public function changeFundAccountStatus(Request $request, int $fundAccount): RedirectResponse
     {
         [$actor, $account] = $this->currentGroupAccountContext($fundAccount);
-        $this->dataIsolation->assertProduction('fund_account', $fundAccount);
         $data = $request->validate([
             'status' => ['required', Rule::in([CentralFinanceFundAccount::STATUS_ACTIVE, CentralFinanceFundAccount::STATUS_INACTIVE, CentralFinanceFundAccount::STATUS_ARCHIVED])],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
+        // Archiving is the one lifecycle transition that changes a Production
+        // record into immutable history. The administration service still
+        // enforces Group authority, rejects QA accounts, and checks all
+        // financial dependencies before committing it.
+        if ($data['status'] !== CentralFinanceFundAccount::STATUS_ARCHIVED) {
+            $this->dataIsolation->assertProduction('fund_account', $fundAccount);
+        }
         $this->accountAdministration->changeStatus($actor, null, $account, $data['status'], $data['reason']);
+        if ($data['status'] === CentralFinanceFundAccount::STATUS_ARCHIVED) {
+            return redirect()->route('central-finance.accounts')->with('success', __('Central Fund Account archived; its history remains preserved.'));
+        }
         return back()->with('success', __('Central Fund Account lifecycle status updated.'));
     }
 
