@@ -378,6 +378,54 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $this->assertSame(\App\Services\CentralFinancePromotionService::DUPLICATE_CODE_MESSAGE,session('errors')->first('code'));
   $this->assertSame(1,\App\Models\CentralFinancePromotion::on('mysql')->count());
  }
+ public function test_unused_promotion_can_be_edited_toggled_and_deleted_with_audit_and_no_finance_mutation(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $service=app(\App\Services\CentralFinancePromotionService::class);
+  $promotion=$service->define($this->head,1,[1],['name'=>'Early payment','code'=>'EARLY-1','description'=>'Initial terms','discount_type'=>'percentage','discount_value'=>'10.0000','valid_from'=>'2026-01-01','valid_until'=>'2026-12-31','status'=>'active']);
+  $financeBefore=[CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_receipts')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count(),CentralFinanceReceivable::on('mysql')->count()];
+  $service->editUnused($this->head,$promotion->id,[1,2],['name'=>'Updated offer','description'=>'Reviewed terms','discount_type'=>'fixed','discount_value'=>'50.0000','valid_from'=>'2026-02-01','valid_until'=>'2026-11-30'],'Business terms corrected.');
+  $promotion->refresh(); $this->assertSame('Updated offer',$promotion->name); $this->assertSame('50.0000',(string)$promotion->discount_value); $this->assertSame([1,2],$promotion->allocations()->where('status','active')->orderBy('school_id')->pluck('school_id')->all());
+  $service->setStatus($this->head,$promotion->id,'inactive','Pause future applications.'); $this->assertSame('inactive',$promotion->fresh()->status);
+  $service->setStatus($this->head,$promotion->id,'active','Resume future applications.'); $this->assertSame('active',$promotion->fresh()->status);
+  $service->deleteUnused($this->head,$promotion->id,'Duplicate unused definition.');
+  $this->assertFalse(\App\Models\CentralFinancePromotion::on('mysql')->whereKey($promotion->id)->exists());
+  $this->assertSame(0,DB::connection('mysql')->table('central_finance_promotion_school_allocations')->where('promotion_id',$promotion->id)->count());
+  $audits=DB::connection('mysql')->table('central_finance_document_audits')->where(['document_type'=>'central_finance_promotion','document_id'=>$promotion->id])->orderBy('id')->pluck('action')->all();
+  $this->assertSame(['created','edited_unused','disabled','enabled','deleted_unused'],$audits);
+  $this->assertSame($financeBefore,[CentralFinancePayment::on('mysql')->count(),DB::connection('mysql')->table('central_finance_receipts')->count(),DB::connection('mysql')->table('central_finance_ledger_entries')->count(),CentralFinanceReceivable::on('mysql')->count()]);
+ }
+ public function test_used_promotion_terms_cannot_change_but_future_status_can_toggle_and_delete_is_denied(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  (require database_path('migrations/2026_09_29_000002_add_finance_collection_v2_documents.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $service=app(\App\Services\CentralFinancePromotionService::class);
+  $promotion=$service->define($this->head,1,[1],['name'=>'Snapshot offer','code'=>'SNAP-1','description'=>null,'discount_type'=>'percentage','discount_value'=>'10.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active']);
+  $receivable=$this->receivable($this->zixProfile);
+  $application=$service->apply($this->head,$receivable->id,$promotion->id,$this->at(),'Approved offer.',$this->at(),'PROMOTION-SNAPSHOT-1');
+  try { $service->editUnused($this->head,$promotion->id,[1],['name'=>'Changed','description'=>null,'discount_type'=>'fixed','discount_value'=>'1.0000','valid_from'=>'2026-01-01','valid_until'=>null],'Must be rejected.'); $this->fail('A used Promotion must not be edited.'); } catch (InvalidArgumentException) { $this->assertTrue(true); }
+  try { $promotion->update(['name'=>'Direct bypass','discount_value'=>'1.0000']); $this->fail('The model must guard used Promotion terms too.'); } catch (\RuntimeException) { $this->assertTrue(true); }
+  try { $service->deleteUnused($this->head,$promotion->id,'Must be rejected.'); $this->fail('A used Promotion must not be deleted.'); } catch (InvalidArgumentException) { $this->assertTrue(true); }
+  $service->setStatus($this->head,$promotion->id,'inactive','Stop future use.');
+  $service->setStatus($this->head,$promotion->id,'active','Allow future use.');
+  $application->refresh(); $this->assertSame('Snapshot offer',$application->promotion_name_snapshot); $this->assertSame('10.0000',(string)$application->discount_value_snapshot); $this->assertSame('Snapshot offer',$promotion->fresh()->name);
+ }
+ public function test_promotion_management_rejects_unauthorized_actor_and_cross_classification_edit(): void {
+  (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
+  (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
+  DB::connection('mysql')->table('finance_group_user_scopes')->insert(['group_user_id'=>1,'school_id'=>null,'scope_type'=>'GROUP','capability'=>'manage_hq_accounts','scope_key'=>'group:1','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+  $isolation=app(CentralFinanceDataIsolationService::class);
+  $isolation->classify($this->head,1,'school',1,CentralFinanceDataClassification::QA_TEST,'Promotion management isolation fixture.');
+  $service=app(\App\Services\CentralFinancePromotionService::class);
+  $promotion=$service->define($this->head,1,[1],['name'=>'QA only','code'=>'QA-ONLY','description'=>null,'discount_type'=>'fixed','discount_value'=>'25.0000','valid_from'=>'2026-01-01','valid_until'=>null,'status'=>'active']);
+  try { $service->setStatus($this->accountant,$promotion->id,'inactive','Unauthorized local test.'); $this->fail('A School Accountant without Group control cannot manage Promotions.'); }
+  catch (AuthorizationException) { $this->assertSame('active',$promotion->fresh()->status); }
+  try { $service->editUnused($this->head,$promotion->id,[1,2],['name'=>'Mixed','description'=>null,'discount_type'=>'fixed','discount_value'=>'30.0000','valid_from'=>'2026-01-01','valid_until'=>null],'Must be rejected across classifications.'); $this->fail('QA and Official Schools cannot share an edited Promotion.'); }
+  catch (InvalidArgumentException) { $this->assertSame('QA only',$promotion->fresh()->name); }
+  $this->assertSame([1],$promotion->allocations()->where('status','active')->orderBy('school_id')->pluck('school_id')->all());
+ }
  public function test_student_specific_promotion_is_visible_only_to_its_exact_profile_and_remains_append_only(): void {
   (require database_path('migrations/2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php'))->up();
   (require database_path('migrations/2026_09_29_000001_add_central_finance_layer3_receivable_promotions.php'))->up();
@@ -460,7 +508,7 @@ class CentralFinanceReceivablePaymentTest extends TestCase {
   $this->assertSame('250.0000',$quote['discount']); $this->assertSame('750.0000',$quote['net']); $this->assertSame($applicationsBefore,DB::connection('mysql')->table('central_finance_promotion_applications')->count());
   $application=$promotions->apply($this->head,$receivable->id,$promotion->id,CarbonImmutable::parse('2026-08-21','Asia/Yangon'),'Approved QA fixed promotion.',$this->at(),'L3-QA-FIXED');
   $this->assertSame('750.0000',(string)$receivable->fresh()->amount_due); $this->assertSame(CentralFinanceDataClassification::QA_TEST,$isolation->classification('promotion',$promotion->id)); $this->assertSame(CentralFinanceDataClassification::QA_TEST,$isolation->classification('promotion_application',$application->id)); $this->assertSame(CentralFinanceDataClassification::QA_TEST,$isolation->classification('receivable_adjustment',$application->adjustment_id));
-  $promotion->update(['name'=>'Changed after use','discount_value'=>'300.0000']); $application->refresh(); $this->assertSame('QA fixed',$application->promotion_name_snapshot); $this->assertSame('250.0000',(string)$application->discount_value_snapshot);
+  try { $promotion->update(['name'=>'Changed after use','discount_value'=>'300.0000']); $this->fail('A used promotion definition is immutable.'); } catch (\RuntimeException) { $this->assertTrue(true); } $application->refresh(); $this->assertSame('QA fixed',$application->promotion_name_snapshot); $this->assertSame('250.0000',(string)$application->discount_value_snapshot);
   $inactive=\App\Models\CentralFinancePromotion::on('mysql')->create(['group_id'=>1,'name'=>'Inactive','code'=>'OFF','discount_type'=>'fixed','discount_value'=>'1.0000','valid_from'=>'2026-01-01','status'=>'inactive','fee_scope'=>'all_approved_fees','created_by'=>$this->head->id]); DB::connection('mysql')->table('central_finance_promotion_school_allocations')->insert(['promotion_id'=>$inactive->id,'school_id'=>1,'status'=>'active','created_at'=>now(),'updated_at'=>now()]);
   $this->assertFalse($promotions->eligibleFor($this->head,$receivable,CarbonImmutable::parse('2026-08-21','Asia/Yangon'))->pluck('id')->contains($inactive->id));
  }

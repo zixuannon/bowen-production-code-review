@@ -1,5 +1,13 @@
 # eSchool Current State
 
+## Official onboarding and finance delivery — local candidate (2026-10-09)
+
+- Based on read-only Production release evidence at `2488b307bd8a47fb61cb6f892b916365377d1d7f`; no Production data, account, permission, migration, or release was changed.
+- This delivery reuses the existing Student Import V2 and Group Finance Import V3 implementation and adds audited lifecycle controls for unused Group Promotions. Terms are editable only before use; status changes remain auditable; historical applications and immutable snapshots are preserved. Delete is limited to never-used, unreferenced promotions.
+- Authenticated local browser acceptance passes for Student Import V2, Guardian/student admission, Promotion management, and Group Import V3. The P0 local browser rehearsal used the documented synthetic release-proof provider, exact pinned migration, a closed writer fence during DDL, preservation checks, and atomic reopen on disposable MySQL 9.6 at port 3318; financial snapshot and migration history were unchanged.
+- Promotion targeted regression passes (99 tests / 760 assertions). Current full regression passes (1,347 tests / 11,075 assertions, 0 failures, 0 errors, 34 existing skips). Additional promotion/fixture targeted regression passes (47 tests / 319 assertions); one PHPUnit deprecation and one PHP deprecation remain.
+- Local browser acceptance is complete. One clean local candidate is frozen on `codex/official-onboarding-finance-delivery`; no Production Student Import confirmation, Finance write, migration, push, or deployment occurred. Stop at the exact-SHA Production deployment approval gate.
+
 ## Fund Account #16 pre-go-live retirement — local candidate (2026-10-08)
 
 - Read-only Production evidence on reported SHA `44dd7e07fdbe477885859129d2e7e263e82fd58c` confirmed active release, Git HEAD, manifest, and marker all match. Fund Account #16 / BK-0001 is Group-owned, has opening/current balance `496,316,250.6800` MMK, and is unclassified (the normal Production-compatible default). Active allocations are #17 Bahan, #19 Timecity, and #20 Kindergarten; Zixuan #15's allocation is already inactive.

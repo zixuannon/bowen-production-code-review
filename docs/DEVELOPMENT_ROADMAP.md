@@ -1,5 +1,13 @@
 # eSchool Finance V2 Roadmap
 
+## Official onboarding and finance delivery — local candidate (2026-10-09)
+
+- [x] Reuse the existing Student Import V2 and Group Finance Import V3 behavior without Production writes.
+- [x] Add audited edit/enable/disable/delete controls for unused Group Promotions; preserve used-promotion terms, application snapshots, and finance history.
+- [x] Targeted regression: 99 tests / 760 assertions; full regression: 1,347 tests / 11,075 assertions, 0 failures/errors, 34 existing skips.
+- [x] Finish authenticated local browser acceptance for Student Import V2, Guardian/student admission, Promotion management, and Group Import V3 using a disposable local MySQL fixture; exact P0 schema rehearsal preserved finance snapshots/history and reopened its write gate atomically.
+- [x] Freeze one clean local candidate on `codex/official-onboarding-finance-delivery`; no Production data, migration, push, or deployment occurred. Production deployment remains behind exact-SHA approval.
+
 ## Fund Account #16 Official test-balance retirement — local candidate (2026-10-08)
 
 - [x] Read-only Production inventory confirms #16 has an audited initial

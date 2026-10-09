@@ -123,7 +123,16 @@ final class CentralFinanceWorkspaceController extends Controller
         // Setup, but must never be able to render or probe this management
         // surface.
         abort_unless($groups->isNotEmpty(), 403);
-        $promotions = CentralFinancePromotion::on('mysql')->with(['allocations.school', 'studentProfile'])->whereIn('group_id', $groups->pluck('id'))->latest()->get();
+        $promotions = CentralFinancePromotion::on('mysql')->with(['allocations.school', 'studentProfile'])->withCount('applications')->whereIn('group_id', $groups->pluck('id'))->latest()->get();
+        $promotionIds = $promotions->pluck('id');
+        $dependentPromotionIds = collect();
+        foreach (['central_finance_student_discount_requests', 'central_finance_promotion_fee_allocations'] as $table) {
+            if ($promotionIds->isNotEmpty() && \Illuminate\Support\Facades\Schema::connection('mysql')->hasTable($table)) {
+                $dependentPromotionIds = $dependentPromotionIds->merge(\Illuminate\Support\Facades\DB::connection('mysql')->table($table)->whereIn('promotion_id', $promotionIds)->distinct()->pluck('promotion_id'));
+            }
+        }
+        $dependentPromotionIds = $dependentPromotionIds->map(fn ($id) => (int) $id)->unique()->all();
+        $promotions->each(fn (CentralFinancePromotion $promotion) => $promotion->setAttribute('has_management_dependencies', $promotion->applications_count > 0 || in_array((int) $promotion->id, $dependentPromotionIds, true)));
         $schools = FinanceGroupSchool::on('mysql')->with('school')->whereIn('group_id', $groups->pluck('id'))->where('status', 'active')->get()->groupBy('group_id');
         $schoolIds = $schools->flatten(1)->pluck('school_id')->map(fn ($id): int => (int) $id)->unique()->values();
         $promotionClassifications = $promotions->mapWithKeys(fn (CentralFinancePromotion $promotion): array => [
@@ -141,6 +150,49 @@ final class CentralFinanceWorkspaceController extends Controller
             return back()->withErrors([$field => __($exception->getMessage())])->withInput();
         }
         return back()->with('success', __('Promotion definition created.'));
+    }
+
+    public function updatePromotion(Request $request, int $promotion): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:191'], 'description' => ['nullable', 'string'],
+            'discount_type' => ['required', Rule::in([CentralFinancePromotion::PERCENTAGE, CentralFinancePromotion::FIXED])],
+            'discount_value' => ['required', 'regex:/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,4})?$/'],
+            'valid_from' => ['required', 'date_format:Y-m-d'], 'valid_until' => ['nullable', 'date_format:Y-m-d'],
+            'school_ids' => ['required', 'array', 'min:1'], 'school_ids.*' => ['integer', 'distinct'],
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+        try {
+            $this->promotions->editUnused($this->actor(), $promotion, $data['school_ids'], $data, $data['reason']);
+        } catch (InvalidArgumentException|AuthorizationException $exception) {
+            return back()->withErrors(['promotion' => __($exception->getMessage())])->withInput();
+        }
+        return back()->with('success', __('Promotion definition updated.'));
+    }
+
+    public function setPromotionStatus(Request $request, int $promotion): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', Rule::in([CentralFinancePromotion::ACTIVE, CentralFinancePromotion::INACTIVE])],
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+        try {
+            $this->promotions->setStatus($this->actor(), $promotion, $data['status'], $data['reason']);
+        } catch (InvalidArgumentException|AuthorizationException $exception) {
+            return back()->withErrors(['promotion' => __($exception->getMessage())])->withInput();
+        }
+        return back()->with('success', $data['status'] === CentralFinancePromotion::ACTIVE ? __('Promotion enabled for future use.') : __('Promotion disabled for future use.'));
+    }
+
+    public function deletePromotion(Request $request, int $promotion): RedirectResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        try {
+            $this->promotions->deleteUnused($this->actor(), $promotion, $data['reason']);
+        } catch (InvalidArgumentException|AuthorizationException $exception) {
+            return back()->withErrors(['promotion' => __($exception->getMessage())])->withInput();
+        }
+        return back()->with('success', __('Unused Promotion deleted with an audit record.'));
     }
 
     public function operating(?Request $request = null): View

@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 test('Guardian can be created without an email address', async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.locator('input[name="email"]').fill('qa_admin@bowen-qa.test');
     await page.locator('input[name="password"]').fill('local-bowen-qa-only');
@@ -24,6 +25,7 @@ test('Guardian can be created without an email address', async ({ page }) => {
 });
 
 test('Student admission submits exactly the email of an existing Guardian selected in Select2', async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.locator('input[name="email"]').fill('qa_admin@bowen-qa.test');
     await page.locator('input[name="password"]').fill('local-bowen-qa-only');
@@ -215,6 +217,7 @@ test('Student admission submits exactly the email of an existing Guardian select
 });
 
 test('Student admission keeps the latest canonical Guardian response and blocks failed details', async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.locator('input[name="email"]').fill('qa_admin@bowen-qa.test');
     await page.locator('input[name="password"]').fill('local-bowen-qa-only');

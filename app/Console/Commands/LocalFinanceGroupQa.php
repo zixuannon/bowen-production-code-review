@@ -15,6 +15,11 @@ use App\Models\FinanceGroupTransfer;
 use App\Models\FinanceGroupUser;
 use App\Models\CentralFinanceStudentProfile;
 use App\Models\CentralFinanceSyncEvent;
+use App\Models\CentralFinanceDataClassification;
+use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceUser;
+use App\Services\CentralFinanceDataIsolationService;
+use App\Services\CentralFinanceFundAccountAdministrationService;
 use App\Services\CentralFinanceStudentProfileSyncService;
 use App\Services\FinanceGroupReportService;
 use App\Services\FinanceGroupScopeService;
@@ -105,6 +110,25 @@ class LocalFinanceGroupQa extends Command
         $a=(int)$central->table('schools')->where('code','GROUP_QA_SCHOOL_A')->value('id');
         $b=(int)$central->table('schools')->where('code','GROUP_QA_SCHOOL_B')->value('id');
         $scope->syncSchools($group,[$a,$b]);
+        $dataIsolation = app(CentralFinanceDataIsolationService::class);
+        if ($dataIsolation->schemaAvailable()) {
+            $classificationActor = CentralFinanceUser::on('mysql')->findOrFail((int) $central->table('users')->where('email', 'group_hq@group-qa.test')->value('id'));
+            foreach ([$a, $b] as $schoolId) {
+                $classification = $dataIsolation->classification('school', $schoolId);
+                if ($classification === CentralFinanceDataClassification::PRODUCTION) {
+                    $dataIsolation->classify(
+                        $classificationActor,
+                        $schoolId,
+                        'school',
+                        $schoolId,
+                        CentralFinanceDataClassification::QA_TEST,
+                        'Disposable local Finance Group QA School fixture.',
+                    );
+                } elseif ($classification !== CentralFinanceDataClassification::QA_TEST) {
+                    throw new \LogicException('Group QA School fixture has an unexpected data classification.');
+                }
+            }
+        }
 
         $hq = $scope->addUser($group, (int) $central->table('users')->where('email','group_hq@group-qa.test')->value('id'));
         $scope->grantScope($hq,'view_reports','GROUP');
@@ -113,6 +137,26 @@ class LocalFinanceGroupQa extends Command
         $scope->grantScope($hq,'confirm_group_transfers','GROUP');
         $scope->grantScope($hq,'manage_hq_accounts','GROUP');
         $this->ensureCentralHeadFinanceRole($central, (int) $hq->central_user_id, $now);
+        $importAccountExists = CentralFinanceFundAccount::on('mysql')
+            ->where('group_id', $group->id)->where('account_code', 'GROUP_QA_IMPORT_BANK')->exists();
+        if (!$importAccountExists) {
+            app(CentralFinanceFundAccountAdministrationService::class)->createGroupAccount(
+                CentralFinanceUser::on('mysql')->findOrFail((int) $hq->central_user_id),
+                (int) $group->id,
+                [
+                    'account_code' => 'GROUP_QA_IMPORT_BANK',
+                    'account_name' => 'Group QA Import Bank',
+                    'owner_holder' => 'Disposable Group QA fixture',
+                    'currency' => 'MMK',
+                    'opening_balance' => 0,
+                    'opening_balance_date' => '2026-01-01',
+                    'opening_reason' => 'Disposable local Group Import V3 browser fixture.',
+                    'account_type' => CentralFinanceFundAccount::TYPE_BANK,
+                    'bank_name' => 'LOCAL ONLY',
+                    'notes' => 'Synthetic local-only account for Group Import V3 acceptance.',
+                ],
+            );
+        }
         // A Central Actor must not also be a tenant login identity.  The
         // trusted mapping deliberately points to the existing local tenant
         // Head Finance user, which is used for tenant-scoped authorization
@@ -312,6 +356,8 @@ class LocalFinanceGroupQa extends Command
         // restrictive foreign key after partially clearing the fixture.
         $hasGroupImportHistory = Schema::connection('mysql')->hasTable('central_finance_group_import_batches')
             && $central->table('central_finance_group_import_batches')->where('finance_group_id', $groupId)->exists();
+        $hasGroupFundAccounts = Schema::connection('mysql')->hasTable('central_finance_fund_accounts')
+            && $central->table('central_finance_fund_accounts')->where('group_id', $groupId)->exists();
 
         if (Schema::connection('mysql')->hasTable('finance_group_transfers')) {
             $central->table('finance_group_transfers')->where('group_id', $groupId)->delete();
@@ -334,7 +380,7 @@ class LocalFinanceGroupQa extends Command
             ->delete();
         $central->table('finance_group_users')->where('group_id', $groupId)->delete();
         $central->table('finance_group_schools')->where('group_id', $groupId)->delete();
-        if (!$hasGroupImportHistory) {
+        if (!$hasGroupImportHistory && !$hasGroupFundAccounts) {
             $central->table('finance_groups')->where('id', $groupId)->delete();
         }
     }
@@ -359,6 +405,14 @@ class LocalFinanceGroupQa extends Command
         $central=DB::connection('mysql'); $group=FinanceGroup::query()->where('code','GROUP_QA')->first(); if (!$group || $group->schools()->where('status','active')->count() !== 2 || $group->schools()->whereHas('school',fn($q)=>$q->where('code','GROUP_QA_UNRELATED'))->exists()) throw new \LogicException('Group scope fixture mismatch.');
         $a = (int) $central->table('schools')->where('code', 'GROUP_QA_SCHOOL_A')->value('id');
         $b = (int) $central->table('schools')->where('code', 'GROUP_QA_SCHOOL_B')->value('id');
+        $dataIsolation = app(CentralFinanceDataIsolationService::class);
+        if ($dataIsolation->schemaAvailable()) {
+            foreach ([$a, $b] as $schoolId) {
+                if ($dataIsolation->classification('school', $schoolId) !== CentralFinanceDataClassification::QA_TEST) {
+                    throw new \LogicException('Group QA School classification fixture mismatch.');
+                }
+            }
+        }
         $this->verifyCentralStudentFixtures($central, ['GROUP_QA_SCHOOL_A' => $a, 'GROUP_QA_SCHOOL_B' => $b]);
         $hq = FinanceGroupUser::query()->where('group_id', $group->id)->where('central_user_id', $central->table('users')->where('email', 'group_hq@group-qa.test')->value('id'))->firstOrFail();
         $register = app(FinanceGroupReportService::class)->register($hq);

@@ -103,6 +103,160 @@ final class CentralFinancePromotionService
         }
     }
 
+    /** Edit only an unused general definition; applied snapshots stay immutable. @param list<int> $schoolIds */
+    public function editUnused(CentralFinanceUser $actor, int $promotionId, array $schoolIds, array $input, string $reason): CentralFinancePromotion
+    {
+        return DB::connection('mysql')->transaction(function () use ($actor, $promotionId, $schoolIds, $input, $reason): CentralFinancePromotion {
+            $promotion = CentralFinancePromotion::on('mysql')->lockForUpdate()->findOrFail($promotionId);
+            $this->configuration->assertHeadFinanceCanConfigureGroup($actor, (int) $promotion->group_id);
+            if ($this->hasHistoricalUse($promotion)) {
+                throw new InvalidArgumentException('A used Promotion cannot be edited. Create a new Promotion for changed terms.');
+            }
+            if ((string) ($promotion->scope ?? CentralFinancePromotion::GENERAL) !== CentralFinancePromotion::GENERAL) {
+                throw new InvalidArgumentException('Student-specific Discounts cannot be edited from Promotion management.');
+            }
+
+            $schoolIds = array_values(array_unique(array_map('intval', $schoolIds)));
+            if ($schoolIds === []) throw new InvalidArgumentException('Allocate a Promotion to at least one active School.');
+            $members = FinanceGroupSchool::on('mysql')->where('group_id', $promotion->group_id)->where('status', 'active')->whereIn('school_id', $schoolIds)->get();
+            if ($members->count() !== count($schoolIds)) throw new AuthorizationException('Every Promotion allocation must be an active member of the selected Finance Group.');
+            $classifications = collect($schoolIds)->map(fn (int $schoolId) => $this->dataIsolation->classification('school', $schoolId))->unique();
+            if ($classifications->count() !== 1 || $classifications->first() !== $this->dataIsolation->classification('promotion', (int) $promotion->id)) {
+                throw new InvalidArgumentException('Promotion allocations must retain one matching QA/Test or Official classification.');
+            }
+
+            $name = trim((string) ($input['name'] ?? ''));
+            $type = (string) ($input['discount_type'] ?? '');
+            $value = CentralFinanceDecimal::normalize((string) ($input['discount_value'] ?? '0'));
+            $from = (string) ($input['valid_from'] ?? '');
+            $until = trim((string) ($input['valid_until'] ?? ''));
+            if ($name === '' || mb_strlen($name) > 191 || !in_array($type, [CentralFinancePromotion::PERCENTAGE, CentralFinancePromotion::FIXED], true)
+                || CentralFinanceDecimal::compare($value, '0') <= 0
+                || ($type === CentralFinancePromotion::PERCENTAGE && CentralFinanceDecimal::compare($value, '100') > 0)
+                || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)
+                || ($until !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $until) || $until < $from))) {
+                throw new InvalidArgumentException('Promotion terms are invalid.');
+            }
+            $reason = trim($reason);
+            if ($reason === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('A reason is required to edit a Promotion.');
+
+            $before = [
+                'name' => $promotion->name, 'description' => $promotion->description,
+                'discount_type' => $promotion->discount_type, 'discount_value' => (string) $promotion->discount_value,
+                'valid_from' => $promotion->valid_from?->format('Y-m-d'), 'valid_until' => $promotion->valid_until?->format('Y-m-d'),
+                'school_ids' => $promotion->allocations()->where('status', 'active')->orderBy('school_id')->pluck('school_id')->map(fn ($id) => (int) $id)->all(),
+            ];
+            $promotion->fill([
+                'name' => $name,
+                'description' => trim((string) ($input['description'] ?? '')) ?: null,
+                'discount_type' => $type,
+                'discount_value' => $value,
+                'valid_from' => $from,
+                'valid_until' => $until !== '' ? $until : null,
+                'updated_by' => $actor->id,
+            ])->save();
+
+            $allocations = $promotion->allocations()->lockForUpdate()->get()->keyBy('school_id');
+            foreach ($allocations as $schoolId => $allocation) {
+                $allocation->update(['status' => in_array((int) $schoolId, $schoolIds, true) ? 'active' : 'inactive']);
+            }
+            foreach ($schoolIds as $schoolId) {
+                $allocation = $allocations->get($schoolId);
+                if ($allocation === null) {
+                    $promotion->allocations()->create(['school_id' => $schoolId, 'status' => 'active']);
+                }
+            }
+            CentralFinanceDocumentAudit::on('mysql')->create([
+                'school_id' => $schoolIds[0], 'group_id' => $promotion->group_id, 'document_type' => 'central_finance_promotion',
+                'document_id' => $promotion->id, 'action' => 'edited_unused', 'actor_id' => $actor->id, 'reason' => $reason,
+                'before_values' => $before,
+                'after_values' => ['name' => $promotion->name, 'description' => $promotion->description, 'discount_type' => $promotion->discount_type,
+                    'discount_value' => (string) $promotion->discount_value, 'valid_from' => $from, 'valid_until' => $until ?: null, 'school_ids' => $schoolIds],
+            ]);
+
+            return $promotion->fresh(['allocations']);
+        });
+    }
+
+    /** Enable or disable future use without changing immutable application snapshots. */
+    public function setStatus(CentralFinanceUser $actor, int $promotionId, string $status, string $reason): CentralFinancePromotion
+    {
+        if (!in_array($status, [CentralFinancePromotion::ACTIVE, CentralFinancePromotion::INACTIVE], true)) {
+            throw new InvalidArgumentException('Promotion status must be active or inactive.');
+        }
+        $reason = trim($reason);
+        if ($reason === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('A reason is required to change Promotion status.');
+
+        return DB::connection('mysql')->transaction(function () use ($actor, $promotionId, $status, $reason): CentralFinancePromotion {
+            $promotion = CentralFinancePromotion::on('mysql')->lockForUpdate()->findOrFail($promotionId);
+            $this->configuration->assertHeadFinanceCanConfigureGroup($actor, (int) $promotion->group_id);
+            $before = $promotion->status;
+            if ($before !== $status) {
+                $auditSchoolId = $promotion->allocations()->orderBy('school_id')->value('school_id');
+                if ($auditSchoolId === null) {
+                    throw new InvalidArgumentException('A Promotion needs a retained School allocation before its status can be audited.');
+                }
+                $promotion->forceFill(['status' => $status, 'updated_by' => $actor->id])->save();
+                CentralFinanceDocumentAudit::on('mysql')->create([
+                    'school_id' => $auditSchoolId, 'group_id' => $promotion->group_id,
+                    'document_type' => 'central_finance_promotion', 'document_id' => $promotion->id,
+                    'action' => $status === CentralFinancePromotion::ACTIVE ? 'enabled' : 'disabled', 'actor_id' => $actor->id,
+                    'reason' => $reason, 'before_values' => ['status' => $before], 'after_values' => ['status' => $status],
+                ]);
+            }
+            return $promotion->fresh();
+        });
+    }
+
+    /** Delete only a never-applied, unreferenced definition and retain an append-only deletion audit. */
+    public function deleteUnused(CentralFinanceUser $actor, int $promotionId, string $reason): void
+    {
+        $reason = trim($reason);
+        if ($reason === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('A reason is required to delete a Promotion.');
+
+        DB::connection('mysql')->transaction(function () use ($actor, $promotionId, $reason): void {
+            $promotion = CentralFinancePromotion::on('mysql')->lockForUpdate()->findOrFail($promotionId);
+            $this->configuration->assertHeadFinanceCanConfigureGroup($actor, (int) $promotion->group_id);
+            if ($this->hasHistoricalUse($promotion)) {
+                throw new InvalidArgumentException('A Promotion with historical or request dependencies cannot be deleted. Disable it instead.');
+            }
+            if (Schema::connection('mysql')->hasTable('central_finance_promotion_fee_allocations')
+                && DB::connection('mysql')->table('central_finance_promotion_fee_allocations')->where('promotion_id', $promotion->id)->exists()) {
+                throw new InvalidArgumentException('A Promotion with Fee allocation dependencies cannot be deleted.');
+            }
+
+            $allocations = $promotion->allocations()->lockForUpdate()->get(['school_id', 'status']);
+            if ($allocations->isEmpty()) {
+                throw new InvalidArgumentException('A Promotion needs a retained School allocation before its deletion can be audited.');
+            }
+            CentralFinanceDocumentAudit::on('mysql')->create([
+                'school_id' => $allocations->first()?->school_id, 'group_id' => $promotion->group_id,
+                'document_type' => 'central_finance_promotion', 'document_id' => $promotion->id,
+                'action' => 'deleted_unused', 'actor_id' => $actor->id, 'reason' => $reason,
+                'before_values' => ['promotion_uuid' => $promotion->promotion_uuid, 'group_id' => $promotion->group_id,
+                    'name' => $promotion->name, 'code' => $promotion->code, 'description' => $promotion->description,
+                    'discount_type' => $promotion->discount_type, 'discount_value' => (string) $promotion->discount_value,
+                    'valid_from' => $promotion->valid_from?->format('Y-m-d'), 'valid_until' => $promotion->valid_until?->format('Y-m-d'),
+                    'status' => $promotion->status, 'school_allocations' => $allocations->map(fn ($row) => ['school_id' => (int) $row->school_id, 'status' => $row->status])->all()],
+                'after_values' => null,
+            ]);
+            DB::connection('mysql')->table('central_finance_promotion_school_allocations')->where('promotion_id', $promotion->id)->delete();
+            DB::connection('mysql')->table('central_finance_promotions')->where('id', $promotion->id)->delete();
+        });
+    }
+
+    private function hasHistoricalUse(CentralFinancePromotion $promotion): bool
+    {
+        if ($promotion->applications()->exists()) return true;
+        foreach (['central_finance_student_discount_requests', 'central_finance_promotion_fee_allocations'] as $table) {
+            if (Schema::connection('mysql')->hasTable($table)
+                && DB::connection('mysql')->table($table)->where('promotion_id', $promotion->id)->exists()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** @return \Illuminate\Support\Collection<int, CentralFinancePromotion> */
     public function eligibleFor(CentralFinanceUser $actor, CentralFinanceReceivable $receivable, CarbonImmutable $date): \Illuminate\Support\Collection
     {

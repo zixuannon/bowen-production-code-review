@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -33,6 +35,17 @@ final class CentralFinancePromotion extends Model
             $promotion->promotion_uuid ??= (string) Str::uuid();
             if (!in_array($promotion->status, self::STATUSES, true)) {
                 throw new RuntimeException('Invalid promotion status.');
+            }
+        });
+        static::updating(function (self $promotion): void {
+            $immutableTerms = ['name', 'code', 'description', 'discount_type', 'discount_value', 'valid_from', 'valid_until', 'student_profile_id', 'scope', 'fee_scope'];
+            $hasRequestReference = Schema::connection('mysql')->hasTable('central_finance_student_discount_requests')
+                && DB::connection('mysql')->table('central_finance_student_discount_requests')->where('promotion_id', $promotion->id)->exists();
+            $hasFeeAllocation = Schema::connection('mysql')->hasTable('central_finance_promotion_fee_allocations')
+                && DB::connection('mysql')->table('central_finance_promotion_fee_allocations')->where('promotion_id', $promotion->id)->exists();
+            if (array_intersect(array_keys($promotion->getDirty()), $immutableTerms) !== []
+                && ($promotion->applications()->exists() || $hasRequestReference || $hasFeeAllocation)) {
+                throw new RuntimeException('Used Promotion terms are immutable; create a new Promotion for changed terms.');
             }
         });
         static::deleting(static fn (): never => throw new RuntimeException('Promotions cannot be deleted; deactivate them instead.'));
