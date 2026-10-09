@@ -94,7 +94,10 @@ final class CentralFinanceGroupImportController extends Controller
         $this->imports->assertCanOperateGroup($actor, FinanceGroup::on('mysql')->findOrFail($parent->finance_group_id));
         $previewRow = CentralFinanceGroupImportPreviewRow::on('mysql')
             ->where('group_batch_id', $parent->id)->findOrFail($row);
-        abort_unless($previewRow->canonical_source_id && in_array($previewRow->canonical_source_type, ['expense', 'other_income'], true), 404);
+        abort_unless($previewRow->canonical_source_id && in_array($previewRow->canonical_source_type, ['expense', 'other_income', 'unidentified_deposit'], true), 404);
+        if ($previewRow->canonical_source_type === 'unidentified_deposit') {
+            return redirect()->route('central-finance.unidentified-deposits.index', ['deposit' => $previewRow->canonical_source_uuid]);
+        }
         $this->workspace->enterSchool($actor, (int) $previewRow->school_id);
         return redirect()->route($previewRow->canonical_source_type === 'expense' ? 'central-finance.expenses.show' : 'central-finance.other-income.show', $previewRow->canonical_source_id);
     }

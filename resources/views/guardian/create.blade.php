@@ -30,8 +30,8 @@
                                     <input id="guardian_last_name" name="last_name" type="text" class="form-control" required>
                                 </div>
                                 <div class="form-group col-sm-12 col-md-6">
-                                    <label for="guardian_email">{{ __('email') }} <span class="text-danger">*</span></label>
-                                    <input id="guardian_email" name="email" type="email" class="form-control" required>
+                                    <label for="guardian_email">{{ __('email') }}</label>
+                                    <input id="guardian_email" name="email" type="email" class="form-control">
                                 </div>
                                 <div class="form-group col-sm-12 col-md-6">
                                     <label for="guardian_mobile">{{ __('mobile') }} <span class="text-danger">*</span></label>

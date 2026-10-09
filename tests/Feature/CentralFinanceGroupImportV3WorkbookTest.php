@@ -34,10 +34,12 @@ class CentralFinanceGroupImportV3WorkbookTest extends TestCase
             $workbook = IOFactory::load($path);
             $this->assertSame(['Import', 'Schools', 'Chart of Accounts', 'Account Allocations', 'Fund Accounts', 'Fund Allocations', 'By Currency', 'By School', 'Validation'], $workbook->getSheetNames());
             $sheet = $workbook->getSheetByName('Import');
-            $this->assertSame(CentralFinanceGroupImportTemplateV3Export::HEADINGS, $sheet->rangeToArray('A1:P1')[0]);
+            $this->assertSame(CentralFinanceGroupImportTemplateV3Export::HEADINGS, $sheet->rangeToArray('A1:R1')[0]);
             $this->assertSame('交易日期 / Transaction Date', $sheet->getCell('B1')->getValue());
             foreach (['A', 'D', 'G', 'I', 'K'] as $column) $this->assertSame('', $sheet->getCell($column.'2')->getCalculatedValue());
-            $this->assertSame(16, count($this->template()->headings()));
+            $this->assertSame(18, count($this->template()->headings()));
+            $this->assertSame('人工交易标识 / Manual Transaction Identity', CentralFinanceGroupImportTemplateV3Export::HEADINGS[16]);
+            $this->assertSame('人工标识原因 / Manual Identity Reason', CentralFinanceGroupImportTemplateV3Export::HEADINGS[17]);
             $this->assertSame('hidden', $workbook->getSheetByName('Validation')->getSheetState());
             $this->assertSame(3, $workbook->getSheetByName('Fund Accounts')->getHighestDataRow());
             $this->assertSame(6, $workbook->getSheetByName('Chart of Accounts')->getHighestDataRow());

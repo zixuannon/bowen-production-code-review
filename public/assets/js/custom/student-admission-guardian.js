@@ -15,7 +15,7 @@ $(function () {
     // than a legacy Guardian handler, owns the admission selector.
     $search.attr('data-guardian-admission-controller-state', 'ready');
 
-    const state = { mode: 'empty', guardianId: '', guardian: null, request: null, generation: 0 };
+    const state = { mode: 'empty', guardianId: '', guardian: null, request: null, generation: 0, emailOptional: false };
     const field = (value) => value == null ? '' : String(value).trim();
     const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
     const $canonical = {
@@ -45,7 +45,7 @@ $(function () {
         return [data.id, selectedId()].map(field).find(isEmail) || '';
     };
     const validDto = (guardian, id) => Boolean(
-        guardian && field(guardian.id) === field(id) && field(guardian.email)
+        guardian && field(guardian.id) === field(id)
         && field(guardian.first_name) && field(guardian.last_name) && field(guardian.mobile)
         && ['male', 'female'].includes(field(guardian.gender))
     );
@@ -117,20 +117,27 @@ $(function () {
     };
     const clearState = () => {
         abortPending();
-        state.mode = 'empty'; state.guardianId = ''; state.guardian = null; delete state.email;
+        state.mode = 'empty'; state.guardianId = ''; state.guardian = null; state.emailOptional = false; delete state.email;
         clearError(); setBusy(false); clearCanonicalFields();
         $search.attr('data-guardian-admission-controller-state', 'ready');
     };
     const selectNewGuardian = (email) => {
         abortPending();
-        state.mode = 'new'; state.guardianId = ''; state.guardian = null; state.email = email;
+        state.mode = 'new'; state.guardianId = ''; state.guardian = null; state.email = email; state.emailOptional = false;
+        clearError(); clearCanonicalFields(); applyStateToForm(); setBusy(false);
+        $search.attr('data-guardian-admission-controller-state', 'new-ready');
+    };
+    const selectNewGuardianWithoutEmail = () => {
+        abortPending();
+        $search.val(null).trigger('change.select2');
+        state.mode = 'new'; state.guardianId = ''; state.guardian = null; state.email = ''; state.emailOptional = true;
         clearError(); clearCanonicalFields(); applyStateToForm(); setBusy(false);
         $search.attr('data-guardian-admission-controller-state', 'new-ready');
     };
     const selectExistingGuardian = (id) => {
         abortPending();
         const currentGeneration = state.generation;
-        state.mode = 'existing'; state.guardianId = field(id); state.guardian = null; delete state.email;
+        state.mode = 'existing'; state.guardianId = field(id); state.guardian = null; state.emailOptional = false; delete state.email;
         clearError(); clearCanonicalFields(); writeCanonical($canonical.mode, 'existing'); writeCanonical($canonical.id, state.guardianId); $search.attr('data-guardian-admission-controller-state', 'loading'); setBusy(true);
         const request = $.ajax({
             url: `${baseUrl}/guardian/${encodeURIComponent(state.guardianId)}/admission-details`,
@@ -189,6 +196,10 @@ $(function () {
             applyStateToForm();
             return;
         }
+        if (state.mode === 'new' && state.emailOptional && !field(state.email)) {
+            applyStateToForm();
+            return;
+        }
         showError('Select an existing Guardian or enter a new Guardian email before submitting.');
         event.preventDefault();
     };
@@ -220,6 +231,7 @@ $(function () {
     // at close so the canonical new-Guardian state is never left empty.
     $search.on('select2:close.guardianAdmissionController', () => window.setTimeout(selectionChanged, 0));
     $search.on('select2:clear.guardianAdmissionController', clearState);
+    $('#create-guardian-without-email').on('click.guardianAdmissionController', selectNewGuardianWithoutEmail);
     $('input[name="guardian_gender_display"]').on('change.guardianAdmissionController', function () {
         if (state.mode !== 'existing') $canonical.gender.val(this.value);
     });

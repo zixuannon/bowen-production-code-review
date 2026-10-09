@@ -90,8 +90,8 @@
                             </div>
 
                             <div class="form-group col-sm-12 col-md-6">
-                                <label>{{ __('email') }} <span class="text-danger">*</span></label>
-                                {!! Form::text('email', null, ['required', 'placeholder' => __('email'), 'class' => 'form-control', 'id' => 'email']) !!}
+                                <label>{{ __('email') }}</label>
+                                {!! Form::text('email', null, ['placeholder' => __('email'), 'class' => 'form-control', 'id' => 'email']) !!}
                             </div>
 
                             <div class="form-group col-sm-12 col-md-6">

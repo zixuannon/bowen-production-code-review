@@ -143,7 +143,7 @@ class StudentController extends Controller
             $rules['guardian_id'] = 'required|integer';
         } else {
             $rules += [
-                'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/',
+                'guardian_email' => 'nullable|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/',
                 'guardian_first_name' => 'required|string',
                 'guardian_last_name' => 'required|string',
             // A phone number is an identifier, not a numeric amount. Keep its
@@ -157,7 +157,7 @@ class StudentController extends Controller
         $request->validate($rules, [
             'guardian_email.regex' => 'Please enter a valid guardian email (e.g. user@example.com).',
         ]);
-        if ($request->input('guardian_mode') === 'new'
+        if ($request->input('guardian_mode') === 'new' && filled($request->input('guardian_email'))
             && $this->user->guardian()->withTrashed()->where('email', $request->guardian_email)->exists()) {
             // New admission data must never silently update an existing
             // Guardian. The caller must choose that Guardian through the
@@ -209,9 +209,11 @@ class StudentController extends Controller
                 // New Guardian remains the only path that creates a Guardian
                 // from submitted profile data. Existing email reuse was
                 // rejected before the transaction begins.
-                $guardianUser = $this->user->builder()->whereHas('roles', function ($q) {
-                    $q->where('name', '!=', 'Guardian');
-                })->where('email', $request->guardian_email)->withTrashed()->first();
+                $guardianUser = filled($request->guardian_email)
+                    ? $this->user->builder()->whereHas('roles', function ($q) {
+                        $q->where('name', '!=', 'Guardian');
+                    })->where('email', $request->guardian_email)->withTrashed()->first()
+                    : null;
                 if ($guardianUser) {
                     ResponseService::errorResponse("Email ID is already taken for Other Role");
                 }
@@ -260,18 +262,20 @@ class StudentController extends Controller
             'image' => 'nullable|mimes:jpeg,png,jpg,svg|image|max:2048',
             'dob' => 'required',
             'session_year_id' => 'required|numeric',
-            'guardian_email' => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
+            'guardian_id' => 'nullable|integer',
+            'guardian_email' => 'nullable|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
         ];
         if (is_numeric($request->guardian_id)) {
-            $rules['guardian_email'] = 'required|email|unique:users,email,' . $request->guardian_id;
+            $rules['guardian_email'] = 'nullable|email|unique:users,email,' . $request->guardian_id;
         }
+        $request->merge(['guardian_email' => filled($request->input('guardian_email')) ? trim((string) $request->input('guardian_email')) : null]);
         $request->validate($rules);
 
         try {
             DB::beginTransaction();
             $userService = app(UserService::class);
             $sessionYear = $this->sessionYear->findById($request->session_year_id);
-            $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image, $request->parent_reset_password);
+            $guardian = $userService->createOrUpdateParent($request->guardian_first_name, $request->guardian_last_name, $request->guardian_email, $request->guardian_mobile, $request->guardian_gender, $request->guardian_image, $request->parent_reset_password, $request->guardian_id);
 
             $userService->updateStudentUser($id, $request->first_name, $request->last_name, $request->mobile, $request->dob, $request->gender, $request->image, $sessionYear->id, $request->extra_fields ?? [], $guardian->id, $request->current_address, $request->permanent_address, $request->reset_password, $request->class_section_id);
             DB::commit();

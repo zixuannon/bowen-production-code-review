@@ -919,4 +919,11 @@
     ,"Students may select more than one unit during Fee Setup.": "Students may select more than one unit during Fee Setup."
     ,"Data scope: Official data. Owner: Bowen Group / Central Finance. School access remains disabled until explicit allocations are saved.": "Data scope: Official data. Owner: Bowen Group / Central Finance. School access remains disabled until explicit allocations are saved."
     ,"Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically.": "Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically."
+,
+    "Not School income": "Not School income",
+    "Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically. Select Unidentified / 待识别 only for a bank credit whose School is not known; it enters the Unidentified Deposit pool, not School income. Use Manual Transaction Identity and Reason only when the bank supplies no reference.": "Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically. Select Unidentified / 待识别 only for a bank credit whose School is not known; it enters the Unidentified Deposit pool, not School income. Use Manual Transaction Identity and Reason only when the bank supplies no reference.",
+    "Bank Date": "Bank Date",
+    "Bank Reference": "Bank Reference",
+    "Amount / Currency": "Amount / Currency",
+    "Will create one physical cash-in in the Unidentified Deposit pool; it is not School income.": "Will create one physical cash-in in the Unidentified Deposit pool; it is not School income."
 }

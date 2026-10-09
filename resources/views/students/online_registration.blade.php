@@ -330,7 +330,7 @@
                                                 {{-- Guardian Details --}}
                                                 <div class="row mt-5">
                                                     <div class="form-group col-sm-12 col-md-12">
-                                                        <label>{{ __('guardian') . ' ' . __('email') }} <span class="text-danger">*</span></label>
+                                                        <label>{{ __('guardian') . ' ' . __('email') }}</label>
                                                         <select class="edit-guardian-search form-control" name="guardian_id"></select>
                                                         <input type="hidden" id="edit_guardian_email" name="guardian_email">
                                                     </div>

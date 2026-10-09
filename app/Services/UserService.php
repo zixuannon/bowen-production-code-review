@@ -60,19 +60,25 @@ class UserService {
      * @param null $image
      * @return Model|null
      */
-    public function createOrUpdateParent($first_name, $last_name, $email, $mobile, $gender, $image = null, $reset_password = null) {
+    public function createOrUpdateParent($first_name, $last_name, $email, $mobile, $gender, $image = null, $reset_password = null, $guardianId = null) {
+        $email = $email !== null && trim((string) $email) !== '' ? strtolower(trim((string) $email)) : null;
         $password = $this->makeParentPassword($mobile);
 
         $parent = array(
             'first_name' => $first_name,
             'last_name'  => $last_name,
+            'email'      => $email,
             'mobile'     => $mobile,
             'gender'     => $gender,
             'school_id'  => Auth::user()->school_id
         );
 
-        //NOTE : This line will return the old values if the user is already exists
-        $user = $this->user->guardian()->where('email', $email)->first();
+        // NULL must never be used to merge unrelated guardians. A selected
+        // identity is resolved by tenant-scoped ID; otherwise only a real
+        // email can be used as the legacy reuse key.
+        $user = $guardianId !== null
+            ? $this->user->guardian()->where('school_id', Auth::user()->school_id)->findOrFail($guardianId)
+            : ($email !== null ? $this->user->guardian()->where('school_id', Auth::user()->school_id)->where('email', $email)->first() : null);
         if (!empty($image)) {
             $parent['image'] = UploadService::upload($image, 'guardian', 'image');
         }
@@ -90,7 +96,6 @@ class UserService {
             $user->update($parent);
         } else {
             $parent['password'] = Hash::make($password);
-            $parent['email'] = $email;
             $user = $this->user->create($parent);
             $user->assignRole('Guardian');
         }
@@ -228,7 +233,7 @@ class UserService {
         }
 
         $parentPassword = $this->makeParentPassword($guardian->mobile);
-        if ($is_send_notification) {
+        if ($is_send_notification && filled($guardian->email)) {
             $this->sendRegistrationEmail($guardian, $user, $student->admission_no, $password);
         }
         return $user;
@@ -340,6 +345,9 @@ class UserService {
      * @throws Throwable
      */
     public function sendRegistrationEmail($guardian, $child, $childAdmissionNumber, $childPlainTextPassword) {
+        if (is_object($guardian) && blank($guardian->email ?? null)) {
+            return;
+        }
         try {
 
          

@@ -40,6 +40,14 @@ final class CentralFinanceGroupImportV3ValidationSheet implements FromArray, Wit
             foreach ($columns as $column => [$name, $values]) $this->range($sheet, $name, $column, 2, $values);
             $this->range($sheet, 'V3_Fund_EMPTY', 'P', 2, []);
             $this->range($sheet, 'V3_CoA_EMPTY', 'Q', 2, []);
+            $unidentifiedFundCodes = array_values(array_unique(array_map(
+                static fn (array $account): string => (string) $account['code'],
+                array_filter($this->fundAllocations, static fn (array $account): bool =>
+                    empty($account['school_code']) && ($account['owner_type'] ?? null) === 'hq' && ($account['account_type'] ?? null) === 'bank'
+                ),
+            )));
+            $this->range($sheet, 'V3_Fund_UNIDENTIFIED', 'X', 2, $unidentifiedFundCodes);
+            $this->range($sheet, 'V3_CoA_UNIDENTIFIED', 'Y', 2, []);
             foreach ($this->activity as $index => $item) {
                 $row = $index + 2;
                 $sheet->setCellValueExplicit('R'.$row, $item['school_code'], DataType::TYPE_STRING);

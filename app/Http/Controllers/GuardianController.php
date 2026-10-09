@@ -59,16 +59,17 @@ class GuardianController extends Controller {
 
     public function store(Request $request) {
         ResponseService::noPermissionThenRedirect('guardian-create');
+        $request->merge(['email' => filled($request->input('email')) ? strtolower(trim((string) $request->input('email'))) : null]);
         $request->validate([
             'first_name' => 'required',
-            'email'      => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
+            'email'      => 'nullable|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email',
             'last_name'  => 'required',
             'gender'     => 'required',
             'mobile'     => 'required|digits_between:6,15',
         ]);
         try {
             DB::beginTransaction();
-            $guardian = $this->user->create($request->all());
+            $guardian = $this->user->create($request->except('_token'));
             $guardian->assignRole('Guardian');
             $sessionYear = $this->cache->getDefaultSessionYear();
             $semester = $this->cache->getDefaultSemesterData();
@@ -147,10 +148,11 @@ class GuardianController extends Controller {
 
     public function update(Request $request) {
         ResponseService::noPermissionThenSendJson('guardian-edit');
+        $request->merge(['email' => filled($request->input('email')) ? strtolower(trim((string) $request->input('email'))) : null]);
         $request->validate([
             'edit_id'    => 'required',
             'first_name' => 'required',
-            'email'      => 'required|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $request->edit_id,
+            'email'      => 'nullable|email|max:255|regex:/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/|unique:users,email,' . $request->edit_id,
             'last_name'  => 'required',
             'gender'     => 'required',
             'mobile'     => 'required|digits_between:6,15',

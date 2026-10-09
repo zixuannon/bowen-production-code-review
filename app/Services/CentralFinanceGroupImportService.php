@@ -156,6 +156,32 @@ final class CentralFinanceGroupImportService
                 ->all();
         }
 
+        // Unidentified bank credits require the canonical Group-owned bank
+        // Deposit workflow and its stronger Head Finance configuration scope.
+        // These accounts are not School allocations and cannot be used for a
+        // routed School income/expense row.
+        try {
+            app(CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureGroup($actor, (int) $group->id);
+            $groupAccountsQuery = CentralFinanceFundAccount::on('mysql')->active()
+                ->where('group_id', $group->id)->where('owner_type', CentralFinanceFundAccount::OWNER_HQ)
+                ->whereNull('school_id')->where('account_type', CentralFinanceFundAccount::TYPE_BANK)
+                ->orderBy('account_code');
+            $this->dataIsolation->apply($groupAccountsQuery, 'fund_account');
+            foreach ($groupAccountsQuery->get() as $account) {
+                if (!$this->isFormalTemplateLookup($account->account_code, $account->account_name)) continue;
+                $totals = $account->ledgerEntries()->selectRaw('COALESCE(SUM(money_in),0) as incoming, COALESCE(SUM(money_out),0) as outgoing')->first();
+                $accounts[] = ['code' => (string) $account->account_code, 'name' => (string) $account->account_name,
+                    'account_type' => (string) $account->account_type, 'owner_type' => (string) $account->owner_type,
+                    'owner_holder' => (string) $account->owner_holder, 'currency' => (string) $account->currency,
+                    'opening_balance' => (float) $account->opening_balance, 'incoming' => (float) $totals->incoming,
+                    'outgoing' => (float) $totals->outgoing, 'school_code' => null,
+                    'school_incoming' => 0.0, 'school_outgoing' => 0.0];
+            }
+        } catch (AuthorizationException) {
+            // School-scoped Group Import remains available without this
+            // separate Group-owned deposit authority.
+        }
+
         $categoriesQuery = CentralFinanceCategory::on('mysql')
             ->forSchools($schoolCodes->keys()->all())
             ->where('is_active', true)
@@ -234,7 +260,7 @@ final class CentralFinanceGroupImportService
                 foreach ($rows as $row) {
                     $data = (array) $row->normalized_data;
                     $result = $this->validate($actor, $groupUser, $data, $projected);
-                    if (!in_array($result['result_status'], ['New', 'Duplicate'], true)) {
+                if (!in_array($result['result_status'], ['New', 'Unidentified', 'Duplicate'], true)) {
                         throw new GroupImportConfirmException($row, $result['error_code'] ?? 'REVALIDATION_FAILED', $result['error_message'] ?? 'Group Import row revalidation failed.');
                     }
                     $validated[$row->id] = ['data' => $data, 'status' => $result['result_status']];
@@ -247,7 +273,7 @@ final class CentralFinanceGroupImportService
                     // existing source, while conflicting duplicates abort all.
                     $ignoredProjection = [];
                     $current = $this->validate($actor, $groupUser, $data, $ignoredProjection);
-                    if (!in_array($current['result_status'], ['New', 'Duplicate'], true)) {
+                    if (!in_array($current['result_status'], ['New', 'Unidentified', 'Duplicate'], true)) {
                         throw new GroupImportConfirmException($row, $current['error_code'] ?? 'REVALIDATION_FAILED', $current['error_message'] ?? 'Import identity changed.');
                     }
                     $entry['status'] = $current['result_status'];
@@ -255,7 +281,16 @@ final class CentralFinanceGroupImportService
                     // source. New rows obtain theirs exclusively from the
                     // canonical operating-document service below.
                     $source = $entry['status'] === 'Duplicate' ? $this->sourceFor($data) : null;
-                    if ($entry['status'] === 'New') {
+                    if (in_array($entry['status'], ['New', 'Unidentified'], true) && $data['document_type'] === 'unidentified_deposit') {
+                        $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail((int) $data['fund_account_id']);
+                        $source = app(CentralFinanceUnidentifiedDepositService::class)->record(
+                            $actor, $account, (string) $data['amount'],
+                            CentralFinanceBusinessDate::parse((string) $data['transaction_date']),
+                            (string) $data['deposit_idempotency_reference'],
+                            $data['bank_reference'] ?: null, $this->description($data), $data['claimant'] ?: null,
+                            $data['manual_identity'] ?: null, $data['manual_reason'] ?: null,
+                        );
+                    } elseif ($entry['status'] === 'New') {
                         $account = CentralFinanceFundAccount::on('mysql')->active()->findOrFail((int) $data['fund_account_id']);
                         $occurredAt = CentralFinanceBusinessDate::parse((string) $data['transaction_date']);
                         try {
@@ -268,7 +303,8 @@ final class CentralFinanceGroupImportService
                             throw new GroupImportConfirmException($row, 'CANONICAL_WRITE_FAILED', $error->getMessage());
                         }
                     }
-                    if (!($source instanceof CentralFinanceExpense) && !($source instanceof CentralFinanceOtherIncome)) {
+                    if (!($source instanceof CentralFinanceExpense) && !($source instanceof CentralFinanceOtherIncome)
+                        && !($source instanceof \App\Models\CentralFinanceUnidentifiedDeposit)) {
                         throw new GroupImportConfirmException($row, 'CANONICAL_SOURCE_MISSING', 'The canonical Group Import source could not be resolved.');
                     }
                     $this->linkRow($row, $source, $entry['status']);
@@ -311,8 +347,8 @@ final class CentralFinanceGroupImportService
         foreach ($rows as $offset => $row) {
             $data = $this->normaliseRow($row);
             $result = $this->validate($actor, $groupUser, $data, $projected);
-            if ($result['idempotency_key'] && in_array($result['result_status'], ['New', 'Duplicate'], true)) {
-                $identity = [$data['fund_account_id'], $data['category_id'], $data['currency'], $data['amount'], $data['transaction_date'], $data['payment_method']];
+            if ($result['idempotency_key'] && in_array($result['result_status'], ['New', 'Unidentified', 'Duplicate'], true)) {
+                    $identity = [$data['fund_account_id'], $data['category_id'] ?? null, $data['currency'], $data['amount'], $data['transaction_date'], $data['payment_method'] ?? null, $data['manual_identity'] ?? null];
                 $key = $result['idempotency_key'];
                 if (isset($seen[$key])) {
                     $same = $seen[$key] === $identity;
@@ -337,14 +373,14 @@ final class CentralFinanceGroupImportService
                 'schema_version' => self::SCHEMA_VERSION,
                 'status' => 'previewed',
                 'total_rows' => count($prepared),
-                'new_rows' => $summary['new'],
+                'new_rows' => $summary['new'] + $summary['unidentified'],
                 'duplicate_rows' => $summary['duplicate'],
                 'conflict_rows' => $summary['conflict'],
                 'error_rows' => $summary['error'],
                 // The persisted preview is the UI read model. Currency totals
                 // remain deliberately separated; no cross-currency aggregate
                 // is ever stored or displayed.
-                'school_summary' => ['schools' => $summary['schools'], 'currency_totals' => $summary['currency_totals']],
+                'school_summary' => ['schools' => $summary['schools'], 'currency_totals' => $summary['currency_totals'], 'unidentified_totals' => $summary['unidentified_totals']],
             ]);
 
             $children = [];
@@ -395,7 +431,7 @@ final class CentralFinanceGroupImportService
         }
         if (count($sheet) < 2) throw new InvalidArgumentException('The Group Finance Import must contain a heading row and at least one data row.');
         $headings = array_map(static fn ($value) => trim((string) $value), array_shift($sheet));
-        if (!in_array($headings, [CentralFinanceGroupImportTemplateV3Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::LEGACY_HEADINGS], true)) throw new InvalidArgumentException('Group Finance Import headings must match Template V3 or the supported legacy V2 contract.');
+        if (!in_array($headings, [CentralFinanceGroupImportTemplateV3Export::HEADINGS, CentralFinanceGroupImportTemplateV3Export::PRIOR_V3_HEADINGS, CentralFinanceGroupImportTemplateV2Export::HEADINGS, CentralFinanceGroupImportTemplateV2Export::LEGACY_HEADINGS], true)) throw new InvalidArgumentException('Group Finance Import headings must match Template V3 or the supported legacy V2 contract.');
         return array_values(array_filter(
             array_map(static fn (array $values): array => array_combine($headings, array_pad(array_slice($values, 0, count($headings)), count($headings), null)), $sheet),
             fn (array $row): bool => $this->containsUserSuppliedValue($row),
@@ -415,7 +451,7 @@ final class CentralFinanceGroupImportService
     {
         if (array_key_exists(CentralFinanceGroupImportTemplateV3Export::HEADINGS[0], $row)) {
             // Derived identity cells are never evidence of an entered row.
-            $editable = [1, 2, 4, 5, 7, 9, 11, 12, 13, 14, 15];
+            $editable = [1, 2, 4, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17];
             return collect($editable)->contains(fn ($index): bool => trim((string) ($row[CentralFinanceGroupImportTemplateV3Export::HEADINGS[$index]] ?? '')) !== '');
         }
         foreach (['序号', 'School Code', 'Fund Account Type', 'Account Owner', 'Currency'] as $derivedHeading) {
@@ -432,20 +468,33 @@ final class CentralFinanceGroupImportService
     private function normaliseRow(array $row): array
     {
         if (array_key_exists(CentralFinanceGroupImportTemplateV3Export::HEADINGS[0], $row)) {
-            $cells = array_map(fn ($index) => $row[CentralFinanceGroupImportTemplateV3Export::HEADINGS[$index]]
-                ?? $row[CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS[$index]]
-                ?? null, array_keys(CentralFinanceGroupImportTemplateV3Export::HEADINGS));
+            $cells = array_map(function ($index) use ($row): mixed {
+                if (array_key_exists(CentralFinanceGroupImportTemplateV3Export::HEADINGS[$index], $row)) {
+                    return $row[CentralFinanceGroupImportTemplateV3Export::HEADINGS[$index]];
+                }
+
+                return $index < count(CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS)
+                    ? ($row[CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS[$index]] ?? null)
+                    : null;
+            }, array_keys(CentralFinanceGroupImportTemplateV3Export::HEADINGS));
             $normal = $this->normaliseRow(['School Code'=>$cells[3], '校区'=>$cells[2], '日期'=>$cells[1],
                 '报销人'=>$cells[4], '摘要'=>$cells[5], 'Category Code'=>$cells[7], 'Fund Account Code'=>$cells[9],
                 '付款方式'=>$cells[11], '收入'=>$cells[12], '支出'=>$cells[13], 'Reference / 单据号'=>$cells[14], '备注'=>$cells[15]]);
             $normal['document_type'] = $normal['income'] !== null && $normal['income'] > 0 && $normal['expense'] === null
                 ? 'other_income' : ($normal['expense'] !== null && $normal['expense'] > 0 && $normal['income'] === null ? 'expense' : null);
+            $schoolMarker = strtoupper(trim((string) $cells[3]));
+            $campusMarker = mb_strtolower(trim((string) $cells[2]));
+            $normal['unidentified'] = in_array($schoolMarker, ['UNIDENTIFIED', '待识别'], true)
+                || in_array($campusMarker, ['unidentified', '待识别', 'unidentified / 待识别'], true);
+            if ($normal['unidentified']) $normal['document_type'] = 'unidentified_deposit';
+            $normal['manual_identity'] = trim((string) ($row['人工交易标识 / Manual Transaction Identity'] ?? ''));
+            $normal['manual_reason'] = trim((string) ($row['人工标识原因 / Manual Identity Reason'] ?? ''));
             return $normal + ['v3' => true, 'category_type' => strtolower(trim((string) $cells[6])),
                 'category_name' => trim((string) $cells[8]), 'fund_account_name' => trim((string) $cells[10])];
         }
         $income = $this->decimal($row['收入'] ?? null); $expense = $this->decimal($row['支出'] ?? null);
         $type = $income !== null && $income > 0 && ($expense === null || $expense == 0.0) ? 'other_income' : (($expense !== null && $expense > 0 && ($income === null || $income == 0.0)) ? 'expense' : null);
-        return [
+        $normal = [
             'school_code' => trim((string) ($row['School Code'] ?? '')), 'school_label' => trim((string) ($row['校区'] ?? '')),
             'transaction_date' => $this->date($row['交易日期 / Transaction Date'] ?? $row['Transaction Date'] ?? $row['日期'] ?? $row['Date'] ?? null), 'claimant' => trim((string) ($row['报销人'] ?? '')),
             'summary' => trim((string) ($row['摘要'] ?? '')), 'fund_account_code' => trim((string) ($row['Fund Account Code'] ?? '')),
@@ -455,12 +504,19 @@ final class CentralFinanceGroupImportService
             'reference_no' => trim((string) ($row['Reference / 单据号'] ?? '')), 'currency' => trim((string) ($row['Currency'] ?? '')),
             'remarks' => trim((string) ($row['备注'] ?? '')), 'document_type' => $type,
         ];
+        $normal['unidentified'] = in_array(strtoupper($normal['school_code']), ['UNIDENTIFIED', '待识别'], true)
+            || in_array(mb_strtolower($normal['school_label']), ['unidentified', '待识别', 'unidentified / 待识别'], true);
+        $normal['manual_identity'] = trim((string) ($row['人工交易标识 / Manual Transaction Identity'] ?? ''));
+        $normal['manual_reason'] = trim((string) ($row['人工标识原因 / Manual Identity Reason'] ?? ''));
+        if ($normal['unidentified']) $normal['document_type'] = 'unidentified_deposit';
+        return $normal;
     }
 
     /** @param array<string,mixed> $data @param array<string,float> $projected @return array{result_status:string,error_code:?string,error_message:?string,idempotency_key:?string} */
     private function validate(CentralFinanceUser $actor, FinanceGroupUser $groupUser, array &$data, array &$projected): array
     {
         $error = fn (string $code, string $message): array => ['result_status' => 'Error', 'error_code' => $code, 'error_message' => $message, 'idempotency_key' => null];
+        if (!empty($data['unidentified'])) return $this->validateUnidentifiedDeposit($actor, $groupUser, $data, $error);
         $schools = School::on('mysql')->whereCanonicalCode($data['school_code'])->get();
         if ($data['school_code'] === '' || $schools->count() !== 1) return $error('UNKNOWN_SCHOOL_CODE', 'School Code must exactly identify one registered School.');
         $school = $schools->sole(); $data['school_id'] = (int) $school->id;
@@ -520,21 +576,99 @@ final class CentralFinanceGroupImportService
     }
 
 
+    /** @param array<string,mixed> $data @param \Closure(string,string):array $error */
+    private function validateUnidentifiedDeposit(CentralFinanceUser $actor, FinanceGroupUser $groupUser, array &$data, \Closure $error): array
+    {
+        if (empty($data['v3'])) return $error('UNIDENTIFIED_REQUIRES_V3', 'Unidentified bank credits require the current V3 template with explicit bank-identity fields.');
+        if ($data['summary'] === '') return $error('SUMMARY_REQUIRED', 'Description is required for an Unidentified Deposit.');
+        if (($data['income'] ?? null) === null || !is_finite((float) $data['income']) || (float) $data['income'] <= 0
+            || (($data['expense'] ?? null) !== null && (float) $data['expense'] !== 0.0)) {
+            return $error('UNIDENTIFIED_AMOUNT_INVALID', 'An Unidentified Deposit must be one positive Incoming amount with no Outgoing amount.');
+        }
+        try { $date = CentralFinanceBusinessDate::parse((string) $data['transaction_date']); }
+        catch (\Throwable) { return $error('DATE_INVALID', 'Bank Date must be a real, non-future YYYY-MM-DD transaction date.'); }
+
+        $account = CentralFinanceFundAccount::on('mysql')->active()->where('account_code', $data['fund_account_code'])->first();
+        if (!$account || $account->account_code !== $data['fund_account_code']) return $error('FUND_ACCOUNT_UNKNOWN', 'Fund Account Code must exactly identify one active Group bank account.');
+        if (!$this->dataIsolation->isProduction('fund_account', (int) $account->id)) return $error('QA_TEST_FUND_ACCOUNT', 'QA/Test or archived Fund Accounts cannot receive Production Group Import deposits.');
+        if ((int) $account->group_id !== (int) $groupUser->group_id || $account->owner_type !== CentralFinanceFundAccount::OWNER_HQ
+            || $account->school_id !== null || $account->account_type !== CentralFinanceFundAccount::TYPE_BANK) {
+            return $error('GROUP_BANK_ACCOUNT_REQUIRED', 'An Unidentified Deposit requires an active Group-owned bank Fund Account, not a School account.');
+        }
+        if ((string) ($data['fund_account_name'] ?? '') !== (string) $account->account_name) return $error('FUND_ACCOUNT_IDENTITY_MISMATCH', 'Fund Account Name does not match its canonical code.');
+        try { app(CentralFinanceConfigurationAuthorizationService::class)->assertHeadFinanceCanConfigureGroup($actor, (int) $groupUser->group_id); }
+        catch (AuthorizationException) { return $error('GROUP_DEPOSIT_AUTHORITY_DENIED', 'An active Head Finance Group-account authority is required to record an Unidentified Deposit.'); }
+
+        $amount = \App\Support\CentralFinanceDecimal::normalize((string) $data['income']);
+        $bankReference = trim((string) ($data['reference_no'] ?? '')) ?: null;
+        $manualIdentity = trim((string) ($data['manual_identity'] ?? '')) ?: null;
+        $manualReason = trim((string) ($data['manual_reason'] ?? '')) ?: null;
+        try { $identity = CentralFinanceBankTransactionIdentityService::identity($bankReference, $manualIdentity, $manualReason); }
+        catch (\Throwable) { return $error('BANK_IDENTITY_REQUIRED', $bankReference === null
+            ? 'Bank Reference is blank. Enter a distinct Manual Transaction Identity and its reason.'
+            : 'Use a valid Bank Reference, or provide only a Manual Transaction Identity and reason.'); }
+        $description = trim((string) $data['summary'].(($data['remarks'] ?? '') === '' ? '' : "\n".$data['remarks']));
+        if (mb_strlen($description) > 2000 || mb_strlen((string) ($data['claimant'] ?? '')) > 191) return $error('BANK_FACT_TOO_LONG', 'Sender or Description exceeds the supported length.');
+        $currency = (string) $account->currency;
+        $data['school_id'] = null;
+        $data['school_code'] = 'UNIDENTIFIED';
+        $data['school_label'] = 'Unidentified / 待识别';
+        $data['fund_account_id'] = (int) $account->id;
+        $data['fund_account_name'] = (string) $account->account_name;
+        $data['amount'] = $amount;
+        $data['currency'] = $currency;
+        $data['bank_reference'] = $bankReference;
+        $data['manual_identity'] = $manualIdentity;
+        $data['manual_reason'] = $manualReason;
+        $data['document_type'] = 'unidentified_deposit';
+        $data['deposit_idempotency_reference'] = 'GI-'.substr(hash('sha256', $groupUser->group_id.'|'.$account->id.'|'.$identity['identity_hash']), 0, 60);
+        $sourceId = hash('sha256', implode('|', ['unidentified-deposit', $account->id, $data['deposit_idempotency_reference']]));
+        $requestHash = hash('sha256', json_encode([
+            (int) $account->id, $currency, $amount, $date->toDateString(), $identity,
+            $description === '' ? null : $description, trim((string) ($data['claimant'] ?? '')) ?: null,
+        ], JSON_THROW_ON_ERROR));
+        $data['unidentified_request_hash'] = $requestHash;
+        $data['idempotency_key'] = $sourceId;
+
+        $existingIdentity = \App\Models\CentralFinanceBankTransactionIdentity::on('mysql')->where([
+            'fund_account_id' => $account->id, 'currency' => $currency, 'identity_hash' => $identity['identity_hash'],
+        ])->first();
+        if ($existingIdentity !== null) {
+            $deposit = \App\Models\CentralFinanceUnidentifiedDeposit::on('mysql')->where('idempotency_key', $sourceId)->first();
+            $same = $existingIdentity->source_type === 'unidentified_deposit'
+                && hash_equals((string) $existingIdentity->source_id, $sourceId)
+                && $existingIdentity->payload_hash !== null && hash_equals((string) $existingIdentity->payload_hash, $requestHash)
+                && $deposit !== null && $deposit->request_hash !== null && hash_equals((string) $deposit->request_hash, $requestHash);
+            return ['result_status' => $same ? 'Duplicate' : 'Conflict', 'error_code' => $same ? null : 'BANK_IDENTITY_CONFLICT',
+                'error_message' => $same ? null : 'This physical bank identity is already reserved by another source or different immutable content.',
+                'idempotency_key' => $sourceId];
+        }
+        return ['result_status' => 'Unidentified', 'error_code' => null, 'error_message' => null, 'idempotency_key' => $sourceId];
+    }
+
     /** @param list<array<string,mixed>> $rows @return array{new:int,duplicate:int,conflict:int,error:int,schools:array<int,array<string,mixed>>,currency_totals:array<string,array<string,array{count:int,amount:float}>>} */
     private function summary(array $rows): array
     {
-        $out = ['new' => 0, 'duplicate' => 0, 'conflict' => 0, 'error' => 0, 'schools' => [], 'currency_totals' => []];
+        $out = ['new' => 0, 'unidentified' => 0, 'duplicate' => 0, 'conflict' => 0, 'error' => 0, 'schools' => [], 'currency_totals' => [], 'unidentified_totals' => []];
         foreach ($rows as $row) {
             $status = strtolower($row['result_status']);
             $out[$status]++;
             $data = (array) $row['data'];
             $schoolId = (int) ($data['school_id'] ?? 0);
-            if (!$schoolId) continue;
-            $out['schools'][$schoolId] ??= ['code' => (string) ($data['school_code'] ?? ''), 'label' => (string) ($data['school_label'] ?? ''), 'new'=>0, 'duplicate'=>0, 'conflict'=>0, 'error'=>0, 'currency_totals'=>[]];
-            $out['schools'][$schoolId][$status]++;
-            if (!in_array($status, ['new', 'duplicate'], true) || empty($data['document_type']) || empty($data['currency'])) continue;
+            if ($schoolId) {
+                $out['schools'][$schoolId] ??= ['code' => (string) ($data['school_code'] ?? ''), 'label' => (string) ($data['school_label'] ?? ''), 'new'=>0, 'duplicate'=>0, 'conflict'=>0, 'error'=>0, 'currency_totals'=>[]];
+                $out['schools'][$schoolId][$status]++;
+            }
+            if (!in_array($status, ['new', 'unidentified', 'duplicate'], true) || empty($data['document_type']) || empty($data['currency'])) continue;
             $currency = (string) $data['currency']; $type = (string) $data['document_type']; $amount = (float) ($data['amount'] ?? 0);
-            foreach ([&$out['currency_totals'], &$out['schools'][$schoolId]['currency_totals']] as &$totals) {
+            $targets = [&$out['currency_totals']];
+            if ($schoolId) $targets[] = &$out['schools'][$schoolId]['currency_totals'];
+            if (!$schoolId) {
+                $out['unidentified_totals'][$currency] ??= ['count' => 0, 'amount' => 0.0];
+                $out['unidentified_totals'][$currency]['count']++;
+                $out['unidentified_totals'][$currency]['amount'] += $amount;
+            }
+            foreach ($targets as &$totals) {
                 $totals[$currency] ??= []; $totals[$currency][$type] ??= ['count' => 0, 'amount' => 0.0];
                 $totals[$currency][$type]['count']++; $totals[$currency][$type]['amount'] += $amount;
             }
@@ -545,8 +679,13 @@ final class CentralFinanceGroupImportService
     private function decimal(mixed $value): ?float { if ($value === null || trim((string) $value) === '') return null; return is_numeric($value) && is_finite((float) $value) ? (float) $value : -INF; }
     private function date(mixed $value): string { return is_numeric($value) && (float) $value > 1000 ? ExcelDate::excelToDateTimeObject((float) $value)->format('Y-m-d') : trim((string) $value); }
     /** @param array<string,mixed> $data */
-    private function sourceFor(array $data): CentralFinanceExpense|CentralFinanceOtherIncome
+    private function sourceFor(array $data): CentralFinanceExpense|CentralFinanceOtherIncome|\App\Models\CentralFinanceUnidentifiedDeposit
     {
+        if ($data['document_type'] === 'unidentified_deposit') {
+            $deposit = \App\Models\CentralFinanceUnidentifiedDeposit::on('mysql')->where('idempotency_key', $data['idempotency_key'])->first();
+            if (!$deposit) throw new InvalidArgumentException('A duplicate Unidentified Deposit source no longer exists.');
+            return $deposit;
+        }
         $source = $data['document_type'] === 'expense'
             ? CentralFinanceExpense::on('mysql')->withTrashed()->where(['school_id' => $data['school_id'], 'reference_no' => $data['reference_no']])->first()
             : CentralFinanceOtherIncome::on('mysql')->withTrashed()->where(['school_id' => $data['school_id'], 'reference_no' => $data['reference_no']])->first();
@@ -554,15 +693,19 @@ final class CentralFinanceGroupImportService
         return $source;
     }
     /** @param CentralFinanceExpense|CentralFinanceOtherIncome $source */
-    private function linkRow(CentralFinanceGroupImportPreviewRow $row, CentralFinanceExpense|CentralFinanceOtherIncome $source, string $status): void
+    private function linkRow(CentralFinanceGroupImportPreviewRow $row, CentralFinanceExpense|CentralFinanceOtherIncome|\App\Models\CentralFinanceUnidentifiedDeposit $source, string $status): void
     {
-        $row->update(['result_status' => $status === 'New' ? 'Created' : 'Duplicate', 'error_code' => null, 'error_message' => null, 'canonical_source_type' => $source instanceof CentralFinanceExpense ? 'expense' : 'other_income', 'canonical_source_id' => $source->id, 'canonical_source_uuid' => $source instanceof CentralFinanceExpense ? $source->expense_uuid : $source->income_uuid, 'confirmed_at' => now()]);
+        $sourceType = $source instanceof CentralFinanceExpense ? 'expense' : ($source instanceof CentralFinanceOtherIncome ? 'other_income' : 'unidentified_deposit');
+        $sourceUuid = $source instanceof CentralFinanceExpense ? $source->expense_uuid : ($source instanceof CentralFinanceOtherIncome ? $source->income_uuid : $source->deposit_uuid);
+        $row->update(['result_status' => $status === 'Duplicate' ? 'Duplicate' : 'Created', 'error_code' => null, 'error_message' => null, 'canonical_source_type' => $sourceType, 'canonical_source_id' => $source->id, 'canonical_source_uuid' => $sourceUuid, 'confirmed_at' => now()]);
     }
     /** @param \Illuminate\Support\Collection<int,CentralFinanceGroupImportPreviewRow> $rows */
     private function audit(CentralFinanceUser $actor, CentralFinanceGroupImportBatch $batch, Collection $rows, string $action): void
     {
-        foreach ($rows->pluck('school_id')->filter()->unique() as $schoolId) {
-            CentralFinanceDocumentAudit::on('mysql')->create(['school_id' => $schoolId, 'document_type' => 'group_import_batch', 'document_id' => $batch->id, 'action' => $action, 'actor_id' => $actor->id, 'after_values' => ['batch_uuid' => $batch->batch_uuid, 'new' => $batch->new_rows, 'duplicate' => $batch->duplicate_rows, 'schools' => $rows->pluck('school_id')->filter()->unique()->values()->all()]]);
+        $schoolIds = $rows->pluck('school_id')->filter()->unique();
+        if ($schoolIds->isEmpty()) $schoolIds = collect([null]);
+        foreach ($schoolIds as $schoolId) {
+            CentralFinanceDocumentAudit::on('mysql')->create(['school_id' => $schoolId, 'group_id' => $batch->finance_group_id, 'document_type' => 'group_import_batch', 'document_id' => $batch->id, 'action' => $action, 'actor_id' => $actor->id, 'after_values' => ['batch_uuid' => $batch->batch_uuid, 'new' => $batch->new_rows, 'duplicate' => $batch->duplicate_rows, 'schools' => $rows->pluck('school_id')->filter()->unique()->values()->all(), 'unidentified_rows' => $rows->whereNull('school_id')->count()]]);
         }
     }
     private function markFailed(CentralFinanceUser $actor, string $token, ?CentralFinanceGroupImportPreviewRow $row, string $code, string $message): void

@@ -3347,4 +3347,11 @@
     ,"Deposit allocated. Payment and Receipt recorded without another bank receipt.": "款项已分配，付款单及收据已生成，银行不会重复入账。"
     ,"No cash movement": "无资金流动"
     ,"Deposit allocation": "待认领款项分配"
+,
+    "Not School income": "不计入学校收入",
+    "Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically. Select Unidentified / 待识别 only for a bank credit whose School is not known; it enters the Unidentified Deposit pool, not School income. Use Manual Transaction Identity and Reason only when the bank supplies no reference.": "请从 V3 模板开始。交易日期是实际业务日期，必须使用 YYYY-MM-DD，并决定财务期间归属。选择校区、已分配的科目代码和资金账户代码后，名称与科目类型会自动填充。只有在无法确定款项所属学校时，才选择“待识别”；该笔款项会进入待认领收款池，不计入学校收入。只有银行未提供参考编号时，才填写人工交易标识及原因。",
+    "Bank Date": "银行日期",
+    "Bank Reference": "银行参考号",
+    "Amount / Currency": "金额 / 币种",
+    "Will create one physical cash-in in the Unidentified Deposit pool; it is not School income.": "将仅在未识别存款池登记一笔实收现金；该款项不计为学校收入。"
 }

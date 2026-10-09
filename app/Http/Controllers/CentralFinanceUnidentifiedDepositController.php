@@ -63,6 +63,7 @@ final class CentralFinanceUnidentifiedDepositController extends Controller
         $readableAccountIds = $accountQuery->pluck('id');
         $query = CentralFinanceUnidentifiedDeposit::on('mysql')->with(['fundAccount', 'allocations.payment.receipt'])
             ->whereIn('group_id', $groups->pluck('id'))->whereIn('fund_account_id', $readableAccountIds);
+        if ($request->filled('deposit')) $query->where('deposit_uuid', (string) $request->input('deposit'));
         if ($qaRun) {
             $depositIds = $qaRun->records->where('school_id', (int) $qaRun->school_id)->where('subject_scope', 'central')->where('subject_type', 'unidentified_deposit')->pluck('subject_id')->filter()->all();
             $deposits = $depositIds === [] ? collect() : $query->whereIn('id', $depositIds)->latest('received_date')->get();

@@ -98,7 +98,10 @@ class LocalFinanceGroupQa extends Command
         $migration->up();
         (require database_path('migrations/2026_08_19_000001_create_finance_group_hq_accounts_and_transfers.php'))->up();
         $this->clearExistingGroupFixture($central);
-        $scope=app(FinanceGroupScopeService::class); $group=FinanceGroup::query()->create(['code'=>'GROUP_QA', 'name'=>'Bowen QA Group','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1]);
+        $scope=app(FinanceGroupScopeService::class);
+        $group=FinanceGroup::query()->firstOrNew(['code'=>'GROUP_QA']);
+        $group->fill(['name'=>'Bowen QA Group','status'=>'active','reporting_currency'=>'MMK','fiscal_year_start_month'=>1]);
+        $group->save();
         $a=(int)$central->table('schools')->where('code','GROUP_QA_SCHOOL_A')->value('id');
         $b=(int)$central->table('schools')->where('code','GROUP_QA_SCHOOL_B')->value('id');
         $scope->syncSchools($group,[$a,$b]);
@@ -303,6 +306,12 @@ class LocalFinanceGroupQa extends Command
         if (!$groupId) {
             return;
         }
+        // A completed local Group Import is immutable fixture history. Keep
+        // its parent Group identity so the reset can rebuild scopes around it;
+        // deleting the Group would either orphan that history or fail on its
+        // restrictive foreign key after partially clearing the fixture.
+        $hasGroupImportHistory = Schema::connection('mysql')->hasTable('central_finance_group_import_batches')
+            && $central->table('central_finance_group_import_batches')->where('finance_group_id', $groupId)->exists();
 
         if (Schema::connection('mysql')->hasTable('finance_group_transfers')) {
             $central->table('finance_group_transfers')->where('group_id', $groupId)->delete();
@@ -325,7 +334,9 @@ class LocalFinanceGroupQa extends Command
             ->delete();
         $central->table('finance_group_users')->where('group_id', $groupId)->delete();
         $central->table('finance_group_schools')->where('group_id', $groupId)->delete();
-        $central->table('finance_groups')->where('id', $groupId)->delete();
+        if (!$hasGroupImportHistory) {
+            $central->table('finance_groups')->where('id', $groupId)->delete();
+        }
     }
 
     private function verify(): int

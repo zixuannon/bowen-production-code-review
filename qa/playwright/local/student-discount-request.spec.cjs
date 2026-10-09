@@ -1,4 +1,5 @@
 const { test, expect, request } = require('@playwright/test');
+const { execFileSync } = require('node:child_process');
 
 function csrfToken(html) {
   const match = html.match(/<input[^>]+name=["']_token["'][^>]+value=["']([^"']+)["']/i);
@@ -63,7 +64,7 @@ test('Front Desk submits an exact student Discount request and Head Finance can 
     await test.step('Head Finance approves the exact request', async () => {
     const headContext = await browser.newContext({
       baseURL,
-      storageState: await login(baseURL, 'group_hq@group-qa.test', 'local-only'),
+      storageState: await login(baseURL, 'qa_discount_hq@bowen-qa.test', 'local-only'),
       viewport: { width: 1440, height: 900 },
     });
     const head = await headContext.newPage();
@@ -94,6 +95,10 @@ test('Front Desk submits an exact student Discount request and Head Finance can 
     await confirm.click();
     await expect(front.getByText('Fee assignment confirmed. Central Receivable sync has been requested.', { exact: true })).toBeVisible();
     await expect(front.getByText('awaiting Central Finance synchronization', { exact: false })).toHaveCount(0);
+    // The disposable BOWEN_QA School is not the permanent Run-managed
+    // MMBOWEN01 School. Classify only its two known synthetic Receivables so
+    // the rest of the browser flow exercises the ordinary QA-only view.
+    execFileSync('php', ['artisan', 'local:student-discount-request-qa', 'classify-receivables'], { cwd: process.cwd(), stdio: 'pipe' });
     const collectPayment = front.getByRole('link', { name: 'Collect Payment Now', exact: true });
     await expect(collectPayment).toBeVisible();
     await collectPayment.click();
@@ -117,7 +122,7 @@ test('Front Desk submits an exact student Discount request and Head Finance can 
     await test.step('Head Finance confirms the declared Bank Transfer exactly once', async () => {
     const confirmationContext = await browser.newContext({
       baseURL,
-      storageState: await login(baseURL, 'group_hq@group-qa.test', 'local-only'),
+      storageState: await login(baseURL, 'qa_discount_hq@bowen-qa.test', 'local-only'),
       viewport: { width: 1440, height: 900 },
     });
     const confirmation = await confirmationContext.newPage();
@@ -128,15 +133,18 @@ test('Front Desk submits an exact student Discount request and Head Finance can 
       await confirmation.goto('/central-finance', { waitUntil: 'domcontentloaded' });
       const schoolSwitcher = confirmation.locator('select[name="school_id"]');
       await expect(schoolSwitcher).toBeVisible();
+      const localQaSchool = schoolSwitcher.getByRole('option', { name: /Bowen School — Local QA/ });
+      await expect(localQaSchool).toHaveCount(1);
+      const localQaSchoolId = await localQaSchool.getAttribute('value');
       await Promise.all([
         confirmation.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
-        confirmation.evaluate(() => {
+        confirmation.evaluate((schoolId) => {
           const form = document.querySelector('form[action$="/central-finance/school"]');
           const select = form?.querySelector('select[name="school_id"]');
           if (!(form instanceof HTMLFormElement) || !(select instanceof HTMLSelectElement)) throw new Error('Central Finance School selector is unavailable.');
-          select.value = '970';
+          select.value = schoolId;
           form.submit();
-        }),
+        }, localQaSchoolId),
       ]);
       const pending = await confirmation.goto('/central-finance/pending-collections?include_qa_test=1', { waitUntil: 'domcontentloaded' });
       expect(pending?.status()).toBe(200);

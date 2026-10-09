@@ -106,6 +106,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             '2026_09_02_000004_add_group_import_confirm_links.php',
             '2026_09_14_000003_create_central_finance_data_classifications.php',
             '2026_09_04_000001_create_central_finance_pending_collections.php',
+            '2026_09_17_000001_add_group_context_to_central_finance_fund_account_audits.php',
             '2026_09_29_000002_add_finance_collection_v2_documents.php',
             '2026_10_07_000001_close_unidentified_deposit_p0.php',
         ] as $migration) {
@@ -495,6 +496,63 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         }
     }
 
+    public function test_unidentified_v3_bank_credit_enters_deposit_pool_once_and_reuses_shared_bank_identity(): void
+    {
+        $account = $this->groupBankAccount('HQ-BANK-01');
+        $batch = $this->preview([$this->unidentifiedRow($account, 'BANK-UNKNOWN-001', 500)]);
+        $preview = $batch->rows()->sole();
+        $this->assertSame('Unidentified', $preview->result_status);
+        $this->assertNull($preview->school_id);
+        $this->assertSame('unidentified_deposit', $preview->document_type);
+        $this->assertSame(1, $batch->new_rows);
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_unidentified_deposits')->count());
+
+        $confirmed = app(CentralFinanceGroupImportService::class)->confirm($this->head, $batch->token);
+        $deposit = \App\Models\CentralFinanceUnidentifiedDeposit::on('mysql')->sole();
+        $ledger = DB::connection('mysql')->table('central_finance_ledger_entries')->sole();
+        $this->assertSame('completed', $confirmed->status);
+        $this->assertSame('BANK-UNKNOWN-001', $deposit->bank_reference);
+        $this->assertEquals(500.0000, (float) $deposit->amount);
+        $this->assertNull($ledger->school_id);
+        $this->assertSame('central_unidentified_deposit', $ledger->source_type);
+        $this->assertEquals(500.0000, (float) $ledger->money_in);
+        $this->assertEquals(0.0000, (float) $ledger->operating_income);
+        $this->assertSame(0, CentralFinanceOtherIncome::on('mysql')->count());
+        $this->assertSame(0, CentralFinanceExpense::on('mysql')->count());
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_bank_transaction_identities')->count());
+
+        $retry = $this->preview([$this->unidentifiedRow($account, 'BANK-UNKNOWN-001', 500)]);
+        $this->assertSame('Duplicate', $retry->rows()->sole()->result_status);
+        app(CentralFinanceGroupImportService::class)->confirm($this->head, $retry->token);
+        $this->assertSame(1, \App\Models\CentralFinanceUnidentifiedDeposit::on('mysql')->count());
+        $this->assertSame(1, DB::connection('mysql')->table('central_finance_ledger_entries')->count());
+
+        $conflict = $this->preview([$this->unidentifiedRow($account, 'BANK-UNKNOWN-001', 501)]);
+        $this->assertSame('Conflict', $conflict->rows()->sole()->result_status);
+        $this->assertSame('BANK_IDENTITY_CONFLICT', $conflict->rows()->sole()->error_code);
+    }
+
+    public function test_unidentified_row_requires_manual_identity_and_reason_when_bank_reference_is_missing(): void
+    {
+        $account = $this->groupBankAccount('HQ-BANK-02');
+        $missing = $this->unidentifiedRow($account, '', 75);
+        $preview = $this->preview([$missing]);
+        $this->assertSame('Error', $preview->rows()->sole()->result_status);
+        $this->assertSame('BANK_IDENTITY_REQUIRED', $preview->rows()->sole()->error_code);
+        $this->assertSame(0, DB::connection('mysql')->table('central_finance_unidentified_deposits')->count());
+
+        $identified = $this->unidentifiedRow($account, '', 75);
+        $identified['人工交易标识 / Manual Transaction Identity'] = 'STATEMENT-ROW-75';
+        $identified['人工标识原因 / Manual Identity Reason'] = 'The bank statement provided no reference number.';
+        $manual = $this->preview([$identified]);
+        $this->assertSame('Unidentified', $manual->rows()->sole()->result_status);
+        app(CentralFinanceGroupImportService::class)->confirm($this->head, $manual->token);
+        $deposit = \App\Models\CentralFinanceUnidentifiedDeposit::on('mysql')->sole();
+        $this->assertSame('STATEMENT-ROW-75', $deposit->manual_identity);
+        $this->assertSame('The bank statement provided no reference number.', $deposit->manual_reason);
+        $this->assertNull($deposit->bank_reference);
+    }
+
     public function test_confirm_link_migration_is_additive_and_reversible(): void
     {
         $migration = require database_path('migrations/2026_09_02_000004_add_group_import_confirm_links.php');
@@ -622,7 +680,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
 
         $legacyV3 = array_combine(
             \App\Exports\CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS,
-            array_values($this->v3Row($category, 1, 'DATE-HEADER-LEGACY', 100, null)),
+            array_slice(array_values($this->v3Row($category, 1, 'DATE-HEADER-LEGACY', 100, null)), 0, count(\App\Exports\CentralFinanceGroupImportTemplateV3Export::LEGACY_HEADINGS)),
         );
         $this->assertSame(1, $this->preview([$legacyV3])->new_rows);
     }
@@ -769,7 +827,7 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         return array_combine(\App\Exports\CentralFinanceGroupImportTemplateV3Export::HEADINGS,
             [1, '2026-09-17', $school === 1 ? 'Zixuan QA' : 'Times QA', $school === 1 ? 'SCH-ZIX' : 'SCH-TIM',
                 'Disposable handler', 'V3 cash movement', $category->type, $category->category_code, $category->name,
-                $this->zixuanAccount->account_code, $this->zixuanAccount->account_name, 'Cash', $incoming, $outgoing, $reference, '']);
+                $this->zixuanAccount->account_code, $this->zixuanAccount->account_name, 'Cash', $incoming, $outgoing, $reference, '', '', '']);
     }
 
     /** @param list<array<string,mixed>> $rows */
@@ -795,6 +853,39 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
         ]);
 
         return $account;
+    }
+
+    private function groupBankAccount(string $code): CentralFinanceFundAccount
+    {
+        DB::connection('mysql')->table('finance_group_user_scopes')->insert([
+            'group_user_id' => FinanceGroupUser::on('mysql')->where('central_user_id', $this->head->id)->value('id'),
+            'school_id' => null, 'scope_type' => 'GROUP', 'capability' => 'manage_hq_accounts',
+            'scope_key' => 'group', 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return CentralFinanceFundAccount::on('mysql')->create([
+            'account_uuid' => (string) Str::uuid(), 'group_id' => $this->group->id, 'school_id' => null,
+            'owner_type' => 'hq', 'account_code' => $code, 'account_name' => 'Group Bank '.$code,
+            'account_type' => 'bank', 'currency' => 'MMK', 'opening_balance' => 0,
+            'is_active' => true, 'status' => 'active',
+        ]);
+    }
+
+    /** @return array<string,mixed> */
+    private function unidentifiedRow(CentralFinanceFundAccount $account, string $reference, float $amount): array
+    {
+        return [
+            '序号 / No.' => 1, '交易日期 / Transaction Date' => '2026-09-02',
+            '校区 / Campus' => 'Unidentified / 待识别', '学校代码 / School Code' => 'UNIDENTIFIED',
+            '报销人/经办人 / Claimant / Handler' => 'Unknown sender',
+            '摘要 / Description' => 'Bank credit not yet identified',
+            '科目类型 / Account Type' => '', '科目代码 / Account Code' => '', '科目名称 / Account Name' => '',
+            '资金账户代码 / Fund Account Code' => $account->account_code,
+            '资金账户名称 / Fund Account Name' => $account->account_name,
+            '付款方式 / Payment Method' => '', '收入金额 / Incoming' => $amount,
+            '支出金额 / Outgoing' => '', '参考编号 / Reference No.' => $reference,
+            '备注 / Remarks' => 'Statement description retained',
+            '人工交易标识 / Manual Transaction Identity' => '', '人工标识原因 / Manual Identity Reason' => '',
+        ];
     }
 
     private function category(int $schoolId, string $type, string $code): CentralFinanceCategory

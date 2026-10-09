@@ -90,4 +90,26 @@ class GuardianCreateRouteContractTest extends TestCase
         $this->assertStringContainsString('$this->user->guardian()', $controller);
         $this->assertStringContainsString("->findOrFail(\$guardianId)", $controller);
     }
+
+    public function test_guardian_email_is_optional_without_weakening_identity_or_notification_guards(): void
+    {
+        $guardian = file_get_contents(app_path('Http/Controllers/GuardianController.php'));
+        $student = file_get_contents(app_path('Http/Controllers/StudentController.php'));
+        $users = file_get_contents(app_path('Services/UserService.php'));
+        $create = file_get_contents(resource_path('views/guardian/create.blade.php'));
+        $edit = file_get_contents(resource_path('views/guardian/index.blade.php'));
+        $admission = file_get_contents(resource_path('views/students/create.blade.php'));
+        $admissionScript = file_get_contents(public_path('assets/js/custom/student-admission-guardian.js'));
+
+        $this->assertStringContainsString("'email'      => 'nullable|email", $guardian);
+        $this->assertStringContainsString("'guardian_email' => 'nullable|email", $student);
+        $this->assertStringContainsString('$email !== null ? $this->user->guardian()', $users);
+        $this->assertStringContainsString('if ($is_send_notification && filled($guardian->email))', $users);
+        $this->assertStringContainsString('if (is_object($guardian) && blank($guardian->email ?? null))', $users);
+        $this->assertStringContainsString('name="email" type="email" class="form-control">', $create);
+        $this->assertStringNotContainsString("'required', 'placeholder' => __('email')", $edit);
+        $this->assertStringContainsString('id="create-guardian-without-email"', $admission);
+        $this->assertStringContainsString('state.emailOptional = true', $admissionScript);
+        $this->assertStringContainsString('Guardian without email', $admission);
+    }
 }

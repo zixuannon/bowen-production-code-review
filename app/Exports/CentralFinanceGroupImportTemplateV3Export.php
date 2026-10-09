@@ -16,6 +16,15 @@ final class CentralFinanceGroupImportTemplateV3Export implements WithMultipleShe
         '科目代码 / Account Code', '科目名称 / Account Name', '资金账户代码 / Fund Account Code',
         '资金账户名称 / Fund Account Name', '付款方式 / Payment Method', '收入金额 / Incoming',
         '支出金额 / Outgoing', '参考编号 / Reference No.', '备注 / Remarks',
+        '人工交易标识 / Manual Transaction Identity', '人工标识原因 / Manual Identity Reason',
+    ];
+
+    public const PRIOR_V3_HEADINGS = [
+        '序号 / No.', '交易日期 / Transaction Date', '校区 / Campus', '学校代码 / School Code',
+        '报销人/经办人 / Claimant / Handler', '摘要 / Description', '科目类型 / Account Type',
+        '科目代码 / Account Code', '科目名称 / Account Name', '资金账户代码 / Fund Account Code',
+        '资金账户名称 / Fund Account Name', '付款方式 / Payment Method', '收入金额 / Incoming',
+        '支出金额 / Outgoing', '参考编号 / Reference No.', '备注 / Remarks',
     ];
 
     /** Header emitted by V3 workbooks before the business-date contract. */
@@ -39,6 +48,7 @@ final class CentralFinanceGroupImportTemplateV3Export implements WithMultipleShe
 
     public function sheets(): array
     {
+        $schools = array_merge($this->schools, [['code' => 'UNIDENTIFIED', 'name' => 'Unidentified / 待识别']]);
         $funds = $this->uniqueRows($this->accounts, 'code', ['name', 'account_type', 'owner_holder', 'currency', 'opening_balance', 'incoming', 'outgoing']);
         $chart = $this->uniqueRows($this->categories, 'category_code', ['type', 'name']);
         $activity = $this->schoolActivity();
@@ -77,14 +87,14 @@ final class CentralFinanceGroupImportTemplateV3Export implements WithMultipleShe
 
         return [
             new CentralFinanceGroupImportV3ImportSheet(),
-            new CentralFinanceGroupImportV3ReferenceSheet('Schools', ['学校代码 / School Code', '校区 / Campus'], array_map(fn ($school) => [$school['code'], $school['name']], $this->schools)),
+            new CentralFinanceGroupImportV3ReferenceSheet('Schools', ['学校代码 / School Code', '校区 / Campus'], array_map(fn ($school) => [$school['code'], $school['name']], $schools)),
             new CentralFinanceGroupImportV3ReferenceSheet('Chart of Accounts', ['科目类型 / Account Type', '科目代码 / Account Code', '科目名称 / Account Name'], array_map(fn ($account) => [ucfirst($account['type']), $account['category_code'], $account['name']], $chart)),
             new CentralFinanceGroupImportV3ReferenceSheet('Account Allocations', ['科目代码 / Account Code', '学校代码 / School Code'], $this->allocations($this->categories, 'category_code')),
             new CentralFinanceGroupImportV3ReferenceSheet('Fund Accounts', ['资金账户代码 / Fund Account Code', '资金账户名称 / Fund Account Name', '账户类型 / Account Type', '账户持有人 / Owner / Holder', '币种 / Currency', '期初余额 / Opening Balance', '流入 / Incoming', '流出 / Outgoing', '预计期末余额 / Closing Balance'], $fundRows, ['G', 'H', 'I'], ['F', 'G', 'H', 'I'], 'Incoming/Outgoing include the canonical ledger snapshot plus unconfirmed Import rows. Closing is a projection, not a posted balance. Each physical account appears once. / 流入和流出包含账本快照及未确认导入行；期末余额仅为预计值，不代表已入账余额。'),
             new CentralFinanceGroupImportV3ReferenceSheet('Fund Allocations', ['资金账户代码 / Fund Account Code', '学校代码 / School Code'], $this->allocations($this->accounts, 'code')),
             new CentralFinanceGroupImportV3ReferenceSheet('By Currency', ['币种 / Currency', '期初 / Opening', '流入 / Incoming', '流出 / Outgoing', '预计期末 / Closing'], $currencyRows, ['B', 'C', 'D', 'E'], ['B', 'C', 'D', 'E']),
             new CentralFinanceGroupImportV3ReferenceSheet('By School', ['学校代码 / School Code', '校区 / Campus', '币种 / Currency', '流入 / Incoming', '流出 / Outgoing', '净变动 / Net Movement'], $schoolRows, ['D', 'E', 'F'], ['D', 'E', 'F'], 'This School Activity only, grouped by currency. It is not the physical account balance. Includes canonical activity plus unconfirmed Import rows. / 仅本校分币种活动，不代表资金账户实际余额。'),
-            new CentralFinanceGroupImportV3ValidationSheet($this->schools, $funds, $chart, $this->accounts, $this->categories, $activity),
+            new CentralFinanceGroupImportV3ValidationSheet($schools, $funds, $chart, $this->accounts, $this->categories, $activity),
         ];
     }
 

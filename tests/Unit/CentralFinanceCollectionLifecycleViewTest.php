@@ -104,7 +104,7 @@ final class CentralFinanceCollectionLifecycleViewTest extends TestCase
     {
         $view = file_get_contents(resource_path('views/central-finance/group-import/index.blade.php'));
 
-        $this->assertStringContainsString("<th>{{ __('Transaction Date') }}</th>", $view);
-        $this->assertStringContainsString("data-label=\"{{ __('Transaction Date') }}\">{{ \$row->normalized_data['transaction_date'] ?? '—' }}", $view);
+        $this->assertStringContainsString("<th>{{ __('Bank Date') }}</th>", $view);
+        $this->assertStringContainsString("data-label=\"{{ __('Bank Date') }}\">{{ \$row->normalized_data['transaction_date'] ?? '—' }}", $view);
     }
 }

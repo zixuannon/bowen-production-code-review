@@ -14,6 +14,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -24,14 +25,14 @@ final class LocalStudentDiscountRequestQa extends Command
 {
     private const ACCOUNT_CODE = 'BOWEN-QA-DISCOUNT-E2E-BANK';
     private const FRONT_DESK_EMAIL = 'qa_front_desk@bowen-qa.test';
-    private const HEAD_FINANCE_EMAIL = 'group_hq@group-qa.test';
+    private const HEAD_FINANCE_EMAIL = 'qa_discount_hq@bowen-qa.test';
     private const STUDENT_SOURCE_UUID = 'e17b9cda-c389-40ff-b5fc-212f3a21e5bf';
     // This fixture must not reuse a Staff identity from another local Finance
     // rehearsal: student-specific Discount requests fail closed unless the
     // requester belongs to exactly one active Group for the target School.
     private const FRONT_DESK_SOURCE_UUID = 'f3256be4-d779-427d-9ae4-5b18ca4e0d9e';
 
-    protected $signature = 'local:student-discount-request-qa {action : prepare, verify, or cleanup}';
+    protected $signature = 'local:student-discount-request-qa {action : prepare, classify-receivables, verify, or cleanup}';
 
     protected $description = 'Prepare or remove only the disposable local BOWEN_QA student-discount browser fixture.';
 
@@ -60,6 +61,8 @@ final class LocalStudentDiscountRequestQa extends Command
                 app(PermissionRegistrar::class)->forgetCachedPermissions();
             } elseif ($action === 'verify') {
                 $this->assertCompletedGraph();
+            } elseif ($action === 'classify-receivables') {
+                $this->classifyFixtureReceivables();
             } elseif ($action === 'cleanup') {
                 $this->clearCentralGraph();
                 $this->assertClean();
@@ -79,7 +82,27 @@ final class LocalStudentDiscountRequestQa extends Command
     {
         $central = DB::connection('mysql');
         $schoolId = $this->schoolId();
+        // Keep this workflow's Head Finance principal isolated from the
+        // separate GROUP_QA browser fixture so each test sees only its own
+        // explicitly assigned Group.
+        $central->table('users')->updateOrInsert(['email' => self::HEAD_FINANCE_EMAIL], [
+            'first_name' => 'QA Discount', 'last_name' => 'Head Finance',
+            'password' => Hash::make('local-only'), 'school_id' => null,
+            'status' => 1, 'two_factor_enabled' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $head = CentralFinanceUser::on('mysql')->where('email', self::HEAD_FINANCE_EMAIL)->firstOrFail();
+        // Production configuration authorization requires both the canonical
+        // Head Finance role and explicit Group control.
+        $headIdentity = \App\Models\User::on('mysql')->findOrFail($head->id);
+        if (!$headIdentity->hasRole('Head Finance')) {
+            $headIdentity->assignRole('Head Finance');
+        }
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        if ($isolation->schemaAvailable()) {
+            $isolation->classify($head, $schoolId, 'school', $schoolId, CentralFinanceDataClassification::QA_TEST,
+                'Disposable BOWEN_QA student Discount browser E2E School.');
+        }
         $groups = app(FinanceGroupScopeService::class);
         $group = FinanceGroup::on('mysql')->where('code', 'BOWEN_QA')->first();
         if ($group === null) {
@@ -103,19 +126,25 @@ final class LocalStudentDiscountRequestQa extends Command
                 'can_create_student_specific_discounts' => false, 'can_approve_reimbursements' => true,
                 'can_confirm_funding' => true, 'created_at' => now(), 'updated_at' => now()],
         );
-        $central->table('central_finance_school_cutovers')->where('school_id', $schoolId)->update([
-            'receivable_sync_effective_at' => '2026-01-01 00:00:00', 'updated_at' => now(),
-        ]);
+        $central->table('central_finance_school_cutovers')->updateOrInsert(
+            ['school_id' => $schoolId],
+            [
+                'status' => 'central', 'cutover_at' => now(),
+                'receivable_sync_effective_at' => '2026-01-01 00:00:00',
+                'created_at' => now(), 'updated_at' => now(),
+            ],
+        );
 
         Config::set('database.connections.school.database', LocalBowenQaGuard::TENANT_DATABASE);
         DB::purge('school');
-        DB::connection('school')->table('users')->where('email', self::FRONT_DESK_EMAIL)->update([
+        $tenantDb = DB::connection('school');
+        $tenantDb->table('users')->where('email', self::FRONT_DESK_EMAIL)->update([
             'central_finance_source_uuid' => self::FRONT_DESK_SOURCE_UUID, 'updated_at' => now(),
         ]);
-        DB::connection('school')->table('students')->where('id', 1)->update([
+        $tenantDb->table('students')->where('id', 1)->update([
             'central_finance_source_uuid' => self::STUDENT_SOURCE_UUID, 'updated_at' => now(),
         ]);
-        $student = DB::connection('school')->table('students as students')
+        $student = $tenantDb->table('students as students')
             ->leftJoin('users as users', 'users.id', '=', 'students.user_id')
             ->leftJoin('classes as classes', 'classes.id', '=', 'students.class_id')
             ->where('students.id', 1)
@@ -127,6 +156,24 @@ final class LocalStudentDiscountRequestQa extends Command
         if ($student === null || (string) $student->central_finance_source_uuid !== self::STUDENT_SOURCE_UUID) {
             throw new RuntimeException('The local BOWEN_QA Student fixture is missing.');
         }
+        $feeTypeIds = $tenantDb->table('fees_types')->where('school_id', $schoolId)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $feeIds = $tenantDb->table('fees')->where('school_id', $schoolId)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $feeItemIds = $tenantDb->table('fees_class_types')->where('school_id', $schoolId)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $isolation->classify($head, $schoolId, 'student', (int) $student->id, CentralFinanceDataClassification::QA_TEST,
+            'Disposable BOWEN_QA student Discount browser E2E Student.');
+        foreach ($feeTypeIds as $feeTypeId) {
+            $isolation->classify($head, $schoolId, 'fee_type', $feeTypeId, CentralFinanceDataClassification::QA_TEST,
+                'Disposable BOWEN_QA student Discount browser E2E Fee Type.');
+        }
+        foreach ($feeIds as $feeId) {
+            $isolation->classify($head, $schoolId, 'fee', $feeId, CentralFinanceDataClassification::QA_TEST,
+                'Disposable BOWEN_QA student Discount browser E2E Fee.');
+        }
+        foreach ($feeItemIds as $feeItemId) {
+            $isolation->classify($head, $schoolId, 'fee_item', $feeItemId, CentralFinanceDataClassification::QA_TEST,
+                'Disposable BOWEN_QA student Discount browser E2E Fee Item.');
+        }
+        $tenantDb = DB::connection('school');
         // LocalBowenQa intentionally owns only tenant fixtures.  The browser
         // workflow starts at Fee Setup, which requires the same Central
         // profile projection that a production tenant receives before any
@@ -151,12 +198,16 @@ final class LocalStudentDiscountRequestQa extends Command
                 'updated_at' => now(),
             ],
         );
-        $tenantFrontDeskId = (int) DB::connection('school')->table('users')->where('email', self::FRONT_DESK_EMAIL)->value('id');
+        $studentProfileId = (int) $central->table('central_finance_student_profiles')
+            ->where(['school_id' => $schoolId, 'tenant_student_id' => (int) $student->id])->value('id');
+        $isolation->classify($head, $schoolId, 'student_profile', $studentProfileId, CentralFinanceDataClassification::QA_TEST,
+            'Disposable BOWEN_QA student Discount browser E2E Student Profile.');
+        $tenantFrontDeskId = (int) $tenantDb->table('users')->where('email', self::FRONT_DESK_EMAIL)->value('id');
         if ($tenantFrontDeskId < 1) {
             throw new RuntimeException('The local BOWEN_QA Front Desk fixture is missing.');
         }
-        if (!DB::connection('school')->table('staffs')->where('user_id', $tenantFrontDeskId)->exists()) {
-            DB::connection('school')->table('staffs')->insert([
+        if (!$tenantDb->table('staffs')->where('user_id', $tenantFrontDeskId)->exists()) {
+            $tenantDb->table('staffs')->insert([
                 'user_id' => $tenantFrontDeskId, 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
@@ -181,7 +232,6 @@ final class LocalStudentDiscountRequestQa extends Command
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $isolation = app(CentralFinanceDataIsolationService::class);
         if ($isolation->schemaAvailable()) {
             $isolation->classify($head, $schoolId, 'fund_account', $account->id, CentralFinanceDataClassification::QA_TEST,
                 'Disposable local student Discount E2E Bank account.');
@@ -233,6 +283,16 @@ final class LocalStudentDiscountRequestQa extends Command
                 $central->table('central_finance_student_profiles')->where('school_id', $schoolId)->delete();
             }
             if ($accountIds->isNotEmpty()) {
+                // The browser rehearsal's confirmed collection records the
+                // disposable account's bank identity even after the linked
+                // business rows are cleared. Remove only identities belonging
+                // to this fixture account before deleting that account; the
+                // FK intentionally prevents broad fixture cleanup from
+                // erasing identities for any other account.
+                if (Schema::connection('mysql')->hasTable('central_finance_bank_transaction_identities')) {
+                    $central->table('central_finance_bank_transaction_identities')
+                        ->whereIn('fund_account_id', $accountIds)->delete();
+                }
                 foreach (['central_finance_fund_account_users', 'central_finance_fund_account_school_allocations'] as $table) {
                     if (Schema::connection('mysql')->hasTable($table)) {
                         $central->table($table)->whereIn('fund_account_id', $accountIds)->delete();
@@ -247,6 +307,47 @@ final class LocalStudentDiscountRequestQa extends Command
                     $central->table(CentralFinanceDataIsolationService::TABLE)->whereIn('id', $classificationIds)->delete();
                 }
                 $central->table('central_finance_fund_accounts')->whereIn('id', $accountIds)->delete();
+            }
+
+            // The local BOWEN_QA School classification is part of this
+            // disposable fixture. Remove only its classification and matching
+            // audit rows when the fixture is rebuilt or cleaned up.
+            if (Schema::connection('mysql')->hasTable(CentralFinanceDataIsolationService::TABLE)) {
+                $tenantClassificationIds = $central->table(CentralFinanceDataIsolationService::TABLE)
+                    ->where('school_id', $schoolId)->where('subject_scope', 'tenant:'.$schoolId)
+                    ->whereIn('subject_type', ['student', 'fee', 'fee_type', 'fee_item'])->pluck('id');
+                if ($tenantClassificationIds->isNotEmpty()
+                    && Schema::connection('mysql')->hasTable(CentralFinanceDataIsolationService::AUDIT_TABLE)) {
+                    $central->table(CentralFinanceDataIsolationService::AUDIT_TABLE)->whereIn('classification_id', $tenantClassificationIds)->delete();
+                }
+                $central->table(CentralFinanceDataIsolationService::TABLE)->whereIn('id', $tenantClassificationIds)->delete();
+
+                $schoolClassificationIds = $central->table(CentralFinanceDataIsolationService::TABLE)
+                    ->where('subject_scope', 'central')->where('subject_type', 'school')->where('subject_id', $schoolId)->pluck('id');
+                $profileClassificationIds = $central->table(CentralFinanceDataIsolationService::TABLE)
+                    ->where('subject_scope', 'central')->where('subject_type', 'student_profile')->where('school_id', $schoolId)->pluck('id');
+                $centralFixtureClassificationIds = $schoolClassificationIds->merge($profileClassificationIds);
+                if ($centralFixtureClassificationIds->isNotEmpty()
+                    && Schema::connection('mysql')->hasTable(CentralFinanceDataIsolationService::AUDIT_TABLE)) {
+                    $central->table(CentralFinanceDataIsolationService::AUDIT_TABLE)->whereIn('classification_id', $centralFixtureClassificationIds)->delete();
+                }
+                $central->table(CentralFinanceDataIsolationService::TABLE)->whereIn('id', $centralFixtureClassificationIds)->delete();
+
+                // Workflow documents (Discount requests, Receivables and
+                // Pending Collections) also have central classifications that
+                // are attributed to this disposable operator. Their business
+                // rows were cleared above, so clear only this BOWEN_QA School's
+                // remaining central classification/audit rows before removing
+                // the dedicated local user referenced by classified_by.
+                $remainingFixtureClassificationIds = $central->table(CentralFinanceDataIsolationService::TABLE)
+                    ->where('subject_scope', 'central')->where('school_id', $schoolId)->pluck('id');
+                if ($remainingFixtureClassificationIds->isNotEmpty()
+                    && Schema::connection('mysql')->hasTable(CentralFinanceDataIsolationService::AUDIT_TABLE)) {
+                    $central->table(CentralFinanceDataIsolationService::AUDIT_TABLE)
+                        ->whereIn('classification_id', $remainingFixtureClassificationIds)->delete();
+                }
+                $central->table(CentralFinanceDataIsolationService::TABLE)
+                    ->whereIn('id', $remainingFixtureClassificationIds)->delete();
             }
 
             if ($groupId > 0) {
@@ -270,7 +371,16 @@ final class LocalStudentDiscountRequestQa extends Command
                     ->whereIn('user_id', $staffIdentityUserIds)->delete();
             }
             $central->table('central_finance_user_school_scopes')->where(['user_id' => CentralFinanceUser::on('mysql')->where('email', self::HEAD_FINANCE_EMAIL)->value('id'), 'school_id' => $schoolId])->delete();
-            $central->table('central_finance_school_cutovers')->where('school_id', $schoolId)->update(['receivable_sync_effective_at' => null, 'updated_at' => now()]);
+            $headId = (int) CentralFinanceUser::on('mysql')->where('email', self::HEAD_FINANCE_EMAIL)->value('id');
+            if ($headId > 0) {
+                $central->table('model_has_roles')->where('model_id', $headId)->where('model_type', \App\Models\User::class)
+                    ->whereIn('role_id', $central->table('roles')->where('name', 'Head Finance')->pluck('id'))->delete();
+                $central->table('users')->where('id', $headId)->where('email', self::HEAD_FINANCE_EMAIL)->delete();
+            }
+            // BOWEN_QA owns this disposable School and its cutover row. Remove
+            // that fixture state instead of leaving a synthetic School marked
+            // as Central after the browser graph is cleaned up.
+            $central->table('central_finance_school_cutovers')->where('school_id', $schoolId)->delete();
         });
 
         Config::set('database.connections.school.database', LocalBowenQaGuard::TENANT_DATABASE);
@@ -295,6 +405,49 @@ final class LocalStudentDiscountRequestQa extends Command
         }
         if ($central->table('central_finance_fund_accounts')->where('account_code', self::ACCOUNT_CODE)->exists()) {
             throw new RuntimeException('Disposable BOWEN_QA Fund Account remains.');
+        }
+    }
+
+    /** Mark only this synthetic, post-sync browser graph as QA after sync. */
+    private function classifyFixtureReceivables(): void
+    {
+        $central = DB::connection('mysql');
+        $schoolId = $this->schoolId();
+        $profile = $central->table('central_finance_student_profiles')->where([
+            'school_id' => $schoolId, 'source_uuid' => self::STUDENT_SOURCE_UUID,
+        ])->first();
+        if ($profile === null
+            || app(CentralFinanceDataIsolationService::class)->classification('school', $schoolId) !== CentralFinanceDataClassification::QA_TEST
+            || app(CentralFinanceDataIsolationService::class)->classification('student_profile', (int) $profile->id) !== CentralFinanceDataClassification::QA_TEST) {
+            throw new RuntimeException('The disposable BOWEN_QA School and Student profile must be explicitly QA/Test before classifying Receivables.');
+        }
+
+        $receivables = $central->table('central_finance_receivables')->where([
+            'school_id' => $schoolId, 'student_profile_id' => $profile->id,
+            'source_type' => \App\Services\CentralFinanceReceivableSyncService::SOURCE_TYPE,
+        ])->orderBy('id')->get();
+        $amounts = $receivables->pluck('amount_due')->map(fn ($amount) => number_format((float) $amount, 2, '.', ''))->sort()->values()->all();
+        if ($receivables->count() !== 2 || $amounts !== ['500.00', '900.00']
+            || $receivables->contains(fn ($receivable) => $receivable->status !== 'open' || (float) $receivable->amount_paid !== 0.0)) {
+            throw new RuntimeException('The local Discount E2E must create only its exact two outstanding synthetic Receivables before QA classification.');
+        }
+
+        $actor = CentralFinanceUser::on('mysql')->where('email', self::HEAD_FINANCE_EMAIL)->firstOrFail();
+        $isolation = app(CentralFinanceDataIsolationService::class);
+        foreach ($receivables as $receivable) {
+            $existing = $central->table(CentralFinanceDataIsolationService::TABLE)->where([
+                'subject_scope' => 'central', 'subject_type' => 'receivable', 'subject_id' => $receivable->id,
+            ])->value('classification');
+            if ($existing === CentralFinanceDataClassification::PRODUCTION) {
+                throw new RuntimeException('A disposable QA Receivable already has an explicit Production classification.');
+            }
+            if ($existing === null) {
+                $isolation->classify($actor, $schoolId, 'receivable', (int) $receivable->id,
+                    CentralFinanceDataClassification::QA_TEST,
+                    'Disposable BOWEN_QA browser E2E classification after synthetic Fee Assignment sync.');
+            } elseif ($existing !== CentralFinanceDataClassification::QA_TEST) {
+                throw new RuntimeException('The disposable QA Receivable has an unexpected classification.');
+            }
         }
     }
 

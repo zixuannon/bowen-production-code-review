@@ -245,8 +245,9 @@
                             {{-- Guardian Details --}}
                             <div class="row mt-5">
                                 <div class="form-group col-sm-12 col-md-12">
-                                    <label for="guardian_email">{{ __('guardian') . ' ' . __('email') }} <span class="text-danger">*</span></label>
+                                    <label for="guardian_email">{{ __('guardian') . ' ' . __('email') }}</label>
                                     <select class="guardian-admission-search form-control" id="guardian_admission_guardian_id" data-guardian-admission-controller="true"></select>
+                                    <button type="button" id="create-guardian-without-email" class="btn btn-link px-0">Create a new Guardian without email</button>
                                     <input type="hidden" id="guardian_mode" name="guardian_mode" value="empty">
                                     <input type="hidden" id="guardian_id" name="guardian_id" value="">
                                     <input type="hidden" id="guardian_email" name="guardian_email">

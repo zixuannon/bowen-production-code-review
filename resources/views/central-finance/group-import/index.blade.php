@@ -4,6 +4,8 @@
 @php($summary = $batch?->school_summary ?? [])
 @php($previewReady = $batch && in_array($batch->status, ['previewed', 'completed'], true))
 @php($confirmReady = $batch && ($batch->production_eligible ?? true) && $batch->status === 'previewed' && $batch->error_rows === 0 && $batch->conflict_rows === 0)
+@php($unidentifiedTotals = $summary['unidentified_totals'] ?? [])
+@php($unidentifiedCount = collect($unidentifiedTotals)->sum('count'))
 <div class="central-finance-page">
     @include('central-finance.partials.foundation-styles')
 
@@ -30,7 +32,7 @@
                 <div class="card-body d-flex flex-column">
                     <span class="badge badge-light align-self-start mb-2">{{ __('Step 1') }}</span>
                     <h2 class="h5" id="group-import-download-title">{{ __('Download template') }}</h2>
-                    <p class="text-muted flex-grow-1">{{ __('Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically.') }}</p>
+                    <p class="text-muted flex-grow-1">{{ __('Start from Template V3. Transaction Date is the actual business date, must use YYYY-MM-DD, and determines financial period reporting. Choose Campus, allocated Account Code and Fund Account Code; names and Account Type fill automatically. Select Unidentified / 待识别 only for a bank credit whose School is not known; it enters the Unidentified Deposit pool, not School income. Use Manual Transaction Identity and Reason only when the bank supplies no reference.') }}</p>
                     <a id="group-import-template-link" class="btn btn-outline-primary" data-template-url="{{ route('central-finance.group-import.template') }}" href="{{ route('central-finance.group-import.template', ['finance_group_id' => $groups->first()->id]) }}">{{ __('group-import.download_template_v3') }}</a>
                 </div>
             </section>
@@ -74,7 +76,9 @@
                 </div>
 
                 <div class="ui-import-summary" aria-label="{{ __('Validation summary') }}">
-                    @foreach(['new' => ['Valid', 'success'], 'duplicate' => ['Duplicate', 'secondary'], 'error' => ['Error', 'danger'], 'conflict' => ['Conflict', 'warning']] as $key => [$label, $style])
+                    <div class="ui-import-summary__item border-success"><span>{{ __('Valid') }}</span><strong>{{ max(0, (int) $batch->new_rows - $unidentifiedCount) }}</strong></div>
+                    @if($unidentifiedCount > 0)<div class="ui-import-summary__item border-info"><span>{{ __('Unidentified Deposit') }}</span><strong>{{ $unidentifiedCount }}</strong></div>@endif
+                    @foreach(['duplicate' => ['Duplicate', 'secondary'], 'error' => ['Error', 'danger'], 'conflict' => ['Conflict', 'warning']] as $key => [$label, $style])
                         <div class="ui-import-summary__item border-{{ $style }}">
                             <span>{{ __($label) }}</span>
                             <strong>{{ $batch->{$key.'_rows'} }}</strong>
@@ -82,10 +86,10 @@
                     @endforeach
                 </div>
 
-                @if(!empty($summary['currency_totals']))
+                    @if(!empty($summary['currency_totals']) || !empty($unidentifiedTotals))
                     <div class="mb-3">
                         <h3 class="h6">{{ __('Eligible amounts by currency') }}</h3>
-                        <div class="row">@foreach($summary['currency_totals'] as $currency => $totals)<div class="col-md-4 mb-2"><div class="cf-summary-card"><span class="cf-summary-card__label">{{ $currency }}</span>@foreach($totals as $type => $total)<span class="d-block"><strong>{{ $type === 'expense' ? __('Expense') : __('Income') }}</strong> · {{ $total['count'] }} · {{ number_format($total['amount'], 2) }} {{ $currency }}</span>@endforeach</div></div>@endforeach</div>
+                        <div class="row">@foreach($summary['currency_totals'] ?? [] as $currency => $totals)<div class="col-md-4 mb-2"><div class="cf-summary-card"><span class="cf-summary-card__label">{{ $currency }}</span>@foreach($totals as $type => $total)<span class="d-block"><strong>{{ $type === 'expense' ? __('Expense') : ($type === 'unidentified_deposit' ? __('Unidentified Deposit') : __('Income')) }}</strong> · {{ $total['count'] }} · {{ number_format($total['amount'], 2) }} {{ $currency }}</span>@endforeach</div></div>@endforeach @foreach($unidentifiedTotals as $currency => $total)<div class="col-md-4 mb-2"><div class="cf-summary-card"><span class="cf-summary-card__label">{{ $currency }} · {{ __('Unidentified Deposit') }}</span><span class="d-block">{{ $total['count'] }} · {{ number_format($total['amount'], 2) }} {{ $currency }} · {{ __('Not School income') }}</span></div></div>@endforeach</div>
                     </div>
                 @endif
 
@@ -97,8 +101,8 @@
                 <p class="ui-table-scroll-hint"><i class="fa fa-arrows-h" aria-hidden="true"></i> {{ __('Swipe horizontally to review every validation column.') }}</p>
                 <div class="table-responsive ui-responsive-list-wrap">
                     <table class="table table-sm cf-data-table ui-responsive-list ui-mobile-cards">
-                        <thead><tr><th>#</th><th>{{ __('School') }}</th><th>{{ __('Type') }}</th><th>{{ __('Transaction Date') }}</th><th>{{ __('Reference') }}</th><th>{{ __('Status') }}</th><th>{{ __('Validation result') }}</th><th>{{ __('Source') }}</th></tr></thead>
-                        <tbody>@forelse($batch->rows as $row)<tr><td data-label="#">{{ $row->row_number }}</td><td data-label="{{ __('School') }}"><span class="ui-cell-primary">{{ $row->normalized_data['school_code'] ?? '—' }}</span></td><td data-label="{{ __('Type') }}">{{ $row->document_type ?: '—' }}</td><td data-label="{{ __('Transaction Date') }}">{{ $row->normalized_data['transaction_date'] ?? '—' }}</td><td data-label="{{ __('Reference') }}" class="cf-break-anywhere">{{ $row->reference_no ?: '—' }}</td><td data-label="{{ __('Status') }}"><span class="badge cf-status-badge badge-{{ in_array($row->result_status, ['Error','Conflict']) ? 'danger' : ($row->result_status === 'Duplicate' ? 'secondary' : 'success') }}">{{ __($row->result_status) }}</span></td><td data-label="{{ __('Validation result') }}" class="cf-break-anywhere">{{ $row->error_message ?: ($row->result_status === 'Duplicate' ? __('Duplicate: skipped on confirmation.') : ($row->canonical_source_uuid ? __('Canonical source linked.') : __('Ready for confirmation'))) }}</td><td data-label="">@if($row->canonical_source_id)<a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.group-import.source', [$batch->token, $row->id]) }}">{{ __('View source') }}</a>@else — @endif</td></tr>@empty<tr><td colspan="8" data-label=""><div class="cf-empty-state">{{ __('No preview rows found.') }}</div></td></tr>@endforelse</tbody>
+                        <thead><tr><th>#</th><th>{{ __('School') }}</th><th>{{ __('Type') }}</th><th>{{ __('Bank Date') }}</th><th>{{ __('Bank Reference') }}</th><th>{{ __('Fund Account') }}</th><th>{{ __('Amount / Currency') }}</th><th>{{ __('Status') }}</th><th>{{ __('Validation result') }}</th><th>{{ __('Source') }}</th></tr></thead>
+                        <tbody>@forelse($batch->rows as $row)<tr><td data-label="#">{{ $row->row_number }}</td><td data-label="{{ __('School') }}"><span class="ui-cell-primary">{{ $row->normalized_data['school_code'] ?? '—' }}</span></td><td data-label="{{ __('Type') }}">{{ $row->document_type ?: '—' }}</td><td data-label="{{ __('Bank Date') }}">{{ $row->normalized_data['transaction_date'] ?? '—' }}</td><td data-label="{{ __('Bank Reference') }}" class="cf-break-anywhere">{{ $row->normalized_data['bank_reference'] ?? $row->reference_no ?: '—' }}</td><td data-label="{{ __('Fund Account') }}">{{ $row->normalized_data['fund_account_code'] ?? '—' }}</td><td data-label="{{ __('Amount / Currency') }}">{{ $row->normalized_data['amount'] ?? '—' }} {{ $row->normalized_data['currency'] ?? '' }}</td><td data-label="{{ __('Status') }}"><span class="badge cf-status-badge badge-{{ in_array($row->result_status, ['Error','Conflict']) ? 'danger' : ($row->result_status === 'Duplicate' ? 'secondary' : ($row->result_status === 'Unidentified' ? 'info' : 'success')) }}">{{ $row->result_status === 'Unidentified' ? __('Unidentified Deposit') : __($row->result_status) }}</span></td><td data-label="{{ __('Validation result') }}" class="cf-break-anywhere">{{ $row->error_message ?: ($row->result_status === 'Duplicate' ? __('Duplicate: skipped on confirmation.') : ($row->canonical_source_uuid ? __('Canonical source linked.') : ($row->result_status === 'Unidentified' ? __('Will create one physical cash-in in the Unidentified Deposit pool; it is not School income.') : __('Ready for confirmation')))) }}</td><td data-label="">@if($row->canonical_source_id)<a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.group-import.source', [$batch->token, $row->id]) }}">{{ __('View source') }}</a>@else — @endif</td></tr>@empty<tr><td colspan="10" data-label=""><div class="cf-empty-state">{{ __('No preview rows found.') }}</div></td></tr>@endforelse</tbody>
                     </table>
                 </div>
                 {{ method_exists($batch->rows, 'links') ? $batch->rows->links() : '' }}
