@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\CentralFinanceQaRun;
 use App\Models\CentralFinanceDocumentAudit;
+use App\Models\CentralFinanceFundAccount;
+use App\Models\CentralFinanceDataClassification;
+use App\Models\CentralFinanceLedgerEntry;
+use App\Models\CentralFinanceQaRunRecord;
 use App\Models\CentralFinanceUnidentifiedDeposit;
 use App\Services\CentralFinanceDataIsolationService;
 use App\Services\CentralFinanceQaRunService;
@@ -53,6 +57,42 @@ final class CentralFinanceQaRunController extends Controller
             'auditEntries' => $auditEntries,
             'unidentifiedDeposits' => $unidentifiedDeposits,
             'hasUnidentifiedDeposits' => $unidentifiedDeposits->isNotEmpty(),
+        ]);
+    }
+
+    /**
+     * Read a ledger entry only through its immutable QA Run membership.
+     * Group-owned cash entries have no School ID and must not be made visible
+     * through the general School or Official Ledger scope.
+     */
+    public function ledgerDetail(int $run, int $ledger): View
+    {
+        $actor = $this->manager();
+        $record = CentralFinanceQaRun::on('mysql')->findOrFail($run);
+        $this->assertQaRunVisible($actor, $record);
+
+        CentralFinanceQaRunRecord::on('mysql')->where([
+            'qa_run_id' => $record->id,
+            'school_id' => $record->school_id,
+            'subject_scope' => 'central',
+            'subject_type' => 'ledger',
+            'subject_id' => $ledger,
+        ])->firstOrFail();
+
+        $entry = CentralFinanceLedgerEntry::on('mysql')->with('fundAccount')->findOrFail($ledger);
+        abort_unless($this->isolation->classification('ledger', $entry->id) === CentralFinanceDataClassification::QA_TEST, 404);
+        abort_unless($entry->school_id === null || (int) $entry->school_id === (int) $record->school_id, 404);
+
+        $account = $entry->fundAccount;
+        abort_unless($account !== null, 404);
+        abort_unless($this->workspace->readableAccounts($actor, (int) $record->school_id, true)->contains('id', (int) $account->id), 404);
+        if ($entry->school_id === null) {
+            abort_unless($account->owner_type === CentralFinanceFundAccount::OWNER_HQ && $account->school_id === null, 404);
+        }
+
+        return view('central-finance.qa-runs.ledger-detail', [
+            'run' => $record,
+            'entry' => $entry,
         ]);
     }
 

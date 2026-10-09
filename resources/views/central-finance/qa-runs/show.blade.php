@@ -23,6 +23,8 @@
             @elseif($type === 'unidentified_deposit')
                 <ul class="mb-2">@forelse($unidentifiedDeposits as $deposit)<li><strong>Deposit #{{ $deposit->id }} · {{ number_format((float) $deposit->amount, 2) }} {{ $deposit->currency }}</strong><br><small class="text-muted">{{ $deposit->received_date?->format('Y-m-d') }} · {{ $deposit->fundAccount?->account_code }} · {{ $deposit->fundAccount?->account_name }} · {{ $deposit->bank_reference ?: $deposit->manual_identity ?: 'No reference' }} · {{ ucfirst($deposit->status) }}</small></li>@empty<li class="text-muted">No unidentified deposits in this Run.</li>@endforelse</ul>
                 @if($hasUnidentifiedDeposits)<a class="btn btn-sm btn-outline-primary" href="{{ route('central-finance.unidentified-deposits.index', ['include_qa_test' => 1, 'qa_run_id' => $run->id]) }}">Open Run deposits</a>@endif
+            @elseif($type === 'ledger')
+                <ul class="mb-0">@forelse($members as $member)<li><a href="{{ route('central-finance.qa-runs.ledger.show', ['run' => $run->id, 'ledger' => $member->subject_id]) }}">Ledger #{{ $member->subject_id }}</a> <small class="text-muted">{{ $member->subject_scope }}</small></li>@empty<li class="text-muted">No records in this Run.</li>@endforelse</ul>
             @else
                 <ul class="mb-0">@forelse($members as $member)<li>{{ $member->subject_id ?? 'Provisioning: '.$member->source_identity }} <small class="text-muted">{{ $member->subject_scope }}</small></li>@empty<li class="text-muted">No records in this Run.</li>@endforelse</ul>
             @endif

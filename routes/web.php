@@ -1228,6 +1228,7 @@ Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/zixuan/qa-runs', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'index'])->name('central-finance.qa-runs.index');
     Route::post('central-finance/zixuan/qa-runs', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'store'])->name('central-finance.qa-runs.store');
     Route::get('central-finance/zixuan/qa-runs/{run}', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'show'])->whereNumber('run')->name('central-finance.qa-runs.show');
+    Route::get('central-finance/zixuan/qa-runs/{run}/ledger/{ledger}', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'ledgerDetail'])->whereNumber('run')->whereNumber('ledger')->name('central-finance.qa-runs.ledger.show');
     Route::post('central-finance/zixuan/qa-runs/{run}/activate', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'activate'])->whereNumber('run')->name('central-finance.qa-runs.activate');
     Route::post('central-finance/zixuan/qa-runs/{run}/complete', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'complete'])->whereNumber('run')->name('central-finance.qa-runs.complete');
     Route::post('central-finance/zixuan/qa-runs/{run}/archive', [\App\Http\Controllers\CentralFinanceQaRunController::class, 'archive'])->whereNumber('run')->name('central-finance.qa-runs.archive');

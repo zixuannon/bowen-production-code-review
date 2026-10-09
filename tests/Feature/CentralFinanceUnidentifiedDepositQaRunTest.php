@@ -103,6 +103,35 @@ final class CentralFinanceUnidentifiedDepositQaRunTest extends TestCase {
   $this->assertSame('central-finance.qa-runs.show',$runView->name());
   $this->assertSame('central-finance.unidentified-deposits.index',$view->name());
  }
+ public function test_qa_run_detail_can_read_group_owned_ledger_only_through_its_run_membership(): void
+ {
+  $run=$this->qaContext(); $deposit=$this->deposit();
+  $ledger=CentralFinanceLedgerEntry::on('mysql')->where('source_type','central_unidentified_deposit')->sole();
+  $this->assertNull($ledger->school_id);
+  $this->actingAs($this->head);
+
+  $runView=app(\App\Http\Controllers\CentralFinanceQaRunController::class)->show($run->id);
+  $this->assertSame('central-finance.qa-runs.show',$runView->name());
+  $this->assertStringContainsString('/central-finance/zixuan/qa-runs/'.$run->id.'/ledger/'.$ledger->id, route('central-finance.qa-runs.ledger.show',['run'=>$run->id,'ledger'=>$ledger->id]));
+  $this->assertStringContainsString("route('central-finance.qa-runs.ledger.show'", file_get_contents(resource_path('views/central-finance/qa-runs/show.blade.php')));
+
+  $detail=app(\App\Http\Controllers\CentralFinanceQaRunController::class)->ledgerDetail($run->id,$ledger->id);
+  $this->assertSame('central-finance.qa-runs.ledger-detail',$detail->name());
+  $this->assertSame($ledger->id,$detail->getData()['entry']->id);
+  $this->assertSame($run->id,$detail->getData()['run']->id);
+
+  $standard=app(CentralFinanceWorkspaceController::class)->ledger(new Request(['include_qa_test'=>1]));
+  $this->assertNotContains($ledger->id,$standard->getData()['ledger']->pluck('id')->all());
+ }
+ public function test_qa_run_ledger_detail_denies_cross_run_membership(): void
+ {
+  $run=$this->qaContext(); $this->deposit();
+  $ledger=CentralFinanceLedgerEntry::on('mysql')->where('source_type','central_unidentified_deposit')->sole();
+  $otherRun=$this->qaContext('active',2);
+  $this->actingAs($this->head);
+  $this->expectException(ModelNotFoundException::class);
+  app(\App\Http\Controllers\CentralFinanceQaRunController::class)->ledgerDetail($otherRun->id,$ledger->id);
+ }
  public function test_qa_deposit_receivable_lookup_excludes_other_run_receivables(): void
  {
   $run=$this->qaContext(); $deposit=$this->deposit(); $sameRun=$this->qaTarget($run,'400000.0000');
