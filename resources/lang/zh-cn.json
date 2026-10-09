@@ -3353,5 +3353,11 @@
     "Bank Date": "银行日期",
     "Bank Reference": "银行参考号",
     "Amount / Currency": "金额 / 币种",
-    "Will create one physical cash-in in the Unidentified Deposit pool; it is not School income.": "将仅在未识别存款池登记一笔实收现金；该款项不计为学校收入。"
+    "Will create one physical cash-in in the Unidentified Deposit pool; it is not School income.": "将仅在未识别存款池登记一笔实收现金；该款项不计为学校收入。",
+    "QA Run Ledger entry": "QA 测试批次账本分录",
+    "Back to QA Run": "返回 QA 测试批次",
+    "School ID": "学校 ID",
+    "Group-owned; no School ID": "集团账户；无学校 ID",
+    "Transaction Type": "交易类型",
+    "Operating Income / Expense": "经营收入 / 支出"
 }
