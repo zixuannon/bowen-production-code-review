@@ -138,6 +138,35 @@ class CentralFinanceWorkspaceControllerTest extends TestCase
         app(CentralFinanceWorkspaceController::class)->otherIncomeDetail(999999);
     }
 
+    public function test_account_statement_presents_other_income_payer_with_existing_description(): void
+    {
+        $category = CentralFinanceCategory::on('mysql')->create([
+            'school_id' => 1, 'type' => 'income', 'name' => 'Statement Income', 'is_active' => true,
+        ]);
+        $income = CentralFinanceOtherIncome::on('mysql')->create([
+            'school_id' => 1, 'category_id' => $category->id, 'fund_account_id' => $this->zixuan->id,
+            'idempotency_key' => 'STATEMENT-PAYER-PRESENTATION', 'reference_no' => 'STATEMENT-PAYER-REF',
+            'payment_method' => 'Bank Transfer', 'income_date' => '2026-09-18', 'payer' => 'Synthetic Sender',
+            'currency' => 'MMK', 'amount' => 10, 'description' => 'Synthetic statement remarks', 'created_by' => $this->head->id,
+        ]);
+        CentralFinanceLedgerEntry::on('mysql')->create([
+            'entry_uuid' => (string) Str::uuid(), 'school_id' => 1, 'fund_account_id' => $this->zixuan->id,
+            'entry_date' => '2026-09-18', 'occurred_at' => '2026-09-18 10:00:00', 'source_type' => 'central_other_income',
+            'source_id' => $income->income_uuid, 'source_line' => 'income', 'reference_no' => 'STATEMENT-PAYER-REF',
+            'transaction_type' => CentralFinanceLedgerEntry::TYPE_OPERATING_INCOME, 'currency' => 'MMK',
+            'money_in' => 10, 'money_out' => 0, 'operating_income' => 10, 'operating_expense' => 0,
+            'memo' => 'Synthetic statement remarks', 'created_by' => $this->head->id,
+        ]);
+
+        $entry = CentralFinanceLedgerEntry::on('mysql')->where('source_id', $income->income_uuid)->firstOrFail();
+        app(\App\Services\CentralFinanceLedgerPresentationService::class)->decorate(collect([$entry]));
+
+        $this->assertSame('Synthetic Sender', $entry->readable_payer);
+        $this->assertSame('Sender: Synthetic Sender · Synthetic statement remarks', $entry->memo);
+        $this->assertSame('STATEMENT-PAYER-REF', $entry->readable_document_number);
+        $this->assertSame('Synthetic statement remarks', $income->description, 'Presentation must not rewrite the canonical source document.');
+    }
+
     public function test_head_finance_creates_group_account_without_school_context_then_manages_allocations(): void
     {
         $this->grantHeadFinanceRole();

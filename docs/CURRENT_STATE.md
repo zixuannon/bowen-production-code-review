@@ -1,5 +1,13 @@
 # eSchool Current State
 
+## P1 final acceptance — regression pass and release identity verified (2026-10-10)
+
+- Continued the existing `codex/official-onboarding-finance-delivery` worktree at base `4d7a534f6f60926e66c9c5cab7eb89efc5a52eb3`; preserved all prior local implementation. The `eschool-prod` read-only SSH check verified active release `/www/wwwroot/releases/eschool-rc-4d7a534f6f60-consolidated-final`; release Git HEAD, manifest SHA, marker SHA, and active Production SHA all equal `4d7a534f6f60926e66c9c5cab7eb89efc5a52eb3`. No Production write, migration, permission change, release switch, or Finance record changed.
+- Repaired the guarded P1-A disposable regression fixture so it verifies/adds the legacy `fees.total_compulsory_fees` and four `fees_class_types` currency snapshot columns on only `school_testing` at localhost:3318. It also verifies the designated default academic year. No application migration was added.
+- Targeted Fee lifecycle/accessor regression: 21 tests / 204 assertions pass. Full PHPUnit regression: 1,350 tests / 11,113 assertions; 0 failures, 0 errors, 34 existing skips. PHP 8.5 PDO and PHPUnit deprecations remain.
+- Fresh browser acceptance on a dedicated active-Worktree Laravel server (127.0.0.1:19012) and disposable localhost:3318 fixture passed Front Desk School Finance desktop/mobile (2/2). The previously completed isolated E2E covers Group Import V3 template/preview/confirm/history/error CSV and formula protection, Account Statement descriptions, school/group scope isolation, sidebar, promotions, finance reports, and Group Finance navigation. A fresh combined re-run on the unrelated BOWEN_QA-only fixture was not valid for Group-QA scenarios (missing expected Group QA account/school fixtures); the legacy Group Import test port 18999 was not used after automatic safety review could not verify its disposable database identity. The BOWEN_QA classification intentionally prevents rendering an Official-only write form, so no synthetic income was submitted. Existing read-only Production smoke had previously confirmed the Other Income payer field.
+- Diff contains no migrations or role/permission changes. `git diff --check` passes. Candidate freeze is local-only; no push or deployment is authorized. The only fixture alteration is guarded to the named disposable local schema and port above.
+
 ## Official onboarding and finance delivery — local candidate (2026-10-09)
 
 - Based on read-only Production release evidence at `2488b307bd8a47fb61cb6f892b916365377d1d7f`; no Production data, account, permission, migration, or release was changed.

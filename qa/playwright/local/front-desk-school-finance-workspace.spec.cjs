@@ -14,13 +14,14 @@ async function frontDeskState(baseURL) {
     const login = await api.post('/login', {
       form: {
         _token: csrfToken(await form.text()),
-        email: 'qa_cashier_a@bowen-qa.test',
+        email: 'qa_front_desk@bowen-qa.test',
         password: 'local-bowen-qa-only',
         code: 'BOWEN_QA',
       },
       maxRedirects: 0,
     });
     expect([302, 303]).toContain(login.status());
+    expect(new URL(login.headers().location || '/login', baseURL).pathname).not.toBe('/login');
     return await api.storageState();
   } finally {
     await api.dispose();

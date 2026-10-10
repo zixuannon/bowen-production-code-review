@@ -3381,5 +3381,18 @@
     "School ID": "学校 ID",
     "Group-owned; no School ID": "集团账户；无学校 ID",
     "Transaction Type": "交易类型",
-    "Operating Income / Expense": "经营收入 / 支出"
+    "Operating Income / Expense": "经营收入 / 支出",
+    "Group Import History": "集团导入历史",
+    "Only batches uploaded by your account in authorized Finance Groups are shown.": "仅显示由您的账号上传、且属于您获授权财务集团的批次。",
+    "Import history": "导入历史",
+    "New import": "新建导入",
+    "All authorized groups": "所有获授权的集团",
+    "File name": "文件名",
+    "Uploaded": "上传时间",
+    "File": "文件",
+    "No import batches match this filter.": "没有符合此筛选条件的导入批次。",
+    "View batch": "查看批次",
+    "Export error rows": "导出错误行",
+    "Conflicts": "冲突",
+    "Sender": "付款人"
 }

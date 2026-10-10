@@ -12,6 +12,7 @@ use App\Services\CentralFinanceWorkspaceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -39,6 +40,79 @@ final class CentralFinanceGroupImportController extends Controller
             $batch->setRelation('rows', $batch->rows()->orderBy('row_number')->paginate(50)->withQueryString());
         }
         return view('central-finance.group-import.index', compact('groups', 'batch', 'includeQaTest', 'canIncludeQaTest'));
+    }
+
+    /** A read-only history of batches uploaded by this operator in authorized groups. */
+    public function history(Request $request): View
+    {
+        $actor = $this->actor();
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor);
+        $groups = $this->imports->authorizedGroups($actor);
+        abort_if($groups->isEmpty(), 403);
+
+        $groupIds = $groups->modelKeys();
+        $groupId = $request->integer('finance_group_id');
+        abort_if($groupId > 0 && !in_array($groupId, $groupIds, true), 403);
+
+        $query = CentralFinanceGroupImportBatch::on('mysql')
+            ->with('confirmedBy')
+            ->where('uploaded_by', $actor->id)
+            ->whereIn('finance_group_id', $groupId > 0 ? [$groupId] : $groupIds)
+            ->when($request->filled('status'), fn ($builder) => $builder->where('status', $request->string('status')->toString()));
+        if ($request->filled('status') && !in_array($request->string('status')->toString(), ['previewed', 'completed', 'failed'], true)) {
+            abort(422, 'Invalid Group Import status filter.');
+        }
+        if ($request->filled('search')) {
+            $search = trim($request->string('search')->toString());
+            if ($search !== '') {
+                $query->where('file_name', 'like', '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%');
+            }
+        }
+        $this->dataIsolation->apply($query, 'group_import_batch', $includeQaTest);
+        $history = $query->orderByDesc('created_at')->orderByDesc('id')->paginate(20)->withQueryString();
+
+        return view('central-finance.group-import.history', compact('groups', 'history', 'includeQaTest'));
+    }
+
+    /** Export only validation errors/conflicts for a batch owned by this authorized operator. */
+    public function exportErrors(Request $request, string $batch): StreamedResponse
+    {
+        $actor = $this->actor();
+        $includeQaTest = $this->dataIsolation->includeQaTest($request, $actor)
+            || $this->workspace->isQaTestSchoolContext($actor);
+        $authorizedGroups = $this->imports->authorizedGroups($actor);
+        abort_if($authorizedGroups->isEmpty(), 403);
+
+        $batchQuery = CentralFinanceGroupImportBatch::on('mysql')
+            ->where('token', $batch)
+            ->where('uploaded_by', $actor->id);
+        $this->dataIsolation->apply($batchQuery, 'group_import_batch', $includeQaTest);
+        $import = $batchQuery->firstOrFail();
+        abort_unless($authorizedGroups->pluck('id')->contains((int) $import->finance_group_id), 403);
+
+        $rows = CentralFinanceGroupImportPreviewRow::on('mysql')
+            ->where('group_batch_id', $import->id)
+            ->whereIn('result_status', ['Error', 'Conflict'])
+            ->orderBy('row_number')
+            ->get();
+        $filename = 'group-import-errors-'.$import->token.'.csv';
+
+        return response()->streamDownload(static function () use ($rows): void {
+            $output = fopen('php://output', 'wb');
+            fputcsv($output, ['Row', 'Status', 'Error Code', 'Validation Result', 'School Code', 'School', 'Document Type', 'Transaction Date', 'Claimant', 'Description', 'Account Code', 'Fund Account Code', 'Payment Method', 'Income', 'Expense', 'Currency', 'Reference', 'Remarks']);
+            foreach ($rows as $row) {
+                $data = (array) $row->normalized_data;
+                fputcsv($output, array_map(self::csvCell(...), [
+                    $row->row_number, $row->result_status, $row->error_code, $row->error_message,
+                    $data['school_code'] ?? '', $data['school_label'] ?? '', $data['document_type'] ?? $row->document_type,
+                    $data['transaction_date'] ?? '', $data['claimant'] ?? '', $data['summary'] ?? '',
+                    $data['category_code'] ?? '', $data['fund_account_code'] ?? '', $data['payment_method'] ?? '',
+                    $data['income'] ?? '', $data['expense'] ?? '', $data['currency'] ?? '',
+                    $data['reference_no'] ?? $row->reference_no ?? '', $data['remarks'] ?? '',
+                ]));
+            }
+            fclose($output);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function template(Request $request): BinaryFileResponse
@@ -106,5 +180,12 @@ final class CentralFinanceGroupImportController extends Controller
     {
         $user = Auth::user(); abort_unless($user, 403);
         return $this->workspace->actor($user);
+    }
+
+    private static function csvCell(mixed $value): string|int|float
+    {
+        if (!is_string($value)) return $value ?? '';
+        // Keep spreadsheet clients from treating imported text as a formula.
+        return preg_match('/^[\s\x00-\x1F]*[=+@-]/u', $value) === 1 ? "'".$value : $value;
     }
 }

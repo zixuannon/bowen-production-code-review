@@ -8,6 +8,7 @@ use App\Models\CentralFinanceExpense;
 use App\Models\CentralFinanceFundAccount;
 use App\Models\CentralFinanceFundAccountSchoolAllocation;
 use App\Models\CentralFinanceGroupImportBatch;
+use App\Models\CentralFinanceGroupImportPreviewRow;
 use App\Models\CentralFinanceOtherIncome;
 use App\Models\CentralFinanceUser;
 use App\Models\FinanceGroup;
@@ -75,6 +76,12 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
             $table->string('last_name')->nullable();
             $table->softDeletes();
             $table->timestamps();
+        });
+        Schema::connection('mysql')->create('system_settings', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->unique();
+            $table->string('data')->nullable();
+            $table->string('type')->nullable();
         });
         Schema::connection('mysql')->create('roles', function (Blueprint $table): void {
             $table->id();
@@ -834,6 +841,47 @@ final class CentralFinanceGroupImportConfirmTest extends TestCase
     private function preview(array $rows): CentralFinanceGroupImportBatch
     {
         return app(CentralFinanceGroupImportService::class)->previewRows($this->head, $this->group, 'group-import.xlsx', hash('sha256', serialize($rows).Str::uuid()), $rows);
+    }
+
+    public function test_group_import_history_is_owned_group_scoped_and_classification_filtered(): void
+    {
+        $official = $this->preview([]);
+        $qa = $this->preview([]);
+        $qa->update(['file_name' => 'qa-history.xlsx']);
+        app(CentralFinanceDataIsolationService::class)->classify($this->head, 1, 'group_import_batch', (int) $qa->id, CentralFinanceDataClassification::QA_TEST, 'History visibility fixture.');
+
+        $this->withoutMiddleware()->actingAs($this->head);
+        $controller = app(\App\Http\Controllers\CentralFinanceGroupImportController::class);
+        $officialView = $controller->history(\Illuminate\Http\Request::create(route('central-finance.group-import.history')));
+        $officialIds = $officialView->getData()['history']->getCollection()->modelKeys();
+        $this->assertContains($official->id, $officialIds);
+        $this->assertNotContains($qa->id, $officialIds);
+
+        $qaView = $controller->history(\Illuminate\Http\Request::create(route('central-finance.group-import.history'), 'GET', ['include_qa_test' => 1]));
+        $this->assertContains($qa->id, $qaView->getData()['history']->getCollection()->modelKeys());
+    }
+
+    public function test_group_import_error_export_is_owner_scoped_and_contains_only_sanitized_error_rows(): void
+    {
+        $invalid = $this->row('UNKNOWN-SCHOOL', 'Unknown', $this->zixuanAccount, $this->zixuanIncome, 'BAD-ROW', 10, 0);
+        $valid = $this->row('SCH-ZIX', 'Zixuan QA', $this->zixuanAccount, $this->zixuanIncome, 'GOOD-ROW', 10, 0);
+        $batch = $this->preview([$valid, $invalid]);
+        $errorRow = $batch->rows()->where('result_status', 'Error')->firstOrFail();
+        $data = $errorRow->normalized_data;
+        $data['summary'] = '=HYPERLINK("https://example.invalid")';
+        $errorRow->update(['normalized_data' => $data]);
+
+        $response = $this->withoutMiddleware()->actingAs($this->head)
+            ->get(route('central-finance.group-import.errors', $batch->token));
+        $response->assertOk()->assertDownload('group-import-errors-'.$batch->token.'.csv');
+        $csv = $response->streamedContent();
+        $this->assertStringContainsString('Error Code', $csv);
+        $this->assertStringContainsString("'=HYPERLINK", $csv);
+        $this->assertStringNotContainsString('GOOD-ROW', $csv);
+        $this->assertCount(2, array_filter(explode("\n", trim($csv))), 'The CSV should contain a header and exactly one error row.');
+
+        $otherActor = $this->schoolOnlyActor();
+        $this->actingAs($otherActor)->get(route('central-finance.group-import.errors', $batch->token))->assertForbidden();
     }
 
     /** @return array<string,mixed> */

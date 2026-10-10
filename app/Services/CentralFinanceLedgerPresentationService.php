@@ -73,6 +73,19 @@ final class CentralFinanceLedgerPresentationService
             $entry->setAttribute('source_status', $source['status']);
             $entry->setAttribute('direction_label', $this->direction($entry));
             $entry->setAttribute('operating_label', $this->operating($entry));
+            if ($source['model'] instanceof CentralFinanceOtherIncome) {
+                // Payer is part of the canonical Other Income source record;
+                // keep the statement query scoped to the Ledger account and
+                // expose only the resolved, same-School source document.
+                $entry->setAttribute('readable_payer', $source['model']->payer);
+                if (filled($source['model']->payer)) {
+                    $description = trim((string) $entry->memo);
+                    $prefix = __('Sender').': '.$source['model']->payer;
+                    if (! str_starts_with($description, $prefix)) {
+                        $entry->setAttribute('memo', trim($prefix.($description !== '' ? ' · '.$description : '')));
+                    }
+                }
+            }
             $depositFlow = $entry->source_type === 'central_unidentified_deposit'
                 || $entry->transaction_type === 'unidentified_deposit_allocation';
             $entry->setAttribute('is_deposit_flow', $depositFlow);

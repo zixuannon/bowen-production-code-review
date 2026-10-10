@@ -1220,8 +1220,10 @@ Route::group(['middleware' => ['Role', 'checkSchoolStatus', 'status', 'SwitchDat
 // route here can receive a tenant database or impersonated tenant identity.
 Route::middleware(['centralFinance', 'auth'])->group(static function (): void {
     Route::get('central-finance/group-import', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'workspace'])->name('central-finance.group-import.index');
+    Route::get('central-finance/group-import/history', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'history'])->name('central-finance.group-import.history');
     Route::get('central-finance/group-import/template', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'template'])->name('central-finance.group-import.template');
     Route::post('central-finance/group-import/preview', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'preview'])->name('central-finance.group-import.preview');
+    Route::get('central-finance/group-import/{batch}/errors.csv', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'exportErrors'])->name('central-finance.group-import.errors');
     Route::get('central-finance/group-import/{batch}/source/{row}', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'source'])->whereNumber('row')->name('central-finance.group-import.source');
     Route::post('central-finance/group-import/{batch}/confirm', [\App\Http\Controllers\CentralFinanceGroupImportController::class, 'confirm'])->name('central-finance.group-import.confirm');
     Route::get('central-finance', [CentralFinanceWorkspaceController::class, 'dashboard'])->name('central-finance.dashboard');

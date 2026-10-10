@@ -47,8 +47,9 @@ class FeesPaidSchoolIdTest extends TestCase
     {
         parent::setUp();
 
-        $this->ensureRoles();
         $this->ensureBaseTables();
+        $this->ensureSchoolFixture();
+        $this->ensureRoles();
 
         // Create class for Excel import matching
         $this->className = 'FPP-SchoolId-' . Str::random(4);
@@ -60,15 +61,24 @@ class FeesPaidSchoolIdTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Ensure session year
-        $this->sessionYearId = 1;
-        try {
-            DB::table('session_years')->insertOrIgnore([
-                'id' => 1, 'name' => '2025-2026', 'default' => 1,
-                'start_date' => '2025-06-01', 'end_date' => '2026-05-31',
+        // Ensure the named year exists for this school. Do not assume its
+        // primary key is 1: shared test tenants may already have another
+        // school's row at that id.
+        $this->sessionYearId = (int) DB::table('session_years')
+            ->where('school_id', $this->schoolId)
+            ->where('name', '2025-2026')
+            ->value('id');
+        if (!$this->sessionYearId) {
+            $this->sessionYearId = (int) DB::table('session_years')->insertGetId([
+                'name' => '2025-2026',
+                'default' => 1,
+                'start_date' => '2025-06-01',
+                'end_date' => '2026-05-31',
                 'school_id' => $this->schoolId,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
-        } catch (\Throwable) {}
+        }
 
         // Create admin user (logged in)
         $this->authUserId = $this->createUser('FppSchoolId', 'Admin', $this->schoolId);
@@ -128,6 +138,26 @@ class FeesPaidSchoolIdTest extends TestCase
                 ]);
             }
         }
+    }
+
+    private function ensureSchoolFixture(): void
+    {
+        if (DB::table('schools')->where('id', $this->schoolId)->exists()) {
+            return;
+        }
+
+        DB::table('schools')->insert([
+            'id' => $this->schoolId,
+            'name' => 'Fees Paid School ID Test School',
+            'address' => 'Local test fixture',
+            'support_phone' => '0000000000',
+            'support_email' => 'fees-paid-school-id@example.test',
+            'tagline' => 'Disposable tenant fixture',
+            'logo' => '',
+            'status' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function createBankAccount(int $schoolId, string $currency = 'MMK'): int
@@ -273,6 +303,23 @@ class FeesPaidSchoolIdTest extends TestCase
     private function createTestFee(float $total, ?int $schoolId = null, ?string $nameSuffix = null): Fee
     {
         $schoolId = $schoolId ?? $this->schoolId;
+        $sessionYearId = $schoolId === $this->schoolId
+            ? $this->sessionYearId
+            : (int) DB::table('session_years')
+                ->where('school_id', $schoolId)
+                ->where('name', '2025-2026')
+                ->value('id');
+        if (!$sessionYearId) {
+            $sessionYearId = (int) DB::table('session_years')->insertGetId([
+                'name' => '2025-2026',
+                'default' => 1,
+                'start_date' => '2025-06-01',
+                'end_date' => '2026-05-31',
+                'school_id' => $schoolId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
         $fee = new Fee();
         $fee->forceFill([
             'name'                  => 'FPPSchoolId_' . ($nameSuffix ?? '') . '_' . Str::random(4),
@@ -280,24 +327,30 @@ class FeesPaidSchoolIdTest extends TestCase
             'due_charges'           => 0,
             'class_id'              => $this->classId,
             'school_id'             => $schoolId,
-            'session_year_id'       => DB::table('session_years')->where('school_id', $schoolId)->where('default', 1)->value('id') ?? $this->sessionYearId,
-            'total_compulsory_fees' => $total,
+            'session_year_id'       => $sessionYearId,
         ]);
         $fee->save();
 
-        // Ensure fees_class_type record exists for preview validation
-        DB::table('fees_class_types')->insertOrIgnore([
-            'fees_id'    => $fee->id,
-            'class_id'   => $this->classId,
-            'fees_type_id' => 1,
-            'optional'   => 0,
-            'amount'     => $total,
-            'school_id'  => $schoolId,
+        $feeTypeId = DB::table('fees_types')->insertGetId([
+            'name' => 'FPPSchoolId Type ' . Str::random(4),
+            'school_id' => $schoolId,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        return $fee->fresh();
+        DB::table('fees_class_types')->insert([
+            'fees_id' => $fee->id,
+            'class_id' => $this->classId,
+            'fees_type_id' => $feeTypeId,
+            'optional' => 0,
+            'quantity_enabled' => 0,
+            'amount' => $total,
+            'school_id' => $schoolId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $fee->fresh(['fees_class_type']);
     }
 
     /**

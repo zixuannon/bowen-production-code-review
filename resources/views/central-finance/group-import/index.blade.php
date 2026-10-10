@@ -15,6 +15,7 @@
             <h1 class="cf-page-header__title">{{ __('Group Finance Import V3') }}</h1>
             <p class="cf-page-header__description">{{ __('Validate a multi-School workbook before confirmation. Preview never creates financial documents.') }}</p>
         </div>
+        <a class="btn btn-outline-secondary" href="{{ route('central-finance.group-import.history', request()->only('include_qa_test')) }}">{{ __('Import history') }}</a>
     </div>
 
     @include('central-finance.partials.data-visibility-toggle')

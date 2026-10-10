@@ -768,14 +768,34 @@ class FeesPaidImportHttpTest extends TestCase
             'class_id' => $this->classId,
             'school_id' => $this->schoolId,
             'session_year_id' => $this->sessionYearId,
-            'total_compulsory_fees' => $total,
         ];
         if ($feeId !== null) {
             $data['id'] = $feeId;
         }
         $fee->forceFill($data);
         $fee->save();
-        return $fee->fresh();
+
+        // The total is a computed Fee attribute backed by fees_class_types;
+        // it is not a physical column in the current tenant schema.
+        $feeTypeId = DB::table('fees_types')->insertGetId([
+            'name' => $this->feeStructureName.' Type',
+            'school_id' => $this->schoolId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('fees_class_types')->insert([
+            'fees_id' => $fee->id,
+            'class_id' => $this->classId,
+            'fees_type_id' => $feeTypeId,
+            'amount' => $total,
+            'optional' => 0,
+            'quantity_enabled' => 0,
+            'school_id' => $this->schoolId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $fee->fresh(['fees_class_type']);
     }
 
     private function assignPermission(User $user, string $permission): void

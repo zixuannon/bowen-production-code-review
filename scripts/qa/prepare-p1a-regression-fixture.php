@@ -24,9 +24,28 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 
-$column = $pdo->query("SELECT 1 FROM information_schema.columns WHERE table_schema='school_testing' AND table_name='fees' AND column_name='total_compulsory_fees'")->fetchColumn();
-if (!$column) {
-    $pdo->exec('ALTER TABLE `fees` ADD COLUMN `total_compulsory_fees` DECIMAL(10,2) NULL');
+$columns = [
+    'fees' => [
+        'total_compulsory_fees' => '`total_compulsory_fees` DECIMAL(12,2) NULL',
+    ],
+    'fees_class_types' => [
+        'fee_currency' => "`fee_currency` VARCHAR(3) NOT NULL DEFAULT 'MMK'",
+        'fee_original_amount' => '`fee_original_amount` DECIMAL(12,2) NOT NULL DEFAULT 0',
+        'fee_exchange_rate_snapshot' => '`fee_exchange_rate_snapshot` DECIMAL(12,4) NOT NULL DEFAULT 1.0000',
+        'fee_amount_mmk' => '`fee_amount_mmk` DECIMAL(12,2) NOT NULL DEFAULT 0',
+    ],
+];
+
+foreach ($columns as $table => $definitions) {
+    foreach ($definitions as $name => $definition) {
+        $query = $pdo->prepare(
+            'SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+        );
+        $query->execute([$table, $name]);
+        if (!$query->fetchColumn()) {
+            $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN {$definition}");
+        }
+    }
 }
 
 $years = [
@@ -69,4 +88,4 @@ if ($actual !== [
     exit(3);
 }
 
-echo "P1-A isolated regression fixture ready: fees.total_compulsory_fees present; default years verified.\n";
+echo "P1-A isolated regression fixture ready: fee compatibility columns present; default years verified.\n";

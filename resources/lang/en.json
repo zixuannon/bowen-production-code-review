@@ -947,5 +947,18 @@
     "A reason is required to change Promotion status.": "A reason is required to change Promotion status.",
     "Promotion status must be active or inactive.": "Promotion status must be active or inactive.",
     "A Promotion with historical or request dependencies cannot be deleted. Disable it instead.": "A Promotion with historical or request dependencies cannot be deleted. Disable it instead.",
-    "A Promotion with Fee allocation dependencies cannot be deleted.": "A Promotion with Fee allocation dependencies cannot be deleted."
+    "A Promotion with Fee allocation dependencies cannot be deleted.": "A Promotion with Fee allocation dependencies cannot be deleted.",
+    "Group Import History": "Group Import History",
+    "Only batches uploaded by your account in authorized Finance Groups are shown.": "Only batches uploaded by your account in authorized Finance Groups are shown.",
+    "Import history": "Import history",
+    "New import": "New import",
+    "All authorized groups": "All authorized groups",
+    "File name": "File name",
+    "Uploaded": "Uploaded",
+    "File": "File",
+    "No import batches match this filter.": "No import batches match this filter.",
+    "View batch": "View batch",
+    "Export error rows": "Export error rows",
+    "Conflicts": "Conflicts",
+    "Sender": "Sender"
 }
